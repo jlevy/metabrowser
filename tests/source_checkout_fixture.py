@@ -256,6 +256,8 @@ def write_bodies(directory: Path) -> None:
         "pin-working-tree.json": {"working_tree": True},
         "pin-working-tree-and-ref.json": {"working_tree": True, "ref": "topic"},
         "page-ask.json": {"for": "page"},
+        # What a watch on the checkout's HEAD compares (`HEAD_WATCH_PATH`, file_watches.py).
+        "watch-head.json": {"path": ".git/HEAD"},
     }
     for name, body in bodies.items():
         (directory / name).write_text(json.dumps(body) + "\n", encoding="utf-8")

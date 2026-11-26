@@ -77,6 +77,25 @@ def test_the_label_reads_the_shells_label_tokens_and_nothing_restyles_it() -> No
     assert "padding: 0;" in row_label
 
 
+def test_a_stack_files_list_is_fresh_as_long_as_a_pull_requests_is() -> None:
+    """``STACK_FILES_FRESH_S`` in stack-files.js is the server's ``FRESHNESS_WINDOW_S``.
+
+    A pull request's list of changed files answers its freshness window in ``fresh_for_s``;
+    the ``stack`` route answers none, so the Pulls tab's list of a stack's files states the
+    window itself. This holds the two to one value.
+    """
+
+    from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+
+    stated = re.search(
+        r"^export const STACK_FILES_FRESH_S = (\d+);$",
+        (GITHUB / "stack-files.js").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert stated is not None
+    assert int(stated.group(1)) == FRESHNESS_WINDOW_S
+
+
 def test_every_stack_word_comes_from_pull_stacks() -> None:
     """ "Stack #N", a position, and its tip are written once, in pull-stacks.js, and the
     order a stack's rows are listed in, its Whole stack row among its members, is
@@ -89,7 +108,6 @@ def test_every_stack_word_comes_from_pull_stacks() -> None:
     assert "export function stackPositionHint(" in stacks
     assert "export function stackMenuOrder(" in stacks
     assert "export function stackEntries(" in stacks
-    assert "const entries = stackEntries(members);" in stacks, "groupByStack lists by it"
     for path in sorted(GITHUB.glob("*.js")):
         if path.name == "pull-stacks.js":
             continue

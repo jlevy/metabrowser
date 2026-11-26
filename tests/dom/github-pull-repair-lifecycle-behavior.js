@@ -141,8 +141,8 @@ async function story({ delaySecondMount = false, counts = undefined } = {}) {
       route.searchParams.set("right", current.record.comparison.head);
       current.comparison_route = route.pathname + route.search;
     },
-    // The Pulls tab's Refresh runs the page's `refresh`: the page has none of its own
-    // (mb-ablv).
+    // The navigation's Refresh runs the page's `refresh` (static/refresh-plan.js): the page
+    // has none of its own (mb-ablv).
     async refresh() {
       handle.refresh();
       await settle();

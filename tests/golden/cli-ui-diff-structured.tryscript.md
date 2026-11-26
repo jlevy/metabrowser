@@ -157,6 +157,34 @@ $ node tests/dom/diff-structured-session.js
       }
     },
     {
+      "step": "Excerpt keeps changed paths and a marker for removed values",
+      "rows": [
+        "modified open {4 keys}",
+        "  removed leaf version: removed",
+        "  added leaf version: 4",
+        "  modified open services: {1 keys}",
+        "    modified open web: {2 keys}",
+        "      modified open ports: [2 items]",
+        "        added leaf - 443",
+        "    removed leaf db: removed"
+      ]
+    },
+    {
+      "step": "Full includes unchanged values in the new tree",
+      "rows": [
+        "modified open {4 keys}",
+        "  context leaf name: \"demo\"",
+        "  added leaf version: 4",
+        "  modified open services: {1 keys}",
+        "    modified open web: {2 keys}",
+        "      context leaf image: \"nginx\"",
+        "      modified open ports: [2 items]",
+        "        context leaf - 80",
+        "        added leaf - 443",
+        "  context closed flags: [\"fast\", \"safe\"]"
+      ]
+    },
+    {
       "step": "a click on a closed unchanged list opens it, as the file view's tree does",
       "rows": [
         "modified open {4 keys}",

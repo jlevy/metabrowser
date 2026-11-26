@@ -432,6 +432,91 @@ async function runFolder() {
   return steps;
 }
 
+// The navigation's Refresh asks through `refreshNow` (static/refresh-plan.js), which settles
+// once nothing is fetching, so a part the plan runs next reads what the fetch brought. It
+// settles while the fetch runs only when it ends: at once for a refusal, when the fetch
+// ends, at the first poll that fails, and when the row is disposed.
+async function runRefreshNow() {
+  const outcomes = {};
+  /** A folder's page whose store was fetched a moment ago, its asks answered. */
+  async function opened() {
+    const page = createPage();
+    const controller = freshness.createController(page.deps, { checkout: true });
+    page.setStatus(recordedFolder.status_stale);
+    page.answerPageAsk(recordedFolder.ask_started.status, recordedFolder.ask_started.body);
+    await page.start(controller);
+    page.setStatus(recordedFolder.status_refreshed);
+    await page.fireTimer();
+    page.observe("opened");
+    return { page, controller };
+  }
+  /** A press, and whether it has settled, read as the plan would await it. */
+  function press(controller) {
+    const pressed = { settled: false };
+    void controller.refreshNow().then(() => {
+      pressed.settled = true;
+    });
+    return pressed;
+  }
+  const started = recordedFolder.refresh_started;
+  {
+    const { page, controller } = await opened();
+    page.answerPost("/api/source/refresh", started.status, started.body);
+    const pressed = press(controller);
+    await settle();
+    const whileFetching = pressed.settled;
+    page.setStatus(recordedFolder.status_refreshed);
+    await page.fireTimer();
+    outcomes["a fetch that runs: settled while it runs, then once it has ended"] = [
+      whileFetching,
+      pressed.settled,
+    ];
+    controller.dispose();
+  }
+  {
+    const { page, controller } = await opened();
+    page.answerPost("/api/source/refresh", started.status, started.body);
+    const pressed = press(controller);
+    await settle();
+    const whileFetching = pressed.settled;
+    page.stopAnswering();
+    await page.fireTimer();
+    outcomes["a poll that fails while it runs: settled while it runs, then once it failed"] = [
+      whileFetching,
+      pressed.settled,
+    ];
+    controller.dispose();
+  }
+  {
+    const { page, controller } = await opened();
+    page.answerPost("/api/source/refresh", started.status, started.body);
+    const pressed = press(controller);
+    await settle();
+    const whileFetching = pressed.settled;
+    controller.dispose();
+    await settle();
+    outcomes["a row disposed while it runs: settled while it runs, then once disposed"] = [
+      whileFetching,
+      pressed.settled,
+    ];
+  }
+  {
+    const { page, controller } = await opened();
+    page.answerPost("/api/source/refresh", 409, { code: "too_many" });
+    const pressed = press(controller);
+    await settle();
+    outcomes["a refused refresh: settled at once"] = pressed.settled;
+    controller.dispose();
+  }
+  const [ran, failed, disposed] = Object.values(outcomes);
+  assert(
+    [ran, failed, disposed].every(([during, after]) => during === false && after === true) &&
+      outcomes["a refused refresh: settled at once"] === true,
+    `refreshNow settled at the wrong time: ${JSON.stringify(outcomes)}`,
+  );
+  return outcomes;
+}
+
 // A repository folder's page on one of the checkout's own branches. It reads that branch,
 // not one commit of it: the page asks as often as its status says, the server reads the
 // checkout's refs for the ask and fetches nothing, and when the reader's commit moved the
@@ -557,6 +642,7 @@ async function run() {
   const topic = recorded.refreshed.ref;
   const folder = await runFolder();
   const checkoutBranch = await runCheckoutBranch();
+  const refreshNow = await runRefreshNow();
 
   // One page through a whole refresh, which moves its branch: the server follows the
   // branch, and the page goes with it, with nothing to accept.
@@ -1365,6 +1451,7 @@ async function run() {
     { name: "the session expired", status: 410, body: {}, initial: false },
     { name: "the cursor was rejected", status: 400, body: {}, initial: false },
     { name: "a conflict without a code", status: 409, body: {}, initial: false },
+    { name: "another tab switched the revision", ...recorded.pin_changed, initial: false },
     { name: "the server failed", status: 500, body: {}, initial: false },
     { name: "the first page was stale", ...recorded.history_stale, initial: true },
   ];
@@ -1474,7 +1561,7 @@ async function run() {
     );
   }
 
-  return { steps, asks, folder, checkoutBranch, guard, landing, wired, history };
+  return { steps, asks, folder, checkoutBranch, guard, landing, wired, history, refreshNow };
 }
 
 run()

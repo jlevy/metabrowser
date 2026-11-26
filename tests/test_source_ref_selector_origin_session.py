@@ -155,6 +155,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["acquiring_remotes"] = _until(client, "acquiring")
             gate.set()
             recorded["remotes"] = _until(client, "ready")
+            recorded["working_tree"] = listing(client, "working_tree")
             recorded["branches"] = listing(client, "branch")
             recorded["tags"] = listing(client, "tag")
             # Just fetched: a visible page's own ask finds nothing due.
@@ -351,6 +352,22 @@ def test_the_session_reads_the_origin_from_the_store_and_asks_as_a_visible_page(
     moved = by_name["the fetch ended: the origin's branch moved, and nothing more is asked"]
     assert recording["moved"].startswith(moved["paint"]["rows"][0].split(" ")[1])
     assert "pullsPending" not in moved
+    # The navigation's Refresh. An open list is read again, and one that says the same is
+    # not drawn; on this working tree's page the origin's fetch is asked for as the
+    # reader's own, which names no purpose, and the open list follows it to its end.
+    reread = by_name["Refresh reads the open list again, and one that says the same is not drawn"]
+    assert (reread["requests"], reread["drawnAgain"]) == (["GET /api/source/refs?kind=remote"], 0)
+    fetch = by_name["Refresh asks for the origin's fetch, as the reader's own"]
+    assert fetch["requests"] == ["POST /api/source/refresh {}"]
+    followed = by_name["the fetch started, so the open list is asked for again"]
+    assert followed["requests"] == ["GET /api/source/refs?kind=remote"]
+    assert by_name["the list says the fetch runs, and waits to ask again"]["pullsPending"] is True
+    ended = by_name["the fetch ended, and the list is the origin's as just fetched"]
+    assert ended["requests"] == ["GET /api/source/refs?kind=remote"]
+    assert "pullsPending" not in ended and ended["paint"]["rows"] == moved["paint"]["rows"]
+    # A closed list is fetched for and lists nothing.
+    behind = by_name["with the list closed, Refresh fetches and lists nothing"]
+    assert behind["requests"] == ["POST /api/source/refresh {}"]
     chosen = by_name["an origin branch is asked for by its ref"]
     assert chosen["requests"] == [
         'POST /api/source/pin {"ref":"refs/remotes/origin/trunk","view":"/view/m"}'

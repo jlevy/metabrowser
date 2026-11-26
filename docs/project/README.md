@@ -76,6 +76,12 @@ It links each document below and the contributor standards in `docs/`.
   a draft for opening a folder of SoftSchema records as linked tables, one per contract,
   from a cached collection index that a SoftSchema collection API builds and a
   background worker keeps current, so one bad record costs a row, never the table
+- [Lean language support](specs/active/plan-2026-11-25-lean-language-support.md): Lean
+  as a code family with GitHub’s color and a tested port of the official Lean 4 grammar,
+  and the [Adding a Language](../adding-a-language.md) recipe and the `mb-*` skills that
+  make the next language or plugin repeatable
+- [Diff presentation](specs/active/plan-2026-11-25-diff-presentation.md): shared
+  comparison controls, file formats, and guide reference blocks
 - [Whole-stack review](specs/active/plan-2026-11-24-stack-review.md): a page for a
   stack’s whole change, one consolidated diff with Docs over it; collection references
   to a pull request, a file as one changes it, and a commit; a stack’s guide in a
@@ -87,8 +93,7 @@ It links each document below and the contributor standards in `docs/`.
   the skill section that writes, publishes, and refreshes a pull request’s guided
   review, now shipped, and a `metab` check of a draft guide, still to build
 - [The Diff | Current chooser](specs/active/plan-2026-11-23-diff-current-chooser.md):
-  one chooser in the diff’s toolbar, beside Split | Unified, for the whole diff, whose
-  Current shows the new version alone with its changes marked
+  the original comparison-wide chooser, superseded by Diff presentation
 - [Pull request update cadence and GitHub budget](specs/active/plan-2026-11-22-pull-request-update-cadence.md):
   a draft for free conditional probes every few seconds for what is on screen, full
   reads once every minute or two, and a budget that leaves room for the account’s other

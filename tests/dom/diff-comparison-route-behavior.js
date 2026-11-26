@@ -15,7 +15,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const setGapLoader = (load) => { globalThis.gapLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} }); export const mountFilePatch = () => ({ dispose() {} });",
+          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const setGapLoader = (load) => { globalThis.gapLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} }); export const fileDisclosure = () => {}; export const presentationControlHtml = () => ''; export const mountFilePatch = () => ({ dispose() {} });",
       };
     }
     return nextLoad(url, context);

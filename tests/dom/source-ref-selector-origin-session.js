@@ -39,12 +39,18 @@ async function run() {
   const steps = [];
   const onFile = { view: recording.views.m };
 
-  // The folder is on its working tree. Its own branches are read from the checkout.
+  // The folder is on its working tree, whose tab its list opens on. That tab and the
+  // checkout's own branches are read from the checkout.
   let page = createPage(onFile);
   let selector = selectorRuntime.createSelector(page.deps, checkout(null));
   let opening = selector.open();
-  await page.answer(recording.branches);
+  await page.answer(recording.working_tree);
   await opening;
+  await settle();
+  steps.push(page.observe("the working tree's tab reads no store, so it asks nothing"));
+  const own = selector.setKind("branch");
+  await page.answer(recording.branches);
+  await own;
   await settle();
   steps.push(page.observe("the checkout's own branches read no store, so their list asks nothing"));
 
@@ -72,8 +78,11 @@ async function run() {
   // Opened again an hour on: the store is older than the server's window, so the ask
   // starts a fetch, and the list follows it to its end.
   opening = selector.open();
-  await page.answer(recording.remotes);
+  await page.answer(recording.working_tree);
   await opening;
+  const again = selector.setKind("remote");
+  await page.answer(recording.remotes);
+  await again;
   await settle();
   page.observe("opened again");
   await page.answer(recording.ask_started);
@@ -83,6 +92,46 @@ async function run() {
   await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
   await page.answer(recording.remotes_fetched);
   steps.push(page.observe("the fetch ended: the origin's branch moved, and nothing more is asked"));
+
+  // The navigation's Refresh, on this working tree's page: the reader asked, so the
+  // store is fetched whatever its age (`fetchOrigin`), the open list is asked for again
+  // in place and follows the fetch to its end. Read again with nothing moved, the list
+  // draws nothing.
+  const drawn = page.renders();
+  const rereading = selector.reread();
+  await page.answer(recording.remotes_fetched);
+  await rereading;
+  steps.push({
+    ...page.observe("Refresh reads the open list again, and one that says the same is not drawn"),
+    drawnAgain: page.renders() - drawn,
+  });
+  const fetching = selector.fetchOrigin();
+  steps.push(page.observe("Refresh asks for the origin's fetch, as the reader's own"));
+  await page.answer(recording.refresh_started);
+  steps.push(page.observe("the fetch started, so the open list is asked for again"));
+  await page.answer(recording.remotes_fetching);
+  await fetching;
+  steps.push(page.observe("the list says the fetch runs, and waits to ask again"));
+  await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
+  await page.answer(recording.remotes_fetched);
+  steps.push(page.observe("the fetch ended, and the list is the origin's as just fetched"));
+  // A closed list asks for the fetch and reads nothing: it lists when it next opens.
+  selector.close();
+  page.observe("closed");
+  const behind = selector.fetchOrigin();
+  await page.answer(recording.refresh_started);
+  await behind;
+  await selector.reread();
+  steps.push(page.observe("with the list closed, Refresh fetches and lists nothing"));
+  const reopening = selector.open();
+  await page.answer(recording.working_tree);
+  await reopening;
+  const remotesAgain = selector.setKind("remote");
+  await page.answer(recording.remotes_fetched);
+  await remotesAgain;
+  await settle();
+  await page.answer(recording.ask_fresh);
+  page.observe("opened on the remote-tracking list again");
 
   const choosing = selector.choose("refs/remotes/origin/trunk");
   steps.push(page.observe("an origin branch is asked for by its ref"));
@@ -116,7 +165,7 @@ async function run() {
     page = createPage(onFile);
     selector = selectorRuntime.createSelector(page.deps, checkout(null));
     opening = selector.open();
-    await page.answer(recording.branches);
+    await page.answer(recording.working_tree);
     await opening;
     await settle();
     page.observe("opened");

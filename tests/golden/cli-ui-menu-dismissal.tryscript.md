@@ -13,7 +13,8 @@ tools, carries out. This browserless session loads both whole on the key reveal�
 stand-in DOM, which keeps focus, event capture and bubbling, and the window’s blur.
 A press is a browser’s: down, then focus for a button or a checkbox and none for
 anything else, then the click.
-WebKit’s press on a button moves no focus.
+WebKit’s press focuses no button: it gives focus to the nearest ancestor a press can
+focus, or takes it off the focused element where there is none.
 
 `menu` is one menu as a plugin wires it.
 A press or a tap outside it and its trigger closes it (`outside`), focus arriving
@@ -29,8 +30,13 @@ the first as any outside press does, then opens the second.
 A menu opened with focus outside it and its trigger takes focus to its trigger: `G`,
 which does not focus its own rows, opened by WebKit’s press with focus on a tree row,
 stays open when the tree is rebuilt, since the tree gives focus back only to a row that
-had it. `listening` counts the listeners on the document and the window, held only while
-a menu is open, and a menu disposed while open lets them go.
+had it. Focus a press moves is that press’s own: `P` is in a pane a press can focus, as
+every view’s menu is in the preview pane, and WebKit’s press on its item gives the pane
+focus and leaves `P` open, so its click reaches the item (`picked`), and its second
+press on the trigger closes it.
+A press let go with no click keeps nothing: Tab then closes the menu as focus leaves.
+`listening` counts the listeners on the document and the window, held only while a menu
+is open, and a menu disposed while open lets them go.
 
 `filesBar` is the Files tab’s filter bar as `app.js` draws it, from the same renderers
 and `bind`, its consumer rebuilding the bar on every change.
@@ -42,6 +48,9 @@ gives focus back to the dropdown’s trigger, and a menu elsewhere opening close
 dropdown, and the other way around.
 A consumer that binds the bar again on every paint, as the Agents list does while its
 summary loads, binds a dropdown already drawn open, which keeps closing as before.
+A container bound around the bar leaves the bar’s open dropdown to the bar, as a diff’s
+Markdown layer, which binds the whole diff, leaves the File type menu in its toolbar
+open.
 
 `early` is menus that open before the shell’s tools arrive: each asks for them.
 Once they land, the one still open closes as every menu does, while one closed or whose
@@ -49,7 +58,8 @@ view went meanwhile stays out of it, as does a filter bar’s binding replaced m
 neither closes the menu that is open.
 
 The session asserts that the document is listened to exactly while a menu is open and
-the shell’s tools have landed.
+the shell’s tools have landed, that WebKit’s press in `P` leaves it open and reaches its
+item, and that the container bound around the bar leaves File type open.
 
 ```console
 $ node tests/dom/menu-dismissal-session.js
@@ -194,7 +204,7 @@ $ node tests/dom/menu-dismissal-session.js
       "listening": 5
     },
     {
-      "step": "G opened by WebKit's press, which leaves focus on a tree row, takes focus to G",
+      "step": "G opened by WebKit's press, which takes focus off a tree row, takes focus to G",
       "open": [
         "G"
       ],
@@ -210,6 +220,43 @@ $ node tests/dom/menu-dismissal-session.js
       "closed": [],
       "focus": "G trigger",
       "listening": 5
+    },
+    {
+      "step": "WebKit's press on an item of P, in a pane it gives focus to, leaves P open",
+      "open": [
+        "P"
+      ],
+      "closed": [],
+      "focus": "the pane",
+      "listening": 5,
+      "picked": [
+        "P first item"
+      ]
+    },
+    {
+      "step": "and its second press on P's trigger closes P",
+      "open": [],
+      "closed": [],
+      "focus": "the pane",
+      "listening": 0
+    },
+    {
+      "step": "its press on an item let go with no click leaves P open",
+      "open": [
+        "P"
+      ],
+      "closed": [],
+      "focus": "the pane",
+      "listening": 5
+    },
+    {
+      "step": "then Tab, taking focus outside, closes P",
+      "open": [],
+      "closed": [
+        "P: away"
+      ],
+      "focus": "a button outside",
+      "listening": 0
     },
     {
       "step": "a menu disposed open, as when its view goes, lets the document go",
@@ -317,6 +364,20 @@ $ node tests/dom/menu-dismissal-session.js
       "open": "none",
       "acted": [],
       "focus": "group",
+      "listening": 0
+    },
+    {
+      "step": "a container bound around the bar with File type open leaves it open",
+      "open": "types",
+      "acted": [],
+      "focus": "types",
+      "listening": 5
+    },
+    {
+      "step": "and a press outside both closes it",
+      "open": "none",
+      "acted": [],
+      "focus": "a tree row",
       "listening": 0
     },
     {

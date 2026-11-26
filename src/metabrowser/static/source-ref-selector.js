@@ -16,16 +16,25 @@
 // checked out. What a checkout adds is told by the page (`METABROWSER_SOURCE_CHECKOUT`)
 // and by the listing:
 //
-// - words in its row before the ref, since the checked-out branch names both of a
-//   checkout's views: "Working tree" and the branch or detached commit `HEAD` is on, or
-//   "Revision" and the ref chosen, with a button back to the working tree at the row's
-//   end (`describe`, docs/design-system.md, "The Ref Selector");
-// - a Working tree row above the refs, the live files on disk, which is what a folder
-//   opens on and the only choice that is not a ref. It names the folder by its path, and
-//   has no commit or age: what is on disk is not one commit. The checked-out branch is a
-//   ref like any other and shows its last commit, so it is marked "checked out", not
-//   "current";
-// - a third list, Remotes, its remote-tracking branches, beside its own branches and
+// - a first tab, Working tree, before Branches, Remotes, and Tags: the live files on
+//   disk, which is what a folder opens on and the only choice that is not a ref. Its
+//   panel is one entry, which names the branch `HEAD` is on, or the commit a detached
+//   `HEAD` is at, and the folder by its path. Choosing it switches the page to the files
+//   on disk and changes nothing on disk: the branch is whichever one is checked out. A
+//   press on the tab itself does the same from a page that shows a ref (`pressKind`);
+//   an arrow key onto the tab only shows its panel, as it does for every tab, so moving
+//   along the tabs never leaves the page;
+// - words in its row before the branch while the page shows those files: "Working tree",
+//   a dot, and the branch or detached commit. A page that shows a ref names the ref alone,
+//   as a mirror's does, so the words are there exactly when the files are the ones on disk
+//   (`describe`, docs/design-system.md, "The Ref Selector"). The checked-out branch is a
+//   ref like any other in Branches, where it shows its last commit, so it is marked
+//   "checked out", not "current";
+// - that branch kept up to date: the page watches the checkout's `HEAD` on its event
+//   stream (`HEAD_WATCH_PATH`, metabrowser/file_watches.py), and when a terminal or an
+//   agent checks out another branch, detaches `HEAD`, or commits, asks where it is now
+//   (`headChanged`) and names it in the row and the tab's entry, in place, with no reload;
+// - a list more, Remotes, its remote-tracking branches, beside its own branches and
 //   its tags;
 // - an offer to reload when the server comes to serve something else, which a mirror's
 //   freshness row makes and a checkout's page has no such row to make;
@@ -42,10 +51,14 @@
 //   (`{"for": "page"}`), which fetches a store older than the server's freshness window,
 //   and asks for the list again while that runs.
 //
-// The selector chooses the source of the Files tab. The server draws its row above the
-// Files toolbar (server.py); the Pulls and Commits tabs do not follow it. Each listed ref shows its commit as the history
-// does, Git's short ID in the commit-ID face, and the commit's age by the shared
-// formatter (docs/design-system.md, "Age").
+// The selector chooses the revision the Files and Commits tabs both show: the server's
+// one source session, whose files the tree reads and whose history the graph walks
+// (`session_git_location` in git/routes.py). The server draws its one row under the tabs,
+// above both tabs' toolbars, and it hides under Pulls, which has its own scope (server.py,
+// static/main-tabs.js). A switch keeps the reader on the tab it was made from
+// (`switchTo`). Each listed ref shows its commit as the history does, Git's short ID in
+// the commit-ID face, and the commit's age by the shared formatter (docs/design-system.md,
+// "Age").
 //
 // A branch that is the head of a pull request shows it on a second line: its state's
 // icon, its title, and its number, from the listing's `pulls`, which the server reads from
@@ -73,16 +86,24 @@
   const TAG_PREFIX = "refs/tags/";
   const LOCAL_BRANCH_PREFIX = "refs/heads/";
   const REMOTE_PREFIX = "refs/remotes/";
+  // What a checkout's row says before the branch its files on disk are on, and the name of
+  // the tab that shows them (docs/design-system.md, "The Ref Selector"). server.py draws
+  // the same words at first paint (`_source_ref_label_html`).
   const WORKING_TREE = "Working tree";
-  // What a checkout's row says before the ref it shows when that is a revision, and what
-  // each of the two words says as its tooltip (docs/design-system.md, "The Ref Selector").
-  // server.py draws the same words at first paint (`_source_ref_label_html`).
-  const REVISION = "Revision";
-  const REVISION_TIP = "A committed revision, read from Git. The files on disk are unchanged.";
   const WORKING_TREE_TIP = "The files on disk, live.";
-  const BACK_LABEL = "Back to the working tree";
-  const BACK_TIP = "Back to the working tree, the files on disk";
+  // The list that is the working tree's, as the refs route names it (`WORKING_TREE_KIND`
+  // in metabrowser/source_routes.py): it has no refs, and answers where `HEAD` is.
+  const WORKING_TREE_KIND = "working_tree";
+  // The path a page watches to hear that the checkout's `HEAD` moved
+  // (`HEAD_WATCH_PATH` in metabrowser/file_watches.py, which says what it costs).
+  const HEAD_WATCH_PATH = ".git/HEAD";
   const PULL_HEAD = /^refs\/pull\/([1-9][0-9]{0,9})\/head$/;
+  // The Commits tab's id among the main tabs (static/main-tabs.js, `MAIN_TABS`), and the
+  // history entry's state that is the tab's own landing: it has no address of its own, so
+  // a page reloaded on `/view/` with this state opens on Commits at its newest commit
+  // (main-tabs.js, `openMainTab`; app.js, `isGitHistoryLanding`).
+  const COMMITS_TAB = "git";
+  const COMMITS_LANDING = Object.freeze({ gitLanding: true });
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
   const FILTER_DELAY_MS = 150;
@@ -120,19 +141,47 @@
     tag: "tags",
     remote: "remote branches",
   });
-  /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
-  const KIND_LABEL = Object.freeze({ branch: "Branches", remote: "Remotes", tag: "Tags" });
-  /** The lists each subject has; the listing says the same in `kinds`.
-   * @type {readonly MetabrowserSourceRefKind[]} */
+  /** @type {Readonly<Record<MetabrowserSourceListKind, string>>} */
+  const KIND_LABEL = Object.freeze({
+    working_tree: WORKING_TREE,
+    branch: "Branches",
+    remote: "Remotes",
+    tag: "Tags",
+  });
+  /** The lists each subject has, in the order of its tabs; the listing says the same in
+   * `kinds`.
+   * @type {readonly MetabrowserSourceListKind[]} */
   const MIRROR_KINDS = Object.freeze(["branch", "tag"]);
-  /** @type {readonly MetabrowserSourceRefKind[]} */
-  const CHECKOUT_KINDS = Object.freeze(["branch", "remote", "tag"]);
+  /** @type {readonly MetabrowserSourceListKind[]} */
+  const CHECKOUT_KINDS = Object.freeze([WORKING_TREE_KIND, "branch", "remote", "tag"]);
+
+  /**
+   * The tab a list opens on: the one that holds what the page shows. A checkout's page
+   * on its files opens on Working tree, and a page on a ref on that ref's list; a commit
+   * or a pull request's head, which no list holds, on Branches. Pure.
+   *
+   * @param {MetabrowserSourcePage | null} shown
+   * @param {boolean} checkout
+   * @returns {MetabrowserSourceListKind}
+   */
+  function openKind(shown, checkout) {
+    if (shown === null) {
+      return checkout ? WORKING_TREE_KIND : "branch";
+    }
+    const ref = shown.ref ?? "";
+    if (ref.startsWith(TAG_PREFIX)) {
+      return "tag";
+    }
+    // A mirror's branches are its origin's, kept as remote-tracking ones.
+    return checkout && ref.startsWith(REMOTE_PREFIX) ? "remote" : "branch";
+  }
 
   /**
    * What the button says for the ref and commit a page was rendered for. Pure.
    *
-   * *checkout* is whether the page is a checkout's. Its page with no pin shows the
-   * working tree; its branches are its own, and a remote's keep the remote's name.
+   * *checkout* is whether the page is a checkout's: its branches are its own, and a
+   * remote's keep the remote's name. A page with no pin is a checkout's working tree,
+   * which `describe` names by where `HEAD` is.
    *
    * @param {MetabrowserSourcePage | null} shown
    * @param {boolean} [checkout]
@@ -173,7 +222,10 @@
     }
     const record = /** @type {Record<string, unknown>} */ (value);
     return (
-      (record.kind === "branch" || record.kind === "tag" || record.kind === "remote") &&
+      (record.kind === "branch" ||
+        record.kind === "tag" ||
+        record.kind === "remote" ||
+        record.kind === WORKING_TREE_KIND) &&
       typeof record.query === "string" &&
       Array.isArray(record.refs)
     );
@@ -225,21 +277,22 @@
    */
   function describe(state) {
     const checkout = state.checkout === true;
-    // Which of a checkout's two views the page shows, which its row says in words before
-    // the ref: the working tree, the files on disk on the branch or commit `HEAD` is on,
-    // or a revision chosen from the list, read-only, with a button back. A mirror has
-    // only revisions, so its row names the ref alone.
-    const view = !checkout ? null : state.shown === null ? "working-tree" : "revision";
-    const workingBranch = view === "working-tree" ? state.workingBranch || undefined : undefined;
-    const workingCommit =
-      view === "working-tree" && workingBranch === undefined
-        ? state.workingCommit || undefined
-        : undefined;
+    // Whether the page shows a checkout's files on disk, which its row says in words
+    // before the branch or commit `HEAD` is on. Any other page, a mirror's or a
+    // checkout's, shows a ref and names it alone.
+    const onDisk = checkout && state.shown === null;
+    // Where the working tree's `HEAD` is, as the page or the last listing said: the
+    // tab's entry names it whatever the page shows.
+    const headBranch = checkout ? state.workingBranch || undefined : undefined;
+    const headCommit =
+      checkout && headBranch === undefined ? state.workingCommit || undefined : undefined;
+    const workingBranch = onDisk ? headBranch : undefined;
+    const workingCommit = onDisk ? headCommit : undefined;
     const label = workingBranch
       ? { kind: "Branch", name: workingBranch }
       : workingCommit
         ? { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(workingCommit) }
-        : view === "working-tree"
+        : onDisk
           ? null
           : shownLabel(state.shown, checkout);
     // The working tree's detached commit is the ID alone: the word before it says what it is.
@@ -249,26 +302,24 @@
         : workingCommit || label.name === ""
           ? label.name || label.kind
           : `${label.kind}: ${label.name}`;
-    const viewLabel =
-      view === "working-tree" ? WORKING_TREE : view === "revision" ? REVISION : null;
-    const viewTip =
-      view === null
-        ? null
-        : view === "revision"
-          ? REVISION_TIP
-          : workingBranch
-            ? `${WORKING_TREE_TIP} The checkout is on ${workingBranch}.`
-            : workingCommit
-              ? `${WORKING_TREE_TIP} HEAD is detached at ${label?.name}.`
-              : WORKING_TREE_TIP;
-    const plural = KIND_PLURAL[state.kind];
+    const viewLabel = onDisk ? WORKING_TREE : null;
+    const viewTip = !onDisk
+      ? null
+      : workingBranch
+        ? `${WORKING_TREE_TIP} The checkout is on ${workingBranch}.`
+        : workingCommit
+          ? `${WORKING_TREE_TIP} HEAD is detached at ${label?.name}.`
+          : WORKING_TREE_TIP;
+    const ofTree = state.kind === WORKING_TREE_KIND;
+    // The working tree's tab lists no refs, so it has no plural and no filter.
+    const plural = state.kind === WORKING_TREE_KIND ? "" : KIND_PLURAL[state.kind];
     const listing = state.listing;
     // A mirror's branch is its origin's, a remote chip; a checkout's own is a local one.
     const chip =
       state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";
     /** @type {MetabrowserSourceRefSelectorModel["rows"]} */
     const rows =
-      listing === null
+      listing === null || ofTree
         ? []
         : listing.refs.map((row) => ({
             name: row.name,
@@ -288,8 +339,12 @@
             // How many the branch heads, of which the row lists the first few.
             pullsTotal: row.pulls_total ?? row.pulls?.length ?? 0,
           }));
+    // The working tree's entry is drawn from what the page knows, so its tab says nothing
+    // while its listing loads, and has no list to find empty.
     let note = "";
-    if (state.loading && listing === null) {
+    if (ofTree) {
+      note = "";
+    } else if (state.loading && listing === null) {
       note = `Loading ${plural}…`;
     } else if (listing !== null && listing.refs.length === 0) {
       note =
@@ -297,13 +352,13 @@
           ? `The ${checkout ? "checkout" : "mirror"} has no ${plural}.`
           : `No ${plural} match.`;
     }
-    // The working tree is a checkout's alone, and is no ref: it is listed whatever the
-    // list and the filter show, named by the folder's path. Until the first listing says
-    // whether it is served, the page does: a checkout's page with no pin shows it. The
-    // branch it is on is not repeated here: the Branches list marks it "checked out".
+    // The working tree is a checkout's alone, and is no ref: the one entry of its own tab,
+    // named by the branch or commit `HEAD` is on and by the folder's path. Until the first
+    // listing says whether it is served, the page does: a checkout's page with no pin
+    // shows it.
     const tree = listing?.working_tree ?? null;
     const location = tree?.location ?? "";
-    // The folder's own name, which the row keeps whole: the path ends with it, in the
+    // The folder's own name, which the entry keeps whole: the path ends with it, in the
     // platform's separator, except at the home directory, whose path is `~` alone.
     const name = tree?.name ?? "";
     const cut = name !== "" && location.endsWith(name) ? location.length - name.length : 0;
@@ -312,6 +367,9 @@
       ? null
       : {
           current: tree !== null ? tree.current : state.shown === null,
+          branch: headBranch ?? null,
+          commit:
+            headCommit === undefined ? null : window.MetabrowserFormatters.shortCommit(headCommit),
           location,
           directory: location.slice(0, cut),
           base: location.slice(cut),
@@ -329,7 +387,7 @@
     /** @type {MetabrowserSourceRefSelectorModel["origin"]} */
     let origin = null;
     const store = listing?.origin ?? null;
-    if (checkout && store !== null && state.kind !== "branch") {
+    if (checkout && store !== null && (state.kind === "remote" || state.kind === "tag")) {
       const what = state.kind === "tag" ? "tags" : "branches";
       if (store.state === "ready") {
         origin = {
@@ -355,12 +413,9 @@
     return {
       button:
         viewLabel === null ? refText : refText === "" ? viewLabel : `${viewLabel} · ${refText}`,
-      view,
       viewLabel,
       viewTip,
       refText,
-      // A revision of a checkout has a button back to its working tree.
-      back: view === "revision",
       // A pull request's number, which the button sets in its own weight
       // (docs/design-system.md, "Pull Request Numbers").
       pullNumber: label?.kind === "Pull request" ? label.name : null,
@@ -387,7 +442,12 @@
       kind: state.kind,
       kinds: [...(listing?.kinds ?? (checkout ? CHECKOUT_KINDS : MIRROR_KINDS))],
       query: state.query,
-      filterLabel: pullsReady ? `Filter ${plural} or pull requests` : `Filter ${plural}`,
+      // The working tree's tab has one entry and nothing to filter.
+      filterLabel: ofTree
+        ? null
+        : pullsReady
+          ? `Filter ${plural} or pull requests`
+          : `Filter ${plural}`,
       pullRequests: listing?.pull_requests ?? null,
       loading: state.loading,
       switching: state.switching,
@@ -685,11 +745,13 @@
    *
    * *options.shown* is the pin and ref the page was rendered for, which the server
    * writes into a pin's page. A switch that leaves the server serving exactly that
-   * only closes the selector; any other answer opens where the server says.
+   * only closes the selector; any other answer opens the new revision on the tab
+   * `deps.tab` names: Files where the server says, Commits at its own landing.
    * *options.checkout* is whether the page is a checkout's: with no pin it shows the
    * working tree, which is then what a switch is compared with. *options.workingBranch*
    * is the branch the working tree is on, and *options.workingCommit* the commit a
-   * detached `HEAD` is at, which its row names (server.py writes both on the row).
+   * detached `HEAD` is at, which its row names (server.py writes both on the row); each
+   * listing, and each ask `headChanged` makes, says them again.
    *
    * @param {MetabrowserSourceRefSelectorDependencies} deps
    * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean, workingBranch?: string, workingCommit?: string}} [options]
@@ -700,7 +762,7 @@
     const state = {
       shown: options.shown ?? null,
       open: false,
-      kind: "branch",
+      kind: openKind(options.shown ?? null, checkout),
       query: "",
       listing: null,
       loading: false,
@@ -722,6 +784,9 @@
     let requested = 0;
     /** @type {AbortController | null} */
     let inflight = null;
+    // The ask for where `HEAD` is that a closed list makes (`headChanged`).
+    /** @type {AbortController | null} */
+    let headInflight = null;
     /** @type {unknown} */
     let filterTimer = null;
     /** The wait before the next ask for pull requests the server was still filling. */
@@ -729,6 +794,10 @@
     let pullsTimer = null;
     // Whether the visible page's own ask went out since the list was opened.
     let askedForOrigin = false;
+    // Whether something the list shows moved while a list the reader waits on was loading,
+    // `HEAD` or the origin's store: that answer may have been read before it moved, so the
+    // list is asked for once more after it.
+    let headMoved = false;
     let disposed = false;
 
     function render() {
@@ -754,6 +823,25 @@
     function abortInflight() {
       inflight?.abort();
       inflight = null;
+      // A listing reads `HEAD` afresh, so it answers what the closed list's ask would.
+      headInflight?.abort();
+      headInflight = null;
+    }
+
+    /**
+     * Take where the working tree's `HEAD` is from a listing: the branch, or the commit a
+     * detached `HEAD` is at. The server reads it when it answers, so a branch checked out
+     * in a terminal since the page was drawn is named in the row and the tab's entry.
+     *
+     * @param {MetabrowserSourceRefListing | null} listing
+     */
+    function takeHead(listing) {
+      const tree = listing?.working_tree;
+      if (!tree) {
+        return;
+      }
+      state.workingBranch = tree.head_name ?? undefined;
+      state.workingCommit = tree.head_name === null ? (tree.head_commit ?? undefined) : undefined;
     }
 
     /** Ask again after PULLS_POLL_MS while the server fills its pull requests, or fetches
@@ -801,7 +889,8 @@
       }
       const asked = { kind: state.kind, query: state.query };
       const params = new URLSearchParams({ kind: state.kind });
-      if (state.query !== "") {
+      // The working tree's tab has no filter, so what was typed in another's is not sent.
+      if (state.query !== "" && state.kind !== WORKING_TREE_KIND) {
         params.set("q", state.query);
       }
       /** @type {MetabrowserSourceRefListing | null} */
@@ -831,7 +920,10 @@
           error = "Git on this machine is too old to list these. Update Git to see them.";
         } else {
           // The status is the answer's, which the network panel shows.
-          error = `The ${KIND_PLURAL[state.kind]} could not be listed. Try again.`;
+          error =
+            asked.kind === WORKING_TREE_KIND
+              ? "The working tree could not be read. Try again."
+              : `The ${KIND_PLURAL[asked.kind]} could not be listed. Try again.`;
         }
       } catch {
         error = "The server did not answer.";
@@ -855,24 +947,17 @@
       state.loading = false;
       state.listing = listing;
       state.error = error;
-      // A listing reads HEAD afresh, so a branch switched in a terminal since the page was
-      // drawn is named in the row as in the list's "checked out" badge. A detached HEAD's
-      // commit is not in it: a page drawn on a branch then names no ref, and one drawn
-      // detached keeps the commit the server wrote.
-      const tree = listing?.working_tree;
-      if (tree) {
-        if (tree.head_name !== null) {
-          state.workingBranch = tree.head_name;
-          state.workingCommit = undefined;
-        } else {
-          state.workingBranch = undefined;
-        }
-      }
+      takeHead(listing);
       if (gone) {
         state.open = false;
         state.removed = true;
       }
       render();
+      if (headMoved) {
+        headMoved = false;
+        void load(true);
+        return;
+      }
       watchPulls();
     }
 
@@ -892,7 +977,7 @@
         disposed ||
         !state.open ||
         askedForOrigin ||
-        state.kind === "branch" ||
+        (state.kind !== "remote" && state.kind !== "tag") ||
         (state.listing?.origin ?? null) === null
       ) {
         return;
@@ -919,6 +1004,14 @@
       state.open = true;
       state.error = null;
       askedForOrigin = false;
+      // The list opens on the tab that holds what the page shows (`openKind`), whichever
+      // one it was closed on, so the choice marked current is the first thing in it.
+      const kind = openKind(state.shown, checkout);
+      if (kind !== state.kind) {
+        state.kind = kind;
+        state.listing = null;
+        state.query = "";
+      }
       return load().then(() => {
         void askForOrigin();
       });
@@ -933,6 +1026,7 @@
       // An answer still on its way belongs to a list nobody is looking at.
       abortInflight();
       requested += 1;
+      headMoved = false;
       state.open = false;
       state.loading = false;
       // What the list said goes with it, so the row says only what failed while closed.
@@ -948,9 +1042,14 @@
       return open();
     }
 
-    /** @param {MetabrowserSourceRefKind} kind */
+    /**
+     * Show another tab's list: what an arrow key along the tabs does, and a press on any
+     * tab but the working tree's (`pressKind`). It never switches what the page shows.
+     *
+     * @param {MetabrowserSourceListKind} kind
+     */
     function setKind(kind) {
-      if (disposed || !state.open || kind === state.kind) {
+      if (disposed || !state.open || kind === state.kind || state.switching) {
         return Promise.resolve();
       }
       state.kind = kind;
@@ -978,9 +1077,70 @@
       return switchTo({ ref });
     }
 
-    /** Serve a checkout's working tree again: the one choice that is not a ref. */
+    /**
+     * Show a checkout's working tree: the one choice that is not a ref. The server serves
+     * the folder again and nothing on disk changes: the branch is whichever one `HEAD` is
+     * on.
+     */
     function chooseWorkingTree() {
       return checkout ? switchTo({ working_tree: true }) : Promise.resolve();
+    }
+
+    /**
+     * A press on a tab: a pointer's, or Enter or Space with focus on it. A press on
+     * Working tree from a page that shows a ref switches the page to the files on disk,
+     * which is what choosing the tab's one entry does; any other press shows the tab's
+     * list (`setKind`). An arrow key along the tabs calls `setKind` alone, so it never
+     * leaves the page.
+     *
+     * @param {MetabrowserSourceListKind} kind
+     */
+    function pressKind(kind) {
+      if (disposed || !state.open) {
+        return Promise.resolve();
+      }
+      if (checkout && kind === WORKING_TREE_KIND && state.shown !== null) {
+        return chooseWorkingTree();
+      }
+      return setKind(kind);
+    }
+
+    /**
+     * The checkout's `HEAD` moved, as the page's watch on it says (`HEAD_WATCH_PATH`):
+     * ask where it is now. An open list asks for itself again, quietly, since every
+     * listing reads `HEAD`, and its rows and its "checked out" badge follow too. A closed
+     * one asks the working tree's own listing, which runs no Git, and names the branch
+     * in the row. A refusal leaves what the row says.
+     */
+    async function headChanged() {
+      if (disposed || !checkout) {
+        return;
+      }
+      if (state.open) {
+        await reread();
+        return;
+      }
+      headInflight?.abort();
+      const controller = new AbortController();
+      headInflight = controller;
+      try {
+        const response = await deps.request(
+          "GET",
+          `${REFS_ROUTE}?${new URLSearchParams({ kind: WORKING_TREE_KIND })}`,
+          undefined,
+          controller.signal,
+        );
+        if (disposed || headInflight !== controller) {
+          return;
+        }
+        headInflight = null;
+        if (response.status === 200 && isListing(response.body)) {
+          takeHead(response.body);
+          render();
+        }
+      } catch {
+        // The row says what it said; the next change asks again.
+      }
     }
 
     /** @param {Record<string, string | boolean>} body What the pin route is asked for. */
@@ -991,8 +1151,11 @@
       state.switching = true;
       state.error = null;
       render();
+      // Commits keeps no file or folder for the answer to translate: it lands on the new
+      // history's newest commit, so it names no address.
+      const commits = deps.tab?.() === COMMITS_TAB;
       const view = deps.currentView();
-      if (view?.startsWith(VIEW_PREFIX)) {
+      if (!commits && view?.startsWith(VIEW_PREFIX)) {
         body.view = view;
       }
       // From here the server may serve the other subject while this page is still here,
@@ -1036,10 +1199,18 @@
             close();
             return;
           }
+          // The page goes to the tab it was on. From Files, the same file or folder in the
+          // new revision when it has it, else the root (`view_href`). From Commits, the
+          // tab's own landing, which selects the newest commit of the history now served,
+          // as a press on the tab does.
           const href = answer.view_href;
-          deps.navigate(
-            typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
-          );
+          if (commits) {
+            deps.navigate(VIEW_PREFIX, COMMITS_LANDING);
+          } else {
+            deps.navigate(
+              typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
+            );
+          }
           decided(true);
           return;
         }
@@ -1051,6 +1222,53 @@
       }
       state.switching = false;
       render();
+    }
+
+    /**
+     * Read an open list again, in place: its rows are patched where they are, so its
+     * scroll and focus stay (`paintRows`), and an answer that says the same draws
+     * nothing. What the navigation's Refresh does to the list (static/refresh-plan.js,
+     * `refs`), and what a moved `HEAD` does. A closed list reads when it next opens.
+     */
+    async function reread() {
+      if (disposed || !state.open) {
+        return;
+      }
+      // A quiet ask never replaces the one the reader waits on, which says why it failed;
+      // it follows it.
+      if (state.loading) {
+        headMoved = true;
+        return;
+      }
+      await load(true);
+    }
+
+    /**
+     * Fetch the store Metabrowser keeps of the checkout's origin, as the reader's Refresh
+     * asks on a working tree's page (static/refresh-plan.js, `origin`): the fetch the
+     * list's own ask makes only for a store older than the server's window, made now
+     * whatever its age. It is not waited for. An open list is asked for again, sees the
+     * fetch running, and follows it to its end (`watchPulls`), so its Remotes and Tags
+     * come to be the origin's as just fetched; a closed one reads them when it opens. A
+     * checkout that keeps no store is refused, and that says nothing: there is nothing to
+     * fetch.
+     */
+    async function fetchOrigin() {
+      if (disposed || !checkout) {
+        return;
+      }
+      try {
+        const response = await deps.request("POST", REFRESH_ROUTE, {});
+        const answer = /** @type {{refresh?: unknown} | null} */ (
+          response.body !== null && typeof response.body === "object" ? response.body : null
+        );
+        const started = answer?.refresh === "started" || answer?.refresh === "joined";
+        if (response.status === 202 && started) {
+          await reread();
+        }
+      } catch {
+        // The list is the server's as it was; the list's own ask is made when it opens.
+      }
     }
 
     /**
@@ -1081,9 +1299,13 @@
       close,
       toggle,
       setKind,
+      pressKind,
       setQuery,
       choose,
       chooseWorkingTree,
+      headChanged,
+      reread,
+      fetchOrigin,
       servedChanged,
       dispose,
       snapshot: () => ({ ...state, filterPending: filterTimer !== null }),
@@ -1130,7 +1352,8 @@
   }
 
   /**
-   * The word a checkout's row starts with, which its tooltip explains. Browser only.
+   * The words a checkout's row starts with on its working tree, which their tooltip
+   * explains. Browser only.
    *
    * @param {MetabrowserSourceRefSelectorModel} model
    * @returns {HTMLElement}
@@ -1170,8 +1393,8 @@
     if (parts.label.dataset.refKey !== refKey) {
       parts.label.dataset.refKey = refKey;
       parts.label.replaceChildren();
-      // A checkout's row says which view the page shows before the ref: "Working tree" or
-      // "Revision", a muted dot, then the branch, tag, or commit.
+      // A checkout's row on its files on disk says so before the branch they are on:
+      // "Working tree", a muted dot, then the branch or commit. Any other row is the ref.
       if (model.viewLabel !== null && model.refText === "") {
         parts.label.append(viewWord(model));
       } else if (model.viewLabel !== null) {
@@ -1207,13 +1430,6 @@
         parts.label.textContent = model.button;
       }
     }
-    // A revision of a checkout offers the way back in its own row.
-    parts.back.hidden = !model.back;
-    parts.back.disabled = model.switching;
-    // A switch asked for with the list closed, by the back button, says why it failed in
-    // the row; the list's own error line is in the closed panel.
-    parts.backError.textContent = model.open ? "" : (model.error ?? "");
-    parts.backError.hidden = model.open || model.error === null;
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
@@ -1225,22 +1441,63 @@
       tab.setAttribute("aria-checked", String(kind === model.kind));
       tab.tabIndex = kind === model.kind ? 0 : -1;
     }
-    // A checkout's working tree, above its refs: the one choice that is not a ref, named
-    // by the folder's path. The folder's own name, the path's last part, is kept whole,
-    // and what is before it shortens with an ellipsis.
-    parts.workingTree.hidden = model.workingTree === null;
+    // The working tree's tab shows its one entry, and no filter or list: where `HEAD` is,
+    // as a ref's row names its ref, and the folder's path. The folder's own name, the
+    // path's last part, is kept whole, and what is before it shortens with an ellipsis.
+    const ofTree = model.kind === WORKING_TREE_KIND && model.workingTree !== null;
+    parts.workingTree.hidden = !ofTree;
+    parts.filter.hidden = ofTree;
+    parts.list.hidden = ofTree;
     if (model.workingTree !== null) {
+      const tree = model.workingTree;
       parts.workingTree.disabled = model.switching;
-      parts.workingTreeDirectory.textContent = model.workingTree.directory;
-      parts.workingTreeBase.textContent = model.workingTree.base;
-      if (model.workingTree.current) {
+      const headKey = JSON.stringify([tree.branch, tree.commit]);
+      if (parts.workingTreeHead.dataset.headKey !== headKey) {
+        parts.workingTreeHead.dataset.headKey = headKey;
+        if (tree.branch !== null) {
+          parts.workingTreeHead.replaceChildren(
+            window.metabrowser.refChip(LOCAL_BRANCH_PREFIX + tree.branch, {
+              label: tree.branch,
+              kind: "local",
+              menu: false,
+            }),
+          );
+        } else if (tree.commit !== null) {
+          const id = document.createElement("span");
+          id.className = "git-commit-sha";
+          id.textContent = tree.commit;
+          parts.workingTreeHead.replaceChildren(id);
+        } else {
+          // A `HEAD` the server could not read: the entry is the working tree, unnamed.
+          parts.workingTreeHead.replaceChildren(WORKING_TREE);
+        }
+        // What a screen reader hears in place of the chip's bare name.
+        parts.workingTree.setAttribute(
+          "aria-label",
+          tree.branch !== null
+            ? `${WORKING_TREE}, on ${tree.branch}`
+            : tree.commit !== null
+              ? `${WORKING_TREE}, detached at ${tree.commit}`
+              : WORKING_TREE,
+        );
+      }
+      parts.workingTreeDirectory.textContent = tree.directory;
+      parts.workingTreeBase.textContent = tree.base;
+      if (tree.location === "") {
+        parts.workingTree.removeAttribute("aria-description");
+      } else {
+        parts.workingTree.setAttribute("aria-description", tree.location);
+      }
+      if (tree.current) {
         parts.workingTree.setAttribute("aria-current", "true");
       } else {
         parts.workingTree.removeAttribute("aria-current");
       }
     }
-    parts.filter.placeholder = model.filterLabel;
-    parts.filter.setAttribute("aria-label", model.filterLabel);
+    if (model.filterLabel !== null) {
+      parts.filter.placeholder = model.filterLabel;
+      parts.filter.setAttribute("aria-label", model.filterLabel);
+    }
     if (parts.filter.value !== model.query) {
       parts.filter.value = model.query;
     }
@@ -1794,7 +2051,7 @@
    * Build the selector's elements inside *element*. Browser only.
    *
    * @param {HTMLElement} element
-   * @param {boolean} checkout Whether the page is a checkout's, with its third list.
+   * @param {boolean} checkout Whether the page is a checkout's, with its four tabs.
    * @param {(ref: string) => void} choose What a press on a row does.
    * @returns {MetabrowserSourceRefSelectorParts}
    */
@@ -1814,30 +2071,10 @@
       /** @type {HTMLElement | null} */ (element.querySelector(".source-ref-selector-label")) ??
       document.createElement("span");
     label.className = "source-ref-selector-label";
-    // A checkout's revision has a way back to the working tree in its row: one click, as
-    // the list's Working tree row does. The server draws it at first paint so the row
-    // keeps its box, and it is adopted here; a page with none gets one, kept hidden.
-    const back =
-      /** @type {HTMLButtonElement | null} */ (
-        element.querySelector("button.source-ref-selector-back")
-      ) ?? document.createElement("button");
-    back.type = "button";
-    back.className = "btn source-ref-selector-back";
-    back.setAttribute("aria-label", BACK_LABEL);
-    back.dataset.tipText = BACK_TIP;
-    if (!back.isConnected) {
-      back.hidden = true;
-      const arrow = document.createElement("span");
-      arrow.className = "source-ref-selector-back-arrow";
-      arrow.setAttribute("aria-hidden", "true");
-      arrow.textContent = "←";
-      back.append(arrow, WORKING_TREE);
-    }
     // What a checkout's page says when the server comes to show something else, as a
     // freshness row: at the foot of the navigation pane, where a mirror's makes the same
-    // offer, so every tab shows it. The Pulls tab's requests and a comparison's are
-    // refused as the Files tab's are, and the chooser is in the Files row, which the
-    // other tabs hide.
+    // offer, so every tab shows it. Every tab's requests are refused then, the Pulls
+    // tab's too, and the chooser's row hides under Pulls.
     const stale = document.createElement("div");
     stale.className = "source-freshness source-ref-selector-stale";
     stale.setAttribute("role", "status");
@@ -1856,8 +2093,8 @@
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-label", "Switch branch or tag");
     panel.hidden = true;
-    // One of two lists, so an exclusive chip group: docs/design-system.md, "Choosing Among
-    // Values". It says nothing until the first paint, which marks the kind shown.
+    // One list of several, so an exclusive chip group: docs/design-system.md, "Choosing
+    // Among Values". It says nothing until the first paint, which marks the kind shown.
     const kinds = document.createElement("div");
     kinds.className = "source-ref-selector-kinds";
     kinds.innerHTML = chipControls().groupHtml({
@@ -1869,11 +2106,11 @@
         value,
         label: KIND_LABEL[value],
       })),
-      value: "branch",
+      value: null,
     });
-    const tabs = /** @type {Record<MetabrowserSourceRefKind, HTMLButtonElement>} */ ({});
+    const tabs = /** @type {Record<MetabrowserSourceListKind, HTMLButtonElement>} */ ({});
     for (const tab of kinds.querySelectorAll("button")) {
-      tabs[/** @type {MetabrowserSourceRefKind} */ (tab.dataset.chipValue)] = tab;
+      tabs[/** @type {MetabrowserSourceListKind} */ (tab.dataset.chipValue)] = tab;
     }
     const filter = document.createElement("input");
     filter.type = "search";
@@ -1901,15 +2138,15 @@
     const error = document.createElement("p");
     error.className = "source-ref-selector-error";
     error.setAttribute("role", "alert");
-    // A menu row like a ref's, with the folder's path in place of a commit, in the path
-    // markup the shell names a folder by (`.path`, its last part `.path-base`).
+    // The working tree's one entry: a menu row like a ref's, with the branch `HEAD` is on
+    // where a ref's row has its name, and the folder's path in place of a commit, in the
+    // path markup the shell names a folder by (`.path`, its last part `.path-base`).
     const workingTree = document.createElement("button");
     workingTree.type = "button";
     workingTree.className = "menu-item source-ref-selector-working-tree";
     workingTree.hidden = true;
-    const workingTreeName = document.createElement("span");
-    workingTreeName.className = "source-ref-selector-working-tree-name";
-    workingTreeName.textContent = WORKING_TREE;
+    const workingTreeHead = document.createElement("span");
+    workingTreeHead.className = "source-ref-selector-working-tree-name";
     const workingTreeLocation = document.createElement("span");
     workingTreeLocation.className = "path source-ref-selector-location";
     const workingTreeDirectory = document.createElement("span");
@@ -1917,7 +2154,7 @@
     const workingTreeBase = document.createElement("span");
     workingTreeBase.className = "path-base";
     workingTreeLocation.append(workingTreeDirectory, workingTreeBase);
-    workingTree.append(workingTreeName, workingTreeLocation);
+    workingTree.append(workingTreeHead, workingTreeLocation);
     // The path is shortened when the list is narrower than it; the tooltip then carries
     // all of it. pointerenter comes before the mouseenter the shell's tooltip listens for.
     workingTree.addEventListener("pointerenter", () => {
@@ -1927,19 +2164,13 @@
         delete workingTree.dataset.tipText;
       }
     });
-    panel.append(workingTree, kinds, filter, list, note, origin, error);
+    panel.append(kinds, workingTree, filter, list, note, origin, error);
     if (drawn === null) {
       const buttonHost = document.createElement("span");
       buttonHost.className = "source-ref-selector-button";
       buttonHost.append(label, toggle);
-      element.replaceChildren(buttonHost, back);
+      element.replaceChildren(buttonHost);
     }
-    const backError = document.createElement("p");
-    backError.className = "source-ref-selector-error source-ref-selector-back-error";
-    backError.setAttribute("role", "alert");
-    backError.hidden = true;
-    // After the back button, which the server draws on a revision's row and no other.
-    element.append(backError);
     const foot = document.getElementById("index-progress");
     if (foot) {
       foot.after(stale);
@@ -1951,13 +2182,12 @@
       root: element,
       toggle,
       label,
-      back,
-      backError,
       stale,
       staleText,
       reload,
       panel,
       workingTree,
+      workingTreeHead,
       workingTreeDirectory,
       workingTreeBase,
       kinds,
@@ -2020,8 +2250,19 @@
         schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
         render: (model) => paint(parts, model),
-        navigate: (href) => window.location.assign(href),
+        navigate(href, state) {
+          if (state === undefined) {
+            window.location.assign(href);
+            return;
+          }
+          // A landing that is a history entry's state, which a reload keeps.
+          window.history.pushState(state, "", href);
+          window.location.reload();
+        },
         currentView: () => window.location.pathname,
+        // The main tab in front, as the tab bar marks it (static/main-tabs.js).
+        tab: () =>
+          document.querySelector(".nav-tab-bar .tab-btn.active")?.getAttribute("data-tab") ?? null,
         hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
       },
       {
@@ -2037,7 +2278,30 @@
     parts.workingTree.addEventListener("click", () => void mounted.chooseWorkingTree(), {
       signal,
     });
-    parts.back.addEventListener("click", () => void mounted.chooseWorkingTree(), { signal });
+    // A press on a tab, a pointer's or Enter or Space on it, which on Working tree switches
+    // the page to the files on disk (`pressKind`). It runs before the chip group's own
+    // click, which asks for the same tab's list and by then finds it shown, or a switch
+    // under way. An arrow key reaches only the group's `onChange`, below: it shows a
+    // tab's list and never switches.
+    for (const [kind, tab] of Object.entries(parts.tabs)) {
+      tab.addEventListener(
+        "click",
+        () => void mounted.pressKind(/** @type {MetabrowserSourceListKind} */ (kind)),
+        { signal },
+      );
+    }
+    // The page's watch on the checkout's `HEAD`, on the event stream it already holds: a
+    // working tree's page only, since a ref's page has no stream and its row names no
+    // branch of the working tree. Registered as holding no generation, so the watch's
+    // first answer is itself a change: a `HEAD` that moved between the server's drawing
+    // the page and this watch is named too, at the cost of one ask as the page settles.
+    const unwatchHead =
+      checkout && (window.METABROWSER_SOURCE_PIN ?? null) === null
+        ? window.metabrowser.watchFile(HEAD_WATCH_PATH, {
+            generation: null,
+            onChange: () => void mounted.headChanged(),
+          })
+        : () => {};
     parts.reload.addEventListener("click", () => window.location.reload(), { signal });
     // The pin guard announces a data request refused because the server serves
     // something else (static/source-pin-guard.js); only a checkout's selector says so.
@@ -2049,9 +2313,15 @@
       },
       { signal },
     );
-    // An open list takes focus in its filter box, so typing narrows it at once.
+    // An open list takes focus in its filter box, so typing narrows it at once; the
+    // working tree's tab has none, and focus goes to its one entry, which Enter chooses.
     const focusOpenFilter = () => {
-      if (!parts.panel.hidden) {
+      if (parts.panel.hidden) {
+        return;
+      }
+      if (parts.filter.hidden) {
+        parts.workingTree.focus();
+      } else {
         parts.filter.focus();
       }
     };
@@ -2062,10 +2332,25 @@
     };
     // The list closes as every menu does (docs/design-system.md, "Every Menu Closes
     // Alike"), and opening it, by its button or its key, closes any other.
+    // A press on the navigation's Refresh is not a press away from the list: Refresh reads
+    // what is on screen again, the open list with it (`reread`), so the list stays open
+    // to be read, where any other press beside it closes it.
+    const refreshButton = document.getElementById("nav-refresh");
+    // What last had focus in the list, which a pointer's press on Refresh takes: it is
+    // given back once the list is read again, so the reader goes on from where they were.
+    /** @type {HTMLElement | null} */
+    let lastFocused = null;
+    parts.panel.addEventListener(
+      "focusin",
+      (event) => {
+        lastFocused = /** @type {HTMLElement} */ (event.target);
+      },
+      { signal },
+    );
     const dismissal = menus().dismissible({
       name: "source-ref-selector-panel",
       trigger: parts.toggle,
-      inside: (node) => parts.panel.contains(node),
+      inside: (node) => parts.panel.contains(node) || refreshButton?.contains(node) === true,
       isOpen: () => !parts.panel.hidden,
       close: () => mounted.close(),
     });
@@ -2085,7 +2370,7 @@
     const unbindKinds = chipControls().bind(parts.kinds, {
       onChange(key, value, select) {
         if (key === KIND_GROUP && select === "one") {
-          void mounted.setKind(/** @type {MetabrowserSourceRefKind} */ (value));
+          void mounted.setKind(/** @type {MetabrowserSourceListKind} */ (value));
         }
       },
     });
@@ -2117,11 +2402,12 @@
         }
         /** @type {HTMLElement[]} */
         const stops = [
-          ...(parts.workingTree.hidden || parts.workingTree.disabled ? [] : [parts.workingTree]),
           // One stop: the group's arrow keys move within it.
           ...Object.values(parts.tabs).filter((tab) => tab.tabIndex === 0),
-          parts.filter,
-          ...rows().filter((row) => row.tabIndex === 0 && !row.disabled),
+          // The working tree's tab has its one entry, and every other its filter and rows.
+          ...(parts.workingTree.hidden || parts.workingTree.disabled ? [] : [parts.workingTree]),
+          ...(parts.filter.hidden ? [] : [parts.filter]),
+          ...(parts.list.hidden ? [] : rows().filter((row) => row.tabIndex === 0 && !row.disabled)),
         ];
         const at = stops.indexOf(/** @type {HTMLElement} */ (document.activeElement));
         const next = event.shiftKey
@@ -2182,11 +2468,25 @@
         mounted.close();
         dismissal.closed();
       },
+      async reread() {
+        await mounted.reread();
+        if (parts.panel.hidden || refreshButton?.contains(document.activeElement) !== true) {
+          return;
+        }
+        const back =
+          lastFocused?.isConnected && !lastFocused.hidden && parts.panel.contains(lastFocused)
+            ? lastFocused
+            : parts.filter.hidden
+              ? parts.workingTree
+              : parts.filter;
+        back.focus({ preventScroll: true });
+      },
       dispose() {
         closeActionMenu();
         parts.disposed = true;
         dismissal.dispose();
         listening.abort();
+        unwatchHead();
         unbindKinds();
         mounted.dispose();
         parts.stale.remove();
@@ -2210,6 +2510,7 @@
     mounted: () => mountedSelector,
     anchoredScroll,
     moveRow,
+    openKind,
     PULLS_POLL_MS,
     rowOffsets,
     rowWindow,

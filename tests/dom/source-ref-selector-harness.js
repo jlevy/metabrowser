@@ -53,7 +53,8 @@ async function settle() {
 /**
  * Injected browser facilities for one page: requests wait for the step to answer them.
  *
- * @param {{view: string | null}} page The page's pathname.
+ * @param {{view: string | null, tab?: string}} page The page's pathname, and the main tab
+ *   in front, Files unless it says otherwise.
  */
 function createPage(page) {
   const log = [];
@@ -96,10 +97,12 @@ function createPage(page) {
       model = next;
       renders += 1;
     },
-    navigate(href) {
-      navigated.push(href);
+    // A landing that is a history entry's state, the Commits tab's, prints the state.
+    navigate(href, state) {
+      navigated.push(state === undefined ? href : `${href} ${JSON.stringify(state)}`);
     },
     currentView: () => page.view,
+    tab: () => page.tab ?? "files",
   };
 
   return {
@@ -161,9 +164,9 @@ function committedOf(seconds) {
 
 // What the selector would show, one line per row, so a transcript reads as the page does:
 // a row's name, its commit's short ID, and when the commit was made. A checkout's selector
-// adds what a mirror's has none of: the lists it offers, its working-tree row, named by
-// the folder's path, the checked-out branch's badge, each row's chip, and its offer to
-// reload.
+// adds what a mirror's has none of: the tabs it offers, its working tree's entry, named
+// by the branch or commit HEAD is on and the folder's path, which the Working tree tab
+// shows, the checked-out branch's badge, each row's chip, and its offer to reload.
 function paintOf(model) {
   if (model === null) {
     return null;
@@ -173,23 +176,20 @@ function paintOf(model) {
   if (model.removed) {
     return { removed: true };
   }
-  // A checkout's revision ends its row with a button back to the working tree.
-  const back = model.back ? { back: "[← Working tree]" } : {};
+  // The row is its label and the chooser's button, whatever the page shows.
   if (!model.open) {
-    // Why a switch the back button asked for failed, which the row says with the list closed.
-    const error = model.error === null ? {} : { error: model.error };
-    return { button: model.button, ...back, open: false, ...error, ...stale };
+    return { button: model.button, open: false, ...stale };
   }
+  const tree = model.workingTree;
   return {
     button: model.button,
-    ...back,
     open: true,
     // What the filter box says, once the server has pull requests for it to find.
     ...(model.pullRequests?.state === "ready" ? { filter: model.filterLabel } : {}),
     ...(model.pullRequests === null ? {} : { pullRequests: pullRequestsOf(model.pullRequests) }),
     ...(checkout
       ? {
-          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
+          workingTree: `Working tree${tree.branch !== null ? ` on ${tree.branch}` : tree.commit !== null ? ` at ${tree.commit}` : ""}${tree.location === "" ? "" : `: ${tree.location} (kept whole: ${tree.base})`}${tree.current ? " [current]" : ""}`,
           lists: model.kinds,
         }
       : {}),

@@ -720,14 +720,14 @@ try {
   await paneWidth(NARROWEST);
   await browser.evaluate(frames);
   result.narrow = await browser.evaluate(NARROW);
-  await press("1");
-  result.narrowKeyOne = await browser.evaluate(OPEN_MENU);
+  await press("2");
+  result.narrowGroupKey = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
-  await press("3");
+  await press("4");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
   await browser.evaluate(BAR_SETTLED);
-  result.narrowKeyThree = await browser.evaluate(OPEN_MENU);
+  result.narrowTypesKey = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   result.narrowOpen = await browser.evaluate(NARROW);
@@ -756,7 +756,8 @@ try {
     30000,
   );
   await browser.evaluate(frames);
-  // The numbers: 1 is Group by, and the drawer's filters keep theirs while it is closed,
+  // The numbers: 1 is the navigation's Refresh, 2 is Group by, and the drawer's filters
+  // keep theirs while it is closed,
   // on stand-ins beside the chevron.
   // Where focus is: a menu row by its menu, label, and whether it is checked, or a trigger.
   const FOCUS = `(() => {
@@ -773,16 +774,16 @@ try {
   // Every key that opens a menu focuses its checked row, and Escape and a choice that
   // closes it give focus back to its trigger (docs/design-system.md, "Keys in a Menu").
   result.focus = {};
-  await press("1");
-  result.keyOneOpens = await browser.evaluate(OPEN_MENU);
-  result.focus.one = await browser.evaluate(FOCUS);
+  await press("2");
+  result.groupKeyOpens = await browser.evaluate(OPEN_MENU);
+  result.focus.group = await browser.evaluate(FOCUS);
   // Group by's rows read as its trigger does: "By age", not "Age".
   result.groupRows = await browser.evaluate(
     `[...document.querySelectorAll("#filter-group-menu .menu-item-label")].map((label) => label.textContent)`,
   );
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
-  result.focus.oneEscaped = await browser.evaluate(FOCUS);
+  result.focus.groupEscaped = await browser.evaluate(FOCUS);
   // Group by's rows take N, A, and T while its menu is open and has focus, each running
   // the row's click path; with the menu closed, T is Quick Search (docs/design-system.md,
   // "Keys in a Menu").
@@ -797,8 +798,8 @@ try {
     ["t", "By file type", "> 1"],
     ["n", "No grouping", "=== 0"],
   ]) {
-    await press("1");
-    result.focus[`one before ${letter}`] = await browser.evaluate(FOCUS);
+    await press("2");
+    result.focus[`group before ${letter}`] = await browser.evaluate(FOCUS);
     await press(letter);
     await browser.waitFor(
       `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim() === ${JSON.stringify(trigger)} && document.querySelectorAll(".tree-section").length ${sections}`,
@@ -819,12 +820,12 @@ try {
     `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
     30000,
   );
-  // 3 is File type: it opens the closed drawer with its menu.
-  await press("3");
+  // 4 is File type: it opens the closed drawer with its menu.
+  await press("4");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
   await browser.evaluate(BAR_SETTLED);
-  result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
-  result.focus.three = await browser.evaluate(FOCUS);
+  result.typesKeyOpens = await browser.evaluate(OPEN_MENU);
+  result.focus.types = await browser.evaluate(FOCUS);
   // A pick in the multi-select menu keeps it open, and the bar rebuilds under it,
   // synchronously from the filter's change: focus stays on the row picked, and on it again
   // unpicked. A MutationObserver counts the bar's rebuilds, so each read waits for the
@@ -857,13 +858,13 @@ try {
   );
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
-  result.focus.threeEscaped = await browser.evaluate(FOCUS);
-  // 2 is Modified within, in the drawer 3 left open.
-  await press("2");
-  result.focus.two = await browser.evaluate(FOCUS);
+  result.focus.typesEscaped = await browser.evaluate(FOCUS);
+  // 3 is Modified within, in the drawer 4 left open.
+  await press("3");
+  result.focus.recency = await browser.evaluate(FOCUS);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
-  result.focus.twoEscaped = await browser.evaluate(FOCUS);
+  result.focus.recencyEscaped = await browser.evaluate(FOCUS);
   // A trigger's own keys: ↓ opens its menu, and Enter clicks it, as Space does.
   await browser.evaluate(`document.querySelector('[data-chip-menu-toggle="group"]').focus(), true`);
   await press("ArrowDown");

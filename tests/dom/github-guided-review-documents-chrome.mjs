@@ -83,9 +83,11 @@ try {
     await chrome.send("Page.navigate", { url: `${base}${route}` });
     await waitFor(`location.pathname === ${JSON.stringify(route)}`);
   };
+  // A step is composed out of sight (`.github-pull-guide-incoming`, guided-review.js) and
+  // shows whole once what it draws is in, so a check reads only the step shown.
   const settled = (title) =>
     waitFor(
-      `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
+      `document.querySelector(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
     );
   /** Open the step titled *title* from the guide's list of steps. */
   const open = async (title) => {
@@ -107,7 +109,7 @@ try {
   same(
     "Docs draws the Markdown file in Full, under its chooser, on Current",
     [docs.path, docs.chooser, docs.shows],
-    ["docs/new.md", ["Full (chosen)", "Concise", "Source"], "current"],
+    ["docs/new.md", ["Rendered (chosen)", "Source"], "full"],
   );
   check("and its rendered Markdown has the file's heading", /New/.test(docs.rendered ?? ""));
   await go("/pull/7/files");
@@ -125,8 +127,8 @@ try {
   same(
     "the step draws two documents and no excerpt",
     await evaluate(`[
-      document.querySelectorAll(".github-pull-guide-step .github-pull-guide-document").length,
-      document.querySelectorAll(".github-pull-guide-step .github-pull-guide-excerpt").length,
+      document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-document").length,
+      document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-excerpt").length,
     ]`),
     [2, 0],
   );
@@ -140,6 +142,34 @@ try {
     await drawn(DOCUMENT("config/settings.yaml"), "config/settings.yaml"),
     changes,
   );
+  const block = ".github-pull-guide-references";
+  const chooser = `${block} .diff-show-control`;
+  same(
+    "the block has one comparison chooser above both file cards",
+    await evaluate(`document.querySelectorAll(${JSON.stringify(chooser)}).length`),
+    1,
+  );
+  const choose = async (mode) =>
+    evaluate(
+      `document.querySelector(${JSON.stringify(`${chooser} [data-chip-value="${mode}"]`)}).click()`,
+    );
+  await choose("current");
+  same(
+    "Excerpt applies to both documents and is checked",
+    await evaluate(`[
+      ...[...document.querySelectorAll("${block} .diff-root")].map((root) => root.dataset.show),
+      document.querySelector("${chooser} [aria-checked='true']")?.textContent,
+    ]`),
+    ["current", "current", "Excerpt"],
+  );
+  const markdownToggle = `${DOCUMENT("docs/new.md")}.querySelector(".diff-file-toggle")`;
+  await evaluate(`${markdownToggle}.click()`);
+  await choose("full");
+  same(
+    "Full preserves the collapsed file",
+    await evaluate(`${markdownToggle}.getAttribute("aria-expanded")`),
+    "false",
+  );
 
   // 3. The ranged reference to the Markdown file, on the step before it.
   await open("Read the new guide");
@@ -152,6 +182,13 @@ try {
     "and its source rows, then the whole diff of a file of no rendered format",
     await evaluate(ROWS),
     ["add # New", "context one", "add two"],
+  );
+  const excerptToggle = `document.querySelector("${block} .github-pull-guide-excerpt").closest("section").querySelector(".diff-file-toggle")`;
+  await evaluate(`${excerptToggle}.click()`);
+  same(
+    "the cited source range has an accessible disclosure",
+    await evaluate(`${excerptToggle}.getAttribute("aria-expanded")`),
+    "false",
   );
 } finally {
   await chrome.close();

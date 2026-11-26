@@ -66,7 +66,7 @@ def test_the_interpreters_are_the_classifiers_and_the_newest_free_threaded_build
         ("make lint-check audit", {"lint-check", "audit"}),
         ("make test-chrome SHARD=${{ matrix.shard }}/4", {"test-chrome"}),
         ("make test-parallel SHARD=${{ matrix.shard }}", {"test-parallel"}),
-        ("make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}", set()),
+        ("make ${{ needs.plan.outputs.target }} SHARD=${{ matrix.shard }}", set()),
         ("make -k test-goldens test-serial", {"test-goldens", "test-serial"}),
         ("make ${{ matrix.part }}", set()),
         ("git config user.name bot\nmake test-goldens", {"test-goldens"}),
@@ -179,7 +179,7 @@ def test_a_tier_job_that_does_not_need_the_plan_fails(tmp_path: Path, job: str, 
 
 @pytest.mark.parametrize(
     "output",
-    ["pythons", "chrome", "chrome-target", "admitted-gits", "unit-shards", "chrome-shards"],
+    ["pythons", "chrome", "admitted-gits", "unit-shards", "chrome-shards"],
 )
 def test_a_plan_output_that_is_not_the_step_s_own_fails(tmp_path: Path, output: str) -> None:
     errors = _errors(
@@ -193,24 +193,21 @@ def test_a_plan_output_that_is_not_the_step_s_own_fails(tmp_path: Path, output: 
 
 # ── The Chrome tier ────────────────────────────────────────────────────────────────
 
-CHROME_STEP = "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}"
+CHROME_STEP = "run: make test-chrome SHARD=${{ matrix.shard }}"
+CHROME_ALONE = "job chrome must run `make test-chrome SHARD=${{ matrix.shard }}` and no other make"
 
 
 @pytest.mark.parametrize(
     ("old", "new", "message"),
     [
-        # The fast target written in would leave main without the slow tests.
+        # Another target, or one a plan output names, could run less than the whole tier.
+        (CHROME_STEP, "run: make test-serial SHARD=${{ matrix.shard }}", CHROME_ALONE),
         (
             CHROME_STEP,
-            "run: make test-chrome-fast SHARD=${{ matrix.shard }}",
-            "job chrome must run `make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ "
-            "matrix.shard }}` and no other make",
+            "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
+            CHROME_ALONE,
         ),
-        (
-            CHROME_STEP,
-            "run: make ${{ needs.plan.outputs.chrome-target }}",
-            "job chrome must run `make ${{ needs.plan.outputs.chrome-target }} SHARD=",
-        ),
+        (CHROME_STEP, "run: make test-chrome", CHROME_ALONE),
         # Any condition but the plan's own could skip the tier on main.
         (
             "    if: needs.plan.outputs.chrome != 'none'\n",
@@ -223,9 +220,15 @@ CHROME_STEP = "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matri
             "job chrome must not run under if: needs.plan.outputs.chrome == 'whole'",
         ),
     ],
-    ids=["the fast target", "no part", "another condition", "only when whole"],
+    ids=[
+        "another target",
+        "a target the plan names",
+        "no part",
+        "another condition",
+        "only when whole",
+    ],
 )
-def test_the_chrome_job_runs_the_plan_s_target_under_the_plan_s_condition(
+def test_the_chrome_job_runs_the_whole_tier_under_the_plan_s_condition(
     tmp_path: Path, old: str, new: str, message: str
 ) -> None:
     assert message in _errors(tmp_path, old, new)
@@ -235,10 +238,10 @@ def test_no_other_job_may_take_its_make_target_from_an_expression(tmp_path: Path
     errors = _errors(
         tmp_path,
         "run: make test-parallel SHARD=${{ matrix.shard }}",
-        "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
+        "run: make ${{ needs.plan.outputs.target }} SHARD=${{ matrix.shard }}",
     )
 
-    assert "job unit runs `make ${{ needs.plan.outputs.chrome-target }} SHARD=" in errors
+    assert "job unit runs `make ${{ needs.plan.outputs.target }} SHARD=" in errors
     assert "a make with no target named" in errors
     assert "ci.yml runs no `make test-parallel`" in errors
 
@@ -500,11 +503,11 @@ DROPS = {
     ),
     "a tier make only prints": (
         CI_TEXT.replace(
-            "run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
-            "run: make -n ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}",
+            "run: make test-chrome SHARD=${{ matrix.shard }}",
+            "run: make -n test-chrome SHARD=${{ matrix.shard }}",
         ),
-        "ci.yml job chrome runs `make -n ${{ needs.plan.outputs.chrome-target }} SHARD=${{ "
-        "matrix.shard }}`, a make with no target named",
+        "ci.yml job chrome runs `make -n test-chrome SHARD=${{ matrix.shard }}`; a make step's "
+        "words are make,",
     ),
     "a tier whose pytest a make variable replaces": (
         CI_TEXT.replace("run: make test-serial", "run: make test-serial PYTEST=true"),

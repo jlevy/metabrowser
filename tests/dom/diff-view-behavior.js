@@ -459,7 +459,9 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
           ? { [child.className]: child.children.map(item) }
           : child.className;
     const groups = header.children
-      .filter((child) => typeof child === "object" && child.className !== "diff-summary-chevron")
+      .filter(
+        (child) => typeof child === "object" && !child.classList.contains("diff-summary-chevron"),
+      )
       .map(item);
     const commas = header
       .find("change-line-statuses")[0]
@@ -504,7 +506,9 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       "the header is a disclosure toggle with the registry's chevron box, after its words",
       header.classList.contains("disclosure-toggle") &&
         header.find("diff-summary-chevron").length === 1 &&
-        lastPart?.className === "diff-summary-chevron",
+        lastPart?.classList.contains("diff-summary-chevron") === true &&
+        lastPart.classList.contains("summary-toggle-chevron") &&
+        header.classList.contains("summary-toggle"),
       lastPart?.className ?? "",
     );
     check(
@@ -1256,11 +1260,9 @@ async function headLinkChecks(mountDiffView, byName) {
       "a Markdown file whose changes did not load keeps its chooser, its views unavailable for the reason its body gives",
       chooser?.value === "source" &&
         JSON.stringify(chooser.options.map((option) => option.value)) ===
-          JSON.stringify(["full", "concise", "source"]) &&
-        chooser.options
-          .slice(0, 2)
-          .every((option) => option.tip === "This change is too large to show inline.") &&
-        chooser.options[2].tip === undefined &&
+          JSON.stringify(["rendered", "source"]) &&
+        chooser.options[0].tip === "This change is too large to show inline." &&
+        chooser.options[1].tip === undefined &&
         said.includes("This change is too large to show inline.") &&
         requested.length === asked,
       JSON.stringify({ choosers, said, requested }),
@@ -1327,6 +1329,7 @@ async function main() {
     anchorRow,
     composeTextRuns,
     currentAbsence,
+    fileDisclosure,
     hunkGaps,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
@@ -1856,10 +1859,7 @@ async function main() {
   layoutChange("diff-layout", "unified", "one");
   check("layout switch reprojects immediately", split.find("diff-split-row").length === 0);
   check("unified switch restores four source rows", split.find("diff-line").length === 4);
-  check(
-    "layout preference persists",
-    preferenceWrites.at(-1).key === "diff.layout" && preferenceWrites.at(-1).value === "unified",
-  );
+  check("layout override leaves the default preference alone", preferenceWrites.length === 0);
   layoutChange("diff-layout", "split", "one");
   layoutChange("diff-layout", "unified", "one");
   check("repeated switches never re-run the lexer", layoutSyntaxCalls === callsBeforeSwitch);
@@ -2016,14 +2016,14 @@ async function main() {
   );
   check(
     "the chooser is one joined, exclusive group named for what it chooses",
-    showSpec?.label === "Diff or current version" &&
+    showSpec?.label === "Comparison view" &&
       showSpec.layout === "joined" &&
       showSpec.select === "one" &&
       showSpec.value === "diff" &&
       JSON.stringify(showSpec.options.map((option) => [option.label, option.tip])) ===
         JSON.stringify([
-          ["Diff", "Show what changed, removals included"],
-          ["Current", "Show the new version alone, its changes marked"],
+          ["Diff", "Show additions and removals with surrounding context."],
+          ["Excerpt", "Show the new version around the changes."],
         ]),
     JSON.stringify(showSpec),
   );
@@ -2052,16 +2052,14 @@ async function main() {
     "the layout control keeps the stored layout and says why neither chip can be chosen",
     layoutInCurrent.value === "split" &&
       layoutInCurrent.options.every(
-        (option) =>
-          option.tip ===
-          "Current shows the new version in one column; choose Diff for Split or Unified.",
+        (option) => option.tip === "Switch to Diff to change the layout.",
       ),
     JSON.stringify(layoutInCurrent),
   );
   check(
     "the choice is stored as diff.show, which every surface but Docs shares",
     JSON.stringify(preferenceWrites.slice(writesBefore)) ===
-      JSON.stringify([{ key: "diff.show", value: "current" }]),
+      JSON.stringify([{ key: "diff.show", value: "excerpt" }]),
     JSON.stringify(preferenceWrites.slice(writesBefore)),
   );
   const writesInCurrent = preferenceWrites.length;
@@ -2369,6 +2367,16 @@ async function main() {
       toggle.getAttribute("aria-expanded") === "false",
   );
   toggle.click();
+  // What Changes' bar and trigger are made of, which a card another page draws around a
+  // file must match (below, at `fileDisclosure`).
+  const classesOf = (node) => String(node.className).split(" ").filter(Boolean).sort().join(" ");
+  const changesDisclosure = {
+    bar: classesOf(bar),
+    toggle: classesOf(toggle),
+    chevron: classesOf(toggle.children[0]),
+    type: toggle.getAttribute("type"),
+    tag: toggle.tagName,
+  };
 
   // Disposal removes everything the mount added.
   handle.dispose();
@@ -2998,8 +3006,71 @@ async function main() {
     intraline(patchBody) > 0 && tokens(patchBody) > 0 && patchLexes > 0,
     `${intraline(patchBody)} intraline, ${tokens(patchBody)} tokens, ${patchLexes} lexes`,
   );
+  // A page that draws its own card for a file, as Guided Review does, takes the card's bar
+  // from the diff view's builder (`fileDisclosure`, which `guidePatchDrawer` hands over), and
+  // it is Changes' own: the same bar, trigger, and chevron, which fold whatever the page
+  // hands them, here a box holding a note and the patch.
+  {
+    const card = new FakeElement("section");
+    const folded = new FakeElement("div");
+    folded.append(new FakeElement("p"), patchBody);
+    const disclosure = fileDisclosure(card, folded);
+    const viewLink = new FakeElement("a");
+    viewLink.className = "diff-file-view";
+    disclosure.bar.append(disclosure.toggle, viewLink);
+    card.append(disclosure.bar, folded);
+    check(
+      "a page's own card takes the bar, trigger, and chevron Changes draws",
+      JSON.stringify({
+        bar: classesOf(disclosure.bar),
+        toggle: classesOf(disclosure.toggle),
+        chevron: classesOf(disclosure.toggle.children[0]),
+        type: disclosure.toggle.getAttribute("type"),
+        tag: disclosure.toggle.tagName,
+      }) === JSON.stringify(changesDisclosure),
+    );
+    const cardFolds = () => ({
+      said: disclosure.toggle.getAttribute("aria-expanded"),
+      body: folded.classList.contains("diff-file-body-collapsed"),
+      card: card.classList.contains("diff-file-collapsed"),
+      turned: disclosure.toggle.classList.contains("collapsed"),
+      open: disclosure.toggle.classList.contains("expanded"),
+    });
+    const shut = { said: "false", body: true, card: true, turned: true, open: false };
+    const opened = { said: "true", body: false, card: false, turned: false, open: true };
+    check(
+      "a page's own card starts open, its trigger naming what it folds",
+      JSON.stringify(cardFolds()) === JSON.stringify(opened) &&
+        disclosure.toggle.getAttribute("aria-controls") === folded.getAttribute("id") &&
+        card.getAttribute("aria-labelledby") === disclosure.toggle.getAttribute("id"),
+    );
+    const patchRows = patchBody.find("diff-line").length;
+    disclosure.bar.click();
+    check(
+      "a press on the card's bar folds it, and keeps what the patch drew",
+      JSON.stringify(cardFolds()) === JSON.stringify(shut) &&
+        patchBody.find("diff-line").length === patchRows &&
+        !patchBody.classList.contains("diff-file-body-collapsed"),
+      JSON.stringify(cardFolds()),
+    );
+    viewLink.click();
+    check(
+      "a press on the card's link to the file is the link's, not the bar's",
+      JSON.stringify(cardFolds()) === JSON.stringify(shut),
+    );
+    disclosure.toggle.click();
+    check(
+      "the trigger, which a key presses, opens it again",
+      JSON.stringify(cardFolds()) === JSON.stringify(opened),
+    );
+    const otherCard = fileDisclosure(new FakeElement("section"), new FakeElement("div"));
+    check(
+      "each card's ids are its own",
+      otherCard.toggle.getAttribute("id") !== disclosure.toggle.getAttribute("id") &&
+        otherCard.toggle.getAttribute("aria-controls") !== folded.getAttribute("id"),
+    );
+  }
   patchHandle.dispose();
-
   // Disposed before its enhancement runs, a file patch stays as first painted, and a fold
   // still materializing stops.
   const lexedBefore = patchLexes;

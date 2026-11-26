@@ -284,6 +284,7 @@ def test_the_prefetch_chain_records_its_end_before_announcing_it(template_failur
         "/static/vendor/mustache.min.js",
         "/static/vendor/highlight.min.js",
         "/static/vendor/highlight-toml.min.js",
+        "/static/syntax/lean.js",
     ]
     if template_failure:
         expected_requests.append("/static/vendor/mustache.min.js")

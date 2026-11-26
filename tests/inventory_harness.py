@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -68,3 +69,14 @@ async def inventory_harness(
     finally:
         await bus.close()
         await runtime.close()
+
+
+def next_registry_revision(document: str) -> str:
+    """The file-type registry *document* with its revision one higher, whatever it is."""
+    return re.sub(
+        r"^registry_revision = (\d+)$",
+        lambda match: f"registry_revision = {int(match[1]) + 1}",
+        document,
+        count=1,
+        flags=re.MULTILINE,
+    )

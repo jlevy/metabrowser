@@ -1,5 +1,8 @@
-// Loaded when Guided Review opens. Only the visible step asks for excerpts.
+// Prefetched: a page whose guide the reader can open loads this when it is idle, and reads the
+// guide's first step with it (guide-reads.js), so Guided Review draws at once when opened.
+// A step is shown in one change, once everything its layout depends on is in hand.
 
+import { guideAsks, guideReads, retryable } from "./guide-reads.js";
 import {
   namedStackPosition,
   namedStackPositionNodes,
@@ -25,6 +28,7 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   `{commit}` row names; both null for a commit whose line passed its bound.
  * @typedef {{kind: "file" | "pull_file" | "pull" | "commit", path: string | null,
  *   side: "old" | "new" | null, pull: number | null, commit: string | null, state: string,
+ *   start_line?: number | null, end_line?: number | null, deleted?: boolean,
  *   rendered: Rendered | null, href: string | null, hunks: Hunk[], truncated: boolean,
  *   comparison: PullComparison | null, target: PullTarget | CommitTarget | null}}
  *   Reference What a step cites (`_references` in guided_review.py): a file of the pull
@@ -35,15 +39,24 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   *rendered* is the format of a file named alone that the rendered route renders, by
  *   that route's own rule (`rendered_format` in pull_rendered_diff.py): the page draws it
  *   whole, and the route sends no hunks for it.
- * @typedef {(body: HTMLElement, change: Record<string, unknown>,
- *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
+ * @typedef {"diff" | "current" | "full"} Presentation
+ * @typedef {{dispose: () => void, show?: (mode: Presentation) => void}} GuidedDrawing
+ * @typedef {((body: HTMLElement, change: Record<string, unknown>,
+ *   patch: {hunks: Hunk[], truncated: boolean}, fullFile?: FullFile | null) => GuidedDrawing) & {
+ *   disclose?: (section: HTMLElement, folded: HTMLElement,
+ *     changed?: (expanded: boolean) => void) => DiffFileDisclosure,
+ *   controls?: (host: HTMLElement, full: boolean, initial: Presentation | null,
+ *     choose: (mode: Presentation) => void) => GuidedDrawing
+ * }} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
  *   them.
  * @typedef {{merge_base: string | null, head: string}} Pins
+ * @typedef {{path: string, load: (signal: AbortSignal) => Promise<unknown>}} FullFile
  * @typedef {{
  *   draws(pins: Pins | PullComparison): boolean,
- *   mount(body: HTMLElement, path: string, format: Rendered, pins: Pins | PullComparison):
- *     {settled: Promise<boolean>, dispose: () => void},
+ *   source?(path: string, pins: Pins | PullComparison): FullFile | null,
+ *   mount(body: HTMLElement, path: string, format: Rendered | null, pins: Pins | PullComparison):
+ *     GuidedDrawing & {settled: Promise<boolean>},
  * }} DrawDocument The diff plugin's `mountRenderedFile`, bound by the page to its
  *   comparison: whether it draws a file read at *pins*, which it does for the comparison a
  *   step was read at only while that is the page's own, and always for another pull
@@ -69,8 +82,14 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   file in its Changes (`mountGuidedReview`'s deps); *subject* is what the guide's own
  *   files are the changes of.
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
+ * @typedef {{folded: boolean, heard: (expanded: boolean) => void}} Fold Whether the reader
+ *   left a card folded, and what hears them fold or open it (`folds` in guide-reads.js).
  *   What draws a step's references, each null when the diff plugin did not load, and the
  *   comparison the step was read at.
+ * @typedef {{drawn: GuidedDrawing[], waits: Promise<unknown>[]}} Drawing What a
+ *   step drew: the views to dispose of when another step is shown or the guide ends, and what
+ *   the step waits for before it shows, the documents it draws whole, each until drawn as it
+ *   stays.
  * @typedef {{guide: Pins, current: Pins, github_newer: boolean,
  *   history: "ahead" | "rewritten" | "unavailable", commit_count: number | null,
  *   commits: {sha: string, subject: string}[], changed_paths: string[] | null,
@@ -119,23 +138,14 @@ import { stackMemberRow } from "./stack-member-row.js";
  */
 
 /**
- * Whether *step*'s note, or its group's, was refused by a renderer that was busy or could
- * not start, which the step's next read can render (`_rendered_note` in guided_review.py).
- *
- * @param {Step} step
- */
-const renderRetried = (step) =>
-  [step.note_refusal, step.group_note_refusal].some(
-    (code) => code === "renderer_busy" || code === "renderer_unavailable",
-  );
-
-/**
  * The guide's place and its reads. Step 0 is the overview, the description the page
  * draws itself; steps 1 to `step_count` are the guide's. The overview shows the answer
  * for step 1, whose step titles list the guide, so the first step the reader moves to is
  * already in hand. Answers with a step are kept for the record revision they were read for,
- * except one whose note's renderer was busy or could not start: that step is read again when
- * the reader returns to it, so its note renders once the renderer can, as a reload would.
+ * and for whether GitHub reported a head past it then, except one that holds what a later
+ * read can answer otherwise (`retryable` in guide-reads.js), such as a note a busy renderer
+ * refused or another pull request not read yet: that step is read again when the reader
+ * returns to it, so it fills in once it can, as a reload would.
  * A step whose read was refused or failed keeps the guide's steps, from the last answer that
  * had them, so the reader can still move, and is read again when the reader returns to it.
  * A refusal that names no revision, a stack's while it is pending or cannot be paired, is
@@ -150,12 +160,24 @@ const renderRetried = (step) =>
  * A stack's guide has no overview of its own, since no member's description introduces the
  * stack: with *first* 1 it opens on step 1, and no move goes before it.
  *
+ * Once a step's answer is shown, the steps one move away, next to the step whose answer it
+ * is, are read ahead (*prefetch*), unless this guide already holds them, so the next press
+ * of an arrow or the way on finds its step in hand. A step read before this guide asked for
+ * it, ahead of it or by an earlier mount, is shown at once from *peek*, with no loading
+ * state between.
+ *
  * @param {{
- *   read(step: number, signal: AbortSignal): Promise<Step | Refusal>,
+ *   read(step: number, signal: AbortSignal, revision: string, moved: boolean):
+ *     Promise<Step | Refusal>,
  *   render(state: GuideState, at: number, steps: number): void,
+ *   prefetch?(step: number, revision: string, moved: boolean): void,
+ *   peek?(step: number, revision: string, moved: boolean): Step | undefined,
  *   first?: 0 | 1,
- * }} deps *render* is told the guide's step count, 0 while no answer has had a step.
- *   *first* is the first place, 0, the overview, unless it says 1.
+ * }} deps *read* is told the record revision the guide expects, and whether the head has
+ *   moved past it (`show`'s *moved*). *render* is told the guide's step count, 0 while no
+ *   answer has had a step. *peek* answers only a step read at *revision* with the same
+ *   *moved* that holds nothing a later read answers otherwise, as *read* keeps one. *first*
+ *   is the first place, 0, the overview, unless it says 1.
  */
 export function createGuideNavigation(deps) {
   const first = deps.first ?? 0;
@@ -175,28 +197,56 @@ export function createGuideNavigation(deps) {
   let pending = null;
   let disposed = false;
 
+  /**
+   * Read ahead the steps a move from *at* reaches that this guide does not hold: those
+   * next to the step whose answer *at* shows, the overview's being step 1's.
+   *
+   * @param {number} at @param {string} expected @param {boolean} moved
+   */
+  function readAhead(at, expected, moved) {
+    const shown = Math.max(at, 1);
+    for (const step of [shown + 1, shown - 1]) {
+      if (step >= 1 && step <= count && !answers.has(step)) {
+        deps.prefetch?.(step, expected, moved);
+      }
+    }
+  }
+
   /** @param {string} expected */
   async function load(expected) {
     pending?.abort();
+    const moved = headMoved;
     const at = selected;
     const asked = Math.max(at, 1);
-    const kept = answers.get(asked);
+    let kept = answers.get(asked);
+    if (kept === undefined) {
+      const peeked = deps.peek?.(asked, expected, moved);
+      if (peeked !== undefined && peeked.record_revision === expected) {
+        answers.set(asked, peeked);
+        count = peeked.step_count;
+        kept = peeked;
+      }
+    }
     if (kept !== undefined) {
       pending = null;
       deps.render(kept, at, count);
+      readAhead(at, expected, moved);
       return;
     }
     const request = new AbortController();
     pending = request;
     deps.render({ state: "loading" }, at, count);
+    // Whether a step's answer was shown, so the steps next to it are read ahead: after the
+    // read, so a read ahead that fails never stands for the step's.
+    let shownStep = false;
     try {
-      let result = await deps.read(asked, request.signal);
+      let result = await deps.read(asked, request.signal, expected, moved);
       if (request.signal.aborted) {
         return;
       }
       if (result.record_revision === expected && result.state === "step_not_found" && asked > 1) {
         selected = 1;
-        result = await deps.read(1, request.signal);
+        result = await deps.read(1, request.signal, expected, moved);
       }
       if (request.signal.aborted) {
         return;
@@ -215,12 +265,13 @@ export function createGuideNavigation(deps) {
         return;
       }
       if ("step" in result) {
-        if (!renderRetried(result)) {
+        if (!retryable(result)) {
           answers.set(Math.max(selected, 1), result);
         }
         count = result.step_count;
       }
       deps.render(result, selected, count);
+      shownStep = "step" in result;
     } catch {
       if (!request.signal.aborted) {
         deps.render({ state: "error" }, selected, count);
@@ -229,6 +280,9 @@ export function createGuideNavigation(deps) {
       if (pending === request) {
         pending = null;
       }
+    }
+    if (shownStep) {
+      readAhead(selected, expected, moved);
     }
   }
 
@@ -531,6 +585,13 @@ export function referenceDrawing(reference, drawers) {
   return reference.hunks.length === 0 || drawers.patch === null ? "said" : "patch";
 }
 
+/** @param {Reference} reference @param {Drawers} drawers */
+function wholeSource(reference, drawers) {
+  return reference.side === null && reference.path !== null && !reference.deleted
+    ? (drawers.document?.source?.(reference.path, reference.comparison ?? drawers.pins) ?? null)
+    : null;
+}
+
 /**
  * Whether *event* is a plain press of the main button, which a link the page opens in place
  * takes over; any other, as one that opens a new tab, is the browser's.
@@ -646,31 +707,64 @@ function commitRow(reference, words) {
  *
  * @param {Reference} reference @param {() => void} open
  */
-function referenceBar(reference, open) {
+function referenceLink(reference, open) {
   const path = reference.path ?? "";
-  const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
-  const name = element("span", "", "diff-file-toggle");
   const other = reference.kind === "pull_file" ? reference.pull : null;
-  if (other !== null) {
-    name.append(element("span", `#${other}`, "github-pull-guide-reference-pull"));
+  if (reference.href === null) {
+    return null;
   }
-  name.append(element("span", path, "diff-file-path"));
+  const full = document.createElement("a");
+  full.className = "diff-file-view";
+  full.href = reference.href;
+  full.textContent = "Open full diff";
+  full.setAttribute(
+    "aria-label",
+    `Open full diff for ${path}${other === null ? "" : ` in pull request #${other}`}`,
+  );
+  full.addEventListener("click", (event) => {
+    if (plainPress(event)) {
+      event.preventDefault();
+      open();
+    }
+  });
+  return full;
+}
+
+/**
+ * The bar of a card the guide draws itself. It is the diff view's own (`fileDisclosure`,
+ * which the drawer hands over as `disclose`): its chevron leads the name and folds *body*
+ * as a file's does in Changes (docs/design-system.md, "Diff File Bar"), and the guide only
+ * names the file in its trigger and puts its link on it. Open full diff is a control that
+ * views the file (`.diff-file-view`), so a press on it is the link's. A card starts open,
+ * and one the reader folded is drawn folded when its step is drawn again (*fold*). Without
+ * the diff plugin there is no builder, and the bar only names the file.
+ *
+ * @param {Reference} reference @param {() => void} open
+ * @param {HTMLElement} section @param {HTMLElement} body @param {DrawPatch | null} patch
+ * @param {Fold} fold
+ */
+function referenceBar(reference, open, section, body, patch, fold) {
+  const disclosure = patch?.disclose?.(section, body, fold.heard) ?? null;
+  if (fold.folded) {
+    disclosure?.setExpanded(false);
+  }
+  const bar = disclosure?.bar ?? element("div", "", "diff-file-bar");
+  bar.classList.add("github-pull-guide-reference-header");
+  const name = disclosure?.toggle ?? element("span", "", "diff-file-toggle");
+  if (reference.kind === "pull_file") {
+    name.append(element("span", `#${reference.pull}`, "github-pull-guide-reference-pull"));
+  }
+  name.append(element("span", reference.path ?? "", "diff-file-path"));
+  if (reference.side && reference.start_line != null && reference.end_line != null) {
+    const range =
+      reference.start_line === reference.end_line
+        ? String(reference.start_line)
+        : `${reference.start_line}–${reference.end_line}`;
+    name.append(element("span", `Cited ${reference.side} lines ${range}`, "diff-file-note"));
+  }
   bar.append(name);
-  if (reference.href !== null) {
-    const full = document.createElement("a");
-    full.className = "diff-file-view";
-    full.href = reference.href;
-    full.textContent = "Open full diff";
-    full.setAttribute(
-      "aria-label",
-      `Open full diff for ${path}${other === null ? "" : ` in pull request #${other}`}`,
-    );
-    full.addEventListener("click", (event) => {
-      if (plainPress(event)) {
-        event.preventDefault();
-        open();
-      }
-    });
+  const full = referenceLink(reference, open);
+  if (full !== null) {
     bar.append(full);
   }
   return bar;
@@ -685,38 +779,35 @@ function referenceBar(reference, open) {
  * Source. The bar is the file's, so the guide adds none of its own while the file draws, and
  * a note that the file changed since the guide was written leads it. A file the view could
  * not draw shows its notice under the guide's own bar, so the reader still sees which file
- * it is and can open it in Changes.
+ * it is and can open it in Changes. The step waits for the file, which is shown only once
+ * drawn as it stays (`Drawing`).
  *
- * @param {Reference} reference @param {Rendered} format @param {HTMLElement | null} note
+ * @param {Reference} reference @param {Rendered | null} format @param {HTMLElement | null} note
  * @param {() => void} open
  * @param {DrawDocument} drawDocument @param {Pins | PullComparison} pins
- * @param {Array<{dispose: () => void}>} drawn Where the drawn view is kept for disposal.
+ * @param {Drawing} drawing @param {DrawPatch | null} patch @param {Fold} fold
  */
-function renderDocument(reference, format, note, open, drawDocument, pins, drawn) {
+function renderDocument(reference, format, note, open, drawDocument, pins, drawing, patch, fold) {
   const path = reference.path ?? "";
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
   const body = element("div", "", "github-pull-guide-document-body");
-  // The diff's own progress, below the view so it never moves the view's first row, shown
-  // only past the loading delay (`mb-delayed-loading`), as Changes shows it.
-  const loading = element(
-    "div",
-    "",
-    "loading mb-delayed-loading github-pull-guide-document-loading",
-  );
-  loading.setAttribute("role", "status");
-  loading.setAttribute("aria-label", `Loading ${path}`);
-  const spinner = element("span", "", "spinner");
-  spinner.setAttribute("aria-hidden", "true");
-  loading.append(spinner);
-  section.append(...(note === null ? [] : [note]), body, loading);
+  section.append(...(note === null ? [] : [note]), body);
   const view = drawDocument.mount(body, path, format, pins);
-  drawn.push(view);
-  void view.settled.then((drawnFile) => {
-    loading.remove();
-    if (!drawnFile) {
-      section.prepend(referenceBar(reference, open));
-    }
-  });
+  drawing.drawn.push(view);
+  drawing.waits.push(
+    view.settled.then((drawnFile) => {
+      if (!drawnFile) {
+        section.classList.add("diff-file");
+        section.prepend(referenceBar(reference, open, section, body, patch, fold));
+      } else {
+        const bar = body.querySelector(".diff-file-bar");
+        const full = referenceLink(reference, open);
+        if (full !== null) {
+          bar?.append(full);
+        }
+      }
+    }),
+  );
   return section;
 }
 
@@ -731,11 +822,12 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawn
  * @param {Reference} reference @param {ReferenceWays} ways
  * @param {Change} change Whether the file changed after the guide was written.
  * @param {Drawers} drawers What draws the reference.
- * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
+ * @param {Drawing} drawing Where each drawn view is kept, and what the step waits for.
+ * @param {Fold} fold Whether the reader left this card folded, and what hears a change.
  */
-function renderReference(reference, ways, change, drawers, drawn) {
-  const drawing = referenceDrawing(reference, drawers);
-  if (drawing === "row") {
+function renderReference(reference, ways, change, drawers, drawing, fold) {
+  const how = referenceDrawing(reference, drawers);
+  if (how === "row") {
     return reference.kind === "pull" ? pullRow(reference, ways) : commitRow(reference, ways);
   }
   const path = reference.path ?? "";
@@ -752,31 +844,52 @@ function renderReference(reference, ways, change, drawers, drawn) {
         )
       : null;
   const format = typeof reference.rendered === "string" ? reference.rendered : null;
-  if (drawing === "document" && drawers.document !== null && format !== null) {
+  if (how === "document" && drawers.document !== null) {
     const pins = reference.comparison ?? drawers.pins;
-    return renderDocument(reference, format, changed, open, drawers.document, pins, drawn);
+    return renderDocument(
+      reference,
+      format,
+      changed,
+      open,
+      drawers.document,
+      pins,
+      drawing,
+      drawers.patch,
+      fold,
+    );
   }
   const section = element("section", "", "diff-file github-pull-guide-reference");
-  section.append(referenceBar(reference, open));
+  const content = element("div", "", "diff-file-body");
+  section.append(referenceBar(reference, open, section, content, drawers.patch, fold), content);
   if (changed !== null) {
-    section.append(changed);
+    content.append(changed);
   }
   const drawPatch = drawers.patch;
   if (reference.state === "ready" && format === null && reference.hunks.length === 0) {
     // A rename, a mode change, or a binary file: a change with no text to show.
-    section.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
-  } else if (drawing === "patch" && drawPatch !== null) {
+    content.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
+  } else if (how === "patch" && drawPatch !== null) {
     const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
     body.setAttribute("role", "group");
     body.setAttribute("aria-label", `Diff excerpt for ${path}`);
-    section.append(body);
+    content.append(body);
     const side = { path };
-    drawn.push(
-      drawPatch(
-        body,
-        { id: path, old: side, new: side },
-        { hunks: reference.hunks, truncated: reference.truncated },
-      ),
+    const excerpt = drawPatch(
+      body,
+      reference.deleted
+        ? { id: path, kind: "deleted", old: side, new: null }
+        : { id: path, old: side, new: side },
+      { hunks: reference.hunks, truncated: reference.truncated },
+      wholeSource(reference, drawers),
+    );
+    drawing.drawn.push(
+      reference.side === "old"
+        ? { dispose: excerpt.dispose }
+        : {
+            dispose: excerpt.dispose,
+            show: (mode) =>
+              excerpt.show?.(mode === "full" && reference.side !== null ? "current" : mode),
+          },
     );
   } else {
     /** @type {Readonly<Record<string, string | undefined>>} */
@@ -788,7 +901,7 @@ function renderReference(reference, ways, change, drawers, drawn) {
       reference.state === "ready"
         ? REFERENCE_MESSAGES.diff_unavailable
         : (said[reference.state] ?? ordinary[reference.state]);
-    section.append(element("p", message ?? "This excerpt is unavailable.", "github-pull-quiet"));
+    content.append(element("p", message ?? "This excerpt is unavailable.", "github-pull-quiet"));
   }
   return section;
 }
@@ -954,6 +1067,8 @@ let groupHeadings = 0;
  *   loadDrawDocument: () => Promise<DrawDocument>,
  *   loadDrawProse: () => Promise<DrawProse>,
  *   refusalNote: RefusalNote,
+ *   introductionReady?: () => Promise<unknown>,
+ *   ahead?: (read: () => void) => () => void,
  *   moved?: () => void,
  * }} deps *open* goes to a file's Changes address, and *openPull* to another pull
  *   request's page, or to a file in its Changes. *age* and *shortCommit* say when a commit
@@ -968,9 +1083,22 @@ let groupHeadings = 0;
  *   never loads it.
  *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through, and
  *   *refusalNote* says why a note's render was refused, in a description's words.
+ *   *introductionReady* settles once the introduction shows as it will stay, its Markdown
+ *   inserted or refused, which the overview waits for. *ahead* schedules a read ahead of the
+ *   reader, as the page schedules its idle work, and returns its canceller; without it a
+ *   step is read ahead at once.
  *   *moved*, a stack's page's, hears each read the route answers `stack_moved`, which says
  *   the comparison the guide is read at has moved, so the page can read the stack at once
  *   rather than at its next poll, and offer the comparison the refusal names.
+ *
+ * Nothing the guide shows moves once shown (docs/design-system.md, "Guided Review"). Each
+ * answer is composed out of sight, its step's card with every excerpt and document drawn,
+ * and replaces what is shown in one change once everything its layout depends on is in hand:
+ * the answer, the stylesheets and renderers it is drawn with, each document it draws whole,
+ * and, for the overview, the introduction. Until then what was shown stays: before the first
+ * answer, the page's delayed loading block, and after it the step the reader left, with a
+ * delayed spinner beside the step list that takes no room. The answers are the document's
+ * (guide-reads.js), read ahead, so a step the reader goes to is usually in hand.
  */
 export function mountGuidedReview(host, introduction, subject, deps) {
   const { loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse, refusalNote } = deps;
@@ -990,28 +1118,51 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   const first = stacked ? 1 : 0;
   /** @type {Readonly<Record<string, string>>} */
   const said = stacked ? STACK_MESSAGES : MESSAGES;
-  // The card the overview shows, which a stack's guide never places.
+  // The card the overview shows, which a stack's guide never places. It shows with the
+  // guide's first answer, never before it.
   const intro = introduction ?? element("div");
+  intro.hidden = true;
   // A stack's guide is read at the comparison its page draws, as its other tabs are.
-  const at = subject.at;
-  const asks = `${stacked ? "stack" : "number"}=${subject.number}${
-    at === undefined ? "" : `&left=${at.left}&right=${at.right}&key=${at.key}`
-  }`;
+  const asks = guideAsks(subject);
   /** @type {Promise<unknown> | null} */
   let styles = null;
-  /** @type {Promise<DrawPatch | null> | null} */
-  let drawer = null;
+  // Whether the text's stylesheets and what draws a step are in hand, so a step read ahead
+  // can be shown at once (`peek`).
+  let stylesIn = false;
+  let drawersIn = false;
   /** @type {DrawPatch | null} */
   let drawPatch = null;
-  /** @type {Promise<DrawDocument | null> | null} */
-  let documents = null;
   /** @type {DrawDocument | null} */
   let drawDocument = null;
-  /** @type {Promise<DrawProse | null> | null} */
-  let proses = null;
   /** @type {DrawProse | null} */
   let drawProse = null;
-  /** The views the shown step drew, disposed when another is drawn or the guide ends. */
+  /** @type {Map<string, Presentation>} */
+  const blockModes = new Map();
+  // What draws a step, asked for as the guide mounts, beside its first read. Without the diff
+  // plugin a step still reads, and says its excerpts are unavailable; a file the rendered
+  // route renders says its diff is unavailable, beside its Open full diff. The view loads the
+  // rendered layer only when it draws such a file. Without the allowlist a note shows as
+  // typed, as a description's text does.
+  const drawers = Promise.all([
+    loadDrawPatch().catch((error) => {
+      console.warn("metabrowser github: the diff plugin did not load for the guide", error);
+      return null;
+    }),
+    loadDrawDocument().catch((error) => {
+      console.warn("metabrowser github: the diff plugin did not load for the guide", error);
+      return null;
+    }),
+    loadDrawProse().catch((error) => {
+      console.warn("metabrowser github: the guide's notes will show as typed", error);
+      return null;
+    }),
+  ]).then(([patch, document_, prose]) => {
+    drawPatch = patch;
+    drawDocument = document_;
+    drawProse = prose;
+    drawersIn = true;
+  });
+  /** The views the shown step drew, disposed when another is shown or the guide ends. */
   /** @type {Array<{dispose: () => void}>} */
   let drawn = [];
   const undraw = () => {
@@ -1020,6 +1171,9 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     }
     drawn = [];
   };
+  /** The reads ahead of the reader not yet made, each by its canceller. */
+  /** @type {Set<() => void>} */
+  const reading = new Set();
   // The guide's steps, listed above the one shown: each names its step and goes to it, and
   // the arrows page through them in order.
   const outline = element("nav", "", "page-card github-pull-card github-pull-guide-outline");
@@ -1032,13 +1186,22 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   const [next] = arrowButton("next", "github-pull-guide-arrow");
   previous.setAttribute("aria-label", "Previous step");
   next.setAttribute("aria-label", "Next step");
+  // While the step a reader goes to is read, past the loading delay, a spinner beside the
+  // step list says so. It is out of flow, so it moves nothing when it shows or goes.
+  const waiting = element("span", "", "loading mb-delayed-loading github-pull-guide-waiting");
+  waiting.setAttribute("role", "status");
+  waiting.setAttribute("aria-label", "Loading the review step");
+  const spinner = element("span", "", "spinner");
+  spinner.setAttribute("aria-hidden", "true");
+  waiting.append(spinner);
+  waiting.hidden = true;
   const arrows = element("span", "", "github-pull-guide-arrows");
-  arrows.append(previous, status, next);
+  arrows.append(waiting, previous, status, next);
   outlineHead.append(badge, arrows);
   const list = element("ol", "", "github-pull-guide-steps");
   outline.append(outlineHead, list);
   outline.hidden = true;
-  const detail = element("section", "", "github-pull-guide-step");
+  let detail = element("section", "", "github-pull-guide-step");
   const notice = element("p", "", "github-pull-quiet");
   notice.setAttribute("role", "status");
   // After a step, the way on names where it goes, so the reader need not scroll back up.
@@ -1050,14 +1213,40 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   // What an out-of-date guide says leads the page, above its steps.
   const outdatedNote = element("div", "", "github-pull-guide-outdated");
   outdatedNote.hidden = true;
-  host.replaceChildren(
+  notice.hidden = true;
+  // Until the first answer is shown, the page's delayed loading block holds the guide's
+  // place, the one the page drew while the guide loaded when there is one, so a block
+  // already shown stays where it is.
+  const loading =
+    /** @type {HTMLElement | null} */ (host.querySelector(":scope > .mb-delayed-loading")) ??
+    (() => {
+      const block = element("div", "", "mb-delayed-loading");
+      block.setAttribute("role", "status");
+      block.setAttribute("aria-label", "Loading the guide");
+      const skeleton = element("div", "", "recent-loading github-pull-loading");
+      skeleton.setAttribute("aria-hidden", "true");
+      block.append(skeleton);
+      return block;
+    })();
+  // Placed around the block, which is not moved, so its delay does not start again.
+  for (const child of [...host.children]) {
+    if (child !== loading) {
+      child.remove();
+    }
+  }
+  if (loading.parentNode !== host) {
+    host.append(loading);
+  }
+  for (const node of [
     outdatedNote,
     outline,
     ...(introduction === null ? [] : [introduction]),
     detail,
     notice,
     pager,
-  );
+  ]) {
+    host.insertBefore(node, loading);
+  }
   /** @param {Staleness | null | undefined} stale */
   const showStale = (stale) => {
     const warned = stale ? staleNotice(stale, subject.kind) : null;
@@ -1184,86 +1373,41 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     next.dataset.tipText = at < count ? `Next: ${nameOf(at + 1)}` : "Next step";
   }
 
-  const navigation = createGuideNavigation({
-    first,
-    async read(step, signal) {
-      const response = await fetch(`/api/plugin/github/guided-review?${asks}&step=${step}`, {
-        signal,
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error("Could not read the guide");
+  /**
+   * What an answer shows, composed out of sight: its step's card in a section of its own,
+   * which takes the shown one's place, and the change to the rest of the guide, made in the
+   * same task (`apply`). *waits* are what its layout depends on that is not in hand yet.
+   *
+   * @typedef {Drawing & {detail: HTMLElement, apply: () => void}} Stage
+   */
+
+  /**
+   * The stage for *state* at place *at* of a guide of *steps* steps.
+   *
+   * @param {GuideState} state Any but the loading state, which shows nothing new.
+   * @param {number} at @param {number} steps
+   * @returns {Stage}
+   */
+  function compose(state, at, steps) {
+    const shown = element("section", "", "github-pull-guide-step");
+    /** @type {Stage} */
+    const stage = { detail: shown, drawn: [], waits: [], apply: () => {} };
+    // The overview's introduction is the page's, and shows once its Markdown is in.
+    const introduced = (/** @type {boolean} */ showsIntro) => {
+      if (showsIntro && deps.introductionReady !== undefined) {
+        stage.waits.push(deps.introductionReady());
       }
-      const result = await response.json();
-      if (result.state === "stack_moved") {
-        deps.moved?.();
-      }
-      if ("step" in result) {
-        // A failed stylesheet leaves the text readable in the page's own type.
-        if (result.assets !== undefined) {
-          styles ??= loadStyles(result.assets).catch((error) => {
-            console.warn("metabrowser github: the guide's text styles did not load", error);
-          });
-        }
-        // Without the diff plugin a step still reads, and says its excerpts are unavailable.
-        drawer ??= loadDrawPatch().catch((error) => {
-          console.warn("metabrowser github: the diff plugin did not load for the guide", error);
-          return null;
-        });
-        // The same plugin draws a file whole; without it, a file the rendered route renders
-        // says its diff is unavailable, beside its Open full diff. The view loads the rendered
-        // layer only when it draws such a file.
-        documents ??= loadDrawDocument().catch((error) => {
-          console.warn("metabrowser github: the diff plugin did not load for the guide", error);
-          return null;
-        });
-        // Without the allowlist a note shows as typed, as a description's text does.
-        proses ??= loadDrawProse().catch((error) => {
-          console.warn("metabrowser github: the guide's notes will show as typed", error);
-          return null;
-        });
-        const [, loaded, documented, inserted] = await Promise.all([
-          styles,
-          drawer,
-          documents,
-          proses,
-        ]);
-        drawPatch = loaded;
-        drawDocument = documented;
-        drawProse = inserted;
-      }
-      return result;
-    },
-    render(state, at, steps) {
-      undraw();
-      if (state.state === "loading") {
-        // The overview is the page's own, so it shows at once; a step waits for its read.
-        intro.hidden = at !== 0;
-        pager.hidden = true;
-        previous.disabled = next.disabled = true;
-        notice.hidden = true;
-        if (at === 0) {
-          detail.replaceChildren();
-          return;
-        }
-        const wait = element("div", "", "mb-delayed-loading");
-        wait.setAttribute("role", "status");
-        wait.setAttribute("aria-label", "Loading the review step");
-        const skeleton = element("div", "", "recent-loading github-pull-loading");
-        skeleton.setAttribute("aria-hidden", "true");
-        wait.append(skeleton);
-        detail.replaceChildren(wait);
-        return;
-      }
-      const available = "step" in state;
-      if (!available && steps > 0 && state.state !== "updated") {
-        // One step's read was refused or failed: the guide keeps its steps and the notice
-        // the last answer drew, and the refusal takes the step's place, under the list.
-        // The step is read again when the reader returns to it.
+    };
+    const available = "step" in state;
+    if (!available && steps > 0 && state.state !== "updated") {
+      // One step's read was refused or failed: the guide keeps its steps and the notice
+      // the last answer drew, and the refusal takes the step's place, under the list.
+      // The step is read again when the reader returns to it.
+      introduced(at === 0);
+      stage.apply = () => {
         paintOutline(at);
         pager.hidden = false;
         intro.hidden = at !== 0;
-        detail.replaceChildren();
         notice.hidden = false;
         notice.textContent =
           state.state === "invalid"
@@ -1273,72 +1417,240 @@ export function mountGuidedReview(host, introduction, subject, deps) {
               : stacked && STACK_STEP_REFUSALS.has(state.state)
                 ? (said[state.state] ?? STEP_MESSAGES.refused)
                 : STEP_MESSAGES.refused;
-        return;
-      }
-      // A refusal says one thing, its own reason, whatever a stale guide's answer carries.
-      showStale(available ? state.stale : null);
-      if (!available) {
+      };
+      return stage;
+    }
+    if (!available) {
+      introduced(true);
+      stage.apply = () => {
+        // A refusal says one thing, its own reason, whatever a stale guide's answer carries.
+        showStale(null);
         titles = [];
         entries = [];
         changedSteps = [];
         paintOutline(0);
         intro.hidden = false;
         pager.hidden = true;
-        detail.replaceChildren();
         notice.hidden = false;
         notice.textContent =
           state.state === "invalid"
             ? (state.message ?? "This guide is invalid.")
             : (said[state.state] ?? MESSAGES.error);
-        return;
-      }
+      };
+      return stage;
+    }
+    const answered = state;
+    introduced(at === 0);
+    stage.apply = () => {
+      showStale(answered.stale);
       notice.hidden = true;
-      titles = state.titles;
-      entries = state.outline;
-      changedSteps = outdated(state.stale) ? (state.stale.changed_steps ?? []) : [];
+      titles = answered.titles;
+      entries = answered.outline;
+      changedSteps = outdated(answered.stale) ? (answered.stale.changed_steps ?? []) : [];
       paintOutline(at);
       pager.hidden = false;
       intro.hidden = at !== 0;
-      if (at === 0) {
-        detail.replaceChildren();
+    };
+    if (at === 0) {
+      return stage;
+    }
+    const changed = outdated(answered.stale) ? (answered.stale.changed_steps ?? []) : [];
+    const step = stepProse(answered, drawProse, refusalNote);
+    const stale = answered.stale;
+    const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
+    /** @type {Drawers} */
+    const by = { patch: drawPatch, document: drawDocument, pins: answered.comparison };
+    // A file the reader folded stays folded while this guide is read at this head, by its
+    // step, its place in the step, and its path (mb-ez0x).
+    const folds = guideReads.folds(asks, answered.comparison.head);
+    references.append(
+      ...answered.references.map((reference, index) => {
+        const key = `${answered.step}\n${index}\n${reference.path ?? ""}`;
+        return renderReference(reference, ways, changeOf(stale, reference), by, stage, {
+          folded: folds.has(key),
+          heard: (expanded) => folds.set(key, !expanded),
+        });
+      }),
+    );
+    const kinds = answered.references.map((reference) => referenceDrawing(reference, by));
+    const canShowFull =
+      answered.references.some(
+        (reference, index) => kinds[index] === "document" && !reference.deleted,
+      ) ||
+      answered.references.some(
+        (reference, index) => kinds[index] === "patch" && wholeSource(reference, by) !== null,
+      );
+    const canShowExcerpt = answered.references.some(
+      (reference, index) => kinds[index] === "patch" && reference.side !== "old",
+    );
+    if (drawPatch?.controls && (canShowFull || canShowExcerpt || kinds.includes("document"))) {
+      const key = `${answered.comparison.head}:${answered.step}`;
+      const saved = blockModes.get(key) ?? (kinds.includes("document") ? null : "diff");
+      const initial = saved === "full" && !canShowFull ? "current" : saved;
+      const toolbar = element("div");
+      /** @param {Presentation} mode */
+      const apply = (mode) => {
+        for (const view of stage.drawn) {
+          view.show?.(mode);
+        }
+      };
+      const control = drawPatch.controls(toolbar, canShowFull, initial, (mode) => {
+        blockModes.set(key, mode);
+        apply(mode);
+      });
+      if (initial !== null) {
+        apply(initial);
+      }
+      stage.drawn.push(control);
+      references.prepend(toolbar);
+    }
+    // A step is a card, as Conversation draws a comment, headed as the author's guided
+    // review so it reads apart from the discussion.
+    const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");
+    // The badge leads its label as a page header's state badge leads its line, a gap
+    // apart (`.github-pull-guide-card-head`), never a space's width.
+    const entry = answered.group === null ? undefined : answered.outline[answered.group];
+    const group = entry?.kind === "group" ? entry : null;
+    const place = element(
+      "span",
+      groupedPlace(group?.title ?? null, answered.step, answered.step_count),
+    );
+    if (changed.includes(answered.step)) {
+      place.append(" · ", changedMark());
+    }
+    head.append(guideBadge(), place);
+    const card = element(
+      "section",
+      "",
+      "page-card github-pull-card github-pull-event github-pull-guide-card",
+    );
+    card.append(head, step, references);
+    // A group's note opens the group: it shows above its first step.
+    const opens =
+      group !== null && group.note !== null && group.children[0]?.step === answered.step;
+    shown.append(
+      ...(opens ? groupNote(group.note ?? "", answered, drawProse, refusalNote) : []),
+      card,
+    );
+    return stage;
+  }
+
+  /** The stage composed and laid out out of sight, until what it waits for is in. */
+  /** @type {Stage | null} */
+  let incoming = null;
+
+  /** Let a stage not shown yet go: the reader moved on before it was ready. */
+  function withdraw() {
+    if (incoming !== null) {
+      for (const view of incoming.drawn) {
+        view.dispose();
+      }
+      incoming.detail.remove();
+      incoming = null;
+    }
+  }
+
+  /**
+   * Show *stage* in place of what is shown, in one change: its section takes the shown one's
+   * place, and the step list, the notices, and the way on and back follow it.
+   *
+   * @param {Stage} stage
+   */
+  function show(stage) {
+    if (incoming === stage) {
+      incoming = null;
+    }
+    undraw();
+    drawn = stage.drawn;
+    stage.detail.classList.remove("github-pull-guide-incoming");
+    detail.replaceWith(stage.detail);
+    detail = stage.detail;
+    stage.apply();
+    waiting.hidden = true;
+    loading.remove();
+  }
+
+  /**
+   * Show *stage* now when nothing it waits for is out, and otherwise lay it out of sight, in
+   * the guide's column (`.github-pull-guide-incoming`), so its documents draw at the width
+   * they show at, and show it once they are in. Meanwhile the arrows' delayed mark says it
+   * is on its way, as it does while a step is read, and the arrows move on from the step at
+   * *at* of *steps*, as they do then, so a reader who presses again is not held back.
+   *
+   * @param {Stage} stage @param {number} at @param {number} steps
+   */
+  function present(stage, at, steps) {
+    withdraw();
+    if (stage.waits.length === 0) {
+      show(stage);
+      return;
+    }
+    incoming = stage;
+    stage.detail.classList.add("github-pull-guide-incoming");
+    host.append(stage.detail);
+    previous.disabled = at <= first;
+    next.disabled = at >= steps;
+    waiting.hidden = false;
+    void Promise.all(stage.waits.map((wait) => wait.catch(() => {}))).then(() => {
+      if (incoming === stage) {
+        show(stage);
+      }
+    });
+  }
+
+  const navigation = createGuideNavigation({
+    first,
+    async read(step, _signal, revision, moved) {
+      // The document's read, shared with any read ahead of it; the navigation drops an
+      // answer for a step the reader has left.
+      const result = await guideReads.read(asks, step, revision, moved);
+      if (result.state === "stack_moved") {
+        deps.moved?.();
+      }
+      if ("step" in result) {
+        // A failed stylesheet leaves the text readable in the page's own type.
+        if (result.assets !== undefined) {
+          styles ??= loadStyles(result.assets).then(
+            () => {
+              stylesIn = true;
+            },
+            (error) => {
+              stylesIn = true;
+              console.warn("metabrowser github: the guide's text styles did not load", error);
+            },
+          );
+        }
+        await Promise.all([styles, drawers]);
+        // A step with no stylesheets to load has its text styled as it stays.
+        stylesIn ||= styles === null;
+      }
+      return result;
+    },
+    peek(step, revision, moved) {
+      return stylesIn && drawersIn ? guideReads.peek(asks, step, revision, moved) : undefined;
+    },
+    prefetch(step, revision, moved) {
+      const run = () => {
+        reading.delete(cancel);
+        guideReads.prefetch(asks, step, revision, moved);
+      };
+      const cancel = deps.ahead?.(run) ?? (() => {});
+      reading.add(cancel);
+      if (deps.ahead === undefined) {
+        run();
+      }
+    },
+    render(state, at, steps) {
+      if (state.state === "loading") {
+        // What is shown stays until the step the reader went to is ready to show whole. The
+        // arrows move on from that step, so a reader who presses again is not held back.
+        withdraw();
+        previous.disabled = at <= first;
+        next.disabled = at >= steps;
+        waiting.hidden = false;
         return;
       }
-      const step = stepProse(state, drawProse, refusalNote);
-      const stale = state.stale;
-      const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
-      const drawers = { patch: drawPatch, document: drawDocument, pins: state.comparison };
-      references.append(
-        ...state.references.map((reference) =>
-          renderReference(reference, ways, changeOf(stale, reference), drawers, drawn),
-        ),
-      );
-      // A step is a card, as Conversation draws a comment, headed as the author's guided
-      // review so it reads apart from the discussion.
-      const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");
-      // The badge leads its label as a page header's state badge leads its line, a gap
-      // apart (`.github-pull-guide-card-head`), never a space's width.
-      const entry = state.group === null ? undefined : state.outline[state.group];
-      const group = entry?.kind === "group" ? entry : null;
-      const place = element(
-        "span",
-        groupedPlace(group?.title ?? null, state.step, state.step_count),
-      );
-      if (changedSteps.includes(state.step)) {
-        place.append(" · ", changedMark());
-      }
-      head.append(guideBadge(), place);
-      const card = element(
-        "section",
-        "",
-        "page-card github-pull-card github-pull-event github-pull-guide-card",
-      );
-      card.append(head, step, references);
-      // A group's note opens the group: it shows above its first step.
-      const opens = group !== null && group.note !== null && group.children[0]?.step === state.step;
-      detail.replaceChildren(
-        ...(opens ? groupNote(group.note ?? "", state, drawProse, refusalNote) : []),
-        card,
-      );
+      present(compose(state, at, steps), at, steps);
     },
   });
   previous.addEventListener("click", () => navigation.move(-1));
@@ -1357,6 +1669,11 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     ...navigation,
     dispose() {
       navigation.dispose();
+      for (const cancel of reading) {
+        cancel();
+      }
+      reading.clear();
+      withdraw();
       undraw();
     },
   };

@@ -151,7 +151,16 @@ function grouped(more = {}) {
 
 /** The page's host. Without *allowlist*, the inert allowlist does not load, as when its
  * script fails: `window.MetabrowserInertHtml` is never set. */
+/** The document's keep of step answers (guide-reads.js), which each host empties: each is a
+ * fresh load of the page. */
+let guideReads = null;
+/** The diff plugin's own `fileDisclosure` (diff-view.js), which its `guidePatchDrawer` hands
+ * the guide for the cards it draws: the stand-in below hands the same one, so the bar a
+ * step's file folds by here is the production one. */
+let fileDisclosure = null;
+
 function host({ allowlist = true } = {}) {
+  guideReads?.clear();
   const timers = new Map();
   /** Each read of the guide: its step, its signal, and the answer or failure that ends it. */
   const reads = [];
@@ -165,8 +174,12 @@ function host({ allowlist = true } = {}) {
    * the diff draws a row, its text a span. The diff plugin's own drawing (hunk bars, folds,
    * syntax) is its own, pinned by its tests and painted in the Chrome check. */
   const diff = {
-    mountFilePatch(body, change, patch, api) {
-      assert.equal(typeof api.ensureKindAssets, "function", "the diff draws with the SDK");
+    guidePatchDrawer() {
+      return Object.assign((body, change, patch) => this.mountFilePatch(body, change, patch), {
+        disclose: (section, folded, changed) => fileDisclosure(section, folded, changed),
+      });
+    },
+    mountFilePatch(body, change, patch) {
       const drawn = { path: change.new.path, patch, disposed: false };
       patches.push(drawn);
       for (const hunk of patch.hunks) {
@@ -234,6 +247,8 @@ function host({ allowlist = true } = {}) {
     status,
     headers: { get: () => null },
     json: async () => body,
+    // The guide reads its answer as text, whose length it keeps (guide-reads.js).
+    text: async () => JSON.stringify(body),
   });
   globalThis.fetch = async (route, init = {}) => {
     if (route.startsWith(`${GUIDE_ROUTE}?`)) {
@@ -299,6 +314,7 @@ function host({ allowlist = true } = {}) {
           shortCommit: (commit) => commit.slice(0, 7),
           icons: { toggle: "" },
           ensureKindAssets: async () => {},
+          whenIdle: require("./sdk-idle-fixture.js").whenIdle,
           plugins: {
             async load(name) {
               assert.equal(name, "diff", "the guide loads only the diff plugin");
@@ -460,7 +476,41 @@ const asked = (reads) => reads.map((read) => `step ${read.step}`).join(", ") || 
 
 async function run() {
   const page = await import(pathToFileURL(pagePath).href);
+  ({ guideReads } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
+  ));
+  ({ fileDisclosure } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href
+  ));
   const steps = [];
+  /** The card of the shown step's file with a diff, or, without *excerpt*, of its file with
+   * a sentence in a diff's place, as a reader finds it: its bar, the
+   * trigger that leads it, what the bar folds, and how it stands, which its trigger, its
+   * body, and its card must each say alike. */
+  const fileCard = (container, excerpt = true) => {
+    const section = container
+      .querySelectorAll(".github-pull-guide-reference")
+      .find((card) => (card.querySelector(".github-pull-guide-excerpt") !== null) === excerpt);
+    const bar = section.querySelector(".diff-file-bar");
+    const toggle = section.querySelector(".diff-file-toggle");
+    const body = section.querySelector(".diff-file-body");
+    return {
+      section,
+      bar,
+      toggle,
+      body,
+      /** A press anywhere on the bar, or a key on its trigger, whose click reaches the bar. */
+      press: (target = bar) => bar.events.get("click")({ target }),
+      stands() {
+        const open = toggle.getAttribute("aria-expanded") === "true";
+        assert.equal(body.classes.has("diff-file-body-collapsed"), !open, "the body agrees");
+        assert.equal(section.classes.has("diff-file-collapsed"), !open, "the card agrees");
+        assert.equal(toggle.classes.has("expanded"), open, "the chevron agrees");
+        assert.equal(toggle.classes.has("collapsed"), !open, "the chevron agrees");
+        return open ? "open" : "folded";
+      },
+    };
+  };
 
   // The front page of a pull request with a guide is Guided Review.
   {
@@ -629,15 +679,64 @@ async function run() {
       `Open full diff: ${first.opened.map((route) => `${route.tab} ${route.file}`).join("; ")}`,
     );
 
-    // Next asks for step 2 alone; leaving the tab with that read on its way disposes the
-    // view and aborts the read, and its late answer paints nothing.
+    // The excerpt's card folds as a file's does in Changes, by the diff plugin's own bar and
+    // chevron: the trigger is a button that leads the bar and names the file, everything
+    // under the bar folds, and folding disposes nothing the diff drew. The bar's motion and where it sits are
+    // Chrome's (tests/dom/github-guided-review-fold-chrome.mjs).
+    const fileOne = fileCard(view.container);
+    assert.equal(
+      fileOne.toggle.tag,
+      "button",
+      "the trigger is a button, which takes focus and keys",
+    );
+    assert.equal(fileOne.bar.children[0], fileOne.toggle, "the trigger leads the bar");
+    assert.equal(fileOne.toggle.getAttribute("aria-controls"), fileOne.body.getAttribute("id"));
+    assert.ok(fileOne.toggle.children[0].classes.has("diff-file-chevron"), "the chevron leads");
+    assert.equal(
+      fileOne.toggle.querySelector(".diff-file-path").textContent,
+      "src/app.txt",
+      "the trigger names the file",
+    );
+    assert.ok(link.classes.has("diff-file-view"), "Open full diff is the bar's view control");
+    assert.ok(
+      fileOne.body.querySelector(".github-pull-guide-excerpt") !== null,
+      "the bar folds the excerpt",
+    );
+    const folds = [fileOne.stands()];
+    fileOne.press();
+    folds.push(`its bar pressed: ${fileOne.stands()}, ${lines.length} rows kept`);
+    assert.equal(
+      view.container.querySelector(".github-pull-guide-excerpt").querySelectorAll(".diff-line")
+        .length,
+      lines.length,
+    );
+    assert.equal(first.patches[0].disposed, false, "folding disposes nothing");
+    fileOne.press(fileOne.toggle);
+    folds.push(`its trigger pressed: ${fileOne.stands()}`);
+    // A card that holds a sentence in a diff's place is built on the same bar, and folds.
+    const sentence = fileCard(view.container, false);
+    assert.equal(sentence.toggle.tag, "button");
+    sentence.press();
+    folds.push(`a card with no diff, its bar pressed: ${sentence.stands()}`);
+    sentence.press();
+    steps.push(`step 1's file: ${folds.join("; ")}`);
+    // Left folded, to be found open when the step is drawn again (below).
+    fileOne.press();
+    assert.equal(fileOne.stands(), "folded");
+
+    // Next asks for step 2 alone, and the step shown stays, its diff with it, until step 2
+    // is in hand to show in its place. Leaving the tab with that read on its way disposes
+    // the view and its diff; the read goes on for the document's keep, and its late answer
+    // paints nothing.
     view.press("Next step");
     await settle();
     const second = first.pending()[0];
     assert.equal(second.step, 2);
-    assert.equal(first.patches[0].disposed, true, "the next step's read disposes this diff");
+    assert.equal(first.patches[0].disposed, false, "the step shown stays while the next is read");
+    steps.push(`Next with step 2 on its way: step shown ${view.shown()}`);
     view.arrive("conversation");
     await settle();
+    assert.equal(first.patches[0].disposed, true, "leaving the tab disposes the step's diff");
     steps.push(
       `left for Conversation with step 2 on its way: read aborted ${second.signal.aborted}; guide ${view.guided() === null ? "gone" : "still there"}`,
     );
@@ -645,20 +744,41 @@ async function run() {
     await settle();
     assert.equal(view.guided(), null);
 
-    // Back on the tab, a view of its own is mounted again, on its overview, which reads
-    // step 1.
+    // Back on the tab, a view of its own is mounted again, on its overview, which the keep
+    // shows at once with the steps read before, reading none of them again.
+    const before = first.reads.length;
     view.arrive("guided");
     await settle();
-    steps.push(`its tab again: asked ${asked(first.reads.slice(2))}`);
-
-    // The page ends with a read on its way: the read is aborted.
-    const waiting = first.pending()[0];
+    steps.push(`its tab again: ${view.position()}; asked ${asked(first.reads.slice(before))}`);
+    view.press("Next step");
+    // A file the reader folded stays folded for the document, as the answers are kept
+    // (guide-reads.js, mb-ez0x): the guide mounted again on its tab draws step 1's file
+    // folded, and so does a step the reader leaves and comes back to; opened, it stays open.
+    const kept = [`back on the tab ${fileCard(view.container).stands()}`];
+    view.press("Next step");
+    view.press("Previous step");
+    kept.push(`after Next and Back ${fileCard(view.container).stands()}`);
+    fileCard(view.container).press();
+    view.press("Next step");
+    steps.push(
+      `and its kept steps at once: step shown ${view.shown()}; asked ${asked(first.reads.slice(before))}`,
+    );
+    view.press("Previous step");
+    kept.push(`opened, then Next and Back ${fileCard(view.container).stands()}`);
+    steps.push(`step 1's file, left folded: ${kept.join("; ")}`);
     view.handle.dispose();
-    steps.push(`the page ends: read aborted ${waiting.signal.aborted}`);
+    // The folds are a guide's at one head: the same guide read at a new head, whose files
+    // may differ, starts with none, and so does another guide.
+    const atHead = guideReads.folds("number=7", "b".repeat(40));
+    atHead.set("1\n0\nsrc/app.txt", true);
+    steps.push(
+      `a fold kept for a guide at its head: the same head ${guideReads.folds("number=7", "b".repeat(40)).has("1\n0\nsrc/app.txt")}, another guide ${guideReads.folds("number=8", "b".repeat(40)).has("1\n0\nsrc/app.txt")}, a new head ${guideReads.folds("number=7", "c".repeat(40)).has("1\n0\nsrc/app.txt")}, the first head again ${guideReads.folds("number=7", "b".repeat(40)).has("1\n0\nsrc/app.txt")}`,
+    );
   }
 
   // Replacement: a new record revision asks for the step on screen again, and drops the read
-  // on its way; the late answer to the dropped read paints nothing.
+  // on its way, which goes on for the document's keep; the late answer to the dropped read
+  // paints nothing.
   {
     const second = host();
     const view = second.mount(page, "guided", envelope(1));
@@ -786,7 +906,7 @@ async function run() {
     await settle();
     const answered = step(1, 1, 3);
     const head = "c".repeat(40);
-    wide.pending()[0].answer({
+    const past = {
       ...answered,
       state: "stale",
       stale: {
@@ -871,9 +991,19 @@ async function run() {
           target: { subject: "Fetched and dated", committed_at: "2026-08-29T14:40:00Z" },
         }),
       ],
-    });
+    };
+    wide.pending()[0].answer(past);
     await settle();
     view.press("Next step");
+    await settle();
+    // It cites pull requests this copy has not read, so its answer is not kept: the step is
+    // read again as the reader moves to it, and fills in once they are read (`retryable` in
+    // guide-reads.js).
+    const again = wide.pending();
+    steps.push(
+      `moving to it reads it again: ${again.length} read, ${view.shown() ?? "the overview"} shown meanwhile`,
+    );
+    again[0].answer(past);
     await settle();
     steps.push(`a step past its pull request: ${view.card()}; ${view.references()}`);
     const plain = {
@@ -1382,27 +1512,28 @@ async function run() {
       const at = Number(new URL(route, "http://localhost").searchParams.get("step"));
       const changed = ["src/app.txt", "gone.txt"];
       const refused = refuse(at);
+      const body = refused ?? {
+        ...step(1, at),
+        stack: 70,
+        carrier: 10,
+        state: "stale",
+        stale: {
+          guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+          current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+          github_newer: false,
+          history: "rewritten",
+          commit_count: 1,
+          commits: [],
+          changed_paths: changed,
+          changed_steps: [1],
+        },
+      };
       return {
         ok: true,
         status: 200,
         headers: { get: () => null },
-        json: async () =>
-          refused ?? {
-            ...step(1, at),
-            stack: 70,
-            carrier: 10,
-            state: "stale",
-            stale: {
-              guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
-              current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
-              github_newer: false,
-              history: "rewritten",
-              commit_count: 1,
-              commits: [],
-              changed_paths: changed,
-              changed_steps: [1],
-            },
-          },
+        json: async () => body,
+        text: async () => JSON.stringify(body),
       };
     };
     const { mountGuidedReview } = await import(
@@ -1424,6 +1555,8 @@ async function run() {
         loadDrawDocument: async () => null,
         loadDrawProse: async () => null,
         refusalNote: () => null,
+        // Nothing is read ahead here, so each step is read when the reader moves to it.
+        ahead: () => () => {},
       },
     );
     view.show(revisionOf(1), false);
@@ -1491,6 +1624,8 @@ async function run() {
       carrier: 10,
       message: "The stack-review block cannot be read.",
     });
+    // On a fresh page, whose keep holds none of the steps read above.
+    guideReads.clear();
     const whole = new Element("section");
     const refusedView = mountGuidedReview(
       whole,

@@ -51,8 +51,8 @@ const context = {
     refChip: (name) => element(document, "span", { class: "ref-chip" }, name),
   },
   METABROWSER_SOURCE_PIN: { ref: recorded.branches.body.ref, ref_name: "topic" },
-  async fetch(route) {
-    requests.push(route);
+  async fetch(route, init) {
+    requests.push(init?.method === "POST" ? `POST ${route} ${init.body}` : route);
     const answer = recorded.branches;
     return { status: answer.status, json: async () => answer.body };
   },
@@ -100,6 +100,90 @@ function describe(node) {
     return `the row ${node.querySelector(".ref-chip")?.textContent ?? "?"}`;
   }
   return node.textContent || node.tagName.toLowerCase();
+}
+
+// A checkout's page on a branch, whose chooser has the Working tree tab before its lists.
+// An arrow key onto that tab only shows it: the page asks for a listing and switches
+// nothing. A press on it, which is what a pointer's click and Enter or Space on the
+// focused tab both are, asks the pin route for the working tree. The same glue, so the
+// same listeners the shell has; the listing's answer is the recorded mirror's, which is
+// enough for the list to open.
+async function pressAndArrow() {
+  context.METABROWSER_SOURCE_CHECKOUT = { working_tree: false };
+  context.METABROWSER_SOURCE_PIN = { pin: recorded.branches.body.pin, ref: "refs/heads/feature" };
+  const selector = context.MetabrowserSourceRefSelector.mount(host);
+  selector.activate();
+  await settle();
+  const tabs = () => host.querySelectorAll(".source-ref-selector-kinds button");
+  const checked = () => tabs().find((tab) => tab.getAttribute("aria-checked") === "true");
+  const named = () => tabs().map((tab) => tab.textContent + (tab === checked() ? " (shown)" : ""));
+  const opened = { tabs: named(), focus: describe(document.activeElement) };
+  check("a page on a branch opens on Branches", checked()?.textContent === "Branches");
+  requests.length = 0;
+  checked().focus();
+  const arrow = keyEvent("keydown", "ArrowLeft", { target: document.activeElement });
+  document.activeElement.dispatchEvent(arrow);
+  await settle();
+  const arrowed = {
+    tabs: named(),
+    focus: describe(document.activeElement),
+    requests: [...requests],
+  };
+  check("← from Branches shows Working tree", checked()?.textContent === "Working tree");
+  check(
+    "an arrow key onto Working tree switches nothing",
+    requests.length === 1 && !requests.some((request) => request.startsWith("POST")),
+    requests.join(", "),
+  );
+  requests.length = 0;
+  checked().click();
+  await settle();
+  const pressed = { requests: [...requests] };
+  check(
+    "a press on Working tree asks the pin route for the working tree, once",
+    requests.length === 1 && requests[0].startsWith('POST /api/source/pin {"working_tree":true'),
+    requests.join(", "),
+  );
+  selector.dispose();
+  return { opened, arrowed, pressed, refresh: await pressRefresh() };
+}
+
+// The navigation's Refresh reads an open list again, so a press on it is not a press away
+// from the list, as a press anywhere else beside it is: the list stays open, is asked for
+// again, and the row that had focus has it back.
+async function pressRefresh() {
+  const refresh = element(document, "button", { type: "button", id: "nav-refresh" }, "Refresh");
+  document.body.append(refresh);
+  const selector = context.MetabrowserSourceRefSelector.mount(host);
+  selector.activate();
+  await settle();
+  const panel = host.querySelector(".source-ref-selector-panel");
+  const row = host.querySelectorAll(".source-ref-selector-row")[1];
+  row.focus();
+  requests.length = 0;
+  // A pointer's press: the button takes focus, and its click asks the plan, which asks
+  // the mounted selector to read its list again (static/refresh-plan.js, `refs`).
+  refresh.dispatchEvent({ type: "pointerdown", target: refresh, bubbles: true });
+  refresh.focus();
+  refresh.click();
+  const stayedOpen = !panel.hidden;
+  await selector.reread();
+  await settle();
+  const after = {
+    listOpen: stayedOpen && !panel.hidden,
+    requests: [...requests],
+    focus: describe(document.activeElement),
+  };
+  check("a press on Refresh leaves the list open", after.listOpen);
+  check("Refresh asks for the open list again", requests.length === 1, requests.join(", "));
+  check("the row that had focus has it back", document.activeElement === row, after.focus);
+  elsewhere.dispatchEvent({ type: "pointerdown", target: elsewhere, bubbles: true });
+  elsewhere.click();
+  const pressedElsewhere = { listOpen: !panel.hidden };
+  check("a press anywhere else closes the list", panel.hidden);
+  selector.dispose();
+  refresh.remove();
+  return { after, pressedElsewhere };
 }
 
 async function main() {
@@ -188,9 +272,10 @@ async function main() {
     plain[3].taken && !plain[3].listOpen && focused() === selector.button,
   );
   selector.dispose();
+  const workingTreeTab = await pressAndArrow();
 
   process.stdout.write(
-    `${JSON.stringify({ opened, chords: Object.keys(chords), chorded, plain }, null, 2)}\n`,
+    `${JSON.stringify({ opened, chords: Object.keys(chords), chorded, plain, workingTreeTab }, null, 2)}\n`,
   );
   if (failures.length > 0) {
     process.stderr.write(`${failures.join("\n")}\n`);

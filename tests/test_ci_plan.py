@@ -32,6 +32,8 @@ NARROW = [PR_CHROME_PYTHON]
 ADMITTED_GITS = ["2.43.7", "2.50.1", "2.56.1"]
 PR_ADMITTED_GIT = "2.43.7"
 TIERS = ("unit", "goldens", "chrome", "admitted-git")
+# How the summary names the one Chrome tier there is.
+WHOLE_TIER = "whole (make test-chrome), slow tests included"
 REPO = "example/project"
 Json = dict[str, object]
 # Well under the suite's per-test budget (pyproject.toml), as every bound here must be.
@@ -540,10 +542,10 @@ def test_a_push_to_main_runs_every_tier_whole_on_every_interpreter_and_git(
     assert result.returncode == 0, result.log
     assert result.outputs["path"] == "main"
     assert result.chrome == PYTHONS
-    assert (result.outputs["chrome"], result.outputs["chrome-target"]) == ("whole", "test-chrome")
+    assert result.outputs["chrome"] == "whole" and "chrome-target" not in result.outputs
     assert json.loads(result.outputs["admitted-gits"]) == ADMITTED_GITS
     _whole_parts(result)
-    assert "| Chrome tier | whole (test-chrome): the whole tier, in " in result.summary
+    assert f"| Chrome tier | {WHOLE_TIER}: the main path, in " in result.summary
 
 
 def test_a_pull_request_while_main_is_red_runs_main_s_whole_matrix(
@@ -554,7 +556,7 @@ def test_a_pull_request_while_main_is_red_runs_main_s_whole_matrix(
 
     assert result.outputs["path"] == "main"
     assert result.chrome == PYTHONS
-    assert (result.outputs["chrome"], result.outputs["chrome-target"]) == ("whole", "test-chrome")
+    assert result.outputs["chrome"] == "whole"
     assert json.loads(result.outputs["admitted-gits"]) == ADMITTED_GITS
     _whole_parts(result)
 
@@ -579,9 +581,12 @@ def test_a_pull_request_while_main_is_green_takes_the_short_path(
     assert result.chrome == [PR_CHROME_PYTHON]
     assert json.loads(result.outputs["admitted-gits"]) == [PR_ADMITTED_GIT]
     _whole_parts(result)
-    # More, shorter parts than main's, on the one interpreter.
+    # More, shorter parts than main's, on the one interpreter. The Chrome tier's are
+    # shorter for holding less, not for leaving a test out: both paths run all of it.
     main = plan(tmp_path, repos.work, event="push", base="", runs=None, env=repos.env)
     assert len(result.parts("unit")) > len(main.parts("unit"))
+    assert len(result.parts("chrome")) > len(main.parts("chrome"))
+    assert result.outputs["chrome"] == main.outputs["chrome"] == "whole"
     assert len(result.parts("admitted-git")) > len(main.parts("admitted-git"))
 
 
@@ -615,7 +620,7 @@ NOT_BROWSER = ""
         ({".github/workflows/ci.yml": "x"}, "the workflow"),
         ({"Makefile": "x"}, "the targets"),
         ({"devtools/ci_plan.sh": "x"}, "this decision"),
-        ({"devtools/shard_weights.json": "{}"}, "which Chrome tests are slow"),
+        ({"devtools/shard_weights.json": "{}"}, "the tier is dealt"),
         # A mixed change: one browser path among others is enough.
         (
             {"docs/guide.md": "x", "src/metabrowser/cli/main.py": "x", "tests/dom/a.js": "x"},
@@ -650,12 +655,10 @@ def test_a_green_pull_request_runs_chrome_only_for_a_change_to_a_browser_path(
         assert "no changed path is a browser path" in row
         assert "every push to main runs the whole tier" in row
     else:
-        assert (result.outputs["chrome"], result.outputs["chrome-target"]) == (
-            "fast",
-            "test-chrome-fast",
-        ), row
+        # Every Chrome test, the slow ones too: a pull request has no narrower tier.
+        assert result.outputs["chrome"] == "whole", row
         # The summary names the paths that decided it, and why each counts.
-        assert reason in row and "without the slow tests" in row
+        assert reason in row and WHOLE_TIER in row
         assert any(f"`{name}`" in row for name in files)
 
 
@@ -665,7 +668,7 @@ def test_a_change_to_many_browser_paths_names_the_first_and_counts_the_rest(
     files = {f"src/metabrowser/static/part-{index:02}.js": "x" for index in range(11)}
     result = _green_pull_request(tmp_path, repos, files)
 
-    assert result.outputs["chrome"] == "fast"
+    assert result.outputs["chrome"] == "whole"
     assert "for 11 changed browser path(s)" in result.summary
     assert "; and 3 more" in result.summary
     assert "part-07.js" in result.summary and "part-08.js" not in result.summary
@@ -677,14 +680,14 @@ def test_a_path_git_quotes_and_a_commit_that_is_no_merge_run_chrome(
     """What the plan cannot read as a change costs runner minutes, never coverage."""
 
     result = _green_pull_request(tmp_path, repos, {"docs/na\u00efve.md": "x"})
-    assert result.outputs["chrome"] == "fast"
+    assert result.outputs["chrome"] == "whole"
     assert "a path git quotes" in result.summary
 
     main = repos.git(repos.work, "rev-parse", "main")
     repos.git(repos.checkout, "checkout", "--quiet", "--detach", "origin/feature")
     result = plan(tmp_path, repos.checkout, runs=[_done(112, main, "success")], env=repos.env)
     assert result.returncode == 0, result.log
-    assert result.outputs["chrome"] == "fast"
+    assert result.outputs["chrome"] == "whole"
     assert "is not a merge commit, so its change is not read" in result.summary
 
 

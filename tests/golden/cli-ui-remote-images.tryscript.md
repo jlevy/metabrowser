@@ -100,6 +100,34 @@ $ node tests/dom/remote-images-session.js
       ],
       "reloads": 1
     }
+  },
+  "sourceLayout": {
+    "unset": {
+      "opened": {
+        "value": "split",
+        "disabled": false,
+        "writes": []
+      },
+      "writes": [
+        {
+          "key": "diff.layout",
+          "value": "unified"
+        }
+      ]
+    },
+    "savedUnified": {
+      "opened": {
+        "value": "unified",
+        "disabled": false,
+        "writes": []
+      },
+      "writes": [
+        {
+          "key": "diff.layout",
+          "value": "split"
+        }
+      ]
+    }
   }
 }
 ? 0

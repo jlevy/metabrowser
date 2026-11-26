@@ -141,6 +141,17 @@ def clear_repo_cache() -> None:
     _REFRESHING.clear()
 
 
+def forget_repo_info(root: Path | GitLocation) -> None:
+    """Drop what is kept for *root*, so the next :func:`repo_info` discovers it again.
+
+    For a caller that has read the checkout's ``HEAD`` itself and found it elsewhere than
+    the identity kept for the TTL says: a listing of the checkout's refs, which marks the
+    branch checked out (``api_source_refs``).
+    """
+
+    _REPO_CACHE.pop(as_location(root).identity, None)
+
+
 def _negative(reason: str) -> GitRepoInfo:
     """The envelope every endpoint returns when there is no readable repo."""
     return GitRepoInfo(is_repo=False, root=None, head=None, reason=reason)
@@ -378,5 +389,6 @@ register_root_callback(clear_repo_cache)
 __all__ = [
     "RepoContext",
     "clear_repo_cache",
+    "forget_repo_info",
     "repo_info",
 ]

@@ -56,7 +56,7 @@ $ node tests/dom/nav-collapse-session.js
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Group by","Modified within","File type"],
+      "numbers": ["Refresh","Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -131,7 +131,7 @@ $ node tests/dom/nav-collapse-session.js
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Group by","Modified within","File type"],
+      "numbers": ["Refresh","Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -187,7 +187,7 @@ $ node tests/dom/nav-collapse-session.js
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Group by","Modified within","File type"],
+      "numbers": ["Refresh","Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",
@@ -221,7 +221,7 @@ $ node tests/dom/nav-collapse-session.js
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
-      "numbers": ["Group by","Modified within","File type"],
+      "numbers": ["Refresh","Group by","Modified within","File type"],
       "badges": [],
       "strip": {
         "surface": "nav",

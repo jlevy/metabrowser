@@ -24,10 +24,10 @@ verdict. The fast CI plan (``docs/project/specs/active/plan-2026-11-16-fast-ci.m
   ``SHARD_OUTPUTS`` names for it, which ``devtools/ci_plan.sh`` writes as ``1/N``
   through ``N/N``; a ``stack-integration`` matrix list deals each part ``1`` through
   ``N``; no matrix has ``include`` or ``exclude``.
-- **The Chrome tier.** The ``chrome`` job's one ``make`` step is ``CHROME_RUN``, whose
-  target is the ``plan`` output ``chrome-target``, and its only condition is
-  ``CHROME_IF``. ``devtools/ci_plan.sh`` gives a push to ``main`` the whole tier
-  (``make test-chrome``) and never ``none``.
+- **The Chrome tier.** The ``chrome`` job's one ``make`` step is ``CHROME_RUN``, the
+  whole tier, and its only condition is ``CHROME_IF``: a run has every Chrome test or
+  no Chrome job, never some of the tier. ``devtools/ci_plan.sh`` never gives a push to
+  ``main`` ``none``.
 - **Nothing silenced.** A ``make`` step is that one command, with no shell around it,
   and its words are ``make``, target names, and ``SHARD=${{ matrix.shard }}``, so no
   option ignores a failure or runs nothing; a ``stack-integration`` part's are ``-k``,
@@ -113,15 +113,14 @@ PLAN_GITS: Final = PLAN_LIST.format(output="admitted-gits")
 PLAN_OUTPUTS: Final = (
     "pythons",
     "chrome",
-    "chrome-target",
     "admitted-gits",
     *SHARD_OUTPUTS.values(),
 )
 STEP_OUTPUT: Final = "${{{{ steps.decide.outputs.{output} }}}}"
-# The Chrome job's one make step: the plan job names the target, test-chrome for the
-# whole tier or test-chrome-fast for a pull request's. And the one condition it may
-# carry, under which ci-ok accepts its skip (devtools/ci_verdict.sh).
-CHROME_RUN: Final = "make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}"
+# The Chrome job's one make step: the whole tier on every path, a target written out so
+# that no plan output can name a narrower one. And the one condition it may carry,
+# under which ci-ok accepts its skip (devtools/ci_verdict.sh).
+CHROME_RUN: Final = "make test-chrome SHARD=${{ matrix.shard }}"
 CHROME_IF: Final = "needs.plan.outputs.chrome != 'none'"
 MATRIX_PYTHON: Final = "${{ matrix.python-version }}"
 PLAN_JOB: Final = "plan"
@@ -460,9 +459,8 @@ def _check_steps(found: dict[str, Json]) -> list[str]:
             if condition is not None and not _may_carry(name, str(condition), command):
                 errors.append(f"ci.yml job {name} has a step under if: {condition}")
             if not make_targets(command):
-                # A make whose target is an expression names none: only these two may.
-                given = {CHROME_JOB: CHROME_RUN, STACK_JOB: STACK_RUN}.get(name)
-                if MAKE_WORD.search(command) and command.strip() != given:
+                # A make whose target is an expression names none: only this one may.
+                if MAKE_WORD.search(command) and (name, command.strip()) != (STACK_JOB, STACK_RUN):
                     errors.append(
                         f"ci.yml job {name} runs `{command.strip()}`, a make with no target named"
                     )

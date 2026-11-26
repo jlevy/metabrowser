@@ -834,6 +834,9 @@ first step. Give it these groups and steps, in this order:
 - Keep each note to five lines, in the present tense, about the end state.
 - Cite at most three references a step, except in the layers step, which cites every
   layer; split the Documents step when its documents would pass three.
+  A step holds at most `MAX_REFERENCES` references, so a stack with more layers than
+  that splits its layers step into consecutive steps, bottom up, each titled with the
+  places it covers.
 - Never write narration by layer or by commit, a file inventory (the page lists every
   file the stack changes), anything a layer’s guide says (cite its `{pull}`), how the
   design evolved, review rounds, commit IDs, or counts the page’s header shows.
@@ -929,9 +932,14 @@ added above it leaves in place:
   every layer’s state `merged`, and its guide still reads `ready`: write it as for an
   open stack, but leave the merge order out of its testing step.
 
-The same answer’s `.files` holds the files the stack changes, all of them unless
-`.truncated` is true, each with the layers that change it, bottom up, so an Areas step
-can cite the `{pull}` of the layer that makes the change it is about:
+The same answer’s `.files` holds the files the stack changes, each with the layers that
+change it, bottom up, so an Areas step can cite the `{pull}` of the layer that makes the
+change it is about. It holds all of them only when `.truncated` is false and `.lacking`
+is empty: `.lacking` names the layers whose heads the top layer does not contain yet,
+whose files are left out until a restack brings them in, and a reference to one of those
+files answers `path_not_changed`. Write the guide once `.lacking` is empty; for a stack
+that will not be restacked, such as one whose layers have all merged, write it anyway
+and cite a lacking layer by its `{pull}`, or a file of it by `{pull, path}`:
 
 ```shell
 jq -r '.files[] | "\(.path) → \([.layers[].number] | map(tostring) | join(" "))"' <tmp>/stack.json
@@ -1011,6 +1019,8 @@ After a push to any layer, or a restack, read `.state` and `.stale.changed_steps
 the stack’s new ones, and publish and confirm the guide again.
 A new top layer needs no move of the block: the guide is still found where it is, and
 reads out of date until you refresh it.
+Its pins are always the whole stack’s pair, `.comparison.left` and `.comparison.right`,
+never the pair of the layer that carries it, so moving them to a new top is the refresh.
 
 `--present` cannot name a stack’s page.
 To show the user the guide, present the top layer’s pull-request URL and tell them to

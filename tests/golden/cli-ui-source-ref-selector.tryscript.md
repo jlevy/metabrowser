@@ -33,42 +33,8 @@ draws about as many rows for every ref as for a few; before a row is measured, t
 rows. The row that takes Tab is drawn too wherever the list is scrolled, since focus may
 be on it and Tab from the filter box goes to it.
 
-`checkout` is the same module as a served checkout’s selector: a folder that is a
-repository’s root, recorded in
-`tests/fixtures/source-ref-selector-checkout-responses.json` from the checkout
-`tests/source_checkout_fixture.py` builds.
-Its panel begins with the working tree, which is what a folder opens on and the one
-choice that is not a ref, and has a third list, the remote-tracking branches.
-A branch is shown as a pinned revision, at the revision’s address for the page’s file.
-The checked-out branch is badged and is a ref like any other, so choosing it shows its
-commit; only the working-tree row asks the pin route for the working tree, and the row’s
-button back from a revision, `back`, which calls the same `chooseWorkingTree`. The
-button says which view the page shows before the ref: “Working tree” and the branch the
-files on disk are on, which the page names as the server writes it and as each listing
-reads `HEAD` again, or “Revision” and the ref chosen, so the checked-out branch’s own
-revision never reads as its working tree (mb-cxpq).
-A way back that fails with the list closed says why in the row.
-A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
-does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
-`labels` are the button on the working tree on a branch, at a detached `HEAD`, and with
-a `HEAD` the server could not read, then on a branch, a remote-tracking branch, a tag,
-and a commit, each with its view word’s tooltip.
-A folder holding a `.git` that Git does not take for a repository’s root loses its row
-when the listing says so, and a Git older than the one a checkout’s revisions are read
-with is refused in the server’s own words.
-`guard` is what each kind of page names on its data requests
-(`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
-its commit, a checkout’s working tree the word `working-tree`, and a plain folder
-nothing, since its server can serve nothing else.
-`folders` is where the Working tree row cuts a folder’s path to keep the folder’s own
-name whole: at the name the server sends, whichever separator the path was joined with,
-and nowhere when the folder is the home directory, whose path is `~`. `hold` is what the
-page’s own data requests do while it switches: the server may serve the other subject
-before the page has gone, so each waits for the answer and is held while the page goes.
-The guard sends them when the switch is refused or changes nothing, when the selector is
-taken away, when the back/forward cache shows the page again, and at the hold’s bound,
-which runs from the ask; an earlier switch’s bound does not end a later hold, and a
-request given up while it is held settles at once and is not sent.
+A served checkout’s conversation is a session of its own, below: one transcript of both
+is more than a golden can match.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -424,7 +390,72 @@ $ node tests/dom/source-ref-selector-session.js
     "10001 rows 28 px tall (every 4th 46 px), scrolled 115264 px in 320 px, Tab on row 0: rows 3526 to 3577 and row 0",
     "10001 rows 28 px tall (every 4th 46 px), scrolled 324726 px in 320 px, Tab on row 10000: rows 9971 to 10001",
     "10001 rows 28 px tall (every 10,001st 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 31"
-  ],
+  ]
+}
+? 0
+```
+
+## A Served Checkout
+
+The same module is a served checkout’s selector: a folder that is a repository’s root.
+`tests/dom/source-ref-selector-checkout-session.js` plays it, on what the application
+answered for the checkout `tests/source_checkout_fixture.py` builds, recorded in
+`tests/fixtures/source-ref-selector-checkout-responses.json`.
+
+Its tabs begin with **Working tree**, which is what a folder opens on and the one choice
+that is not a ref, and it has a list more, the remote-tracking branches.
+A list opens on the tab that holds what the page shows (`opens`): the working tree’s on
+a page of the files on disk, where its one entry is current, and a ref’s own list on a
+page of that ref. The working tree’s tab asks for no refs (`kind=working_tree`), and its
+entry names the branch `HEAD` is on, or the commit a detached one is at, and the
+folder’s path.
+
+A branch is shown as a pinned revision, at the revision’s address for the page’s file.
+The checked-out branch is badged and is a ref like any other, so choosing it shows its
+commit. A press on the Working tree tab from a page that shows a ref (`pressKind`) asks
+the pin route for the working tree, as choosing the tab’s entry does; an arrow key onto
+the tab (`setKind`) only shows its entry, and a press while the working tree is already
+shown has nothing to switch.
+The button names what the page shows in one form: “Working tree” and the branch the
+files on disk are on, or a ref alone, so the checked-out branch’s own revision never
+reads as its working tree (mb-cxpq), and the row is its label and the chooser’s button
+in every state.
+
+A `HEAD` that moves outside the page, in a terminal or an agent’s, is named in place:
+`headChanged`, which the page’s watch on the checkout’s `HEAD` calls, asks where it is,
+and the row, its tooltip (`tip`), the open tab’s entry, and an open Branches list’s
+“checked out” mark follow, with no navigation.
+`renders` counts the paints, so an answer that says the same is seen to draw nothing.
+
+The same selector heads the Commits tab, which shows the revision chosen: a switch made
+there names no address, and the page reloads on Commits at the tab’s own landing, the
+`/view/` history entry whose state is `gitLanding`, where its row names the revision.
+A switch that fails says why in the list.
+A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
+does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
+`labels` are the button on the working tree on a branch, at a detached `HEAD`, and with
+a `HEAD` the server could not read, then on a branch, a remote-tracking branch, a tag,
+and a commit, each with its tooltip, which only the working tree’s words have.
+A folder holding a `.git` that Git does not take for a repository’s root loses its row
+when the listing says so, and a Git older than the one a checkout’s revisions are read
+with is refused in the server’s own words.
+`guard` is what each kind of page names on its data requests
+(`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
+its commit, a checkout’s working tree the word `working-tree`, and a plain folder
+nothing, since its server can serve nothing else.
+`folders` is where the working tree’s entry cuts a folder’s path to keep the folder’s
+own name whole: at the name the server sends, whichever separator the path was joined
+with, and nowhere when the folder is the home directory, whose path is `~`. `hold` is
+what the page’s own data requests do while it switches: the server may serve the other
+subject before the page has gone, so each waits for the answer and is held while the
+page goes. The guard sends them when the switch is refused or changes nothing, when the
+selector is taken away, when the back/forward cache shows the page again, and at the
+hold’s bound, which runs from the ask; an earlier switch’s bound does not end a later
+hold, and a request given up while it is held settles at once and is not sent.
+
+```console
+$ node tests/dom/source-ref-selector-checkout-session.js
+{
   "checkout": {
     "steps": [
       {
@@ -437,7 +468,55 @@ $ node tests/dom/source-ref-selector-session.js
         }
       },
       {
-        "step": "the working tree is listed above the branches, and is what is served",
+        "step": "opening asks where the working tree is, and for no refs",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": true,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "the list opens on the working tree's tab, its one entry current",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "the checkout's branches, the checked-out one first and marked",
         "requests": [
           "GET /api/source/refs?kind=branch"
         ],
@@ -445,11 +524,12 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",
@@ -465,7 +545,7 @@ $ node tests/dom/source-ref-selector-session.js
         }
       },
       {
-        "step": "a checkout has a third list, its remote-tracking branches",
+        "step": "a checkout has a list more, its remote-tracking branches",
         "requests": [
           "GET /api/source/refs?kind=remote"
         ],
@@ -473,11 +553,12 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "remote",
           "query": "",
@@ -500,11 +581,12 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "tag",
           "query": "",
@@ -519,6 +601,31 @@ $ node tests/dom/source-ref-selector-session.js
         }
       },
       {
+        "step": "a press on Working tree while it is shown only shows its tab",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        }
+      },
+      {
         "step": "a branch is asked for by its ref, with the folder's address",
         "requests": [
           "POST /api/source/pin {\"ref\":\"refs/heads/feature\",\"view\":\"/view/README.md\"}"
@@ -527,11 +634,12 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",
@@ -553,11 +661,12 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",
@@ -576,30 +685,29 @@ $ node tests/dom/source-ref-selector-session.js
         ]
       },
       {
-        "step": "the button names the branch shown, a revision, and offers the way back",
+        "step": "the button names the branch shown, and nothing else",
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: feature",
-          "back": "[← Working tree]",
+          "button": "Branch: feature",
           "open": false
         }
       },
       {
-        "step": "the branch shown is current, and the working tree no longer is",
+        "step": "the list opens on Branches, where the branch shown is current",
         "requests": [
           "GET /api/source/refs?kind=branch"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: feature",
-          "back": "[← Working tree]",
+          "button": "Branch: feature",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout)",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",
@@ -615,20 +723,45 @@ $ node tests/dom/source-ref-selector-session.js
         }
       },
       {
+        "step": "an arrow key onto Working tree shows its entry and switches nothing",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: feature",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        }
+      },
+      {
         "step": "the checked-out branch opens its commit, not the working tree",
         "requests": [
           "POST /api/source/pin {\"ref\":\"refs/heads/topic\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: feature",
-          "back": "[← Working tree]",
+          "button": "Branch: feature",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout)",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",
@@ -651,21 +784,66 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: topic",
-          "back": "[← Working tree]",
+          "button": "Branch: topic",
           "open": false
         }
       },
       {
-        "step": "the working tree is asked for by name, not by a ref",
+        "step": "the checked-out branch is current in Branches once it is shown",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] [current] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
+          ],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "a press on Working tree asks for the files on disk, not for a ref",
         "requests": [
           "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: topic",
-          "back": "[← Working tree]",
-          "open": false
+          "button": "Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": true,
+          "rows": [
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] [current] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
+          ],
+          "note": "",
+          "error": null
         }
       },
       {
@@ -673,75 +851,352 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: topic",
-          "back": "[← Working tree]",
-          "open": false
+          "button": "Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": true,
+          "rows": [
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] [current] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
+          ],
+          "note": "",
+          "error": null
         },
         "navigated": [
           "/view/README.md"
         ]
       },
       {
-        "step": "a failed way back says so in the row, with the list closed",
+        "step": "a switch on the Commits tab names no address",
         "requests": [
+          "POST /api/source/pin {\"ref\":\"refs/heads/feature\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        }
+      },
+      {
+        "step": "the page reloads on the Commits tab's own landing",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        },
+        "navigated": [
+          "/view/ {\"gitLanding\":true}"
+        ]
+      },
+      {
+        "step": "the reloaded Commits tab's row names the revision chosen there",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: feature",
+          "open": false
+        }
+      },
+      {
+        "step": "a switch that failed says so in the list, which stays open",
+        "requests": [
+          "GET /api/source/refs?kind=branch",
           "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: topic",
-          "back": "[← Working tree]",
-          "open": false,
+          "button": "Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout)",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] [current] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
+          ],
+          "note": "",
           "error": "The switch request failed."
         }
       },
       {
-        "step": "opening and closing the list clears it",
-        "requests": [
-          "GET /api/source/refs?kind=branch"
-        ],
+        "step": "closing the list clears it",
+        "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: topic",
-          "back": "[← Working tree]",
+          "button": "Branch: topic",
           "open": false
         }
       },
       {
-        "step": "a page drawn before a switch in a terminal names the branch it was on",
+        "step": "a page drawn before a checkout in a terminal names the branch it was on",
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Working tree · Branch: feature",
+          "button": "Working tree · Branch: topic",
           "open": false
         },
-        "tip": "The files on disk, live. The checkout is on feature."
+        "tip": "The files on disk, live. The checkout is on topic.",
+        "renders": 1
       },
       {
-        "step": "a listing names the branch HEAD is on now, in the row and its tooltip",
+        "step": "a HEAD that moved asks where it is, and for no refs, with the list closed",
         "requests": [
-          "GET /api/source/refs?kind=branch"
+          "GET /api/source/refs?kind=working_tree"
         ],
         "filterPending": false,
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": false
         },
-        "tip": "The files on disk, live. The checkout is on topic."
+        "tip": "The files on disk, live. The checkout is on topic.",
+        "renders": 1
       },
       {
-        "step": "a HEAD detached since is the working tree's word alone",
+        "step": "the row names the branch HEAD is on now, in place",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: feature",
+          "open": false
+        },
+        "tip": "The files on disk, live. The checkout is on feature.",
+        "renders": 2
+      },
+      {
+        "step": "the open tab's entry names it too",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: feature",
+          "open": true,
+          "workingTree": "Working tree on feature: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        },
+        "tip": "The files on disk, live. The checkout is on feature.",
+        "renders": 4
+      },
+      {
+        "step": "an answer that says the same draws nothing",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: feature",
+          "open": true,
+          "workingTree": "Working tree on feature: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        },
+        "tip": "The files on disk, live. The checkout is on feature.",
+        "renders": 4
+      },
+      {
+        "step": "a HEAD detached since names its commit, in the row and the entry",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · 42382ea",
+          "open": true,
+          "workingTree": "Working tree at 42382ea: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "working_tree",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": null
+        },
+        "tip": "The files on disk, live. HEAD is detached at 42382ea.",
+        "renders": 5
+      },
+      {
+        "step": "Branches as they were listed while HEAD was on feature",
         "requests": [
           "GET /api/source/refs?kind=branch"
         ],
         "filterPending": false,
         "paint": {
-          "button": "Working tree",
-          "open": false
+          "button": "Working tree · Branch: feature",
+          "open": true,
+          "workingTree": "Working tree on feature: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "feature c7ae2a3 2026-01-01T02:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "topic 42382ea 2026-01-01T01:00:00Z (local chip)"
+          ],
+          "note": "",
+          "error": null
         },
-        "tip": "The files on disk, live."
+        "tip": "The files on disk, live. The checkout is on feature.",
+        "renders": 7
       },
       {
-        "step": "choosing the working tree while it is shown only closes",
+        "step": "the open Branches list follows: no branch is checked out",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · 42382ea",
+          "open": true,
+          "workingTree": "Working tree at 42382ea: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)",
+            "topic 42382ea 2026-01-01T01:00:00Z (local chip)"
+          ],
+          "note": "",
+          "error": null
+        },
+        "tip": "The files on disk, live. HEAD is detached at 42382ea.",
+        "renders": 8
+      },
+      {
+        "step": "a change heard during a load the reader waits on asks nothing yet",
+        "requests": [
+          "GET /api/source/refs?kind=tag"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · 42382ea",
+          "open": true,
+          "workingTree": "Working tree at 42382ea [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "tag",
+          "query": "",
+          "loading": true,
+          "switching": false,
+          "rows": [],
+          "note": "Loading tags…",
+          "error": null
+        },
+        "tip": "The files on disk, live. HEAD is detached at 42382ea.",
+        "renders": 9
+      },
+      {
+        "step": "and asks again once that load has answered",
+        "requests": [
+          "GET /api/source/refs?kind=tag"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": true,
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
+          "lists": [
+            "working_tree",
+            "branch",
+            "remote",
+            "tag"
+          ],
+          "kind": "tag",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "local-tag c7ae2a3 2026-01-01T02:00:00Z (tag chip)",
+            "v1 fcb9d63 2026-01-01T00:00:00Z (tag chip)"
+          ],
+          "note": "",
+          "error": null
+        },
+        "tip": "The files on disk, live. The checkout is on topic.",
+        "renders": 10
+      },
+      {
+        "step": "a refused ask leaves the row as it was",
+        "requests": [
+          "GET /api/source/refs?kind=working_tree"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        },
+        "tip": "The files on disk, live. The checkout is on topic.",
+        "renders": 1
+      },
+      {
+        "step": "choosing the working tree's entry while it is shown only closes",
         "requests": [
           "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/README.md\"}"
         ],
@@ -760,21 +1215,18 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+          "workingTree": "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
+            "working_tree",
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
-          "kind": "branch",
+          "kind": "working_tree",
           "query": "",
           "loading": false,
           "switching": false,
-          "rows": [
-            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
-            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
-          ],
+          "rows": [],
           "note": "",
           "error": "That branch or tag is no longer in the checkout."
         }
@@ -794,8 +1246,7 @@ $ node tests/dom/source-ref-selector-session.js
         "requests": [],
         "filterPending": false,
         "paint": {
-          "button": "Revision · Branch: feature",
-          "back": "[← Working tree]",
+          "button": "Branch: feature",
           "open": false,
           "stale": "The server now shows the working tree [Reload page]"
         }
@@ -803,7 +1254,7 @@ $ node tests/dom/source-ref-selector-session.js
       {
         "step": "a folder Git does not take for a repository loses its row",
         "requests": [
-          "GET /api/source/refs?kind=branch"
+          "GET /api/source/refs?kind=working_tree"
         ],
         "filterPending": false,
         "paint": {
@@ -813,14 +1264,16 @@ $ node tests/dom/source-ref-selector-session.js
       {
         "step": "an older Git is refused, and the page says so",
         "requests": [
+          "GET /api/source/refs?kind=working_tree",
           "GET /api/source/refs?kind=branch"
         ],
         "filterPending": false,
         "paint": {
           "button": "Working tree · Branch: topic",
           "open": true,
-          "workingTree": "Working tree [current]",
+          "workingTree": "Working tree on topic [current]",
           "lists": [
+            "working_tree",
             "branch",
             "remote",
             "tag"
@@ -848,11 +1301,21 @@ $ node tests/dom/source-ref-selector-session.js
       "Working tree · Branch: topic (local chip) | The files on disk, live. The checkout is on topic.",
       "Working tree · c7ae2a3 (commit-ID face) | The files on disk, live. HEAD is detached at c7ae2a3.",
       "Working tree | The files on disk, live.",
-      "Revision · Branch: feature (local chip) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged.",
-      "Revision · Remote branch: origin/feature (remote chip) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged.",
-      "Revision · Tag: v1 (tag chip) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged.",
-      "Revision · Commit: c7ae2a3 (commit-ID face) [← Working tree] | A committed revision, read from Git. The files on disk are unchanged."
+      "Branch: feature (local chip) | null",
+      "Remote branch: origin/feature (remote chip) | null",
+      "Tag: v1 (tag chip) | null",
+      "Commit: c7ae2a3 (commit-ID face) | null"
     ],
+    "opens": {
+      "a checkout's working tree": "working_tree",
+      "a checkout's branch": "branch",
+      "a checkout's remote-tracking branch": "remote",
+      "a checkout's tag": "tag",
+      "a checkout's commit with no ref": "branch",
+      "a mirror's branch": "branch",
+      "a mirror's tag": "tag",
+      "a mirror's pull request": "branch"
+    },
     "guard": {
       "a checkout's working tree": "working-tree; refused when another is served: true; while its own is: false",
       "a checkout's revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",

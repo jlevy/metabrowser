@@ -1030,6 +1030,28 @@ def test_a_file_with_no_range_shows_its_whole_patch() -> None:
     ]
 
 
+def test_a_deleted_file_reference_has_no_new_side() -> None:
+    change = _change("a.py", 1).model_copy(update={"kind": ChangeKind.deleted, "new": None})
+    patch = FilePatch(
+        file_id=change.id,
+        truncated=False,
+        hunks=(
+            Hunk(
+                old_start=1,
+                old_count=1,
+                new_start=0,
+                new_count=0,
+                lines=(LineRecord(op=LineOp.delete, text="old"),),
+            ),
+        ),
+    )
+    [shown] = _references(
+        _files_of, [CollectionReference(path="a.py")], _Files({"a.py": change}, {change.id: patch})
+    )
+    assert shown["state"] == "ready"
+    assert shown["deleted"] is True
+
+
 @pytest.mark.parametrize(
     ("start", "end", "old_side", "header"),
     [

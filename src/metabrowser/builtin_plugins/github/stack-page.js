@@ -70,30 +70,45 @@
 // the command line.
 
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
+import { GUIDE_DOCUMENT_HOLD_MS, guideAsks, guideReads } from "./guide-reads.js";
 import {
+  actionText,
+  actorSentence,
+  agesLine,
   attachTabKeys,
   authorLabel,
   CHANGES_FIRST_SCREEN_MS,
   changesDocuments,
+  describeLabel,
   FAST_POLL_MS,
+  fetchedNote,
   h,
+  headerSentence,
   holdDiff,
   isPlainClick,
+  labelChip,
   manifestFiles,
   noFiles,
   numberHeaderControls,
+  PREFETCH_IDLE_TIMEOUT_MS,
   pageHeaderParts,
+  paintSizeLine,
   pullAge,
+  relativeAge,
+  retellAges,
+  rowStrut,
   SLOW_POLL_MS,
+  showNote,
   stackMemberAuthor,
   stackMemberIdentity,
+  stateBadge,
   statusLine,
   summaryPlaceholders,
   textRefusalNote,
   titleHeading,
 } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
-import { listedState } from "./pull-state.js";
+import { listedState, PULL_STATES, STACK_STATE_ORDER } from "./pull-state.js";
 import { stackMemberRow } from "./stack-member-row.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
@@ -132,6 +147,15 @@ export const STACK_TABS = Object.freeze([
  *   members: StackMember[],
  *   pending: number[],
  *   lacking: number[],
+ *   states: StackStates,
+ *   opened_at: string | null,
+ *   updated_at: string | null,
+ *   authors: StackPerson[],
+ *   mergers: StackPerson[],
+ *   fetched_at: string | null,
+ *   labels: Array<{name: string, color: string | null, description: string | null}> | null,
+ *   commits: number | null,
+ *   size: {pushed_bytes: number, diff_bytes: number} | null,
  *   comparison: StackComparison | null,
  *   totals: {files: number, additions: number | null, deletions: number | null, exact: boolean} | null,
  *   truncated: boolean,
@@ -141,6 +165,9 @@ export const STACK_TABS = Object.freeze([
  *   probe: {number: number, held: string | null, every_s: number} | null,
  *   moved: StackMoved | null,
  * }} StackEnvelope
+ * @typedef {{open: number, draft: number, merged: number, closed: number}} StackStates
+ *   How many members are in each state.
+ * @typedef {{login: string, avatar: string | null}} StackPerson An author or a merger.
  * @typedef {{since: string, members: Array<{number: number, commits: number | null}>}} StackMoved
  *   Asked `since` a comparison the route gave before: each member, in both, whose head moved
  *   from it, with the commits its new head adds, or null when its branch was rewritten.
@@ -1169,29 +1196,176 @@ export function memberLines(envelope, known, listed) {
 }
 
 /**
- * The header a paint draws, row by row, a pull request's page's header made of the parts a
- * stack has (docs/design-system.md, "Stacks", "The Stack Page"): its title, the View on
- * GitHub corner, the members, the merge the stack makes, the status line, the size line,
- * and the Diff summary. *rows* names them in order; `members` and `merge` are what those
- * rows hold, `status` the status line's notices, there only while it has something to say,
- * and `comparison` whether the size line and the Diff summary hold the comparison's
- * pending placeholder (`pending`), their lines (`drawn`), or are not there (`none`), for a
- * stack that cannot be shown as one comparison and has none drawn.
+ * The tally that leads the row of ages, where a pull request's state badge is
+ * (docs/design-system.md, "The Stack Page"): a badge for each state some member is in, in
+ * its state's ink, in the order a stack's members run from its top (`STACK_STATE_ORDER`),
+ * "5 Pulls Draft", "2 Pulls Open", and none for a state no member is in, nor while the
+ * answer is on its way. A badge's `words` are its count, its noun, and its state's word, and
+ * its `label` is those said together, so the badge drawn from the words (`tallyBadge`) and
+ * its name never differ.
  *
- * Every row but the status line is decided at first paint, from what the Pulls tab knows of
- * the stack: the members, and the merge's row held a line tall until the answer names the
- * top member's head. So the answer lands moving nothing under the title, as a pull request's
- * record does. With neither the answer nor the Pulls tab naming a member, the page is
- * `cold`, held out of sight for the quiet period as a pull request's page with no record in
- * hand is (`.github-pull-cold`).
+ * @param {StackEnvelope | null} envelope
+ * @returns {Array<{state: import("./pull-state.js").PullState, words: [string, string, string], label: string}>}
+ */
+export function stateTally(envelope) {
+  if (envelope === null) {
+    return [];
+  }
+  return STACK_STATE_ORDER.flatMap((state) => {
+    const count = envelope.states[state];
+    if (count === 0) {
+      return [];
+    }
+    /** @type {[string, string, string]} */
+    const words = [String(count), count === 1 ? "Pull" : "Pulls", PULL_STATES[state].label];
+    return [{ state, words, label: words.join(" ") }];
+  });
+}
+
+/**
+ * One badge of the tally (`stateTally`), a state's badge (`stateBadge`) whose words are
+ * apart: the noun is a part of its own, which a row too narrow for a tally of every state
+ * leaves out, "12 Merged", so the four badges still differ by their words and not by ink
+ * alone (github/styles.css, `.github-pull-stack-tally-noun`). Its tooltip is its whole
+ * label, which the shell shows only while the badge is cut short (docs/design-system.md,
+ * "Tooltips Add Information").
+ *
+ * @param {ReturnType<typeof stateTally>[number]} badge
+ */
+export function tallyBadge({ state, words: [count, noun, word], label }) {
+  const badge = stateBadge(state, label);
+  badge.replaceChildren(
+    `${count} `,
+    h("span", { class: "github-pull-stack-tally-noun" }, [`${noun} `]),
+    word,
+  );
+  badge.dataset.tipText = label;
+  return badge;
+}
+
+/**
+ * One actor of the stack's sentence: the pull request page's (`authorLabel`), its name its
+ * own tooltip, which the shell shows only while the name is cut short (docs/design-system.md,
+ * "Tooltips Add Information"). A sentence of several names cuts each to its floor in a
+ * narrow pane, an avatar and a letter or two (github/styles.css, `.github-pull-identity`).
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {StackPerson} actor
+ */
+export function sentenceActor(mb, actor) {
+  const identity = authorLabel(mb, actor.login, actor.avatar, "", { loading: "eager" });
+  const name = identity.querySelector(".github-pull-author");
+  if (name instanceof HTMLElement) {
+    name.dataset.tipText = actor.login;
+  }
+  return identity;
+}
+
+/**
+ * The author's row's sentence, a pull request's said of the stack (`headerSentence`): every
+ * member's author, each once, top first, and the commits of the members the top contains,
+ * "wants to merge 12 commits", "want to merge" after two or more; once every member is
+ * merged, every merger, "merged 12 commits", and none where no merger is known, so the
+ * action is said alone rather than crediting the authors, as a pull request's is. Null while
+ * the answer is on its way, and for a stack not merged whose authors are not known yet,
+ * before any member's record or list row is read.
+ *
+ * @param {StackEnvelope | null} envelope
+ * @returns {{actors: StackPerson[], action: string} | null}
+ */
+export function stackSentence(envelope) {
+  if (envelope === null || envelope.members.length === 0) {
+    return null;
+  }
+  const merged = envelope.states.merged === envelope.members.length;
+  if (!merged && envelope.authors.length === 0) {
+    return null;
+  }
+  return headerSentence(merged, envelope.authors, envelope.mergers, envelope.commits);
+}
+
+/**
+ * The labels the Pulls tab's snapshot of the stack names (`labels` of the stacks route), the
+ * members' each once, top first, before the stack's answer says them: by name alone, as a
+ * cached list row gives them. Null where it does not know them all, as for a member with
+ * neither a record nor a list row, so the labels row is held until the answer says.
+ *
+ * @param {NativeStack | null} known
+ * @returns {Array<{name: string, color: null, description: null}> | null}
+ */
+export function knownLabels(known) {
+  if (known === null || !Array.isArray(known.labels)) {
+    return null;
+  }
+  const names = new Set();
+  for (const number of stackMenuOrder(known)) {
+    const each = known.labels[known.pulls.indexOf(number)];
+    if (!Array.isArray(each)) {
+      return null;
+    }
+    for (const name of each) {
+      names.add(name);
+    }
+  }
+  return [...names].map((name) => ({ name, color: null, description: null }));
+}
+
+/**
+ * The size line's counts for the comparison drawn, as `mb.changeSizeLine` takes them: the
+ * commits and the sizes of the answer that names it (`StackBody`'s `answer`), each left out
+ * while not known, and the files its Diff summary counts.
+ *
+ * @param {StackEnvelope | null} answer
+ * @param {number | null} files
+ */
+export function stackSizeInput(answer, files) {
+  const commits = answer?.commits ?? null;
+  const size = answer?.size ?? null;
+  return {
+    ...(commits === null ? {} : { commits }),
+    files,
+    pushedBytes: size?.pushed_bytes ?? null,
+    diffBytes: size?.diff_bytes ?? null,
+  };
+}
+
+/**
+ * The header a paint draws, row by row, a pull request's page's header made of the parts a
+ * stack has, in a pull request's order (docs/design-system.md, "Stacks", "The Stack Page"):
+ * its title and the View on GitHub corner; the row of ages, led by the tally of its members'
+ * states (`stateTally`), when a member was last opened and last updated (`ages`); the
+ * author's row, its sentence (`stackSentence`) and the freshness note, the oldest member
+ * record's fetch (`note`); the merge the stack makes; the labels its members carry, each
+ * once; the status line; the size line; the members, a toggle that shows them, "**12**
+ * Pulls"; and the Diff summary. *rows* names them in order, and the rest is what they hold:
+ * `status` the status line's notices, there only while it has something to say, and
+ * `comparison` whether the size line and the Diff summary hold the comparison's pending
+ * placeholder (`pending`), their lines (`drawn`), or are not there (`none`), for a stack that
+ * cannot be shown as one comparison and has none drawn.
+ *
+ * Every row but the status line is decided at first paint, as a pull request's are: the
+ * members and the labels from what the Pulls tab knows of the stack (`knownLabels`), and the
+ * rest held a line tall until the answer fills them. The members' toggle is held, its words
+ * empty, while neither the Pulls tab nor the answer names a member. The labels row is there
+ * for a stack whose members carry labels, as a pull request's is, and held while they are not
+ * known (`labels` null): an answer that says the stack has none then takes it away, as a
+ * pull request's record does. Until the answer the page is `cold`, held out of sight for the
+ * quiet period as a pull request's page with no record in hand is (`.github-pull-cold`), so
+ * an answer that lands within it is the first header the reader sees.
+ *
+ * The freshness note says "Offline" as a pull request's does (`fetchedNote`) when the
+ * browser reports no network (*offline*) and a member's record is behind (`pending`), since
+ * no refresh can run.
  *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
  * @param {(number: number) => ListedPull} listed
  * @param {StackNotice[]} status
  * @param {boolean} drawn Whether a comparison is drawn.
+ * @param {number} nowMs The time the note's age is said at.
+ * @param {boolean} [offline] Whether the browser reports no network.
  */
-export function stackHeader(envelope, known, listed, status, drawn) {
+export function stackHeader(envelope, known, listed, status, drawn, nowMs, offline = false) {
   const members = memberLines(envelope, known, listed);
   const base = envelope?.base_ref ?? known?.base_ref ?? null;
   const head = envelope?.head_ref ?? null;
@@ -1201,16 +1375,34 @@ export function stackHeader(envelope, known, listed, status, drawn) {
     : envelope === null || envelope.state !== "absent"
       ? "pending"
       : "none";
+  const labels =
+    (envelope?.labels ?? knownLabels(known))?.map((label) => describeLabel(label)) ?? null;
+  const sized = comparison === "none" ? [] : ["size"];
   return {
-    cold: envelope === null && members === null,
+    cold: envelope === null,
     rows: [
       "title",
       "corner",
-      ...(members === null ? [] : ["members"]),
+      "opened",
+      "meta",
       "merge",
+      ...(labels === null || labels.length > 0 ? ["labels"] : []),
       ...(status.length === 0 ? [] : ["status"]),
-      ...(comparison === "none" ? [] : ["size", "summary"]),
+      ...sized,
+      ...(members === null && envelope !== null ? [] : ["members"]),
+      ...(comparison === "none" ? [] : ["summary"]),
     ],
+    tally: stateTally(envelope),
+    ages: envelope === null ? null : { opened: envelope.opened_at, updated: envelope.updated_at },
+    sentence: stackSentence(envelope),
+    note:
+      envelope === null || envelope.fetched_at === null
+        ? null
+        : fetchedNote(
+            relativeAge(envelope.fetched_at, nowMs),
+            offline && envelope.pending.length > 0,
+          ),
+    labels,
     members,
     merge: head === null || base === null ? null : { head, base },
     status,
@@ -1336,11 +1528,19 @@ export function mountStackPage(container, ctx, mb) {
   // the rows a stack has, in the order a pull request's come (`stackHeader`).
   const {
     header,
+    opened: openedRow,
+    meta,
     branches: branchesRow,
+    labels: { row: labelsRow, list: labelList },
     status,
     size: sizeRow,
     summary: summaryRow,
   } = pageHeaderParts();
+  // The row of ages: the tally of the members' states where a pull request's badge is, the
+  // ages, and at its end a strut where a pull request's stack chip is, which holds the row at
+  // a chip's height, as on a pull request's page (`rowStrut`).
+  const tallySlot = h("span", { class: "github-pull-stack-tally" });
+  const openedStrut = rowStrut();
   // The Layers glyph in the title's icon slot, where a pull request's state is, then the
   // stack's label, its number where a pull request's is.
   const layers = mb.icons?.layers
@@ -1359,12 +1559,56 @@ export function mountStackPage(container, ctx, mb) {
   // server where this page's address goes (`/api/counterpart`), the stack's own page.
   const corner = h("span", { class: "view-header-end", "data-counterpart": "" });
   // The members, top first, each the stack menu's member row, so the stack reads here as
-  // it does under a pull request's stack button, in a page card, as every card on a pull
-  // request's page is. No member is this page, so none is marked.
+  // it does under a pull request's stack button. They sit on the page's ground with no card,
+  // as the Diff summary's files under its toggle do; the border is the popover menu's alone
+  // (the owner's word of 2026-11-26). No member is this page, so none is marked. They are shown by a toggle
+  // above the Diff summary, "**12** Pulls", drawn as the summary's own header is, its words
+  // and then the chevron, and closed at first, as the summary is; the reader's choice holds
+  // for the page's life and is not saved.
   const memberList = h("ol", {
-    class: "github-pull-stack-members page-card",
+    class: "github-pull-stack-members",
     "aria-label": `Pull requests in ${stackLabel(number)}`,
   });
+  const membersId = `github-pull-stack-members-${number}`;
+  const membersBody = h(
+    "div",
+    {
+      class: "github-pull-stack-members-body github-pull-stack-members-body-collapsed",
+      id: membersId,
+    },
+    [memberList],
+  );
+  const membersWords = h("span", { class: "github-pull-stack-members-count" });
+  const chevronSvg = mb.icons?.toggle
+    ? new DOMParser().parseFromString(mb.icons.toggle, "text/html").body.firstElementChild
+    : null;
+  const chevron = () => (chevronSvg === null ? null : document.importNode(chevronSvg, true));
+  const membersToggle = h(
+    "button",
+    {
+      type: "button",
+      class: "summary-toggle github-pull-stack-members-toggle disclosure-toggle collapsed",
+      "aria-expanded": "false",
+      "aria-controls": membersId,
+    },
+    [
+      membersWords,
+      h("span", { class: "summary-toggle-chevron", "aria-hidden": "true" }, [chevron()]),
+    ],
+  );
+  const membersRow = h("div", { class: "github-pull-stack-members-row page-header-line" }, [
+    membersToggle,
+    membersBody,
+  ]);
+  let membersOpen = false;
+  membersToggle.addEventListener(
+    "click",
+    () => {
+      membersOpen = !membersOpen;
+      showMembers();
+    },
+    { signal: listening.signal },
+  );
   // The branches line holds the merge the stack makes, its top member's head → its base, a
   // line tall while the answer that names the head is on its way. The status line is there
   // only while it has something to say.
@@ -1424,6 +1668,16 @@ export function mountStackPage(container, ctx, mb) {
    */
   const memberRows = new Map();
   let mergeKey = "";
+  let openedKey = "";
+  /** The ages the row of ages shows, kept while they are the same (`paintOpened`).
+   * @type {HTMLElement | null} */
+  let agesNode = null;
+  let metaKey = "";
+  /** The sentence's actors, by login and avatar, kept while they are, so an avatar keeps its
+   * image. @type {Map<string, HTMLElement>} */
+  let actorNodes = new Map();
+  let labelsKey = "";
+  let countKey = "";
   let statusKey = "";
   /** The comparison read once for the Diff summary and Changes, by its key.
    * @type {{key: string, read: Promise<unknown>} | null} */
@@ -1531,6 +1785,116 @@ export function mountStackPage(container, ctx, mb) {
     );
   }
 
+  /** Open or close the members, as the reader asked (`membersOpen`). */
+  function showMembers() {
+    membersToggle.setAttribute("aria-expanded", String(membersOpen));
+    membersToggle.classList.toggle("collapsed", !membersOpen);
+    membersToggle.classList.toggle("expanded", membersOpen);
+    membersBody.classList.toggle("github-pull-stack-members-body-collapsed", !membersOpen);
+  }
+
+  /**
+   * The row of ages: the tally's badges (`tallyBadge`), then when a member was last opened
+   * and last updated, each in its freshness ink (`pullAge`), held a line tall while the
+   * answer is on its way. Kept while the same, and their ages told again as time passes.
+   *
+   * @param {ReturnType<typeof stackHeader>} model
+   */
+  function paintOpened(model) {
+    const key = JSON.stringify([model.tally, model.ages]);
+    if (key === openedKey && agesNode !== null) {
+      retellAges(mb, agesNode);
+      return;
+    }
+    openedKey = key;
+    tallySlot.replaceChildren(...model.tally.map(tallyBadge));
+    const opened = model.ages?.opened ?? null;
+    const updated = model.ages?.updated ?? null;
+    /** @type {Array<Node | string>} */
+    const ages = [];
+    if (opened !== null) {
+      ages.push("Last opened ", pullAge(mb, opened));
+    }
+    if (updated !== null) {
+      ages.push(ages.length === 0 ? "Last update " : " · Last update ", pullAge(mb, updated));
+    }
+    agesNode =
+      ages.length === 0
+        ? h("div", { class: "github-pull-quiet" }, [" "])
+        : agesLine([...(model.tally.length === 0 ? [] : ["· "]), ...ages]);
+    place(openedRow, [...(model.tally.length === 0 ? [] : [tallySlot]), agesNode, openedStrut]);
+  }
+
+  /**
+   * The author's row: its sentence (`actorSentence`), each actor kept while the same so its
+   * avatar keeps its image, and the freshness note (`showNote`).
+   *
+   * @param {ReturnType<typeof stackHeader>} model
+   */
+  function paintMeta(model) {
+    const sentence = model.sentence;
+    const key = JSON.stringify(sentence);
+    if (key !== metaKey) {
+      metaKey = key;
+      meta.details.hidden = sentence === null;
+      /** @type {Map<string, HTMLElement>} */
+      const kept = new Map();
+      const nodes =
+        sentence === null
+          ? []
+          : actorSentence(
+              sentence.actors,
+              (actor) => {
+                const id = JSON.stringify([actor.login, actor.avatar]);
+                const node = actorNodes.get(id) ?? sentenceActor(mb, actor);
+                kept.set(id, node);
+                return node;
+              },
+              actionText(sentence.action, sentence.actors.length > 0),
+            );
+      actorNodes = kept;
+      place(meta.details, nodes);
+    }
+    showNote(meta, model.note, { sized: true, after: sentence !== null });
+  }
+
+  /**
+   * The labels row's chips (`labelChip`), the members' labels each once.
+   *
+   * @param {ReturnType<typeof stackHeader>} model
+   */
+  function paintLabels(model) {
+    const key = JSON.stringify(model.labels);
+    if (key !== labelsKey) {
+      labelsKey = key;
+      labelList.replaceChildren(...(model.labels ?? []).map(labelChip));
+    }
+  }
+
+  /**
+   * The members toggle's words, a count summary's (docs/design-system.md, "Count Summaries
+   * Bold Their Numbers"): "**12** Pulls". While no member is named the toggle holds its row,
+   * out of sight and out of reach.
+   *
+   * @param {number | null} count
+   */
+  function paintMembersCount(count) {
+    const key = String(count);
+    if (key === countKey) {
+      return;
+    }
+    countKey = key;
+    membersToggle.classList.toggle("github-pull-stack-members-held", count === null);
+    membersWords.replaceChildren(
+      ...(count === null
+        ? []
+        : mb.countPartsNodes([
+            { number: mb.formatInteger(count) },
+            count === 1 ? " Pull" : " Pulls",
+          ])),
+    );
+  }
+
   /**
    * The status line, a pull request's, from its parts (`statusLine`): a message muted, a
    * failure or a warning in the warning's ink, and at its end what it asks of the reader,
@@ -1576,8 +1940,8 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   /**
-   * Hold the header and the tab bar out of sight for the quiet period while nothing names a
-   * member, and show them at once with the first paint that does, or with the answer.
+   * Hold the header and the tab bar out of sight for the quiet period until the stack's
+   * answer, and show them at once with the paint that has it.
    *
    * @param {boolean} cold
    */
@@ -1596,26 +1960,44 @@ export function mountStackPage(container, ctx, mb) {
 
   function paintHeader() {
     const notices = statusNotices(envelope, shown, error, failed, interacted);
-    const model = stackHeader(envelope, known, listed, notices, shown.drawn !== null);
+    const model = stackHeader(
+      envelope,
+      known,
+      listed,
+      notices,
+      shown.drawn !== null,
+      Date.now(),
+      globalThis.navigator?.onLine === false,
+    );
     holdCold(model.cold);
+    paintOpened(model);
+    paintMeta(model);
     paintMembers(model.members);
+    paintMembersCount(model.members?.length ?? null);
     paintMerge(model.merge);
+    paintLabels(model);
     paintStatus(model.status);
     paintSummaryWait(model.comparison);
+    paintSize();
     /** @type {Record<string, HTMLElement>} */
     const rows = {
       title,
       corner,
-      members: memberList,
+      opened: openedRow,
+      meta: meta.row,
       merge: branchesRow,
+      labels: labelsRow,
       status,
       size: sizeRow,
+      members: membersRow,
       summary: summaryRow,
     };
-    // The status line stays in the header while hidden, as a pull request's does.
+    // The status line stays in the header while hidden, as a pull request's does, where it
+    // would be: after the labels, or the merge for a stack with none.
+    const after = model.rows.indexOf(model.rows.includes("labels") ? "labels" : "merge") + 1;
     const names = model.rows.includes("status")
       ? model.rows
-      : model.rows.flatMap((name) => (name === "merge" ? [name, "status"] : [name]));
+      : [...model.rows.slice(0, after), "status", ...model.rows.slice(after)];
     place(
       header,
       names.map((name) => rows[name]),
@@ -1635,6 +2017,7 @@ export function mountStackPage(container, ctx, mb) {
       return;
     }
     const waits = comparison !== "none" && !summary.failed;
+    delete sizeRow.dataset.sizeKey;
     if (waits) {
       if (summaryRow.firstChild !== summaryPending) {
         summaryRow.replaceChildren(summaryPending);
@@ -1648,7 +2031,11 @@ export function mountStackPage(container, ctx, mb) {
     }
   }
 
-  /** The size line once the summary is drawn: its file count, "3 files changed". */
+  /**
+   * The size line once the summary is drawn, a pull request's said of the comparison drawn
+   * (`stackSizeInput`): "12 commits · 3 files changed · 6.5 KB compressed (30.4 KB raw
+   * diff)", written only when it changes (`paintSizeLine`).
+   */
   function paintSize() {
     if (
       summary.handle === null ||
@@ -1657,7 +2044,7 @@ export function mountStackPage(container, ctx, mb) {
     ) {
       return;
     }
-    sizeRow.replaceChildren(...mb.changeSizeLineNodes(mb.changeSizeLine({ files: summary.files })));
+    paintSizeLine(mb, sizeRow, stackSizeInput(shown.answer, summary.files));
   }
 
   /**
@@ -1903,6 +2290,20 @@ export function mountStackPage(container, ctx, mb) {
    *   guide's view, which the caller tells the guide's revision, or null when the body moved on.
    */
   async function paintGuided(comparison, owns) {
+    /** @type {import("./guided-review.js").GuideSubject} */
+    const subject = {
+      kind: "stack",
+      number,
+      at: { left: comparison.left, right: comparison.right, key: comparison.key },
+    };
+    // The guide's first step is asked for now, beside the module's import, rather than
+    // after it; the guide reads the same request (guide-reads.js). A stack's guide is shown
+    // with no head moved past its record (`show`'s *moved*), since the stack's comparison
+    // says what moved, so it is read ahead the same way.
+    const readAt = guideReadAt();
+    if (readAt !== null) {
+      guideReads.prefetch(guideAsks(subject), 1, readAt, false);
+    }
     const host = h(
       "section",
       { class: "github-pull-guided-review", "aria-label": "Guided Review" },
@@ -1924,94 +2325,158 @@ export function mountStackPage(container, ctx, mb) {
       .then(() => window.MetabrowserInertHtml ?? null)
       .catch(() => null);
     const prose = inertReady;
-    const view = mountGuidedReview(
-      host,
-      null,
-      {
-        kind: "stack",
-        number,
-        at: { left: comparison.left, right: comparison.right, key: comparison.key },
-      },
-      {
-        open: (path) => open({ number, tab: "changes", file: path, stack: true }),
-        openPull: (target, path) =>
-          open(
-            path === null
-              ? { number: target, tab: "" }
-              : { number: target, tab: "files", file: path },
+    const view = mountGuidedReview(host, null, subject, {
+      open: (path) => open({ number, tab: "changes", file: path, stack: true }),
+      openPull: (target, path) =>
+        open(
+          path === null
+            ? { number: target, tab: "" }
+            : { number: target, tab: "files", file: path },
+        ),
+      // A pull request's page's age, in its freshness ink.
+      age: (iso) => pullAge(mb, iso),
+      shortCommit: (sha) => mb.shortCommit(sha),
+      // A cited pull request's title and author, as a stack menu's member draws them, and
+      // the Layers glyph that names a stack other than the guide's.
+      titleNodes: mb.titleNodes,
+      stackGlyph: () => (layers === null ? null : document.importNode(layers, true)),
+      identity: (login, avatar) =>
+        authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+          placeholder: false,
+        }),
+      loadStyles: (assets) =>
+        Promise.all([
+          mb.loadKpressAssets(
+            /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
           ),
-        // A pull request's page's age, in its freshness ink.
-        age: (iso) => pullAge(mb, iso),
-        shortCommit: (sha) => mb.shortCommit(sha),
-        // A cited pull request's title and author, as a stack menu's member draws them, and
-        // the Layers glyph that names a stack other than the guide's.
-        titleNodes: mb.titleNodes,
-        stackGlyph: () => (layers === null ? null : document.importNode(layers, true)),
-        identity: (login, avatar) =>
-          authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
-            placeholder: false,
-          }),
-        loadStyles: (assets) =>
-          Promise.all([
-            mb.loadKpressAssets(
-              /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
-            ),
-            mb.ensureKindAssets("diff"),
-          ]),
-        loadDrawPatch: async () => {
-          const diff = await mb.plugins.load("diff");
-          return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
-        },
-        loadDrawDocument: async () => {
-          const diff = await mb.plugins.load("diff");
-          /**
-           * @param {{merge_base: string | null, head: string, route?: string,
-           *   image_route?: string, rendered_route?: string}} pins
-           */
-          const at = (pins) =>
-            citedPullComparison(pins) ??
-            (comparison.left === pins.merge_base && comparison.right === pins.head
-              ? diffComparison(comparison)
-              : null);
-          return {
-            draws: (pins) => at(pins) !== null,
-            mount(body, path, format, pins) {
-              const shown = at(pins);
-              if (shown === null) {
-                return { settled: Promise.resolve(false), dispose() {} };
-              }
-              return diff.mountRenderedFile(body, shown, path, {
-                ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
-                markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
-              });
-            },
-          };
-        },
-        loadDrawProse: async () => {
-          const inert = await prose;
-          if (inert === null) {
-            throw new Error("the inert HTML allowlist did not load");
-          }
-          // A note's links were made absolute against the member that carries the guide,
-          // whose page the step names; an outside link is marked as a description's is.
-          return (html, base) => {
-            const prose = inert.kpressProse(
-              inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
-              document,
-            );
-            for (const anchor of prose.querySelectorAll("a[href]")) {
-              mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
-            }
-            return prose;
-          };
-        },
-        refusalNote: textRefusalNote,
-        // The comparison drawn has moved, and may be gone: the stack is read now, so the
-        // page draws its own comparison in its place or offers it (`answerAction`).
-        moved: () => void controller.start(),
+          mb.ensureKindAssets("diff"),
+        ]),
+      loadDrawPatch: async () => {
+        const diff = await mb.plugins.load("diff");
+        return diff.guidePatchDrawer();
       },
-    );
+      loadDrawDocument: async () => {
+        const diff = await mb.plugins.load("diff");
+        /**
+         * @param {{merge_base: string | null, head: string, route?: string,
+         *   image_route?: string, rendered_route?: string}} pins
+         */
+        const at = (pins) =>
+          citedPullComparison(pins) ??
+          (comparison.left === pins.merge_base && comparison.right === pins.head
+            ? diffComparison(comparison)
+            : null);
+        return {
+          draws: (pins) => at(pins) !== null,
+          source(path, pins) {
+            const shown = at(pins);
+            return shown === null
+              ? null
+              : {
+                  path,
+                  load: (signal) => diff.loadFullSource(shown, path, signal),
+                };
+          },
+          mount(body, path, format, pins) {
+            const shown = at(pins);
+            if (shown === null) {
+              return { settled: Promise.resolve(false), dispose() {} };
+            }
+            return diff.mountRenderedFile(body, shown, path, {
+              ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
+              // Rendered waits with Source hidden for as long as the rendered route can
+              // take, so the step never shows Source first in its place.
+              markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
+            });
+          },
+        };
+      },
+      loadDrawProse: async () => {
+        const inert = await prose;
+        if (inert === null) {
+          throw new Error("the inert HTML allowlist did not load");
+        }
+        // A note's links were made absolute against the member that carries the guide,
+        // whose page the step names; an outside link is marked as a description's is.
+        return (html, base) => {
+          const prose = inert.kpressProse(
+            inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
+            document,
+          );
+          for (const anchor of prose.querySelectorAll("a[href]")) {
+            mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
+          }
+          return prose;
+        };
+      },
+      refusalNote: textRefusalNote,
+      // The comparison drawn has moved, and may be gone: the stack is read now, so the
+      // page draws its own comparison in its place or offers it (`answerAction`).
+      moved: () => void controller.start(),
+      // A step's neighbors are read when the page is idle, after what it shows.
+      ahead: (run) => mb.whenIdle(run, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+    });
     return view;
+  }
+
+  /**
+   * The revision of the guide that Guided Review reads at the comparison drawn, or null when
+   * it reads none there: once the stack has moved past that comparison (`drawnCurrent`), only
+   * the guide read there before (`behind` in guided-review.js, as `paintBody` tells it).
+   *
+   * @returns {string | null}
+   */
+  function guideReadAt() {
+    if (guide === null) {
+      return null;
+    }
+    if (drawnCurrent(shown, envelope) !== false) {
+      return guide.revision;
+    }
+    return guideRead === null || guideRead === guide.revision ? guide.revision : null;
+  }
+
+  /** The comparison and guide revision read ahead, so each is read once (`readGuideAhead`). */
+  let guideAhead = "";
+  /** @type {(() => void) | null} */
+  let cancelGuideAhead = null;
+
+  /**
+   * Read the guide ahead of the reader: while Docs or Changes shows a comparison and the
+   * stack has a guide, its module and its first step at that comparison, when the page is
+   * idle, so Guided Review draws whole the moment it is opened (guide-reads.js has the cost).
+   * Guided Review's own tab reads its first step as it starts to import the module
+   * (`paintGuided`).
+   */
+  function readGuideAhead() {
+    const drawn = shown.drawn;
+    const revision = drawn === null ? null : guideReadAt();
+    if (tab === "guided" || drawn === null || revision === null) {
+      return;
+    }
+    const key = JSON.stringify([drawn.key, revision]);
+    if (guideAhead === key) {
+      return;
+    }
+    guideAhead = key;
+    cancelGuideAhead?.();
+    /** @type {import("./guided-review.js").GuideSubject} */
+    const subject = {
+      kind: "stack",
+      number,
+      at: { left: drawn.left, right: drawn.right, key: drawn.key },
+    };
+    cancelGuideAhead = mb.whenIdle(
+      () => {
+        cancelGuideAhead = null;
+        if (listening.signal.aborted) {
+          return;
+        }
+        guideReads.prefetch(guideAsks(subject), 1, revision, false);
+        void import("./guided-review.js").catch(() => {});
+      },
+      { timeout: PREFETCH_IDLE_TIMEOUT_MS },
+    );
   }
 
   /**
@@ -2135,6 +2600,7 @@ export function mountStackPage(container, ctx, mb) {
     shown = plan.body;
     const action = plan.action;
     body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));
+    readGuideAhead();
     if (shown.drawn !== null) {
       void showSummary(shown.drawn);
     }
@@ -2287,6 +2753,20 @@ export function mountStackPage(container, ctx, mb) {
     }
   };
   document.addEventListener("visibilitychange", onVisible, { signal: listening.signal });
+  // The browser's network came or went: the freshness note says "Offline" while a member's
+  // record is behind and none can be refreshed, as a pull request's page does. The
+  // browserless sessions' window has no event target; a browser's always does.
+  for (const type of ["online", "offline"]) {
+    window.addEventListener?.(
+      type,
+      () => {
+        if (!listening.signal.aborted) {
+          paintHeader();
+        }
+      },
+      { signal: listening.signal },
+    );
+  }
 
   /** @param {string} next */
   function setTab(next) {
@@ -2312,6 +2792,8 @@ export function mountStackPage(container, ctx, mb) {
 
   function stop() {
     listening.abort();
+    cancelGuideAhead?.();
+    cancelGuideAhead = null;
     controller.dispose();
     stacks.dispose();
   }

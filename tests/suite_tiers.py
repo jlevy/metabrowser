@@ -31,13 +31,11 @@ module then runs in one part, its tests in order, as ``--dist loadfile`` runs it
 worker, so a module-scoped fixture, and a test that relies on an earlier one, behave as
 they do in one process. The parts are still disjoint and together the tier.
 
-``--skip-slow`` first drops every test whose measured seconds are ``SLOW_TEST_S`` or
-more, and ``--shard`` then deals what is left. ``make test-chrome-fast`` passes it: a
-pull request while ``main`` is green runs the Chrome tier without its slow tests, and
-every push to ``main``, the nightly soak, and ``make test`` run them all
-(``devtools/ci_plan.sh``). Which tests are slow comes from the measured seconds, not
-from a marker, so a refresh of the weights keeps it current, and a test with no
-measurement yet is not slow: a new test runs on its own pull request.
+No option leaves out a tier's slow tests. Until 2026-11-25 ``--skip-slow`` dropped the
+tests measured at 20 s or more from a pull request's Chrome tier, and three pull
+requests that week merged green and broke one of them on ``main`` (bead mb-593d). A run
+of the Chrome tier is now every Chrome test, in more parts where it has to be shorter
+(``devtools/ci_plan.sh``).
 
 A tier or a shard may hold no test, as the serial tier will once its last module no
 longer needs the machine, and a shard does when it is numbered past the tier's size, or,
@@ -71,13 +69,6 @@ CHROME_FIXTURE: Final = "chrome_profile"
 BY_TEST: Final = "test"
 BY_FILE: Final = "file"
 SHARD_UNITS: Final = (BY_TEST, BY_FILE)
-
-# The measured seconds at or above which ``--skip-slow`` drops a test. On main's run
-# 45062416967 the Chrome tier's 64 tests took 778 s, and the 13 at 20 s or more took 428 s
-# of it, the longest 92 s (devtools/shard_weights.json): leaving them out leaves a pull
-# request 350 s of Chrome tests in 51 tests. At 30 s only 5 tests (228 s) would go, and
-# at 10 s 29 would, more than half of what a pull request checks in Chrome.
-SLOW_TEST_S: Final = 20.0
 
 # The ``-m`` expressions of the parallel, serial, and Chrome tiers, in that order.
 PARALLEL_TIER: Final = f"not {SERIAL_MARKER} and not {CHROME_MARKER}"
@@ -154,13 +145,6 @@ def dealt(
     return [part_of[unit(nodeid)] == shard.index - 1 for nodeid in nodeids]
 
 
-def slow(nodeids: Sequence[str], seconds: Mapping[str, float] | None = None) -> list[bool]:
-    """Whether each test's measured seconds are ``SLOW_TEST_S`` or more; unmeasured is not."""
-
-    measured = shard_weights.load(shard_weights.TESTS) if seconds is None else seconds
-    return [measured.get(nodeid, 0.0) >= SLOW_TEST_S for nodeid in nodeids]
-
-
 def pytest_itemcollected(item: pytest.Item) -> None:
     """Mark every test that uses ``chrome_profile``, directly or through a fixture."""
 
@@ -170,18 +154,13 @@ def pytest_itemcollected(item: pytest.Item) -> None:
 
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Drop ``--skip-slow``'s tests from what ``-m`` and ``-k`` left, then deal the rest
-    into ``--shard``'s part; last, so it is after them."""
+    """Deal the tests ``-m`` and ``-k`` left into ``--shard``'s part; last, so it is after them."""
 
-    kept = [True] * len(items)
-    if config.getoption("skip_slow"):
-        kept = [not is_slow for is_slow in slow([item.nodeid for item in items])]
     shard: Shard | None = config.getoption("shard")
-    if shard is not None:
-        by: str = config.getoption("shard_by") or BY_TEST
-        left = [item.nodeid for item, keep in zip(items, kept, strict=True) if keep]
-        in_part = iter(dealt(left, shard, by))
-        kept = [keep and next(in_part) for keep in kept]
+    if shard is None:
+        return
+    by: str = config.getoption("shard_by") or BY_TEST
+    kept = dealt([item.nodeid for item in items], shard, by)
     dropped = [item for item, keep in zip(items, kept, strict=True) if not keep]
     if dropped:
         config.hook.pytest_deselected(items=dropped)

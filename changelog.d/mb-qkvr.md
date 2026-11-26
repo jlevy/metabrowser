@@ -1,6 +1,6 @@
-- **One word for each way of asking again.** The Pulls tab’s Reload and the Commits
-  tab’s Reload history are now Refresh, as a pull request’s Refresh already was: each
-  asks again for what the view shows, in place.
+- **One word for each way of asking again.** Asking again for what a view shows, in
+  place, is Refresh: the Pulls tab’s Reload is now the navigation’s Refresh, and the
+  Commits tab’s Reload history is now Refresh.
   Retry is the bare word after the sentence that says what failed, so a page of history
   that did not load reads “Could not load these commits.”
   and Retry, and the Changes body offers Retry and Fetch.

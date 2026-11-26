@@ -1,8 +1,8 @@
-// Browserless session: each stack heading's brief change line in the Pulls tab (mb-9ekj),
-// through the production code.
+// Browserless session: each stack's brief change line in the Pulls tab (mb-9ekj), on its
+// Whole stack row (mb-tvhs), through the production code.
 //
-// builtin_plugins/github/stack-lines.js decides what a stack's heading shows of its change
-// line, its combined change, its members' own changes accumulated, which the server sums
+// builtin_plugins/github/stack-lines.js decides what a stack's Whole stack row shows of its
+// change line, its combined change, its members' own changes accumulated, which the server sums
 // (`GET stack-change`): the shell's pending placeholder while the read of its stack is on
 // its way, the line once it is, and nothing where it cannot be had. It reads the stacks the
 // list draws, one at a time when the browser is idle, once for each stack's members and
@@ -13,11 +13,12 @@
 // snapshot the stack-groups session replays.
 //
 // `lane` drives the lane alone over those answers, with the browser's idle time, its clock,
-// and when each read is answered in the session's hands, and prints what each heading shows
+// and when each read is answered in the session's hands, and prints what each stack shows
 // at each step and what was asked. `heading` mounts the production panel over a stand-in
-// for the DOM with the SDK's own painters (tests/dom/sdk-ref-fixture.js) and prints the
-// heading of each stack in its three states: waiting, its line arrived, and unavailable,
-// with its parts as drawn and its accessible name, then, in a fresh document each, its line
+// for the DOM with the SDK's own painters (tests/dom/sdk-ref-fixture.js) and prints each
+// stack's heading, which is whole from its first paint, its label, its size, and its age,
+// and waits on no read, and its Whole stack row in its three states: waiting, its line
+// arrived, and unavailable, with its parts as drawn and its accessible name, then, in a fresh document each, its line
 // with totals that are zero or not known: a total of zero is left out, and a change of no
 // lines is "0 lines" (mb-efum). `invariants` are the relations every step holds.
 
@@ -488,21 +489,50 @@ async function headingStory() {
       );
     const textOf = (node) =>
       node.data !== undefined ? node.data : node.childNodes.map(textOf).join("");
-    /** Each stack's heading as drawn: its label, its change slot, and its row's name. */
+    /** A stack's Whole stack row, the first row under its open stack. */
+    const wholeRow = (stack) =>
+      listNode()
+        .childNodes.filter((item) => item.classList.contains("github-pulls-whole-item"))
+        .map((item) => item.childNodes[0])
+        .find((row) => row.dataset.stack === String(stack));
+    /** A stack's toggle of its changed files, on its Whole stack row's line (mb-odt4). */
+    const toggleOf = (row) =>
+      childByClass(
+        childByClass(wholeRow(row.dataset.stack), "github-pulls-whole-line"),
+        "github-pulls-whole-change",
+      );
+    /** A stack's change slot, in that toggle, before its chevron. */
+    const changeOf = (row) => {
+      const toggle = toggleOf(row);
+      assert.deepEqual(
+        toggle.childNodes.map((node) => node.className),
+        ["github-pulls-stack-change", "github-pulls-toggle"],
+        "the toggle is the change line's slot, then the chevron, whatever the slot holds",
+      );
+      return childByClass(toggle, "github-pulls-stack-change");
+    };
+    /**
+     * Each stack as drawn. `heading` is its row: its text, its age, and its name, none of
+     * which a read of the stack's change moves. The rest is its Whole stack row: its change
+     * slot and its name.
+     */
     const headings = () =>
       Object.fromEntries(
         stackRows().map((row) => {
           const heading = childByClass(row, "github-pulls-stack-heading");
-          const label = childByClass(heading, "github-pull-stack-label");
-          const change = childByClass(heading, "github-pulls-stack-change");
+          const whole = wholeRow(row.dataset.stack);
+          const change = changeOf(row);
           return [
             `Stack #${row.dataset.stack}`,
             {
-              heading: heading.childNodes.map((node) => node.className),
-              label: label.textContent,
+              heading: {
+                text: heading.childNodes.map(textOf).join(" "),
+                age: textOf(childByClass(row, "github-pulls-age")),
+                name: row.getAttribute("aria-label"),
+              },
               text: textOf(change),
               change: shape(change.childNodes),
-              name: row.getAttribute("aria-label"),
+              name: whole.getAttribute("aria-label"),
             },
           ];
         }),
@@ -527,19 +557,25 @@ async function headingStory() {
       await paint();
     };
     const steps = [];
-    const changeOf = (row) =>
-      childByClass(childByClass(row, "github-pulls-stack-heading"), "github-pulls-stack-change");
     await paint();
+    const mountedHeadings = headings();
     steps.push({
-      step: "mounted: no heading waits, since no read is sent; the browser is not idle yet",
-      headings: headings(),
+      step: "mounted: no stack waits, since no read is sent; the browser is not idle yet",
+      headings: mountedHeadings,
       requests: requests.splice(0),
     });
+    /** Every step leaves each stack's heading as it was first drawn: the count and the age
+     * are there at once, and no read of a stack's change moves or changes them. */
+    const headingsHold = (drawn) => {
+      for (const [stack, each] of Object.entries(drawn)) {
+        assert.deepEqual(each.heading, mountedHeadings[stack].heading, `${stack}'s heading`);
+      }
+    };
     // The list draws #290 first. Its read is sent when the browser is idle, and only then
     // does its heading wait, its name saying so; #286's, queued behind it, does not.
     await idleOnce();
     steps.push({
-      step: "idle: #290's read is sent, and its heading waits; #286's is queued and does not",
+      step: "idle: #290's read is sent, and its Whole stack row waits; #286's is queued and does not",
       headings: headings(),
       requests: requests.splice(0),
     });
@@ -558,8 +594,10 @@ async function headingStory() {
       headings: headings(),
       requests: requests.splice(0),
     });
-    // The label is the node the arrival keeps.
+    // The label, and the Whole stack row's words, are the nodes the arrival keeps.
     const row286 = stackRows().find((row) => row.dataset.stack === "286");
+    const wholeWords = () => childByClass(wholeRow(286), "github-pulls-whole-line").childNodes[0];
+    const wordsBefore = wholeWords();
     const labelBefore = childByClass(
       childByClass(row286, "github-pulls-stack-heading"),
       "github-pull-stack-label",
@@ -567,10 +605,13 @@ async function headingStory() {
     await release();
     const arrived = headings();
     steps.push({
-      step: "#286's line arrives in its heading, and #290's shows nothing still",
+      step: "#286's line arrives on its Whole stack row, and #290's shows nothing still",
       headings: arrived,
       requests: requests.splice(0),
     });
+    for (const step of steps) {
+      headingsHold(step.headings);
+    }
     // Whatever is still left for idle time reads no stack.
     while (idle.length > 0) {
       idle.shift()();
@@ -583,6 +624,8 @@ async function headingStory() {
       labelBefore,
       "the label stays",
     );
+    assert.equal(wholeWords(), wordsBefore, "the Whole stack row's words stay");
+    assert.equal(textOf(wordsBefore), "Whole stack");
     // The line is the shell's one component, through the SDK: the same nodes, part for part,
     // of the stack's line totals alone, with no file statuses (mb-lqkb).
     const { stackLineInput } = await import(
@@ -594,8 +637,8 @@ async function headingStory() {
       ...sdk.countPartsNodes([{ separator: "·" }]),
       ...sdk.changeLineNodes(said),
     ]);
-    assert.deepEqual(arrived["Stack #286"].change, expected, "the heading draws the component");
-    assert.equal(arrived["Stack #286"].name.startsWith(`Stack #286: ${said.label}; `), true);
+    assert.deepEqual(arrived["Stack #286"].change, expected, "the row draws the component");
+    assert.equal(arrived["Stack #286"].name, `Whole stack, Stack #286: ${said.label}`);
     handle.dispose();
     // Totals a member's list could not count, a binary file, are followed by the muted
     // "(estimated)", which the name says too (B4 of review B on #484): a fresh document.
@@ -619,7 +662,7 @@ async function headingStory() {
     });
     assert.equal(estimated.change.at(-1).class, "github-pulls-stack-change-note");
     assert.equal(estimated.text.endsWith("(estimated)"), true);
-    assert.match(estimated.name, /^Stack #286: .+, estimated; 3 pull requests/);
+    assert.match(estimated.name, /^Whole stack, Stack #286: .+, estimated$/);
     handle.dispose();
     // A total of zero is left out, and a change of no lines is "0 lines", said "no lines
     // changed" (mb-efum): #286's answer with each of these totals, in a fresh document each.
@@ -658,9 +701,9 @@ async function headingStory() {
       assert.deepEqual(
         drawn.change,
         shape([...sdk.countPartsNodes([{ separator: "·" }]), ...sdk.changeLineNodes(built)]),
-        `${JSON.stringify(total)}: the heading draws the component with its zero totals left out`,
+        `${JSON.stringify(total)}: the row draws the component with its zero totals left out`,
       );
-      assert.equal(drawn.name.startsWith(`Stack #286: ${built.label}; `), true, drawn.name);
+      assert.equal(drawn.name, `Whole stack, Stack #286: ${built.label}`);
       assert.ok(!/[+−]0\b/.test(drawn.text), `${JSON.stringify(total)}: no zero total shows`);
       totals.push({
         totals: total,

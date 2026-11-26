@@ -65,7 +65,7 @@ const same = (label, got, want) =>
   check(label, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}`);
 
 /** Each row of the step on screen, as the browser lays it out. */
-const ROWS = `[...document.querySelectorAll(".github-pull-guide-row")].map((card) => {
+const ROWS = `[...document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-row")].map((card) => {
   const row = card.querySelector(".github-pull-guide-row-link");
   const box = row.getBoundingClientRect();
   const frame = card.getBoundingClientRect();
@@ -156,10 +156,14 @@ try {
   await evaluate(
     `[...document.querySelectorAll(".github-pull-guide-steps-link")].find((link) => link.textContent.includes(${JSON.stringify(STEP)})).click()`,
   );
+  // A step is composed out of sight (`.github-pull-guide-incoming`, guided-review.js) and
+  // shows whole once what it draws is in, so a check reads only the step shown.
   await waitFor(
-    `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(STEP)}`,
+    `document.querySelector(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-title")?.textContent === ${JSON.stringify(STEP)}`,
   );
-  await waitFor(`document.querySelectorAll(".github-pull-guide-row").length === 5`);
+  await waitFor(
+    `document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-row").length === 5`,
+  );
 
   // 1. The rows, at a desktop width, then with one title too long for its row, then at a
   // phone's width. The pane keeps its width in a narrow window, so it is hidden there, as
@@ -205,7 +209,7 @@ try {
   await chrome.send("Accessibility.enable");
   const names = [];
   for (let at = 0; at < 3; at += 1) {
-    const link = `document.querySelectorAll(".github-pull-guide-row")[${at}].querySelector(".github-pull-guide-row-link")`;
+    const link = `document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-row")[${at}].querySelector(".github-pull-guide-row-link")`;
     names.push({
       place: await named(`${link}.querySelector(".github-pull-stack-member-position")`),
       link: await named(link),
@@ -297,7 +301,7 @@ try {
   await waitFor(`window.innerWidth === 375`);
   await togglePane();
   await waitFor(
-    `document.querySelector(".container").hasAttribute("data-nav-collapsed") && document.querySelector(".github-pull-guide-row").getBoundingClientRect().width > 250`,
+    `document.querySelector(".container").hasAttribute("data-nav-collapsed") && document.querySelector(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-row").getBoundingClientRect().width > 250`,
   );
   measure("a phone's width", await evaluate(ROWS));
   check("at a phone's width nothing runs past the page", await evaluate(PAGE_FITS));
@@ -326,14 +330,14 @@ try {
     same(
       "9's file is drawn under a bar that names its pull request, then its path",
       await evaluate(
-        `[...document.querySelectorAll(".github-pull-guide-reference-header .diff-file-toggle")].map((name) => [...name.children].map((part) => part.textContent))`,
+        `[...document.querySelectorAll(".github-pull-guide-reference-header .diff-file-toggle")].map((name) => [...name.children].filter((part) => !part.classList.contains("diff-file-chevron")).map((part) => part.textContent))`,
       ),
       [["#9", "src/app.txt"]],
     );
     check(
       "and the number stands apart from the path",
       await evaluate(`(() => {
-      const [number, path] = document.querySelector(".github-pull-guide-reference-header .diff-file-toggle").children;
+      const [number, path] = [...document.querySelector(".github-pull-guide-reference-header .diff-file-toggle").children].filter((part) => !part.classList.contains("diff-file-chevron"));
       return path.getBoundingClientRect().left - number.getBoundingClientRect().right >= 2;
     })()`),
     );

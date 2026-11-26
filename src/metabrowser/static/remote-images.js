@@ -15,7 +15,7 @@
 // as the page loads again: `choose` writes the cookie and asks for that. The exact module
 // runs browserlessly in tests/dom/remote-images-session.js.
 //
-// Loaded on demand (`ensureAsset("remote-images")`) when the menu opens. The server draws
+// Loaded on demand (`ensureAsset("settings-menu")`) when the menu opens. The server draws
 // the checkbox disabled, and `mount` enables it once it is wired, so a change before then
 // is not made and lost.
 

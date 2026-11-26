@@ -16,11 +16,16 @@ folder is the root of a Git repository or of a linked worktree, and on any repos
 opened by its URL. A folder inside a repository has no Commits tab, because history
 covers files outside what that folder serves.
 
-The graph lists, newest first in topological order:
+The row under the tabs, the same one Files has, names the branch, tag, or commit both
+tabs show, and choosing another there changes both
+([Branches and Tags of a Repository URL](#branches-and-tags-of-a-repository-url) and
+[of a Local Checkout](#branches-and-tags-of-a-local-checkout)). The graph lists, newest
+first in topological order:
 
-- **For a folder:** the commits reachable from `HEAD`, its upstream, and the trunk
-  branches `main` and `master`, locally and on `origin`.
-- **For a repository URL:** the history of the commit the server is pinned to.
+- **For a folder’s working tree:** the commits reachable from `HEAD`, its upstream, and
+  the trunk branches `main` and `master`, locally and on `origin`.
+- **For a branch, tag, or commit chosen in that row, and for a repository URL:** the
+  history of that commit.
 
 Each row is the graph, the commit’s branch and tag chips, its subject, its author, and
 its age. The header counts the commits and says when the first one was made.
@@ -62,12 +67,12 @@ Below it is the diff against the commit’s first parent, one section per file w
 Click a file’s bar to collapse it.
 The diff draws **Split** or **Unified**; press `L` or use the layout control to switch,
 and a pane too narrow for Split draws Unified until there is room.
-**Diff** | **Current**, before the layout control, or `N`, switches between what changed
-and the new version alone, as in a pull request
-([Diff or Current](reviewing-pull-requests.md#diff-or-current)). A commit that changes
-more than one file has a **File type** menu ahead of the Diff | Current and layout
-choosers, the same menu as the Files tab’s, which counts the commit’s changed files by
-group, family, and extension.
+**Diff** | **Excerpt** | **Full** chooses how much of the comparison to show.
+Press `N` to switch between Diff and Excerpt.
+See [Comparison View](reviewing-pull-requests.md#comparison-view).
+A commit that changes more than one file has a **File type** menu ahead of the
+comparison and layout choosers, the same menu as the Files tab’s, which counts the
+commit’s changed files by group, family, and extension.
 Choose types in it (`Y` opens it) to show only the changed files of those types; the
 toolbar then says how many of the commit’s files it shows, with **Clear**. A renamed
 file counts under its old type and its new one, the summary at the top still describes
@@ -88,8 +93,9 @@ brings it. Otherwise the page says the commit is not in the mirror and offers **
 ## Branches and Tags of a Repository URL
 
 A repository opened by its URL is pinned to one commit, its default branch’s unless the
-URL names another. The row directly below Files names the branch, tag, pull request, or
-commit. Click the branch or tag chip for its actions.
+URL names another. The row directly below the Files and Commits tabs names the branch,
+tag, pull request, or commit.
+Click the branch or tag chip for its actions.
 Click the separate down chevron beside it, or press `W`, to choose another revision.
 
 The chooser lists every one of the mirror’s branches or tags.
@@ -98,10 +104,12 @@ last commit, which its row shows as an age.
 The filter box narrows either list by name.
 Choosing one serves it and reloads the page on the same file or folder when the new
 commit has it, or at the root when it does not.
-The switch lasts until the server stops.
+Chosen on the Commits tab, it reloads the page on Commits, at the newest commit of the
+new history. The switch lasts until the server stops.
 
-The foot of the navigation pane says when the mirror was last fetched from its origin;
-click it to fetch now.
+The foot of the navigation pane says when the mirror was last fetched from its origin.
+**Refresh**, the circular arrow at the top of the navigation pane, fetches it now and
+then reads the files and history again, what is on screen first.
 A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
 when a fetch moves the served branch, the page follows it to the new commit by itself,
 on the same file or folder when the new commit has it, or at the root when it does not.
@@ -112,14 +120,22 @@ branch moves on, the foot offers its new commit with **Switch**.
 
 A folder that is a repository’s root opens on **Working tree**, the files on disk with
 whatever you have edited, staged, or not yet added.
-The row under the Files tab says so, then names the branch the files are on, as in
-“Working tree · main”, or the commit when `HEAD` is detached.
-If you switch branches in a terminal, the row names the new branch once you open the
-list, or when you reload the page.
+The row under the Files and Commits tabs says so, then names the branch the files are
+on, as in “Working tree · main”, or the commit when `HEAD` is detached.
+If you, or an agent, check out another branch in a terminal, the row names the new
+branch within about a second, without a reload.
 Click the branch’s chip for its actions.
 Click the chevron in that row or press `W` to browse the other branches and tags.
+The list has four tabs, and opens on the one that holds what the page shows.
 
-- **Working tree** is the first row, and the only one that shows your live files.
+- **Working tree** is the first tab, and the only one that shows your live files.
+  It has one entry, which names the branch your files are on and the folder’s path.
+  Choosing it shows the files on disk; it never checks anything out, so the branch is
+  whichever one you have checked out.
+  From a page that shows a branch or tag, clicking the tab itself, or pressing Enter or
+  Space on it, does the same in one step.
+  Arrow keys along the tabs only show each tab’s list, so they never leave the page you
+  are on.
 - **Branches** are the checkout’s own, with the one you have checked out first and
   marked “checked out”.
   **Tags** are its tags.
@@ -136,21 +152,28 @@ Click the chevron in that row or press `W` to browse the other branches and tags
   at another commit, which is a branch you have not fetched since it moved, or have
   pushed since Metabrowser last fetched, and “not in checkout” when you have never
   fetched it; hover over the row for your commit and which of the two was committed
-  later. The row at the foot of the navigation pane says when the origin was last
-  fetched, and pressing it refreshes, on your working tree’s page too; it fetches
-  Metabrowser’s store, never your checkout.
+  later. On a branch’s or tag’s page, the row at the foot of the navigation pane says
+  when the origin was last fetched, and **Refresh** at the top of the navigation pane
+  fetches it again; it fetches Metabrowser’s store, never your checkout.
+  The working tree’s page has no such row.
+  **Refresh** there reads your files and history again first, and then fetches the
+  origin in the background, so Remotes and Tags are current the next time you look; an
+  open list updates in place.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
   nothing asks for one.
   Another remote’s branches, and a tag only your checkout has, are read from the
   checkout.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The row then says “Revision” before its name and ends with a **Working tree**
-  button, and the navigation header, still the folder’s name, names its full commit when
-  you hover over it. This includes the checked-out branch: choosing it shows what is
-  committed, without your uncommitted changes, so its row reads “Revision · main” where
-  the working tree’s read “Working tree · main”.
-  The row’s **Working tree** button, or the list’s first row, is the way back to them.
+  objects. The row then names it alone, as in “main”, and the navigation header, still
+  the folder’s name, names its full commit when you hover over it.
+  This includes the checked-out branch: choosing it in Branches shows what is committed,
+  without your uncommitted changes, so its row reads “main” where the working tree’s
+  reads “Working tree · main”.
+  The **Working tree** tab is the way back to them.
+  A branch’s page follows its branch: when you commit to it, the page goes to the new
+  commit by itself within a few seconds.
+  A tag’s page follows its tag the same way, and a commit opened by its ID stays put.
 
 Nothing is checked out, fetched, or written.
 Your working tree, your index, and `HEAD` stay exactly as they are, so it is safe with
@@ -164,7 +187,8 @@ It has no Recent tab, live updates, ignored files, or Pulls tab; those belong to
 working tree, which gets the folder’s own profile back.
 
 The choice is the server’s, so it holds for every tab until you choose **Working tree**
-again or the server stops.
+again or the server stops: Files shows the branch’s files and Commits its history,
+whichever tab you chose it on.
 `metab <folder>` starts on the working tree, and `metab <folder> --ref <name>` starts on
 that branch or tag
 ([the command line](command-line.md#a-branch-or-tag-of-a-local-checkout)). A tab left on

@@ -8,7 +8,9 @@
 `mb-wd9o`, `mb-256j`, `mb-ubs0`, `mb-yt73` and `mb-o8gd` under the feature `mb-iw3x`.
 Revised the same day after the owner tried it (`mb-s5ui`): the chooser moved from the
 file bars to the diff’s toolbar, and each surface got its own default and preference.
-This plan is `mb-93t2`.
+This plan is `mb-93t2`. The
+[diff presentation plan](plan-2026-11-25-diff-presentation.md) supersedes its controls,
+labels, and defaults.
 
 ## Overview
 

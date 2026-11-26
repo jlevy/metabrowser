@@ -70,10 +70,22 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
     ),
     (
         "The selector lists the working tree and the checkout's own branches. working_tree says "
-        "the working tree is served and which branch is checked out; kinds names the three "
-        "lists. The checked-out branch lists first and is checked_out, not current: chosen as "
-        "a ref it shows its commit, which the working tree is not.",
+        "the working tree is served and where HEAD is, its branch and its commit, read from "
+        "the checkout as the listing is made; kinds names the four lists in the order of the "
+        "selector's tabs. The checked-out branch lists first and is checked_out, not current: "
+        "chosen as a ref it shows its commit, which the working tree is not.",
         ((("checkout", "--api", "/api/source/refs"), 0),),
+    ),
+    (
+        "The working tree's own list has no refs and answers working_tree alone, with no Git "
+        "process: what the selector's Working tree tab shows, and what a page asks each time "
+        "its watch says the checkout's HEAD moved. That watch is on the path .git/HEAD of "
+        "the page's event stream, whose generation is what HEAD names, so it is the same for "
+        "a linked worktree, whose HEAD is not under that path.",
+        (
+            (("checkout", "--api", "/api/source/refs?kind=working_tree"), 0),
+            (("checkout", "--api", "/api/events/watch", "--data", "watch-head.json"), 0),
+        ),
     ),
     (
         "Remote-tracking branches are a third list, each with its remote's name. The symbolic "
@@ -149,9 +161,9 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         ),
     ),
     (
-        "The Commits tab is the checkout's whichever revision the Files tab shows: on "
-        "feature, the repository's HEAD is still the checked-out topic, and the history "
-        "starts there, at second, as it does on the working tree.",
+        "The Commits tab shows the revision the Files tab shows: on feature, HEAD is "
+        "feature's commit, detached, and the history is that commit's, from feature "
+        "back to first, where the working tree's starts at the checked-out topic.",
         (
             (("checkout", "--ref", "feature", "--api", "/api/git/repo"), 0),
             (("checkout", "--ref", "feature", "--api", "/api/git/log?limit=2"), 0),

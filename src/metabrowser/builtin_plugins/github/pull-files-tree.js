@@ -11,7 +11,10 @@
 //
 // `createFileTreeController` is one pull request's tree in its row: reading and asking for the
 // list, the folders a reader opens, the row that takes Tab, the keys, and the jump of the diff
-// to a file; `createRowExpansion` says which rows are open and why. pull-files-view.js is the
+// to a file; `createRowExpansion` says which rows are open and why. Where the list is read
+// and asked for is the tree's `FileListSource`: a pull request's own (`pullFileList`), these
+// routes, or a native stack's combined files under its Whole stack row (stack-files.js),
+// which answers in the same envelope, so one controller and one paint draw both. pull-files-view.js is the
 // paint, and tests/dom/github-pull-files-tree-session.js runs the rest from the command line
 // on what the server answered.
 //
@@ -296,6 +299,8 @@ export const LATE_ROWS_MS = 500;
 const FILE_FAILURES = Object.freeze({
   not_found_or_private:
     "The pull request was not found, or the signed-in account cannot read its files.",
+  // A native stack's list, under its Whole stack row (stack-files.js).
+  stack_not_one_comparison: "This stack cannot be shown as one comparison.",
 });
 const LISTING_FAILED = "Could not list the changed files.";
 
@@ -381,6 +386,7 @@ export function fileListFailure(envelope, formatTime, formatCount) {
  * @param {FilesEnvelope | null} envelope
  * @param {{
  *   number: number,
+ *   label?: string,
  *   expanded: boolean,
  *   rows: TreeRow[],
  *   rowsVersion: number,
@@ -450,7 +456,7 @@ function describeDrawnTree(envelope, held) {
     expanded: held.expanded,
     rows: held.rows,
     rowsVersion: held.rowsVersion,
-    label: `Changed files of #${held.number}`,
+    label: held.label ?? pullFilesLabel(held.number),
     line: null,
     notice: null,
     loading: false,
@@ -554,11 +560,46 @@ function describeDrawnTree(envelope, held) {
   return model;
 }
 
+/** What a pull request's tree is called, before its count. @param {number} number */
+function pullFilesLabel(number) {
+  return `Changed files of #${number}`;
+}
+
+/**
+ * Where a tree's list is read and asked for, in the routes' own answers, so the controller
+ * takes a pull request's list and a stack's alike. `label` is what the tree is called,
+ * before its count; `read` answers a window of the list, *query* the one `holdFileList`
+ * asks for, with a `FilesEnvelope` as its body on a 200; `refresh` asks for the list to be
+ * listed again, a reader's Retry when *retry*, and answers `{files: FilesEnvelope}` with no
+ * rows on a 200 or a 202, and `{code}` when it was refused.
+ *
+ * @typedef {{
+ *   label: string,
+ *   read(query: string, signal: AbortSignal): Promise<{status: number, body: unknown}>,
+ *   refresh(retry: boolean): Promise<{status: number, body: unknown}>,
+ * }} FileListSource
+ */
+
+/**
+ * A pull request's own list: the `pull-files` route's windows, and `pull-files-refresh`.
+ *
+ * @param {FileTreeDependencies["request"]} request
+ * @param {number} number
+ * @returns {FileListSource}
+ */
+export function pullFileList(request, number) {
+  return {
+    label: pullFilesLabel(number),
+    read: (query, signal) => request("GET", `${FILES_ROUTE}?${query}`, { signal }),
+    refresh: (retry) => request("POST", FILES_REFRESH_ROUTE, { body: { number, retry } }),
+  };
+}
+
 /**
  * @param {unknown} value
  * @returns {value is FilesEnvelope}
  */
-function isFilesEnvelope(value) {
+export function isFilesEnvelope(value) {
   if (value === null || typeof value !== "object") {
     return false;
   }
@@ -631,11 +672,15 @@ function isFilesEnvelope(value) {
  * stops for a held key. A click or Enter opens the file's address and pushes it. A folder
  * row opens nothing.
  *
+ * *options.number* is the tree's key among its panel's trees and the pull request whose list
+ * it reads; *options.list* reads another list in its place, a stack's (stack-files.js).
+ *
  * @param {FileTreeDependencies} deps
- * @param {{number: number, autoExpandFiles: number, current?: string | null, shown?: boolean}} options
+ * @param {{number: number, autoExpandFiles: number, current?: string | null, shown?: boolean, list?: FileListSource}} options
  */
 export function createFileTreeController(deps, options) {
   const number = options.number;
+  const source = options.list ?? pullFileList(deps.request, number);
   const holder = holdFileList(number);
   /** The shared tree, once `deps.tree` has given it. @type {MetabrowserChangedFilesTree | null} */
   let shared = null;
@@ -703,6 +748,7 @@ export function createFileTreeController(deps, options) {
   function model() {
     return describeFileTree(envelope, {
       number,
+      label: source.label,
       expanded,
       rows,
       rowsVersion: version,
@@ -985,9 +1031,7 @@ export function createFileTreeController(deps, options) {
           return;
         }
       }
-      const response = await deps.request("GET", `${FILES_ROUTE}?${holder.query()}`, {
-        signal: controller.signal,
-      });
+      const response = await source.read(holder.query(), controller.signal);
       if (inflight !== controller || controller.signal.aborted || !live()) {
         return;
       }
@@ -1038,9 +1082,7 @@ export function createFileTreeController(deps, options) {
     askedAt = deps.now();
     render();
     try {
-      const response = await deps.request("POST", FILES_REFRESH_ROUTE, {
-        body: { number, retry },
-      });
+      const response = await source.refresh(retry);
       if (mine !== generation || !live()) {
         return;
       }

@@ -964,7 +964,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
 | `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |
-| `stack` | `GET` | A native stack’s page: its members, its combined comparison’s address, the members its top lacks, and each file’s layers; with `since`, how each member’s head moved from a comparison it answered before ([The Stack Page](#the-stack-page)) |
+| `stack` | `GET` | A native stack’s page: its members, what its header says of them, its combined comparison’s address, the members its top lacks, and each file’s layers; with `since`, how each member’s head moved from a comparison it answered before ([The Stack Page](#the-stack-page)) |
 | `stack-comparison` | `GET` | That combined comparison as a diff document |
 | `labels` | `GET` | The repository’s cached label set |
 | `labels-refresh` | `POST` | The label-set job |
@@ -992,12 +992,39 @@ measurements that set them:
   rename. A member the top’s head does not contain, by its head or its merge commit, adds
   no file and is named in `lacking`; a bottom merge base outside the top’s history
   answers `absent` with `not_linear`.
+
 - **Its identity** is the store, both commits, and a digest of every member’s number,
   merge base, and head in stack order (`stack_key`). The digest is in the comparison’s
   address, its in-memory key (`scope` of the diff plugin’s `comparison_at`), its entity
   tag, and its kept manifest beside the store (`load_stack_manifest` in
   `pull_manifest.py`), so a member that moves names a new comparison and nothing is
   invalidated by hand.
+
+- **The header’s sums** are what the page’s header says of the stack where a pull
+  request’s says it of one pull request: `states`, `opened_at`, `updated_at`, `authors`,
+  `mergers`, `fetched_at`, `labels`, `commits`, and `size`, each from what the cache
+  holds of each member, its record’s or else its cached list row’s, as its title is.
+  The commits count the members the top contains.
+  The size is the combined comparison’s own, measured where the comparison is built
+  (`combined`), once a pair and kept beside the store, and only where that comparison is
+  the plain diff of its two commits and at most `MAX_SIZED_STACK_FILES` files, so the
+  size and the file count describe one diff.
+  The first read after a member moves builds the comparison, so it waits on the
+  measurement too, which is bounded by the file cap and `MEASURE_TIMEOUT_S`; every later
+  read takes it from `kept_change_size` and runs no Git for it.
+  The size is asked to an answer once a kept comparison: a size, a reason Git has none,
+  such as a measurement that ran out of time, or that the comparison is not one that is
+  measured. The stack’s kept manifest is then marked (`_settle_size`, `size_settled` in
+  `pull_manifest.py`), so a read that finds it kept and marked runs no Git for the size,
+  in the process that asked or a later one, as every `metab --api` read is.
+  A manifest found kept and not marked, as an earlier build left it, is asked by the
+  read that loads it, which lists the plain diff once more.
+  A measurement Git failed, or whose read was cancelled, is no answer, and the next read
+  asks again.
+
+  `labels` is null while a member has neither a record nor a row, and its names are the
+  row’s wherever there is one (`member_identity`), as the stacks route’s are.
+
 - **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
   `number` and admit the stack’s current pair, and `stack-comparison` lists it
   (`_stack_admission` in `pull_snapshot.py`). Each keeps answering a pair the `stack`
@@ -1007,14 +1034,19 @@ measurements that set them:
   the reader whose records named them, as `pull_snapshot_cache.py` keeps a pull
   request’s. A pair no longer kept answers `stack_moved` or `snapshot_expired`, and a
   file that cannot be read now answers `snapshot_unavailable` (409).
+
 - **The page** (`stack-page.js`) is a pull request’s page for the whole stack
-  ([The Stack Page](../../design-system.md#the-stack-page)): a page header whose
-  members, top first, are the stack menu’s rows (`stack-member-row.js`) and whose last
-  line is the Diff summary, closed; then Docs with `DOCS_DRAWING` and Changes with
-  `CHANGES_DRAWING` (`diff-drawing.js`, which `pull-page.js` shares), with no layer
-  marks. Every header row but the status line is decided at first paint from the stack
-  snapshot (`stackHeader`), and Docs and Changes are laid out out of sight until their
-  first screen is ready, as a pull request’s are.
+  ([The Stack Page](../../design-system.md#the-stack-page)): a pull request’s page
+  header said of the whole stack, with its members, top first, the stack menu’s rows
+  (`stack-member-row.js`), under a toggle above its last line, the Diff summary, both
+  closed; then Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING`
+  (`diff-drawing.js`, which `pull-page.js` shares), with no layer marks.
+  Every header row but the status line is decided at first paint from the stack snapshot
+  (`stackHeader`), the labels row by the members’ labels the stacks route projects
+  (`labels`, `knownLabels`) and held where it does not know them all, and the members
+  row held even for a stack the snapshot lacks; the page is held cold until the stack’s
+  answer fills the rows the snapshot cannot, and Docs and Changes are laid out out of
+  sight until their first screen is ready, as a pull request’s are.
   Its View on GitHub is the counterpart route’s, GitHub’s `stack/<n>`. It polls `stack`,
   asks `pull-refresh` for each pending member at its head, a member with no record as
   the reader’s own open of it (`retry`), since an automatic ask refreshes only a record
@@ -1047,6 +1079,7 @@ measurements that set them:
   record that caught up (`stack_moves`, read against the pair `pull_stack_retained.py`
   keeps for that key and counted once each, `MAX_KEPT_COUNTS`). A file the reader opens
   is scrolled to when its diff is drawn, never on a later answer (`bodyPlan`).
+
 - **The guide.** When a member’s description carries the stack’s guide, the answer’s
   `guide` names that member and its record revision, Guided Review leads the tabs, and
   `/stack/<n>` opens on it; without one the front page is Changes
@@ -1125,13 +1158,17 @@ draws a comment, its title and note prose in a KPress article, as a description 
 each excerpt is drawn by the diff plugin’s own renderer (`mountFilePatch`, which the
 page loads with `plugins.load("diff")`; `renderReference` in `guided-review.js`), so its
 hunk bars, folds, type, row height, gutter, and change fills are Changes’.
-A range is one hunk in the diff model’s shape (`_rows_hunk` in `guided_review.py`), and
-a path alone is its file’s whole patch, within the step’s budget for whole files; a file
-past it, or past what the diff source reads in one run, is answered `patch_too_large`. A
-path alone of a file the rendered route renders, by that route’s own rule on both sides
-of the change (`rendered_format` in `pull_rendered_diff.py`: Markdown, YAML, JSON), is a
-document instead: the guided route answers its format as `rendered`, reads no patch for
-it, gives it no hunks, and charges it nothing against the step’s budget for whole files
+Each card the guide draws for a file folds by the diff view’s own bar and chevron, which
+the guide’s drawer hands over (`disclose` on `guidePatchDrawer`, the diff view’s
+`fileDisclosure`), so the guide builds no bar of its own
+([Diff File Bar](../../design-system.md#diff-file-bar)). A range is one hunk in the diff
+model’s shape (`_rows_hunk` in `guided_review.py`), and a path alone is its file’s whole
+patch, within the step’s budget for whole files; a file past it, or past what the diff
+source reads in one run, is answered `patch_too_large`. A path alone of a file the
+rendered route renders, by that route’s own rule on both sides of the change
+(`rendered_format` in `pull_rendered_diff.py`: Markdown, YAML, JSON), is a document
+instead: the guided route answers its format as `rendered`, reads no patch for it, gives
+it no hunks, and charges it nothing against the step’s budget for whole files
 (`_step_references` in `guided_review.py`), so a large document is bounded only by the
 rendered route’s own bounds.
 The page draws it (`referenceDrawing` in `guided-review.js`) with the diff plugin’s own
@@ -1150,6 +1187,26 @@ A document the view could not draw keeps the guide’s bar for it, with its name
 Open full diff, above the view’s one-sentence notice.
 Each document is in the step’s list of drawn views, so a step change, or the page
 ending, disposes it and aborts its read.
+
+The page shows a step whole (`compose` and `present` in `guided-review.js`): it draws
+the step out of sight, beside the one shown, and replaces that one in a single change
+once the step’s answer, the text’s stylesheets, its drawers, each document’s first
+screen (`settled` of `mountRenderedFile`, held for its rendered layer for
+`GUIDE_DOCUMENT_HOLD_MS`), and on the overview the description’s Markdown are in hand,
+the last waited for at most `GUIDE_INTRODUCTION_HOLD_MS`. Its reads go through the
+document’s keep, `guide-reads.js`: one answer per step, record revision, and whether
+GitHub reported a head past that record when it was read (`show`’s *moved*, since the
+server then answers the steps as out of date with the same revision), a read in flight
+shared by whoever asks for it the same way, never kept when it holds what a later read
+answers otherwise (`retryable`: a note a busy renderer refused, or a reference
+`not_cached`, `comparison_unavailable`, or `diff_unavailable`), and let go oldest first
+past `GUIDE_KEPT_CHARS`. A pull request’s page reads the first step ahead, when it is
+idle on another tab or beside the module’s import on Guided Review’s own, a stack’s page
+at the comparison it draws, and the guide reads the steps next to the one shown when the
+page is idle (`createGuideNavigation`’s `prefetch` and `peek`), so a step one move away,
+or one read before, shows in the same task as the press.
+A step’s documents are not read ahead: they are drawn as it is composed, and the arrows’
+delayed mark shows while they are (mb-ukmm).
 A step can also cite past its pull request, with the format’s other
 [reference kinds](arch-collection-format.md#the-record), each answered with its `kind`
 and every field, null where its kind has none (`_references` in `guided_review.py`), and

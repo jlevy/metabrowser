@@ -11,14 +11,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/trunk",
     "head_name": "trunk",
+    "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -61,14 +63,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/trunk",
     "head_name": "trunk",
+    "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -221,14 +225,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/trunk",
     "head_name": "trunk",
+    "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -294,14 +300,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/trunk",
     "head_name": "trunk",
+    "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -353,14 +361,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/trunk",
     "head_name": "trunk",
+    "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -706,14 +716,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/trunk",
     "head_name": "trunk",
+    "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "name": "local",
     "location": "<ROOT>"
   },

@@ -40,6 +40,22 @@ document with the Docs tab's drawing of the same file, and a YAML document with 
 tab's, on a stand-in whose pull request 7's guide ends on a step that cites both whole
 (``--guided-documents``).
 
+Whether anything in the guide moves while a step lands is paint too, so
+``tests/dom/github-guided-review-motion-chrome.mjs`` samples the guide every frame from a
+press, or a page load, to the step it settles on, and holds that nothing moves from the
+first frame a step shows and that the step the reader leaves stays as it was until then:
+cold, on a page loaded on Guided Review and a step not read ahead, and warm, on a step read
+ahead or kept, where no loading state shows either; on pull request 7's guide, which ends
+on documents (``--guided-documents``), and on stack 70's (``--guided-stack``, with the
+stack page's native stacks).
+
+A step's file card folds by the diff view's own bar and chevron, and where the chevron sits
+and how the bar is painted are the browser's, so
+``tests/dom/github-guided-review-fold-chrome.mjs`` measures the card's bar against a file's
+in the same server's Changes tab, open and folded, and folds and opens it with a real press.
+Browserless, the bar's state machine is pinned in ``tests/dom/diff-view-behavior.js`` and the
+card built from it in ``tests/dom/github-guided-review-mount-behavior.js``.
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process
 leads a process group of its own, which Chrome joins (tests/process_group.py).
@@ -75,6 +91,8 @@ SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome
 DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-documents-chrome.mjs"
 KINDS = Path(__file__).resolve().parent / "dom" / "github-guided-review-kinds-chrome.mjs"
 OUTLINE = Path(__file__).resolve().parent / "dom" / "github-guided-review-outline-chrome.mjs"
+MOTION = Path(__file__).resolve().parent / "dom" / "github-guided-review-motion-chrome.mjs"
+FOLD = Path(__file__).resolve().parent / "dom" / "github-guided-review-fold-chrome.mjs"
 # The stack page's native stacks, and 300, which holds 9 and then 50, so a pull request the
 # kinds guide cites has a place in a stack other than 7's, which its row names.
 KINDS_STACKS = (*STACKS, (300, (9, 50)))
@@ -103,11 +121,12 @@ def _session(
     describe: Sequence[tuple[str, str]] = (("8", "grouped"),),
     stacks: Sequence[tuple[int, Sequence[int]]] = (),
     checkout: bool = False,
+    arguments: Sequence[str] = (),
 ) -> str:
     """Build the stand-in in fixture *mode*, write each guide *describe* names into its pull
     request's description, give it the native *stacks*, serve pull request 7, from a
     reader's clone of the repository with *checkout*, and run *session* on it, told
-    `checkout` then too."""
+    `checkout` then too, and *arguments*."""
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -157,7 +176,13 @@ def _session(
     try:
         _wait_until_serving(server, port, log)
         run = run_in_own_group(
-            [node, str(session), f"http://127.0.0.1:{port}", *(["checkout"] if checkout else [])],
+            [
+                node,
+                str(session),
+                f"http://127.0.0.1:{port}",
+                *(["checkout"] if checkout else []),
+                *arguments,
+            ],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
         )
@@ -218,4 +243,28 @@ def test_guided_review_outline_in_chrome(tmp_path: Path, chrome_profile: Path) -
         describe=(("8", "mixed"), ("9", "ten-steps")),
     )
     passed = re.fullmatch(r"guided review outline in Chrome: (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_guided_review_holds_still_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided-documents", MOTION, arguments=("pull",))
+    passed = re.fullmatch(r"guided review motion in Chrome \(pull\): (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_a_stack_guide_holds_still_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(
+        tmp_path, chrome_profile, "--guided-stack", MOTION, stacks=STACKS, arguments=("stack",)
+    )
+    passed = re.fullmatch(
+        r"guided review motion in Chrome \(stack\): (\d+) checks passed\n", stdout
+    )
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_a_guided_file_folds_as_a_changes_file_in_chrome(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided-documents", FOLD)
+    passed = re.fullmatch(r"guided review fold in Chrome: (\d+) checks passed\n", stdout)
     assert passed is not None and int(passed.group(1)) > 0, stdout

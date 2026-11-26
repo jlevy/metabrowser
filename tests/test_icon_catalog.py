@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import NamedTuple, get_args
 from urllib.parse import unquote
 
-from metabrowser import kpress_adapter
+from metabrowser import kpress_adapter, shell_glyphs
 from metabrowser.root_identity import KIND_LABELS, IdentityKind
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -52,6 +52,7 @@ BUILTIN_PLUGINS = PACKAGE / "builtin_plugins"
 CATALOG = REPO_ROOT / "docs" / "design-system-icons.md"
 REGISTRY = STATIC / "icons.js"
 SOURCE_KIND_GLYPHS = STATIC / "source-kind-glyphs.json"
+SHELL_GLYPHS = PACKAGE / "shell_glyphs.py"
 TYPE_REGISTRY = PACKAGE / "data" / "file-rollup-format" / "recommended-file-types.toml"
 TYPE_SCHEMA = PACKAGE / "data" / "file-rollup-format" / "file-type-registry.schema.json"
 MACOS_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources"
@@ -78,6 +79,10 @@ _NOT_GLYPHS = frozenset({"withClass"})
 # string that opens an SVG.
 _SVG_DEFINITION = re.compile(r"\b(\w+)\s*[:=]\s*(?://[^\n]*\n\s*)?[\"'`]<svg\b")
 _UPSTREAM_COMMENT = re.compile(r"//\s*Lucide `([a-z0-9-]+)`")
+# A glyph shell_glyphs.py defines: a comment ending in its Lucide id, then its `_SVG` constant.
+_SHELL_GLYPH_DEFINITION = re.compile(
+    r"^# [^\n]*Lucide `([a-z0-9-]+)`\.?\n(\w+_SVG): Final = ", re.M
+)
 # Characters that are marks rather than words: arrows, technical symbols, geometric shapes,
 # miscellaneous symbols, dingbats, more arrows and math marks such as ⧉, the
 # multiplication sign a close button might use, the guillemets a pager or a breadcrumb
@@ -461,8 +466,9 @@ def test_every_named_svg_outside_the_registry_is_a_row() -> None:
     """A plugin's or a view's own glyph is cataloged where it is defined.
 
     Every SVG a script draws is one of its named definitions, so a second, unnamed drawing
-    in a file that has a named one fails as the first would. The server's page draws none:
-    the shell's glyphs are the registry's, which it loads before its first paint.
+    in a file that has a named one fails as the first would. The server's page template draws
+    none: a glyph the server writes into a page is a root's mark (`source_kind_marks.py`) or
+    one of `shell_glyphs.py`'s, and the rest are the registry's.
     """
     defined: set[tuple[str, str]] = set()
     for path in _browser_scripts():
@@ -475,10 +481,30 @@ def test_every_named_svg_outside_the_registry_is_a_row() -> None:
         )
         defined |= {(_relative(path), name) for name in names}
     assert "<svg" not in _shell_template(), (
-        "server.py's page draws an SVG; draw a registry glyph instead"
+        "server.py's page draws an SVG; write one from shell_glyphs.py or use a registry glyph"
     )
     cataloged = {(row.defined_in[0], row.icon) for row in _catalog() if row.source in DRAWN[1:]}
     assert sorted(defined) == sorted(cataloged)
+
+
+def test_every_glyph_the_servers_code_writes_is_a_shell_row() -> None:
+    """A glyph `shell_glyphs.py` holds is a Shell row defined there, under its Lucide id, and
+    no browser script or stylesheet holds a second copy of its drawing."""
+    source = SHELL_GLYPHS.read_text(encoding="utf-8")
+    defined = {name: lucide for lucide, name in _SHELL_GLYPH_DEFINITION.findall(source)}
+    assert sorted(defined) == sorted(
+        name for name in vars(shell_glyphs) if name.endswith("_SVG")
+    ), "every glyph in shell_glyphs.py names its Lucide id in the comment above it"
+    rows = [row for row in _rows("Shell") if row.defined_in == ("shell_glyphs.py",)]
+    assert {row.icon: row.upstream for row in rows} == defined
+    for name in defined:
+        drawing: str = getattr(shell_glyphs, name)
+        assert drawing.startswith(shell_glyphs.LUCIDE_SVG_OPEN) and drawing.endswith("</svg>")
+        elements = drawing.removeprefix(shell_glyphs.LUCIDE_SVG_OPEN).removesuffix("</svg>")
+        for path in (*_browser_scripts(), *_stylesheets()):
+            assert elements not in path.read_text(encoding="utf-8"), (
+                f"{_relative(path)} holds a copy of {name}"
+            )
 
 
 def test_a_plugins_pull_states_draw_the_plugins_glyphs() -> None:

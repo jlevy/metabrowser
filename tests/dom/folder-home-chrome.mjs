@@ -411,7 +411,7 @@ try {
   const walked = await evaluate(PULLS);
   await press("ArrowRight", RIGHT);
   await waitFor(
-    `document.querySelector('#tab-pulls a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-stack-row)') !== null`,
+    `document.querySelector('#tab-pulls a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-stack-row):not(.github-pulls-whole-row)') !== null`,
     "Right on the row opens its changed files",
   );
   const workedPulls = await evaluate(PULLS);

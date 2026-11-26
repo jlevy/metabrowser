@@ -721,7 +721,7 @@ function initSettingsControl() {
       close: () => setOpen(false),
     });
     btn.addEventListener("click", () => {
-      void window.MetabrowserAssets?.ensureAsset("remote-images");
+      void window.MetabrowserAssets?.ensureAsset("settings-menu");
       setOpen(!isOpen());
       dismissal?.[isOpen() ? "opened" : "closed"]();
     });
@@ -4849,10 +4849,7 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       filesShown: resumeRootSummaryRefresh,
-      filesHidden: () => {
-        closeFilterMenu();
-        window.MetabrowserSourceRefSelector?.mounted()?.close();
-      },
+      filesHidden: closeFilterMenu,
       flushPull: () => pullPageHost?.page()?.flush?.(),
       // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
@@ -5123,6 +5120,7 @@ window.MetabrowserShell = Object.freeze({
   registerNavPanel: (/** @type {MetabrowserNavPanel} */ panel) => mainTabs?.register(panel),
   removeNavPanel: (/** @type {string} */ id) => mainTabs?.remove(id),
   renderPreviewHtml,
+  rereadFiles,
   renderPreviewNode,
   stagePreviewNode,
   shortcuts: () => shortcutRegistry,
@@ -7616,19 +7614,24 @@ function observeFileAges(ages, undated) {
     );
   }
 }
-// The ages landed: whatever was drawn without them is drawn again.
-function redrawForFileAges() {
+// The ages landed, or the header's Refresh asked (static/refresh-plan.js): the tree and the
+// file or folder the pane holds are read and drawn again, in the view the reader is on, a
+// Markdown file's Source say, as Load more keeps it. Settles when both are drawn.
+function rereadFiles() {
   subtreeCache.clear();
   fileCache.clear();
-  void loadTree({ reconcileMountedRoot: true });
+  var tree = loadTree({ reconcileMountedRoot: true });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }
-  if (currentPath) {
-    void selectFile(currentPath);
-  }
+  var held = previewPane.snapshot();
+  var shownView = document.getElementById("preview-pane")?.dataset.activeView || undefined;
+  return Promise.all([
+    tree,
+    held.owner === "file" && held.path !== null && selectFile(held.path, shownView),
+  ]);
 }
-window.addEventListener("metabrowser:file-ages-landed", redrawForFileAges);
+window.addEventListener("metabrowser:file-ages-landed", rereadFiles);
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A

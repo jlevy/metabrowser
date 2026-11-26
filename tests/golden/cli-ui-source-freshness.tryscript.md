@@ -10,7 +10,9 @@ A page on a served mirror polls `/api/source/status` while it is visible, asks f
 background refresh when the mirror is stale, shows when it was last fetched, offers the
 newer commit when a refresh moved the pinned ref, and switches the pin with
 `POST /api/source/pin`. The Git panel turns a history cursor a refresh invalidated into
-a typed stale state with a reload action.
+a typed stale state with a reload action, and keeps its rows when a later page is
+refused as `pin_changed`, since the walk would be refused again and the row offers the
+reload.
 
 A page on a pin also names the commit it shows on its data requests, and a request
 refused as `pin_changed` makes the row ask the status route at once.
@@ -996,6 +998,13 @@ $ node tests/dom/source-freshness-session.js
       "means": "recover"
     },
     {
+      "failure": "another tab switched the revision",
+      "status": 409,
+      "code": "pin_changed",
+      "initial": false,
+      "means": "failed"
+    },
+    {
       "failure": "the server failed",
       "status": 500,
       "code": null,
@@ -1009,7 +1018,22 @@ $ node tests/dom/source-freshness-session.js
       "initial": true,
       "means": "failed"
     }
-  ]
+  ],
+  "refreshNow": {
+    "a fetch that runs: settled while it runs, then once it has ended": [
+      false,
+      true
+    ],
+    "a poll that fails while it runs: settled while it runs, then once it failed": [
+      false,
+      true
+    ],
+    "a row disposed while it runs: settled while it runs, then once disposed": [
+      false,
+      true
+    ],
+    "a refused refresh: settled at once": true
+  }
 }
 ? 0
 ```

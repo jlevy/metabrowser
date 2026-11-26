@@ -455,9 +455,16 @@
         const slot = /** @type {HTMLElement} */ (toolbar);
         slot.hidden = slot.dataset.navToolbar !== panelId;
       }
-      const filesRefRow = document.getElementById("nav-files-ref");
-      if (filesRefRow) {
-        filesRefRow.hidden = panelId !== "files";
+      // The served revision's row heads the two tabs that show it, Files and Commits, and
+      // hides under Pulls, which has its own scope. It is one row with one chooser, so a
+      // choice made under either tab is what both show (docs/design-system.md, "The Ref
+      // Selector"). Its list closes on a switch, as each tab's own menus do.
+      const sourceRow = document.getElementById("nav-source-ref");
+      if (sourceRow) {
+        sourceRow.hidden = panelId !== "files" && panelId !== "git";
+      }
+      if (leaving !== panelId) {
+        window.MetabrowserSourceRefSelector?.mounted()?.close();
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;

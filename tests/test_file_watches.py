@@ -24,6 +24,7 @@ from metabrowser.builtin_plugins.delimited import source as delimited
 from metabrowser.events import FileChanged, FsResyncRequired, Heartbeat
 from metabrowser.events_route import _EventBus, api_events_watch
 from metabrowser.file_watches import (
+    HEAD_WATCH_PATH,
     FileWatches,
     TooManyWatchesError,
     UnknownConnectionError,
@@ -32,6 +33,8 @@ from metabrowser.file_watches import (
 )
 from metabrowser.table_source import open_table_source
 from tests.inventory_harness import inventory_harness
+from tests.required_tools import needs_git
+from tests.source_checkout_fixture import git
 
 
 @pytest.fixture
@@ -443,3 +446,72 @@ def test_a_pinned_revision_answers_as_the_event_stream_does(tmp_path: Path) -> N
         "code": "unsupported_for_subject",
         "capability": "watcher",
     }
+
+
+@needs_git
+@pytest.mark.parametrize("linked", [False, True], ids=["main worktree", "linked worktree"])
+def test_a_checkouts_head_is_watched_by_what_it_names(tmp_path: Path, linked: bool) -> None:
+    """``HEAD_WATCH_PATH`` moves when the served checkout's ``HEAD`` names another branch
+    or another commit, and at nothing else: the page's row names that branch.
+
+    A linked worktree's ``.git`` is a file and its ``HEAD`` is under the repository's own
+    directory, outside the served root, so no file under the root changes when it checks
+    out a branch; and a commit moves the branch's ref and leaves the ``HEAD`` file as it
+    was. The generation is what ``HEAD`` names, so it follows both.
+    """
+
+    main = tmp_path / "main"
+    main.mkdir()
+    git(main, "init", "-q", "-b", "trunk")
+    (main / "a.txt").write_text("a\n", encoding="utf-8")
+    git(main, "add", "-A")
+    git(main, "commit", "-q", "-m", "first")
+    git(main, "branch", "feature")
+    root = main
+    if linked:
+        root = tmp_path / "linked"
+        git(main, "worktree", "add", "-q", "-b", "topic", str(root))
+        assert (root / ".git").is_file()
+    server._set_root_dir(root)  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> tuple[list[str | None], list[Any], dict[str, Any]]:
+        async with inventory_harness(root) as harness:
+            connection, queue = await _attached(harness.bus)
+            seen = [await harness.bus.watches.register(connection, HEAD_WATCH_PATH)]
+
+            async def after(*command: str) -> None:
+                git(root, *command)
+                seen.append(await watch_generation(HEAD_WATCH_PATH))
+
+            # A file written and staged: HEAD names what it named.
+            (root / "b.txt").write_text("b\n", encoding="utf-8")
+            await after("add", "-A")
+            await after("commit", "-q", "-m", "second")
+            await after("checkout", "-q", "feature")
+            await after("checkout", "-q", "--detach", "feature")
+            await harness.bus.watches.poll()
+            # What `metab --api` reaches: the generation, with nothing registered.
+            _status, asked = await _post(harness.app, {"path": HEAD_WATCH_PATH})
+            return seen, _events(queue), asked
+
+    seen, events, asked = asyncio.run(run())
+    registered, staged, committed, switched, detached = seen
+    assert registered is not None and staged == registered
+    # A commit, another branch, and a detached HEAD at that branch's commit each name
+    # something else, and nothing repeats.
+    assert len({registered, committed, switched, detached}) == 4
+    changes = [event for event in events if isinstance(event, FileChanged)]
+    assert [(event.path, event.generation) for event in changes] == [(HEAD_WATCH_PATH, detached)]
+    assert asked["generation"] == detached and asked["watching"] is False
+
+
+def test_a_folder_that_is_no_checkout_watches_that_path_as_any_other(root: Path) -> None:
+    async def run() -> tuple[str | None, str | None]:
+        async with inventory_harness(root):
+            missing = await watch_generation(HEAD_WATCH_PATH)
+            (root / ".git").mkdir()
+            (root / ".git" / "HEAD").write_text("not a head\n", encoding="utf-8")
+            return missing, await watch_generation(HEAD_WATCH_PATH)
+
+    missing, present = asyncio.run(run())
+    assert missing is None and present is not None

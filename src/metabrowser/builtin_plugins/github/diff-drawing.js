@@ -20,7 +20,7 @@ export const DOCS_SHOW_PREFERENCE = "github.docs.show";
 export const DOCS_DRAWING = Object.freeze({
   unfold: true,
   layout: /** @type {const} */ ("unified"),
-  show: /** @type {const} */ ("current"),
+  show: /** @type {const} */ ("full"),
   showPreference: DOCS_SHOW_PREFERENCE,
 });
 

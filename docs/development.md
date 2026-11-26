@@ -569,6 +569,18 @@ Three conventions apply to every document:
   document changing, so they belong in specs, records, `TODO.md`, and architecture
   status lines.
 
+### Agent Skills
+
+Metabrowser’s own skills are named `mb-*` and kept minimal: each routes an agent to the
+document that holds the procedure, so the procedure is written once.
+They live in `.agents/skills/`, and `.claude/skills/` links to each, so one copy serves
+every agent. `mb-add-language` routes to [Adding a Language](adding-a-language.md), and
+`mb-add-plugin` to [Plugin Authoring](plugins.md) and
+[Adding a File Type](project/architecture/arch-plugin-system.md#adding-a-file-type).
+The `metabrowser` skill under `skills/` is different: it ships to users and is installed
+by that name. `tbd` and `simple-modern-uv` are installed by their tools, not written
+here.
+
 ### Architecture Documents
 
 Architecture documents are reference material, so their layout is a convention, and

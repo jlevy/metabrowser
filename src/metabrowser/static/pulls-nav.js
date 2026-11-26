@@ -80,6 +80,7 @@
    *   container(): HTMLElement | null,
    *   toolbar?(): HTMLElement | null,
    *   metadata?(): HTMLElement | null,
+   *   refreshParts?(): MetabrowserRefreshParts | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -152,6 +153,9 @@
                 toolbar: deps.toolbar?.() ?? null,
                 // The band under it, which the list's count and connection lines fill.
                 metadata: deps.metadata?.() ?? null,
+                // The navigation's one Refresh, to which the list lends its own refresh and
+                // the shown pull request page's (static/refresh-plan.js).
+                refreshParts: deps.refreshParts?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}} */ route,
@@ -161,6 +165,14 @@
                 fileHref: (/** @type {number} */ number, /** @type {string} */ path) => {
                   try {
                     return deps.routes.pullHref(number, "files", path);
+                  } catch {
+                    return null;
+                  }
+                },
+                // A stack's changed file's row links to the stack's Changes at that file.
+                stackFileHref: (/** @type {number} */ stack, /** @type {string} */ path) => {
+                  try {
+                    return deps.routes.stackHref(stack, "changes", path);
                   } catch {
                     return null;
                   }
@@ -397,6 +409,8 @@
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
       /** @param {number} number */
       toggleStack: (number) => handle?.toggleStack(number) ?? false,
+      /** @param {number} stack */
+      toggleStackFiles: (stack) => handle?.toggleStackFiles(stack) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -542,9 +556,10 @@
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
           }
-          // A Whole stack row has nothing to expand: Space opens the stack's page, as Enter does.
+          // A Whole stack row's children are its stack's changed files, as a pull request's
+          // row's are its own: Space opens or closes them, and Enter opens the stack's page.
           if (target.matches(".github-pulls-whole-row")) {
-            return event?.repeat === true || nav.activateAnchor();
+            return event?.repeat === true || nav.toggleStackFiles(Number(target.dataset.stack));
           }
           if (target.matches(".github-pulls-row")) {
             return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));
@@ -761,6 +776,7 @@
       container: () => document.getElementById("tab-pulls"),
       toolbar: () => document.getElementById("nav-toolbar-pulls"),
       metadata: () => document.getElementById("nav-metadata-pulls"),
+      refreshParts: () => window.MetabrowserRefreshPlan?.plan() ?? null,
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {

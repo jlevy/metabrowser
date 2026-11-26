@@ -34,6 +34,8 @@ registerHooks({
         source: [
           "export const setChangeLoader = () => {};",
           "export const setGapLoader = () => {};",
+          "export const fileDisclosure = (...args) => globalThis.diffViewRecorder.fileDisclosure(...args);",
+          "export const presentationControlHtml = () => '';",
           "export const mountDiffSummary = () => ({ dispose() {} });",
           "export const mountDiffView = (...args) => globalThis.diffViewRecorder.mountDiffView(...args);",
           "export const mountFilePatch = (...args) => globalThis.diffViewRecorder.mountFilePatch(...args);",
@@ -172,6 +174,11 @@ function step(body, number, references, extra = {}) {
 
 /** The page and the production diff plugin, with every request the plugin makes recorded. */
 async function harness() {
+  // The diff plugin's own bar and chevron, which a patch hands the card drawn around it;
+  // the query passes the stand-in for diff-view.js above.
+  const { fileDisclosure } = await import(
+    `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href}?own`
+  );
   /** What the diff view was asked to draw: each view and each patch, and whether disposed. */
   const views = [];
   const patches = [];
@@ -216,6 +223,8 @@ async function harness() {
         },
       };
     },
+    // The diff view's own builder of a card's bar, which the real index.js hands the guide.
+    fileDisclosure,
   };
   /** Each request the plugin made of its routes, and a way to hold one-file answers. */
   const requests = [];
@@ -254,7 +263,7 @@ async function harness() {
       sourceKind: () => "git_revision",
       // The File type menu a page with Changes has, so a diff of more than one file would
       // load its filter.
-      filterControls: { typeMenu: {} },
+      filterControls: { typeMenu: {}, bind: () => () => {} },
       loadChangedFilesTree: async () =>
         require("./changed-files-tree-fixture.js").changedFilesTree(),
       async fetchPluginData(plugin, hook, params, options) {
@@ -295,6 +304,8 @@ async function harness() {
     status,
     headers: { get: () => null },
     json: async () => body,
+    // The guide reads its answer as text, whose length it keeps (guide-reads.js).
+    text: async () => JSON.stringify(body),
   });
   const reads = [];
   let current = null;
@@ -327,6 +338,9 @@ async function harness() {
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/comparison-prefetch.js"))
       .href
   );
+  const { guideReads } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
+  );
   return {
     views,
     patches,
@@ -343,6 +357,7 @@ async function harness() {
     /** Mount page 7 on *tab*, as the shell does at its address. */
     mount(tab, initial) {
       documentComparisons.clear();
+      guideReads.clear();
       current = initial;
       window.location.pathname = `/pull/7/${tab}`;
       const container = new Element("main");
@@ -380,14 +395,30 @@ async function harness() {
             .find((node) => node.tag === "button" && node.getAttribute("aria-label") === label)
             .events.get("click")();
         },
-        /** How many documents show their progress mark. */
-        loading() {
-          return container.querySelectorAll(".github-pull-guide-document-loading").length;
+        /** Whether a step waits out of sight to show whole in the place of the one shown. */
+        incoming() {
+          return container.querySelector(".github-pull-guide-incoming") !== null;
         },
-        /** Each reference of the step on screen, as it is drawn. */
+        /** Whether the arrows' delayed mark is set to show, saying a step is on its way. */
+        marked() {
+          return container.querySelector(".github-pull-guide-waiting")?.hidden === false;
+        },
+        /** The arrows a reader can press, by label. */
+        pressable() {
+          const arrows = [...container.descendants()].filter(
+            (node) =>
+              node.tag === "button" &&
+              ["Previous step", "Next step"].includes(node.getAttribute("aria-label")) &&
+              node.disabled !== true,
+          );
+          return arrows.map((node) => node.getAttribute("aria-label")).join(" and ") || "none";
+        },
+        /** Each reference of the step on screen, as it is drawn: not a step that waits. */
         drawn() {
-          return container
-            .querySelectorAll(".github-pull-guide-reference")
+          const shown = container
+            .querySelectorAll(".github-pull-guide-step")
+            .find((detail) => !detail.classes.has("github-pull-guide-incoming"));
+          return (shown?.querySelectorAll(".github-pull-guide-reference") ?? [])
             .map((section) => {
               const note = section.children.find(
                 (child) => typeof child !== "string" && child.tag === "p",
@@ -442,8 +473,11 @@ function described(options) {
 
 /**
  * What a tab's own view has that a step's document has not, and the other way round, after
- * checking that every choice both make is the same: what a mount is handed (its layer, its
- * loaders) is its own.
+ * checking that every choice both make is the same, but for how long Rendered waits: what a
+ * mount is handed (its layer, its loaders) is its own, and a step's document waits for its
+ * rendering for as long as the route can take, since the step shows only once its documents
+ * are drawn as they stay (`GUIDE_DOCUMENT_HOLD_MS` in guide-reads.js), where a tab waits
+ * for its first screen only as long as Changes does.
  */
 function compared(tab, drawn) {
   const only = (from, to) =>
@@ -453,7 +487,12 @@ function compared(tab, drawn) {
       .join(", ") || "nothing";
   for (const key of Object.keys(drawn.options)) {
     const value = drawn.options[key];
-    if (key in tab.options && typeof value !== "function" && typeof value !== "object") {
+    if (
+      key in tab.options &&
+      key !== "markdownHoldMs" &&
+      typeof value !== "function" &&
+      typeof value !== "object"
+    ) {
       assert.equal(value, tab.options[key], `${key} differs from the tab's`);
     }
   }
@@ -543,8 +582,10 @@ async function run() {
       `its Rendered is asked of: ${world.requests.map((asked) => `${asked.hook} file=${asked.params.file}`).join(", ")}`,
     );
 
-    // Step 2: moving on disposes every view step 1 drew. Its document's read is held, and
-    // moving on again before it answers aborts it, and its late answer draws nothing.
+    // Step 2's document's read is held: step 2 is drawn out of sight, and step 1 stays on
+    // screen, every view it drew with it, until step 2 can show whole. Moving on again before
+    // the document answers withdraws step 2, which aborts its read, and step 3 shows in step
+    // 1's place, which disposes step 1's views; the late answer draws nothing.
     world.hold.add("docs/second.md");
     world.requests.length = 0;
     const before = world.views.length;
@@ -553,10 +594,11 @@ async function run() {
     await settle();
     world.reads.at(-1).answer(step(body, 2, [markdown("docs/second.md")]));
     await settle();
+    const disposedViews = () => world.views.slice(0, before).filter((drawn) => drawn.disposed);
     steps.push(
-      `step 2 disposes step 1's: ${world.views.filter((drawn) => drawn.disposed).length} of ${before} documents, ${drawnPatches.filter((drawn) => drawn.disposed).length} of ${drawnPatches.length} patches`,
+      `step 2 waits for its document: a step waits out of sight ${view.incoming()}, the arrows' mark shows ${view.marked()}; step 1's disposed: ${disposedViews().length} of ${before} documents, ${drawnPatches.filter((drawn) => drawn.disposed).length} of ${drawnPatches.length} patches`,
     );
-    steps.push(`step 2 draws, its read on its way: ${view.drawn()}`);
+    steps.push(`on screen meanwhile: ${view.drawn()}`);
     const waiting = world.requests.find((asked) => asked.params.file === "docs/second.md");
     view.press("Next step");
     await settle();
@@ -566,20 +608,23 @@ async function run() {
     world.release("docs/second.md");
     await settle();
     steps.push(
-      `step 3 before it answered: read aborted ${waiting.signal.aborted}; views drawn after ${world.views.length - mounted}; ${view.drawn()}`,
+      `step 3 before it answered: read aborted ${waiting.signal.aborted}; views drawn after ${world.views.length - mounted}; step 1's disposed: ${disposedViews().length} of ${before} documents, ${drawnPatches.filter((drawn) => drawn.disposed).length} of ${drawnPatches.length} patches; ${view.drawn()}`,
     );
     view.handle.dispose();
   }
 
-  // A document's progress mark shows while its read is on its way, and goes once it draws.
+  // A step whose document's read is held shows only once the document is drawn: the
+  // overview stays until then, and the step never shows with a document still to come.
+  // Meanwhile the arrows move on from the step the reader went to, as while a step is read,
+  // so Previous goes back to the overview.
   {
     world.hold.add("docs/held.md");
     const view = await opened(world, body, step(body, 1, [markdown("docs/held.md")]));
-    const held = view.loading();
+    const held = `${view.drawn() || "nothing"}, a step waits out of sight ${view.incoming()}, the arrows' mark shows ${view.marked()}, the arrows to press ${view.pressable()}`;
     world.release("docs/held.md");
     await settle();
     steps.push(
-      `a held document: progress marks ${held} while its read is held, ${view.loading()} once drawn; ${view.drawn()}`,
+      `a held document: while its read is held, the step shows ${held}; once drawn, ${view.drawn()}, a step waits ${view.incoming()}, the arrows' mark shows ${view.marked()}`,
     );
     view.handle.dispose();
   }

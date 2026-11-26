@@ -61,6 +61,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {GapSource | null} gaps Where the unchanged lines between hunks come from, or
  *   null where this diff has none to read, so each hunk's separator is a plain header.
  * @property {GapLines} gapLines What has been read of them.
+ * @property {FullSource | null} fullSource
+ * @property {{rows: DiffLine[] | null, message: string, stop: (() => void) | null}} full
  */
 
 /**
@@ -81,7 +83,15 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  */
 
 /**
- * @typedef {{start: number, count: number} | {end: number, count: number}} GapAsk
+ * @typedef {{
+ *   wanted: () => boolean, load: () => Promise<unknown>,
+ *   keep: (state: FileViewState, change: () => void) => void, signal: AbortSignal,
+ *   comparisonId?: string, path: string, open?: (label: HTMLElement) => void
+ * }} FullSource
+ */
+
+/**
+ * @typedef {({start: number, count: number} | {end: number, count: number}) & {whole?: true}} GapAsk
  *   At most *count* of the new side's lines from *start*, 1-based, for a gap opened downward
  *   from a hunk, or before *end*, for one opened upward to a hunk, so an answer its byte
  *   bound cuts short keeps the lines beside the hunk.
@@ -158,6 +168,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Shown} show What the diff shows, one choice for every file (`setShow`).
  * @property {string} showPreference The preference the choice is remembered as: the
  *   surface's own (*showPreference*), or `diff.show`.
+ * @property {boolean} canShowFull Whether this comparison can read complete files.
+ * @property {{layout?: "split" | "unified"}} presentation The layout chosen in this comparison.
  * @property {HTMLElement | null} showControl The toolbar's Diff | Current chooser.
  * @property {MetabrowserPublicPluginShortcutHandle | null} showKey `N`, on the chip it would
  *   select in the toolbar's chooser (`attachShowKey`).
@@ -168,7 +180,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 /**
  * What a diff shows: its changes, or the new version alone with its changes marked.
  *
- * @typedef {"diff" | "current"} Shown
+ * @typedef {"diff" | "current" | "full"} Shown
  */
 
 /**
@@ -328,6 +340,31 @@ function gapSourceOf(view, revision) {
     },
     signal,
   };
+}
+
+/**
+ * @param {MountedDiffState} view @param {GapSource | null} gaps
+ * @param {Record<string, unknown>} change
+ * @returns {FullSource | null}
+ */
+function fullSourceOf(view, gaps, change) {
+  const path = /** @type {{path?: unknown} | null} */ (change.new)?.path;
+  if (gaps === null || typeof path !== "string") {
+    return null;
+  }
+  return {
+    path,
+    wanted: () => view.show === "full",
+    load: () => gaps.load(path, fullSourceAsk()),
+    keep: gaps.keep,
+    signal: gaps.signal,
+    comparisonId: gaps.comparisonId,
+    open: (label) => appendFullFileAction(view, change, label),
+  };
+}
+
+function fullSourceAsk() {
+  return /** @type {const} */ ({ start: 1, count: GAP_LINES, whole: true });
 }
 
 // Copy for states that are facts about the change, not steps the
@@ -538,9 +575,8 @@ const FILE_BORDER_PX = 2;
 export const SPLIT_RETURN_MARGIN_PX = 20;
 const SPLIT_TOO_NARROW_TIP =
   "Too narrow for Split, so this shows Unified. Choose Split to scroll sideways.";
-// Why the layout chips are unavailable while the diff shows Current (`renderLayoutControl`).
-const LAYOUT_IN_CURRENT_TIP =
-  "Current shows the new version in one column; choose Diff for Split or Unified.";
+// Why the layout chips are unavailable while reading Excerpt or Full.
+const LAYOUT_IN_CURRENT_TIP = "Switch to Diff to change the layout.";
 
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
@@ -1022,6 +1058,145 @@ function renderCurrentBody(state) {
     if (rows.length > 0) {
       state.body.append(renderCurrentHunk(rows, state, hunkIndex));
     }
+    appendDeletionNotices(state.body, hunk);
+  }
+}
+
+/** @param {HTMLElement} body @param {FileViewState["renderModel"]["hunks"][number]} hunk */
+function appendDeletionNotices(body, hunk) {
+  let nextLine = hunk.newStart + Number(hunk.newCount === 0);
+  let removed = 0;
+  let added = false;
+  /** @param {number} at */
+  const mark = (at) => {
+    if (removed > 0 && !added) {
+      body.append(
+        el(
+          "div",
+          "diff-availability diff-excerpt-removed",
+          `${removed} ${removed === 1 ? "line removed" : "lines removed"} before line ${at}. See Diff.`,
+        ),
+      );
+    }
+    removed = 0;
+    added = false;
+  };
+  for (const line of hunk.lines) {
+    if (line.op === "del") {
+      removed += 1;
+    } else if (line.op === "add") {
+      added = true;
+      nextLine += 1;
+    } else {
+      mark(nextLine);
+      nextLine += 1;
+    }
+  }
+  mark(nextLine);
+}
+
+/** @param {FileViewState} state */
+function renderFullSource(state) {
+  const rows = state.full.rows;
+  if (rows === null) {
+    return false;
+  }
+  if (rows.length === 0) {
+    state.body.append(
+      el("div", "diff-availability diff-current-absent", "This file is empty now."),
+    );
+    return true;
+  }
+  const section = el("div", "diff-hunk diff-hunk-current");
+  for (const line of rows) {
+    section.append(renderCurrentLine(state, line));
+  }
+  state.body.append(section);
+  return true;
+}
+
+/** @param {FileViewState} state @param {ReturnType<typeof gapAnswer>} answer */
+function fullSourceRows(state, answer) {
+  /** @type {Map<number, DiffLine>} */
+  const changed = new Map();
+  for (const hunk of state.renderModel.hunks) {
+    for (const line of hunk.lines) {
+      if (line.newNumber !== null) {
+        changed.set(line.newNumber, line);
+      }
+    }
+  }
+  return answer.lines.map((text, index) => {
+    const number = index + 1;
+    const line = changed.get(number);
+    return line?.text === text
+      ? line
+      : gapLine(number, 0, text, number === answer.line_count && !answer.ends_with_newline);
+  });
+}
+
+/** @param {FileViewState} state */
+function queueFullSource(state) {
+  const source = state.fullSource;
+  if (source === null || state.full.stop !== null || state.full.message !== "") {
+    return;
+  }
+  let stopped = false;
+  /** @type {IntersectionObserver | null} */
+  let observer = null;
+  const stop = () => {
+    stopped = true;
+    observer?.disconnect();
+    source.signal.removeEventListener("abort", stop);
+    state.full.stop = null;
+  };
+  state.full.stop = stop;
+  source.signal.addEventListener("abort", stop, { once: true });
+  const read = async () => {
+    observer?.disconnect();
+    const progress = progressBox("Full source is loading");
+    state.body.append(progress);
+    try {
+      const payload = await source.load();
+      const answer = gapAnswer(payload, fullSourceAsk(), source.comparisonId, source.path);
+      if (stopped) {
+        return;
+      }
+      if (answer.lines.length === answer.line_count) {
+        state.full.rows = fullSourceRows(state, answer);
+      } else {
+        state.full.message = "This file is too large to show in full here. Showing an excerpt.";
+      }
+    } catch (error) {
+      if (!stopped) {
+        const payload = /** @type {{payload?: {code?: string}}} */ (error)?.payload;
+        state.full.message =
+          payload?.code === "blob_too_large"
+            ? "This file is too large to show in full here. Showing an excerpt."
+            : "The full source is unavailable here. Showing an excerpt.";
+      }
+    } finally {
+      if (!stopped) {
+        stop();
+        source.keep(state, () => renderFileBody(state, "current"));
+        if (state.full.rows !== null) {
+          void highlightGapLines(
+            state,
+            state.full.rows.filter((line) => line.op === "context"),
+          );
+        }
+      }
+    }
+  };
+  if (typeof IntersectionObserver === "function") {
+    observer = new IntersectionObserver((entries) => {
+      if (!stopped && entries.some((entry) => entry.isIntersecting)) {
+        void read();
+      }
+    });
+    observer.observe(state.body);
+  } else {
+    void read();
   }
 }
 
@@ -1053,6 +1228,8 @@ export function createFileState(change, patch, api, body, unfold = false, gaps =
       syntaxBytes: 0,
     },
     gaps,
+    fullSource: null,
+    full: { rows: null, message: "", stop: null },
     unfold,
     foldsOpened: new Set(),
     patch,
@@ -1079,6 +1256,11 @@ export function createFileState(change, patch, api, body, unfold = false, gaps =
  */
 export function renderFileBody(state, layout) {
   cancelFoldMaterializations(state);
+  const full = layout === "current" && state.fullSource?.wanted() === true;
+  if (!full) {
+    state.full.stop?.();
+    state.full.message = "";
+  }
   return measureProjection(
     state.api,
     "diffMount:fileProjection",
@@ -1091,8 +1273,22 @@ export function renderFileBody(state, layout) {
         // went (docs/design-system-messages.md, "Degrade Gracefully").
         state.body.append(noticeEl("warning", "diff-gap-refused", GAP_REFUSED_COPY));
       }
+      if (state.renderModel.hunks.length === 0 && !full) {
+        state.body.append(el("div", "diff-availability", "No content changes."));
+        return;
+      }
       if (layout === "current") {
-        renderCurrentBody(state);
+        if (!full || !renderFullSource(state)) {
+          if (full && state.full.message !== "") {
+            const notice = noticeEl("warning", "diff-full-source-refused", state.full.message);
+            state.fullSource?.open?.(notice);
+            state.body.append(notice);
+          }
+          renderCurrentBody(state);
+          if (full && currentAbsence(state.change, state.renderModel.hunks) === null) {
+            queueFullSource(state);
+          }
+        }
       } else {
         for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
           state.body.append(
@@ -1126,24 +1322,46 @@ export function renderFileBody(state, layout) {
  * @param {Record<string, unknown>} change A changed file: its `old` and `new` paths.
  * @param {Record<string, unknown>} patch Its `hunks`, as the diff route answers them.
  * @param {DiffViewApi} api
- * @returns {{dispose: () => void}}
+ * @param {{path: string, load: (signal: AbortSignal) => Promise<unknown>} | null} [fullFile]
+ * @returns {{dispose: () => void, show: (mode: Shown) => void}}
  */
-export function mountFilePatch(body, change, patch, api) {
+export function mountFilePatch(body, change, patch, api, fullFile = null) {
   const controller = new AbortController();
   const state = createFileState(change, patch, api, body);
-  renderFileBody(state, "unified");
+  /** @type {Projection} */
+  let projection = "unified";
+  /** @type {Shown} */
+  let shown = "diff";
+  if (fullFile !== null) {
+    state.fullSource = {
+      path: fullFile.path,
+      wanted: () => shown === "full",
+      load: () => fullFile.load(controller.signal),
+      keep: (_state, change) => change(),
+      signal: controller.signal,
+    };
+  }
+  renderFileBody(state, projection);
   const isCurrent = () => !controller.signal.aborted;
   void (async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     if (!isCurrent()) {
       return;
     }
-    await enhanceFileIntraline(state, api, controller.signal, isCurrent, () => "unified");
+    await enhanceFileIntraline(state, api, controller.signal, isCurrent, () => projection);
     if (isCurrent()) {
       await enhanceFileSyntax(state, api, controller.signal, isCurrent);
     }
   })();
   return {
+    show(mode) {
+      const next = mode === "diff" ? "unified" : "current";
+      if (shown !== mode && isCurrent()) {
+        shown = mode;
+        projection = next;
+        renderFileBody(state, projection);
+      }
+    },
     dispose() {
       controller.abort();
       cancelFoldMaterializations(state);
@@ -1545,10 +1763,11 @@ function gapLine(number, offset, text, noNewline) {
  *
  * @param {unknown} payload
  * @param {GapAsk} ask
- * @param {string} comparisonId
+ * @param {string | undefined} comparisonId
+ * @param {string} [path]
  * @returns {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}}
  */
-function gapAnswer(payload, ask, comparisonId) {
+function gapAnswer(payload, ask, comparisonId, path) {
   const answer = /** @type {Record<string, unknown> | null} */ (
     payload !== null && typeof payload === "object" ? payload : null
   );
@@ -1565,7 +1784,10 @@ function gapAnswer(payload, ask, comparisonId) {
   }
   // Before the run's range: another comparison's file may end before the lines asked for, and
   // its answer is still a refusal, not a failure a Retry gets past.
-  if (answer.comparison_id !== comparisonId) {
+  if (
+    (comparisonId !== undefined && answer.comparison_id !== comparisonId) ||
+    (path !== undefined && answer.path !== path)
+  ) {
     throw Object.assign(new Error("The comparison answered for another comparison."), {
       refused: true,
     });
@@ -2089,6 +2311,21 @@ function renderViewFileControl(action, view, notice) {
 }
 
 /**
+ * @param {MountedDiffState} view @param {Record<string, unknown>} change
+ * @param {HTMLElement} notice
+ */
+function appendFullFileAction(view, change, notice) {
+  const action = view.viewFile?.fullFileAction?.(change, view.resolved);
+  if (!action) {
+    return;
+  }
+  const reply = el("span", "diff-availability");
+  reply.setAttribute("role", "status");
+  reply.hidden = true;
+  notice.append(renderViewFileControl(action, view, { element: reply, timer: 0 }), reply);
+}
+
+/**
  * Paint each bar's controls again from what the opener says now, in place: after the page
  * learns that the server serves another pin, a link at the commit the page shows is a
  * switch. A control whose switch is on its way stays as it is.
@@ -2120,32 +2357,22 @@ function repaintViewFileControls(view) {
  * describe the trigger. The View file controls follow that group, each a part of the bar
  * of its own, so a bar that wraps moves them to the next line before the name gives way.
  * Its end group holds a rendered file's view chooser alone (diff-markdown.js), at the
- * bar's far end. Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
+ * bar's far end. The toolbar sets presentation for the comparison (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
- * @param {string} toggleId
- * @param {string} bodyId
+ * @param {Pick<DiffFileDisclosure, "bar" | "toggle">} disclosure The file's bar and its
+ *   trigger, which this fills (`fileDisclosure`).
  * @param {string} factsId The id of the stats and notes, which describe the trigger.
  * @param {MountedDiffState} view
- * @returns {{bar: HTMLElement, end: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
+ * @returns {{end: HTMLElement, notice: HTMLElement | null}}
  */
-function renderFileBar(change, toggleId, bodyId, factsId, view) {
+function renderFileBar(change, disclosure, factsId, view) {
   const api = view.api;
   // The path is shown as the Diff summary shows it, by the server's display rule, and the
   // raw path stays for the copy control and the jump; without the shared tree it is raw.
   const model = view.changedFiles;
   const { letter, label, notes } = fileChangeLabel(change, model?.displayPath);
-  const bar = el("div", "diff-file-bar disclosure-toggle");
-  const toggle = el("button", "diff-file-toggle expanded");
-  toggle.setAttribute("type", "button");
-  toggle.setAttribute("id", toggleId);
-  toggle.setAttribute("aria-controls", bodyId);
-  toggle.setAttribute("aria-expanded", "true");
-  // The same disclosure glyph the nav tree leads with, rotated by the
-  // same expanded/collapsed rules.
-  const chevron = el("span", "diff-file-chevron");
-  chevron.innerHTML = shellIcon("toggle");
-  toggle.append(chevron);
+  const { bar, toggle } = disclosure;
   const status = el("span", "diff-file-kind file-change-status", letter);
   status.dataset.fileStatus = String(change.kind);
   toggle.append(status);
@@ -2215,7 +2442,72 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   // The View file controls sit between the name's group and the end group, in neither:
   // where the bar wraps, they take the next line, and the name keeps the first.
   bar.append(lead, ...controls, end);
-  return { bar, end, toggle, notice };
+  return { end, notice };
+}
+
+/**
+ * A file card's disclosure, the one every card that shows a file's changes has
+ * (docs/design-system.md, "Diff File Bar"): Changes' files (`renderFileSection`), and the
+ * cards a guided review step draws around its references, which take this from the guide's
+ * drawer (`guidePatchDrawer` in index.js). It makes the card's bar and the button that leads
+ * it, with the shell's disclosure chevron, and binds them to *section* and *folded*: the
+ * whole bar is one activation surface, like a tree row, and the button stays the semantic
+ * trigger for focus and the keyboard, whose synthesized click bubbles to the bar. Only a
+ * control on the bar that acts for itself opts out: the copy control, a file's view chooser,
+ * and a link or control that views the file (`.diff-file-view`). A card starts open.
+ * Collapsing keeps *folded* in the document, at no height, so nothing it drew is disposed,
+ * and the bar stays where it was.
+ *
+ * The caller appends what names the file to *toggle*, places *toggle* and its other
+ * controls in *bar*, and puts *bar* and *folded* in *section*. *folded* takes an id of the
+ * card's own, which anything else of the card can be named from.
+ *
+ * @param {HTMLElement} section The card.
+ * @param {HTMLElement} folded What the bar shows or hides.
+ * @param {(expanded: boolean) => void} [changed] Hears each change, after it is drawn.
+ * @returns {DiffFileDisclosure} The one shape of it, in `static/types.d.ts`.
+ */
+export function fileDisclosure(section, folded, changed) {
+  sectionSequence += 1;
+  const toggleId = `diff-file-toggle-${sectionSequence}`;
+  const bodyId = `diff-file-body-${sectionSequence}`;
+  section.setAttribute("aria-labelledby", toggleId);
+  folded.setAttribute("id", bodyId);
+  const bar = el("div", "diff-file-bar disclosure-toggle");
+  const toggle = /** @type {HTMLButtonElement} */ (el("button", "diff-file-toggle expanded"));
+  toggle.setAttribute("type", "button");
+  toggle.setAttribute("id", toggleId);
+  toggle.setAttribute("aria-controls", bodyId);
+  toggle.setAttribute("aria-expanded", "true");
+  // The same disclosure glyph the nav tree leads with, rotated by the
+  // same expanded/collapsed rules.
+  const chevron = el("span", "diff-file-chevron");
+  chevron.innerHTML = shellIcon("toggle");
+  toggle.append(chevron);
+  let expanded = true;
+  /** @param {boolean} next */
+  const setExpanded = (next) => {
+    expanded = next;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.classList.toggle("expanded", expanded);
+    toggle.classList.toggle("collapsed", !expanded);
+    folded.classList.toggle("diff-file-body-collapsed", !expanded);
+    section.classList.toggle("diff-file-collapsed", !expanded);
+    changed?.(expanded);
+  };
+  bar.addEventListener("click", (event) => {
+    const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
+    if (
+      typeof origin?.closest === "function" &&
+      (origin.closest("[data-mb-copy]") ||
+        origin.closest(".diff-file-view") ||
+        origin.closest(".diff-markdown-control"))
+    ) {
+      return;
+    }
+    setExpanded(!expanded);
+  });
+  return { bar, toggle, expanded: () => expanded, setExpanded };
 }
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
@@ -2327,7 +2619,7 @@ function renderLayoutControl(view) {
   // `aria-disabled`, not `disabled`, so the pointer and the keyboard reach what they say.
   // Focus in it stays on the chosen chip, as in Diff | Current: the markup is new, and a
   // Diff | Current choice, `N` among them, draws it again with focus where it was.
-  const current = view.show === "current";
+  const current = view.show !== "diff";
   const fellBack = view.chosenLayout === "split" && view.layout === "unified";
   const splitTip = current ? LAYOUT_IN_CURRENT_TIP : fellBack ? SPLIT_TOO_NARROW_TIP : null;
   const active = /** @type {Element | null | undefined} */ (globalThis.document?.activeElement);
@@ -2395,11 +2687,9 @@ export function toggleLayout(view) {
  *
  * @param {MountedDiffState} view
  * @param {string} value
- * @param {boolean} [persist]
  */
-export function setLayout(view, value, persist = true) {
-  // Current is one column whatever the layout, so neither chip, nor `L`, changes anything.
-  if (view.disposed || view.show === "current") {
+export function setLayout(view, value) {
+  if (view.disposed || view.show !== "diff") {
     return;
   }
   const layout = value === "split" ? "split" : "unified";
@@ -2408,17 +2698,44 @@ export function setLayout(view, value, persist = true) {
   }
   view.chosenLayout = layout;
   view.insistedOnSplit = layout === "split" && view.narrow;
-  if (persist) {
-    view.api?.prefs?.set("diff.layout", layout);
-  }
+  view.presentation.layout = layout;
   drawLayout(view, layout);
 }
 
-// ── Diff | Current ──────────────────────────────────────────────
-//
-// One choice for the whole diff, as the layout is, in its toolbar beside Split | Unified:
-// choosing draws every file again. docs/project/specs/active/
-// plan-2026-11-23-diff-current-chooser.md has the reasons.
+// ── Diff | Excerpt | Full ────────────────────────────────────────
+
+/**
+ * The presentation chooser used by a comparison and by a block of guide references.
+ * @param {NonNullable<DiffViewApi["filterControls"]>} controls
+ * @param {Shown | null} value
+ * @param {boolean} full
+ */
+export function presentationControlHtml(controls, value, full) {
+  return controls.groupHtml({
+    key: "diff-show",
+    label: "Comparison view",
+    layout: "joined",
+    options: [
+      {
+        label: "Diff",
+        value: "diff",
+        tip: "Show additions and removals with surrounding context.",
+      },
+      { label: "Excerpt", value: "current", tip: "Show the new version around the changes." },
+      ...(full
+        ? [
+            {
+              label: "Full",
+              value: "full",
+              tip: "Show the entire new version at the revision under review.",
+            },
+          ]
+        : []),
+    ],
+    select: "one",
+    value: value ?? "",
+  });
+}
 
 /**
  * Draw the toolbar's Diff | Current chooser from the diff's choice. Focus in it stays on the
@@ -2434,17 +2751,7 @@ function renderShowControl(view) {
   }
   const active = /** @type {Element | null | undefined} */ (globalThis.document?.activeElement);
   const restore = active != null && control.contains?.(active) === true;
-  control.innerHTML = filterControls.groupHtml({
-    key: "diff-show",
-    label: "Diff or current version",
-    layout: "joined",
-    options: [
-      { label: "Diff", value: "diff", tip: "Show what changed, removals included" },
-      { label: "Current", value: "current", tip: "Show the new version alone, its changes marked" },
-    ],
-    select: "one",
-    value: view.show,
-  });
+  control.innerHTML = presentationControlHtml(filterControls, view.show, view.canShowFull);
   if (restore) {
     /** @type {HTMLElement | null} */ (
       control.querySelector(`[data-chip-value="${view.show}"]`)
@@ -2469,7 +2776,13 @@ function renderShowControl(view) {
  */
 export function readShowPreference(api, preference = "diff.show", fallback = "diff") {
   const value = api?.prefs?.get(preference, /** @type {unknown} */ (fallback));
-  return value === "current" || value === "diff" ? value : fallback;
+  if (value === "full" || value === "diff") {
+    return value;
+  }
+  if (value === "excerpt" || (value === "current" && fallback !== "full")) {
+    return "current";
+  }
+  return fallback;
 }
 
 /**
@@ -2479,18 +2792,25 @@ export function readShowPreference(api, preference = "diff.show", fallback = "di
  *
  * @param {MountedDiffState} view
  * @param {string} value
+ * @param {boolean} [persist]
  */
-export function setShow(view, value) {
+export function setShow(view, value, persist = true) {
   if (view.disposed) {
     return;
   }
-  const show = value === "current" ? "current" : "diff";
+  const show =
+    value === "full" && view.canShowFull ? "full" : value === "current" ? "current" : "diff";
   if (show === view.show) {
+    if (!persist && show === "full") {
+      view.markdown?.controller.show(show);
+    }
     return;
   }
   const place = view.pinned === null ? placeOfTopRow(view, show) : null;
   view.show = show;
-  view.api?.prefs?.set(view.showPreference, show);
+  if (persist) {
+    view.api?.prefs?.set(view.showPreference, show === "current" ? "excerpt" : show);
+  }
   drawShow(view, place);
 }
 
@@ -2500,7 +2820,7 @@ export function setShow(view, value) {
  * @param {MountedDiffState} view
  */
 export function toggleShow(view) {
-  setShow(view, view.show === "current" ? "diff" : "current");
+  setShow(view, view.show === "diff" ? "current" : "diff");
 }
 
 /**
@@ -2510,7 +2830,7 @@ export function toggleShow(view) {
  * @returns {HTMLElement | null}
  */
 function showKeyOption(view) {
-  const other = view.show === "current" ? "diff" : "current";
+  const other = view.show === "diff" ? "current" : "diff";
   return /** @type {HTMLElement | null} */ (
     view.showControl?.querySelector(`[data-chip-value="${other}"]`) ?? null
   );
@@ -2531,9 +2851,9 @@ function attachShowKey(view) {
   view.showKey = shortcuts.attach(option, {
     activate: () => toggleShow(view),
     copy: {
-      action: "Toggle Diff or Current",
-      description: "Switch the diff between what changed and the new version alone.",
-      hint: "Current",
+      action: "Toggle Diff or Excerpt",
+      description: "Switch between the comparison and an excerpt of the new version.",
+      hint: "Excerpt",
     },
     group: "controls",
     id: "diff.show",
@@ -2549,7 +2869,7 @@ function attachShowKey(view) {
  * @returns {Projection}
  */
 function projectionOf(view) {
-  return view.show === "current" ? "current" : view.layout;
+  return view.show === "diff" ? view.layout : "current";
 }
 
 /**
@@ -2563,7 +2883,7 @@ function drawShow(view, anchor) {
   view.root.dataset.show = view.show;
   renderShowControl(view);
   renderLayoutControl(view);
-  view.markdown?.controller.show(view.show === "current");
+  view.markdown?.controller.show(view.show);
   if (view.awaitingWidth) {
     // Nothing is drawn before the first width, which draws what is chosen then.
     holdPlace(view, anchor);
@@ -2615,7 +2935,7 @@ function drawLayout(view, layout) {
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
   view.notifyCurrentFile();
-  if (first || view.show !== "current") {
+  if (first || view.show === "diff") {
     reproject(view);
   }
 }
@@ -2895,12 +3215,15 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
     line.append(...parts);
     return { element: line, dispose: () => {} };
   }
-  const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
+  const toggle = el(
+    "button",
+    "diff-summary diff-summary-toggle summary-toggle disclosure-toggle collapsed",
+  );
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
   const words = view.countsFiles ? said : withoutFileCount(said);
   toggle.setAttribute("aria-label", words.label);
-  const chevron = el("span", "diff-summary-chevron");
+  const chevron = el("span", "diff-summary-chevron summary-toggle-chevron");
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
   chevron.innerHTML = chevronSvg;
@@ -3913,7 +4236,7 @@ function spliceDeferred(file, loaded, view) {
   if (!only || patch === undefined) {
     return failDeferred(file, new Error("the comparison returned no hunks for this file"), view);
   }
-  if (/** @type {unknown[]} */ (patch.hunks).length === 0) {
+  if (/** @type {unknown[]} */ (patch.hunks).length === 0 && !view.canShowFull) {
     file.body.append(el("div", "diff-availability", "No content changes."));
     return "none";
   }
@@ -3925,6 +4248,7 @@ function spliceDeferred(file, loaded, view) {
     view.unfold,
     gapSourceOf(view, file.revision),
   );
+  state.fullSource = fullSourceOf(view, state.gaps, only);
   if (!view.awaitingWidth) {
     renderFileBody(state, projectionOf(view));
   }
@@ -4224,8 +4548,11 @@ function placeOfTopRow(view, next) {
   if (place === null || pane === null) {
     return place;
   }
-  const rows = drawnRows(view, place.section, next === "current");
   const paneTop = pane.getBoundingClientRect().top;
+  if (place.section.getBoundingClientRect().top >= paneTop) {
+    return place;
+  }
+  const rows = drawnRows(view, place.section, next !== "diff");
   /** @type {Map<number, {top: number, bottom: number, kept: boolean}>} */
   const boxes = new Map();
   const chosen = anchorRow(
@@ -4535,6 +4862,23 @@ function rowOfLine(state, line) {
   if (!drawsLines(state)) {
     return null;
   }
+  if (state.full.rows !== null && line.newNumber !== null) {
+    const number = line.newNumber;
+    let distance = Number.POSITIVE_INFINITY;
+    /** @type {HTMLElement | null} */
+    let best = null;
+    for (const { host, line: drawn } of state.textHosts) {
+      if (!host.isConnected || drawn.newNumber === null) {
+        continue;
+      }
+      const away = Math.abs(drawn.newNumber - number);
+      if (away < distance) {
+        best = rowOfHost(host);
+        distance = away;
+      }
+    }
+    return best;
+  }
   const order = lineOrder(state);
   const at = order.get(line) ?? 0;
   /** @type {{host: HTMLElement, index: number} | null} */
@@ -4829,25 +5173,22 @@ function rememberFile(view, change, section, expand) {
  * @returns {HTMLElement}
  */
 function renderFileSection(change, patch, context, view, draw) {
-  sectionSequence += 1;
-  const toggleId = `diff-file-toggle-${sectionSequence}`;
-  const bodyId = `diff-file-body-${sectionSequence}`;
-  const factsId = `diff-file-facts-${sectionSequence}`;
   const section = el("section", "diff-file");
-  section.setAttribute("aria-labelledby", toggleId);
-  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, factsId, view);
   const body = el("div", "diff-file-body");
-  body.setAttribute("id", bodyId);
+  // The card's bar and trigger, and the state they keep, are the shared disclosure's.
+  const disclosure = fileDisclosure(section, body, (expanded) => {
+    markdown?.setExpanded(expanded);
+    view.notifyCurrentFile();
+  });
+  const { bar } = disclosure;
+  const factsId = `${body.id}-facts`;
+  const { end, notice } = renderFileBar(change, disclosure, factsId, view);
   if (notice) {
     section.append(bar, notice, body);
   } else {
     section.append(bar, body);
   }
 
-  // The whole bar is one activation surface, like a tree row; the
-  // button stays the semantic trigger for focus and keyboard, whose
-  // synthesized click bubbles here. Only the copy control, a file's
-  // view chooser, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
   const availability = String(change.availability);
   const markdown =
@@ -4868,33 +5209,9 @@ function renderFileSection(change, patch, context, view, draw) {
             ? {}
             : { unavailable: AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY }),
         });
-  let expanded = true;
-  /** @param {boolean} next */
-  const setExpanded = (next) => {
-    expanded = next;
-    toggle.setAttribute("aria-expanded", String(expanded));
-    toggle.classList.toggle("expanded", expanded);
-    toggle.classList.toggle("collapsed", !expanded);
-    body.classList.toggle("diff-file-body-collapsed", !expanded);
-    section.classList.toggle("diff-file-collapsed", !expanded);
-    markdown?.setExpanded(expanded);
-    view.notifyCurrentFile();
-  };
-  bar.addEventListener("click", (event) => {
-    const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
-    if (
-      typeof origin?.closest === "function" &&
-      (origin.closest("[data-mb-copy]") ||
-        origin.closest(".diff-file-view") ||
-        origin.closest(".diff-markdown-control"))
-    ) {
-      return;
-    }
-    setExpanded(!expanded);
-  });
   rememberFile(view, change, section, () => {
-    if (!expanded) {
-      setExpanded(true);
+    if (!disclosure.expanded()) {
+      disclosure.setExpanded(true);
     }
   });
 
@@ -4911,7 +5228,7 @@ function renderFileSection(change, patch, context, view, draw) {
     return section;
   }
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
-  if (hunks.length === 0) {
+  if (hunks.length === 0 && !view.canShowFull) {
     // A hydrated patch with no hunks is a metadata-only change (a chmod,
     // a pure rename): the bar already says everything it changes.
     body.append(el("div", "diff-availability", "No content changes."));
@@ -4931,6 +5248,7 @@ function renderFileSection(change, patch, context, view, draw) {
     view.unfold,
     gapSourceOf(view, context.revision),
   );
+  state.fullSource = fullSourceOf(view, state.gaps, change);
   view.files.push(state);
   if (!view.awaitingWidth) {
     renderFileBody(state, projectionOf(view));
@@ -5090,8 +5408,10 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   emptyText?: string,
  *   unfold?: boolean,
  *   layout?: "unified",
- *   show?: "diff" | "current",
- *   showPreference?: string
+ *   show?: Shown,
+ *   showPreference?: string,
+ *   presentation?: MountedDiffState["presentation"],
+ *   embedded?: boolean
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -5120,12 +5440,13 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   is not a choice reads as *show*. A pull request's Docs tab opens on Current and
  *   remembers its choice as `github.docs.show`, so neither its choice nor Changes' moves
  *   the other.
- * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, show: (mode: Shown) => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
   const fixedLayout = options.layout === "unified" ? options.layout : null;
-  const chosenLayout = fixedLayout ?? readLayoutPreference(api);
+  const presentation = options.presentation ?? {};
+  const chosenLayout = fixedLayout ?? presentation.layout ?? readLayoutPreference(api);
   const showPreference =
     typeof options.showPreference === "string" && options.showPreference !== ""
       ? options.showPreference
@@ -5133,6 +5454,8 @@ export function mountDiffView(container, document_, api, options = {}) {
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
   // container that is not laid out yet has no width, as a commit's stage has none until it
   // is placed, so nothing is drawn until its first report decides.
+  const canShowFull = typeof document_.__revision === "string" && document_.__revision !== "";
+  const preferred = readShowPreference(api, showPreference, options.show ?? "diff");
   const { width: mountWidth, fontSize, screen } = measureInContainer(root, container);
   const narrow = opensTooNarrowForSplit(mountWidth, fontSize);
   /** @type {MountedDiffState} */
@@ -5180,7 +5503,9 @@ export function mountDiffView(container, document_, api, options = {}) {
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
     unfold: options.unfold === true,
-    show: readShowPreference(api, showPreference, options.show === "current" ? "current" : "diff"),
+    show: preferred === "full" && !canShowFull ? "current" : preferred,
+    canShowFull,
+    presentation,
     showPreference,
     showControl: null,
     showKey: null,
@@ -5200,7 +5525,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         opens: options.unfold === true ? "prefer-full" : "concise",
-        current: view.show === "current",
+        show: view.show,
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
@@ -5247,20 +5572,22 @@ export function mountDiffView(container, document_, api, options = {}) {
   view.listTruncated = manifest.truncated === true;
   // A diff narrowed to some file types describes the whole change set in its summary.
   const described = /** @type {typeof manifest} */ (options.summaryManifest ?? manifest);
-  const { toolbar, unbind } = renderDiffToolbar(
-    described.totals,
-    described.files,
-    view,
-    options.showSummary !== false,
-    options.summaryHost ?? null,
-    wholeTotalsOf(described, options.summaryTotals ?? null),
-    options.toolbarControl ?? null,
-    fixedLayout === null,
-  );
+  const { toolbar, unbind } = options.embedded
+    ? { toolbar: el("div", "diff-toolbar"), unbind: () => {} }
+    : renderDiffToolbar(
+        described.totals,
+        described.files,
+        view,
+        options.showSummary !== false,
+        options.summaryHost ?? null,
+        wholeTotalsOf(described, options.summaryTotals ?? null),
+        options.toolbarControl ?? null,
+        fixedLayout === null,
+      );
   // A fixed layout leaves the toolbar what else it holds, Diff | Current on a pull request's
   // Docs tab, and a toolbar with nothing in it, as where the chip family is not loaded, is not
   // drawn.
-  const drawsToolbar = fixedLayout === null || toolbar.children.length > 0;
+  const drawsToolbar = !options.embedded && (fixedLayout === null || toolbar.children.length > 0);
   if (drawsToolbar) {
     root.append(toolbar);
   }
@@ -5473,6 +5800,7 @@ export function mountDiffView(container, document_, api, options = {}) {
      * @param {string} path
      */
     scrollToFile: (path) => jumpToFile(view, path),
+    show: (mode) => setShow(view, mode, false),
     /**
      * Whether this comparison holds a path, for a list of files from elsewhere: see
      * `FileLookup`.

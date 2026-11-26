@@ -75,9 +75,6 @@ class _Store:
         self.tips.extend(refs)
         return dict.fromkeys(refs, "a" * 40)
 
-    async def default_tip(self) -> str | None:
-        return None
-
     async def default_ref(self) -> str | None:
         return None
 

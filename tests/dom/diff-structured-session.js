@@ -429,7 +429,7 @@ async function main() {
       diff.append(section);
       views.add({ section, bar, end, toggle, source, id: name, format });
       const [, control] = end.childNodes;
-      const [, rendered] = section.childNodes;
+      const [, , rendered] = section.childNodes;
       return { name, section, bar, source, control, rendered };
     });
     await settle();
@@ -467,6 +467,18 @@ async function main() {
 
   const config = page1.files.find((file) => file.name === "config/app.yaml");
   const show = (step) => steps.push({ step, rows: drawn(config.rendered) });
+
+  page1.views.show("current");
+  const excerpt = drawn(config.rendered);
+  assert(excerpt.some((line) => line.includes("db: removed")));
+  assert(!excerpt.some((line) => line.includes("postgres") || line.includes("flags")));
+  show("Excerpt keeps changed paths and a marker for removed values");
+  page1.views.show("full");
+  const full = drawn(config.rendered);
+  assert(full.some((line) => line.includes("flags")));
+  assert(!full.some((line) => line.includes("db:")));
+  show("Full includes unchanged values in the new tree");
+  page1.views.show("diff");
 
   // A click replaces only the rows of the container it changes: the rows above it and
   // below its subtree are the same elements.
@@ -810,7 +822,7 @@ function checks({
   const [details] = frontmatter.children;
   const [, list] = details.children;
   assert.deepEqual(
-    list.children.map((node) => node.textContent),
+    list.children.filter((node) => !node.hidden).map((node) => node.textContent),
     [`Removed: ${hostile}`, quoted, `Added: __proto__`, hostile, quoted, hostile],
   );
 

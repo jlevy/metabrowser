@@ -7,11 +7,13 @@
 //                      point: the renderer only ever sees documents the
 //                      conformance corpus vouches for.
 
-import { validateDocument, validateManifest } from "./diff-model.js";
+import { changeSummaryRow, validateDocument, validateManifest } from "./diff-model.js";
 import {
+  fileDisclosure,
   mountDiffSummary,
   mountDiffView,
   mountFilePatch,
+  presentationControlHtml,
   setChangeLoader,
   setGapLoader,
 } from "./diff-view.js";
@@ -31,8 +33,12 @@ setChangeLoader((revision, path, options) => fetchComparison(revision, options, 
 setGapLoader((revision, path, ask, options) =>
   fetchComparison(revision, options, path, {
     view: "lines",
-    ...("start" in ask ? { start: String(ask.start) } : { end: String(ask.end) }),
-    count: String(ask.count),
+    ...(ask.whole
+      ? { whole: "1" }
+      : {
+          ...("start" in ask ? { start: String(ask.start) } : { end: String(ask.end) }),
+          count: String(ask.count),
+        }),
   }),
 );
 
@@ -562,6 +568,7 @@ function mountTypeFiltered(container, whole, revision, options, ctx, module, kep
   // and then to the file, as the host's own jumps do, unless the host opens files itself.
   const openFile =
     options?.openFile ?? ((/** @type {string} */ path) => void filter?.facade.scrollToFile(path));
+  const presentation = {};
   filter = createTypeFilter({
     whole,
     wholeFiles: wholeFiles(whole, ctx.summaryTotals),
@@ -574,6 +581,7 @@ function mountTypeFiltered(container, whole, revision, options, ctx, module, kep
     mount: (document_, narrowed) =>
       mountDiffView(container, document_, mb, {
         ...options,
+        presentation,
         toolbarControl: element,
         ...(narrowed === null
           ? {}
@@ -764,7 +772,8 @@ const diffView = {
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       ...(ctx.unfold === true ? { unfold: true } : {}),
       ...(ctx.layout === "unified" ? { layout: ctx.layout } : {}),
-      ...(ctx.show === "diff" || ctx.show === "current" ? { show: ctx.show } : {}),
+      ...(ctx.show === undefined ? {} : { show: ctx.show }),
+      ...(ctx.embedded ? { embedded: true } : {}),
       ...(typeof ctx.showPreference === "string" ? { showPreference: ctx.showPreference } : {}),
       ...(typeof ctx.emptyText === "string" ? { emptyText: ctx.emptyText } : {}),
       viewFile,
@@ -891,6 +900,27 @@ const diffView = {
     });
   },
   /**
+   * The rows a comparison's Diff summary lists, one for each file of the manifest *raw*
+   * holds, each made as the summary makes its own (`changeSummaryRow`), for a page that
+   * draws the comparison's files in a tree of its own: the Pulls tab draws a native stack's
+   * under its Whole stack row, from the comparison the stack's page draws its Diff summary
+   * of (builtin_plugins/github/stack-files.js). Null for a comparison whose manifest is not
+   * valid, or where the shared changed-files tree, whose display rule the rows take, did not
+   * load.
+   *
+   * @param {unknown} raw
+   * @returns {Promise<MetabrowserChangedFileRow[] | null>}
+   */
+  summaryRows: async (raw) => {
+    const result = validateManifest(raw);
+    const changedFiles = result.ok ? await changedFilesTree() : null;
+    if (!result.ok || changedFiles === null) {
+      return null;
+    }
+    const files = /** @type {Record<string, unknown>[]} */ (result.manifest.files);
+    return files.map((change) => changeSummaryRow(change, changedFiles.displayPath));
+  },
+  /**
    * Switch the served pin through the page's one switch, which every diff's controls share:
    * for a pull request's page, whose Browse code and offer of a newer head switch it too.
    * The answer says what happened in the words a diff's control says it; going on is the
@@ -917,40 +947,56 @@ mb.registerView("diff", "diff", diffView);
  * loads the rendered layer (`markdownLayer`) as Changes does, so a page that draws no such
  * file never loads it.
  *
- * *settled* is true once the file is drawn. It is false when it is not: the view's notice
- * then says why in the file's place, as for a read that failed or a render that threw, or
- * the handle was disposed first, which leaves nothing. *dispose* ends the read on its way,
- * or removes what was drawn.
+ * *settled* is true once the file is drawn as it stays: its rendered layer drawn, or its
+ * wait for it over (`firstScreen`, at most *ctx*'s `markdownHoldMs`), so a page that keeps
+ * the file out of sight until then first shows it at the height it keeps. It is false when
+ * it is not drawn: the view's notice then says why in the file's place, as for a read that
+ * failed or a render that threw, or the handle was disposed first, which leaves nothing.
+ * *dispose* ends the read on its way, or removes what was drawn.
  *
  * @param {HTMLElement} container
  * @param {NonNullable<MetabrowserPublicRenderContext["comparison"]>} comparison
  * @param {string} path
  * @param {MetabrowserPublicRenderContext} [ctx]
- * @returns {{settled: Promise<boolean>, dispose: () => void}}
+ * @returns {{settled: Promise<boolean>, show: (mode: "diff" | "current" | "full") => void, dispose: () => void}}
  */
 function mountRenderedFile(container, comparison, path, ctx = {}) {
   const controller = new AbortController();
-  /** @type {{dispose?: () => void} | null} */
+  /** @type {{dispose?: () => void, show?: (mode: "diff" | "current" | "full") => void} | null} */
   let mounted = null;
+  /** @type {"diff" | "current" | "full" | null} */
+  let requested = null;
   const settled = Promise.resolve(
     diffView.render(container, {
       ...ctx,
       comparison,
       file: path,
+      embedded: true,
+      layout: "unified",
       // The file alone: a one-file diff draws no summary of its own anyway.
       summary: false,
       comparisonSignal: controller.signal,
     }),
   ).then(
-    (handle) => {
-      const owned = /** @type {{dispose?: () => void, currentFile?: unknown} | null} */ (handle);
+    async (handle) => {
+      const owned =
+        /** @type {{dispose?: () => void, show?: (mode: "diff" | "current" | "full") => void, currentFile?: unknown, firstScreen?: () => Promise<unknown>} | null} */ (
+          handle
+        );
       if (controller.signal.aborted) {
         owned?.dispose?.();
         return false;
       }
       mounted = owned;
+      if (requested !== null) {
+        owned?.show?.(requested);
+      }
       // A drawn diff has its file API; a failure's notice, which says why, has none.
-      return typeof owned?.currentFile === "function";
+      if (typeof owned?.currentFile !== "function") {
+        return false;
+      }
+      await owned.firstScreen?.();
+      return !controller.signal.aborted;
     },
     (error) => {
       if (controller.signal.aborted) {
@@ -963,6 +1009,10 @@ function mountRenderedFile(container, comparison, path, ctx = {}) {
   );
   return {
     settled,
+    show(mode) {
+      requested = mode;
+      mounted?.show?.(mode);
+    },
     dispose() {
       controller.abort();
       mounted?.dispose?.();
@@ -975,3 +1025,74 @@ function mountRenderedFile(container, comparison, path, ctx = {}) {
 // drawn as Changes draws them, and one changed file drawn whole as its comparison's diff draws
 // it, for a page that shows part of a change in its own place.
 export { mountFilePatch, mountRenderedFile };
+
+/** @param {Comparison} comparison @param {string} path @param {AbortSignal} signal */
+export function loadFullSource(comparison, path, signal) {
+  const key = comparisonKey(comparison);
+  return fetchComparison(key, { signal }, path, { view: "lines", whole: "1" });
+}
+
+/** The comparison chrome used by the guide block that owns its file cards. */
+export function guidePatchDrawer() {
+  return Object.assign(
+    /**
+     * @param {HTMLElement} body @param {Record<string, unknown>} change
+     * @param {Record<string, unknown>} patch
+     * @param {{path: string, load: (signal: AbortSignal) => Promise<unknown>} | null} [fullFile]
+     */
+    (body, change, patch, fullFile) => mountFilePatch(body, change, patch, mb, fullFile),
+    {
+      /**
+       * The bar and chevron that fold a file's card in Changes, for a card the guide draws
+       * itself: the diff view's own builder (`fileDisclosure`).
+       *
+       * @param {HTMLElement} section @param {HTMLElement} folded
+       * @param {(expanded: boolean) => void} [changed] Hears each fold and each opening.
+       */
+      disclose: (section, folded, changed) => fileDisclosure(section, folded, changed),
+      /**
+       * @param {HTMLElement} host @param {boolean} full
+       * @param {"diff" | "current" | "full" | null} initial
+       * @param {(mode: "diff" | "current" | "full") => void} choose
+       */
+      controls(host, full, initial, choose) {
+        const chips = mb.filterControls;
+        if (!chips) {
+          return { dispose() {} };
+        }
+        host.className = "diff-toolbar";
+        const control = document.createElement("div");
+        control.className = "diff-toolbar-end diff-show-control";
+        const paint = (/** @type {typeof initial} */ mode) => {
+          const focused =
+            document.activeElement !== null &&
+            document.activeElement !== undefined &&
+            control.contains(document.activeElement);
+          control.innerHTML = presentationControlHtml(chips, mode, full);
+          if (mode === null) {
+            control.querySelector("[data-chip-value]")?.setAttribute("tabindex", "0");
+          } else if (focused) {
+            /** @type {HTMLElement | null} */ (
+              control.querySelector(`[data-chip-value="${mode}"]`)
+            )?.focus();
+          }
+        };
+        paint(initial);
+        host.append(control);
+        const dispose = chips.bind(control, {
+          onChange(key, value, select) {
+            if (
+              select === "one" &&
+              key === "diff-show" &&
+              (value === "diff" || value === "current" || (full && value === "full"))
+            ) {
+              paint(value);
+              choose(value);
+            }
+          },
+        });
+        return { dispose };
+      },
+    },
+  );
+}

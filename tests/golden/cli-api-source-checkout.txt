@@ -32,7 +32,7 @@ status: 200
 }
 --- stderr ---
 
-== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and which branch is checked out; kinds names the three lists. The checked-out branch lists first and is checked_out, not current: chosen as a ref it shows its commit, which the working tree is not.
+== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and where HEAD is, its branch and its commit, read from the checkout as the listing is made; kinds names the four lists in the order of the selector's tabs. The checked-out branch lists first and is checked_out, not current: chosen as a ref it shows its commit, which the working tree is not.
 
 # metab checkout --api /api/source/refs
 exit: 0
@@ -45,14 +45,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
     "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -90,6 +92,52 @@ status: 200
 }
 --- stderr ---
 
+== The working tree's own list has no refs and answers working_tree alone, with no Git process: what the selector's Working tree tab shows, and what a page asks each time its watch says the checkout's HEAD moved. That watch is on the path .git/HEAD of the page's event stream, whose generation is what HEAD names, so it is the same for a linked worktree, whose HEAD is not under that path.
+
+# metab checkout --api '/api/source/refs?kind=working_tree'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=working_tree
+status: 200
+{
+  "kind": "working_tree",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "working_tree",
+    "branch",
+    "remote",
+    "tag"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/topic",
+    "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": null,
+  "pull_requests": null,
+  "refs": []
+}
+--- stderr ---
+
+# metab checkout --api /api/events/watch --data watch-head.json
+exit: 0
+--- stdout ---
+api: /api/events/watch
+status: 200
+{
+  "type": "file_watch",
+  "connection": null,
+  "path": ".git/HEAD",
+  "watching": false,
+  "generation": "e116d38afab58b32"
+}
+--- stderr ---
+
 == Remote-tracking branches are a third list, each with its remote's name. The symbolic origin/HEAD a clone writes is not a row. Tags list newest first, peeled to the commit they name.
 
 # metab checkout --api '/api/source/refs?kind=remote'
@@ -103,14 +151,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
     "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -150,14 +200,16 @@ status: 200
   "pin": null,
   "ref": null,
   "kinds": [
+    "working_tree",
     "branch",
-    "tag",
-    "remote"
+    "remote",
+    "tag"
   ],
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
     "head_name": "topic",
+    "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "name": "checkout",
     "location": "<ROOT>"
   },
@@ -549,7 +601,7 @@ views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 --- stderr ---
 
-== The Commits tab is the checkout's whichever revision the Files tab shows: on feature, the repository's HEAD is still the checked-out topic, and the history starts there, at second, as it does on the working tree.
+== The Commits tab shows the revision the Files tab shows: on feature, HEAD is feature's commit, detached, and the history is that commit's, from feature back to first, where the working tree's starts at the checked-out topic.
 
 # metab checkout --ref feature --api /api/git/repo
 exit: 0
@@ -560,9 +612,9 @@ status: 200
   "is_repo": true,
   "root": "",
   "head": {
-    "ref": "refs/heads/topic",
-    "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-    "detached": false,
+    "ref": null,
+    "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "detached": true,
     "unborn": false
   }
 }
@@ -577,8 +629,8 @@ status: 200
   "is_repo": true,
   "commits": [
     {
-      "id": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "short_id": "42382ea",
+      "id": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "short_id": "c7ae2a3",
       "parent_ids": [
         "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
       ],
@@ -586,30 +638,28 @@ status: 200
         "name": "Mirror",
         "email": "mirror@example.invalid"
       },
-      "authored_at": 1767229200.0,
-      "committed_at": 1767229200.0,
-      "subject": "second",
+      "authored_at": 1767232800.0,
+      "committed_at": 1767232800.0,
+      "subject": "feature",
       "refs": [
         {
-          "id": "refs/heads/topic",
-          "name": "topic",
+          "id": "refs/heads/feature",
+          "name": "feature",
           "kind": "branch",
-          "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "is_head": true
+          "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
         },
         {
-          "id": "refs/remotes/origin/HEAD",
-          "name": "origin/HEAD",
+          "id": "refs/remotes/origin/feature",
+          "name": "origin/feature",
           "kind": "remote",
-          "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
           "remote": "origin"
         },
         {
-          "id": "refs/remotes/origin/topic",
-          "name": "origin/topic",
-          "kind": "remote",
-          "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "remote": "origin"
+          "id": "refs/tags/local-tag",
+          "name": "local-tag",
+          "kind": "tag",
+          "revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
         }
       ]
     },
@@ -640,17 +690,14 @@ status: 200
   "page_cursor": "<CURSOR>",
   "previous_cursor": null,
   "scope": "default",
-  "scope_refs": [
-    "HEAD",
-    "@{upstream}"
-  ],
-  "scope_fingerprint": "77531ab97ae7a07db786f0d2f77a0026057639febd2e0380382abbe20f95bdf5",
+  "scope_refs": [],
+  "scope_fingerprint": "8babf87cfe78ef7afbd5e55558a35a29ae97d9cb4478b282154a97b5e7ef58a2",
   "graph_checkpoint": {
     "version": 1,
     "prior_swimlanes": [],
     "color_index": -1,
-    "head_revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-    "scope_fingerprint": "77531ab97ae7a07db786f0d2f77a0026057639febd2e0380382abbe20f95bdf5"
+    "head_revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "scope_fingerprint": "8babf87cfe78ef7afbd5e55558a35a29ae97d9cb4478b282154a97b5e7ef58a2"
   }
 }
 --- stderr ---

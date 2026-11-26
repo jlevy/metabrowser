@@ -31,10 +31,6 @@
   );
   --diff-fold-row-height: max(var(--ui-row-height), calc(1.5 * var(--ui-small-font-size) + 2px));
   --diff-notice-row-height: calc(1.5 * var(--body-font-size) + 2 * var(--diff-notice-padding-y));
-  /* How far the Diff summary's header pulls left of where it is placed, and pads back in, so
-     its words start where it is placed and its hover ground reaches a little past them
-     (`.diff-summary-toggle`). */
-  --diff-summary-toggle-pull: 4px;
   /* The file bar's space before its View file control, beyond the bar's gap and the
      control's pad: at rest the stats end 44 px before View file's text and start 28 px
      after the name's, past Copy path's slot, so they read with the name. And the least
@@ -95,38 +91,11 @@
   color: var(--text);
 }
 
-/* The header's hover and focus ring are the tree rows' under it (`.changed-file-row`):
-   square, and the ring drawn 2px inside the box, so the header and its rows hover and
-   focus as one tree. */
+/* The header is the shell's summary toggle (`.summary-toggle`, static/styles.css): its box,
+   hover, focus ring, and chevron slot are the stack page's members toggle's too. Here it
+   is one item of the summary's line, and gives way as the line narrows. */
 .metabrowser-diff-host .diff-summary-toggle {
   flex: 0 1 auto;
-  min-height: var(--ui-row-height);
-  margin: 0 0 0 calc(-1 * var(--diff-summary-toggle-pull));
-  padding: 0 6px 0 var(--diff-summary-toggle-pull);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font-family: var(--font-sans);
-  text-align: left;
-  cursor: pointer;
-}
-
-.metabrowser-diff-host .diff-summary-toggle:hover {
-  background: var(--hover-bg);
-}
-
-.metabrowser-diff-host .diff-summary-toggle:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  background: var(--hover-bg);
-}
-
-.metabrowser-diff-host .diff-summary-chevron {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--tree-icon-slot);
 }
 
 /* The header is its file count, "19 files changed", and the dot after it, one item of its

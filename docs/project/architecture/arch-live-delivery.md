@@ -153,6 +153,12 @@ spend them
 - **The generation** (`watch_generation`) is the table source’s own `generation()` for a
   path whose kind has one, the token every read of it samples, and the file’s identity,
   size, and modification time for any other path.
+  One path is read for what it says: `HEAD_WATCH_PATH`, a checkout’s `HEAD`, whose
+  generation is the branch and commit `HEAD` names.
+  A linked worktree’s `HEAD` is outside the served root, and a commit leaves the `HEAD`
+  file as it was, so no file’s `stat` would do.
+  The ref chooser’s row watches it, to name the branch a terminal or an agent checks out
+  ([The Ref Selector](../../design-system.md#the-ref-selector)).
 - **The poll.** `FileWatches.run` asks each distinct watched path’s generation every
   `FILE_WATCH_POLL_INTERVAL_S`, and sooner after the relay sees an inventory change at a
   watched path, an ancestor, or a `-suffix` sidecar, but never within

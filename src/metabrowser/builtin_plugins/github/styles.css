@@ -179,10 +179,13 @@
   overflow: hidden;
 }
 .github-pull-meta-details {
+  /* The sentence's one gap, between its names and before its action, which the comma after
+     a name takes back on its near side (`.github-pull-actor-sep`). */
+  --github-pull-sentence-gap: 0.3em;
   display: flex;
   flex: 0 1 auto;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--github-pull-sentence-gap);
   min-width: 0;
   overflow: hidden;
 }
@@ -200,7 +203,7 @@
    in every state: the merge's arrow is text on the row's line, which its chips fit in, so the
    row is a line tall with or without them. A long branch name is cut short, its chip's
    tooltip holding all of it, and never past the merge group's floor (static/styles.css,
-   `.merge-refs`). A chip keeps its one size, slightly smaller than the sentence above it:
+   `.merge-refs`). A chip keeps its one size, the same in every context:
    docs/design-system.md, "Branch Chips". Measured in Chrome 152: 21 px with the merge, and a
    ref chip's strut held an empty row at the chip's 16.78. */
 .github-pull-branches {
@@ -318,11 +321,11 @@
    (`summary-wait`, "brief") holds the words' place and the row's height. */
 .github-pull-header .github-pull-summary > .github-pull-summary-brief {
   min-height: var(--ui-row-height);
-  margin-left: calc(-1 * var(--diff-summary-toggle-pull));
+  margin-left: calc(-1 * var(--summary-toggle-pull));
   /* As the header's toggle's box: its padding, its words where it is placed and its right
      padding where a line cut short ends, and a button's line, the browser's `normal`
-     (diff/styles.css, `.diff-summary-toggle`). */
-  padding: 0 6px 0 var(--diff-summary-toggle-pull);
+     (static/styles.css, `.summary-toggle`). */
+  padding: 0 6px 0 var(--summary-toggle-pull);
   line-height: normal;
 }
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
@@ -420,7 +423,7 @@
 }
 /* A Retry that waits for the refresh it asked for stays in its place and keeps its number,
    muted, and does nothing, as the Pulls tab's waiting Refresh does
-   (`.github-pulls-refresh[aria-disabled="true"]`). */
+   (`.icon-btn[aria-disabled="true"]` in the shell's styles.css). */
 .github-pull-text-action[aria-disabled="true"] {
   color: var(--muted);
   text-decoration: none;
@@ -1133,10 +1136,6 @@
   min-width: 0;
   max-width: 100%;
 }
-.github-pulls-refresh {
-  flex: none;
-  margin-inline-start: auto;
-}
 .github-pulls-filters .chip {
   overflow-wrap: anywhere;
   white-space: normal;
@@ -1184,11 +1183,6 @@
 .github-pulls-connection-spinner.mb-delayed-loading {
   order: 1;
 }
-.github-pulls-refresh[aria-disabled="true"] {
-  color: var(--muted);
-  border-color: var(--border);
-  cursor: default;
-}
 /* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
    row's title, its number's line, and its change line's values start one of it in, a stack
    member's row one more, and the files line under a row's changed files one past their
@@ -1228,8 +1222,8 @@
    age at the row's end (`.github-pulls-tail`). The lines and the chevron are the toggle of
    the row's changed files (`.github-pulls-change`), and a press anywhere else on the row
    opens the pull request. A row in no stack is flush on the list's inset; only a stack's
-   members are indented, under their stack's row (mb-3vil). A stack's row, a row of one
-   line that is no link, keeps its chevron's and its Layers icon's slots
+   members are indented, under their stack's row (mb-3vil). A stack's
+   row, a row of one line that is no link, keeps its chevron's slot and ends with its age
    (`.github-pulls-stack-row`). The DOM keeps the title the link's first text, so its
    accessible name gives the state, from the state icon's label, the title, and the place,
    before the number, the author, and the age in words. */
@@ -1246,6 +1240,14 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-height: var(--ui-row-height);
+  /* The one width of the column every row's age has, a pull request's on its last line
+     (`.github-pulls-tail`) and a stack's on its row (`.github-pulls-stack-row`), so the ages
+     of a list are one column and an age that grows a digit moves nothing. The longest
+     compact age is four characters ("12mo", 345 to 364 days), and its m is wider than a
+     digit; 5ch of the row's type holds it at the row's own size: measured in Chrome 152 at
+     13 px, "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds
+     it whole). WebKit was not measured. */
+  --github-pulls-age-column: 5ch;
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
@@ -1367,8 +1369,7 @@
   justify-content: center;
   width: var(--tree-icon-slot);
 }
-/* A stack's row has its chevron in the first slot, and its Layers icon in a second
-   (`.github-pulls-stack-row`). */
+/* A stack's row has its chevron in the first slot (`.github-pulls-stack-row`). */
 .github-pulls-row > .github-pulls-toggle {
   grid-row: 1;
   grid-column: 1;
@@ -1389,18 +1390,15 @@
    whether the lines are shown, waited for, or cannot be had, so they arrive and move no line
    of the row, only the chevron, which follows them; where there are no lines it is the
    chevron alone (pulls-panel.js, `paintChange`), as the prefetch lane lists its files. The
-   age has a column of one width, so an age that grows a digit moves nothing. The longest
-   compact age is four characters ("12mo", 345 to 364 days), and its m is wider than a digit;
-   5ch of the row's type holds it at the row's own size: measured in Chrome 152 at 13 px,
-   "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds it whole).
-   WebKit was not measured. The rest of the line is the item's link's, as the run is: a press
+   age has a column of one width, `--github-pulls-age-column`, measured on `.github-pulls-row`,
+   so an age that grows a digit moves nothing. The rest of the line is the item's link's, as the run is: a press
    there, the age's too, opens the pull request. Before, the lines and the chevron ended the
    run, and the author and the age were this line (mb-pw8t); in between, the age ended the
    run after the author, where its place moved with the title's length, and the ages read
    as no column. */
 .github-pulls-row > .github-pulls-tail {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 5ch;
+  grid-template-columns: minmax(0, 1fr) var(--github-pulls-age-column);
   align-items: center;
   height: var(--github-pulls-change-line);
   padding: 0 0 2px var(--github-pull-row-text-column);
@@ -1441,7 +1439,9 @@
 /* The toggle's own hover, inside the item's: under the pointer, its chevron stands on a plate
    one step past the item's hover ground and takes the text's ink, as an icon button does on
    a plain ground (`.icon-btn:hover`). The plate is the chevron's slot alone, so the lines'
-   inks keep the ground their contrast is held on (`--hover-bg`, `--highlight-bg`). */
+   inks keep the ground their contrast is held on (`--hover-bg`, `--highlight-bg`). A Whole
+   stack row's toggle of its stack's changed files is this toggle too
+   (`.github-pulls-whole-change`, mb-odt4), so its chevron has the same plate. */
 .github-pulls-change:hover > .github-pulls-toggle {
   background: var(--border);
 }
@@ -1449,7 +1449,7 @@
   color: var(--text);
 }
 /* While the lines are read, the row holds the shell's pending placeholder where they will be,
-   as a stack's heading does (`.github-pulls-stack-change-pending`): the navigation tally's
+   as a stack's Whole stack row does (`.github-pulls-stack-change-pending`): the navigation tally's
    gray block and slow pulse, after the quiet period, as wide as a row's lines nearly always
    are (`--github-pulls-lines-room`, measured on `.github-pulls-row`). */
 .github-pulls-change-pending {
@@ -1631,9 +1631,10 @@
    members were of different heights; the line before this one led with the place, "14/15 ·
    title", and ended with the number.
    The Whole stack row, the stack's own page, is in the members' row grid, though it is no
-   member (mb-7cn4): the stack's Layers glyph, muted, as a Pulls stack's row has it, in the
-   state icon's slot, and its words where every member's title starts. With the menu row's
-   own gap and no icon, its words started 2 px past the titles. */
+   member (mb-7cn4): the stack's Layers glyph in the state icon's slot, in the text's ink as its
+   words are, as the Pulls tab's Whole stack row and the stack page's title have it (mb-68uk),
+   and its words where every member's title starts. With the menu row's own gap and no icon,
+   its words started 2 px past the titles. */
 .github-pull-stack-member,
 .github-pull-stack-whole {
   gap: var(--tree-icon-gap);
@@ -1645,7 +1646,7 @@
   flex: none;
   justify-content: center;
   width: var(--tree-icon-slot);
-  color: var(--muted);
+  color: var(--text);
 }
 /* The line's spaces collapse in a flex row, so a gap of about a space's width (0.25em, 3 px
    at the menu's 12 px) parts the title, the place, the dot, and the number. */
@@ -1787,42 +1788,43 @@
      .github-pull-stack-position  the bold position, "2/4".
      .github-pull-stack-other     the Layers glyph at the text's size, naming another
                                   stack in a badge before its number.
-   Grouped by stack, the Pulls list's first level is a stack's row, then the rows of its
-   pull requests a tree level in, top of the stack first, then the rows in no stack. A
-   stack's row starts on the list's row inset, as every first-level row does, as a menu
-   group's heading starts on the menu's row inset rather than on its rows' labels. */
+   Grouped by stack, the Pulls list's first level is a stack's row, then its Whole stack
+   row and the rows of its pull requests a tree level in, top of the stack first, then the
+   rows in no stack. A stack's row starts on the list's row inset, as every first-level row
+   does, as a menu group's heading starts on the menu's row inset rather than on its rows'
+   labels. */
 .github-pull-stack-label {
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
 /* The rows under a stack's row, and their changed files, are a tree level in: one icon slot
-   and the rows' column gap, so a member's state icon and chevron sit under the stack's Layers
-   icon and its title under the stack's label (mb-3vil). */
+   and the rows' column gap, so a member's state icon and its Whole stack row's Layers glyph
+   sit where the stack's label starts (mb-3vil, mb-68uk). */
 .github-pulls-item[data-level="2"] {
   --github-pulls-indent: var(--github-pull-row-text-column);
 }
-/* A stack's row keeps both leading slots: its chevron's, then its Layers icon's, and its
-   heading has the rest. It has no age, so no age's column. */
+/* A stack's row is one line: its chevron's slot, its heading, and its age in the column a
+   pull request's row has for its own (`--github-pulls-age-column`), at the row's end, there
+   whether or not the stack has a time, so an age that grows a digit moves nothing
+   (docs/design-system.md, "Ages End the Row"). It is a row of the tree, and hovers,
+   focuses, and takes the pointer as a pull request's row does (`.github-pulls-row`). */
 .github-pulls-row.github-pulls-stack-row {
-  grid-template-columns: var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr);
+  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) var(--github-pulls-age-column);
 }
-/* A stack's row is one line: the chevron, the Layers icon, and its heading, the label then
-   the lines the stack changes, with no tally, since its pull requests are the rows under it
-   (docs/design-system.md, "Heading Tallies"). It is a row of the tree, and hovers, focuses,
-   and takes the pointer as a pull request's row does (`.github-pulls-row`). Its heading
-   starts in the title's column and has the row to its end. */
-.github-pulls-stack-row > .github-pull-stack-icon {
-  grid-column: 2;
-  justify-self: center;
-  color: var(--muted);
+.github-pulls-stack-row > .github-pulls-age {
+  justify-self: end;
+  white-space: nowrap;
 }
-/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the first under its open stack,
-   opens the stack's own page. It is one line in a member's row grid: the stack's Layers glyph,
-   muted, in the state icon's slot, and "Whole stack" in the members' title column, one
-   --github-pull-row-gap (the tree's icon gap) past the glyph, as the stack menu's Whole stack
-   row has them (`.github-pull-stack-whole`). It hovers, takes the focus ring, and takes the
-   current-row mark as a pull request's row does, on its own ground, since no entry holds it
-   (`.github-pulls-entry`). */
+/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the first under its open
+   stack, beside its pull requests' rows, opens the stack's own page. It is one line in a
+   member's row grid: the stack's Layers glyph, in the text's ink, as its words and the
+   stack page's title glyph are (mb-68uk), in the state icon's slot; then its line in the
+   members' title column, one --github-pull-row-gap (the tree's icon gap) past the glyph,
+   as the stack menu's Whole stack row has them (`.github-pull-stack-whole`): "Whole
+   stack", then the lines the stack changes and the chevron after them, the toggle of the
+   stack's changed files (`.github-pulls-whole-line`, `.github-pulls-whole-change`). It
+   hovers, takes the focus ring, and takes the current-row mark as a pull request's row
+   does, on its own ground, since no entry holds it (`.github-pulls-entry`). */
 .github-pulls-row.github-pulls-whole-row {
   grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
   padding-bottom: 2px;
@@ -1831,12 +1833,7 @@
 .github-pulls-whole-row > .github-pull-stack-icon {
   display: inline-flex;
   justify-content: center;
-  color: var(--muted);
-}
-.github-pulls-whole-row > .github-pulls-whole-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text);
 }
 .github-pulls-whole-row:hover {
   background: var(--hover-bg);
@@ -1849,38 +1846,86 @@
 .github-pulls-whole-row.selected {
   background: var(--highlight-bg);
 }
-/* The heading is one line whatever it holds, a line of the row's content box: "Stack #N"
-   then, after a muted dot, the stack's line totals, "· +1,234 −567", the shell's brief
-   change line of its totals alone, with no file statuses, as a pull request's row says its
-   own (mb-lqkb), in the nav's type (docs/design-system.md, "Stacks"). The label is never cut
-   for the line or covered by it. Where the line has no room it goes whole, never cut short
-   with an ellipsis. That is the wrap below: the line's own floor, its smallest width
-   (`min-width: min-content`, the dot and the totals, to which the note adds nothing), is all
-   it asks of the heading's first line, and a line that cannot have it wraps to a second line,
-   which the heading's height leaves out of view. Every item is a box of the heading's one
-   line height, so its first line is exactly that tall and nothing of the second shows.
-   Measured in headless Chrome 152 in both themes by
+/* A stack's heading and its Whole stack row's line are each one line whatever they hold, a
+   line of the row's content box, in the nav's type (docs/design-system.md, "Stacks"). The
+   heading is "Stack #N" then, after a muted dot, the stack's size, "· 4 pulls", a count
+   summary with its number bold in the text's ink (`.summary-number`); the Whole stack row's
+   line is "Whole stack" then its toggle: after a muted dot, the stack's line totals,
+   "· +1,234 −567", the shell's brief change line of its totals alone, with no file
+   statuses, as a pull request's row says its own (mb-lqkb), then the chevron. The first
+   part, the label or "Whole stack", is never cut for the second or covered by it. Where the
+   second has no room it goes whole, never cut short with an ellipsis. That is the wrap
+   below: the second part's own floor, its smallest width (the count whole; for the toggle
+   `min-width: min-content`, the dot, the totals, and the chevron, to which the note adds
+   nothing), is all it asks of the first line, and a part that cannot have it wraps to a
+   second line, which the box's height leaves out of view.
+   Every item is a box of the one line height, so the first line is exactly that tall and
+   nothing of the second shows. Measured in headless Chrome 152 in both themes by
    tests/dom/github-pulls-stack-lines-chrome.mjs, from 420 px to the 180 px minimum. */
-.github-pulls-stack-row > .github-pulls-stack-heading {
+.github-pulls-stack-row > .github-pulls-stack-heading,
+.github-pulls-whole-row > .github-pulls-whole-line {
   --github-pulls-stack-line: calc(var(--ui-row-height) - 4px);
   display: flex;
   flex-wrap: wrap;
-  grid-column: 3 / -1;
   align-items: center;
   min-width: 0;
   height: var(--github-pulls-stack-line);
   overflow: hidden;
-  column-gap: 6px;
   line-height: var(--github-pulls-stack-line);
 }
-.github-pulls-stack-heading > .github-pull-stack-label {
+/* The heading's dot follows the label a space's width on (0.25em, about 3 px at the nav's 13
+   px), as the space after it is; the Whole stack row's line keeps its dot's room in the
+   change line's own box (`.github-pulls-stack-change`). */
+.github-pulls-stack-row > .github-pulls-stack-heading {
+  column-gap: 0.25em;
+}
+/* The Whole stack row's line never wraps (mb-odt4, the owner's word of 2026-11-26): "Whole
+   stack" keeps its width, and the toggle after it takes what is left and gives way inside
+   itself, as a pull request's row's toggle does, so its chevron is always right after its
+   lines. */
+.github-pulls-whole-row > .github-pulls-whole-line {
+  flex-wrap: nowrap;
+  column-gap: 6px;
+}
+.github-pulls-stack-heading > .github-pull-stack-label,
+.github-pulls-whole-line > .github-pulls-whole-title {
   flex: 0 1 auto;
   min-width: 0;
   height: var(--github-pulls-stack-line);
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pulls-stack-heading > .github-pull-stack-label {
   /* The row's grid places the heading; the menu's padding is its inset in a menu. */
   padding: 0;
-  text-overflow: ellipsis;
+}
+/* "Whole stack" keeps its width: the toggle after it gives way first (mb-odt4). */
+.github-pulls-whole-line > .github-pulls-whole-title {
+  flex: none;
+}
+/* The stack's size, "· 4 pulls": one box that never breaks, so it is on the heading's line
+   whole or, with no room, on the second line, out of view. */
+.github-pulls-stack-count {
+  flex: none;
+  height: var(--github-pulls-stack-line);
+  font-size: var(--nav-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: pre;
+}
+/* The Whole stack row's toggle (mb-odt4): the change line's box, then the registry's
+   chevron, a pull request's row's toggle exactly (`.github-pulls-change`, whose layout,
+   pointer, chevron gap, and hover plate it has). It is as wide as what it holds and no
+   wider, so the chevron is right after the lines, and the rest of the row's line stays the
+   link's. Where the row has no room for all of it, the change line's box gives way to an
+   ellipsis, its note first and then its lines whole, and the chevron stays, as a pull
+   request's lines do (`.github-pulls-change-line`). */
+.github-pulls-whole-line > .github-pulls-whole-change {
+  flex: 0 1 auto;
+  height: var(--github-pulls-stack-line);
+}
+.github-pulls-whole-change > .github-pulls-toggle {
+  flex: none;
 }
 /* The muted dot, then the line, then "(estimated)" when its totals are not exact. The line
    and the note are one line of a box that wraps: the note, the later item, wraps whole onto
@@ -1893,17 +1938,15 @@
    "·" is 3.24 px of its 13 px, 0.25 em. */
 .github-pulls-stack-change {
   --github-pulls-stack-dot: 0.25em;
-  display: flex;
+  display: block;
   position: relative;
-  flex: 1 1 0;
-  flex-wrap: wrap;
-  align-items: baseline;
-  min-width: min-content;
+  flex: 0 1 auto;
+  min-width: 0;
   height: var(--github-pulls-stack-line);
   overflow: hidden;
-  column-gap: 6px;
   padding-inline-start: calc(var(--github-pulls-stack-dot) + 6px);
   font-size: var(--nav-font-size);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .github-pulls-stack-change
@@ -1914,21 +1957,18 @@
   inline-size: var(--github-pulls-stack-dot);
   text-align: center;
 }
-.github-pulls-stack-heading > .github-pulls-stack-change > .change-line {
-  max-width: 100%;
+.github-pulls-whole-change > .github-pulls-stack-change > .change-line {
+  flex-wrap: nowrap;
+  vertical-align: top;
   height: var(--github-pulls-stack-line);
 }
 /* "(estimated)" after totals that are not exact, muted as the Diff summary's is, a qualifier
-   of the totals. It gives way first, whole, and never takes the totals' room: it may break
-   anywhere, which no line shows, so its floor is a character and the line's floor is its
-   totals. Before, it shrank first but took a share of every squeeze. */
+   of the totals. It is the line's last part, so it is the first the box's ellipsis takes. */
 .github-pulls-stack-change-note {
-  flex: none;
+  margin-inline-start: 6px;
   color: var(--muted);
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
-/* While the line is read, the heading holds the shell's pending placeholder where it will
+/* While the line is read, the Whole stack row holds the shell's pending placeholder where it will
    be: the navigation tally's gray block and slow pulse (`.tally-pending`), shown after the
    quiet period (`.mb-delayed-loading`), in the line's flow after the dot's room, where the
    totals will start; it is no dot, though the box's first child and hidden. It is as wide as
@@ -1937,8 +1977,8 @@
    shortest, a median one, and the longest (tests/dom/github-pulls-stack-lines-chrome.mjs,
    `REAL_LINES`), a stack's totals are 4.2 to 7.4 em of the nav's type, 6.0 at the median. */
 .github-pulls-stack-change-pending {
-  display: flex;
-  flex: none;
+  display: inline-flex;
+  vertical-align: top;
   align-items: center;
   width: 6em;
   height: var(--github-pulls-stack-line);
@@ -1975,6 +2015,20 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A sentence of several names, a stack's (`actorSentence`), gives way in its names and its
+   action together, each in proportion to its width and each name down to its floor, so
+   neither the action nor the names are cut to nothing while the other is whole: at the
+   action's factor, six authors lost "want to merge 48 commits" before any name gave way.
+   Measured in Chrome 152 with six authors (tests/dom/github-stack-page-chrome.mjs): at
+   560 px the action keeps 87 of its 155 px and each name 47 to 99 px of its own; at
+   375 px the six names' floors fill the 316 px row, and the action, whose commits the
+   size line under it says too, has none. No floor fits six names there: 316 px is under
+   53 px a name before its commas, an avatar and its gap taking 22 px of it, so a name cut
+   short says itself in its tooltip instead (`sentenceActor` in stack-page.js). */
+.github-pull-meta-details:has(> .github-pull-actor-sep)
+> :is(.github-pull-identity, .github-pull-action) {
+  flex-shrink: 1;
+}
 
 /* The author ends a Pulls row's run, after the number (mb-rb3n): the avatar and the name, one
    box that goes whole to the next line where the line has no room for it, and whose name ends
@@ -1999,6 +2053,31 @@
 
 .github-pull-guided-review [hidden] {
   display: none;
+}
+/* A step composed out of sight until what its layout depends on is in (`present` in
+   guided-review.js): laid out in the guide's own column, over the step shown, so its
+   documents draw at the width they show at and find themselves on screen, and painting
+   nothing, so nothing shown moves until it takes the shown step's place. */
+.github-pull-guided-review {
+  position: relative;
+}
+.github-pull-guided-review > .github-pull-guide-incoming {
+  position: absolute;
+  inset: 0 0 auto;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* The spinner that says a step is on its way sits before the arrows, out of flow, so the
+   step list's head moves nothing when it shows or goes. */
+.github-pull-guide-arrows {
+  position: relative;
+}
+.github-pull-guide-waiting {
+  position: absolute;
+  inset-inline-end: calc(100% + 0.5rem);
+  top: 50%;
+  translate: 0 -50%;
+  padding: 0;
 }
 
 /* KPress sets the guide's headings, paragraphs, and the space between them. A note is
@@ -2169,16 +2248,24 @@
   margin-inline-start: auto;
 }
 
-/* Each excerpt is the diff plugin's file card and rows (guided-review.js, `renderReference`),
-   which set its type and fills. An excerpt's bar names its file and does not fold it, so it
-   takes no pointer. Three classes outrank the plugin's two-class bar rules, which load after
-   this sheet, and every selector here stays the page's own. */
-.github-pull-guided-review .github-pull-guide-references .github-pull-guide-reference-header,
-.github-pull-guided-review .github-pull-guide-reference-header .diff-file-toggle {
+/* Each card a step draws for a file is the diff plugin's file card (guided-review.js,
+   `renderReference`), which sets its type and fills, and its bar is the plugin's own
+   disclosure, which folds the card as a file's does in Changes and takes every rule of it,
+   its pointer among them, from the plugin's sheet. Only where the diff plugin did not load
+   is the bar the guide's own, which names its file and folds nothing, so that bar, which is
+   no `.disclosure-toggle`, takes no pointer. The selectors outrank the plugin's two-class
+   bar rules, which load after this sheet, and every one here stays the page's own. */
+.github-pull-guided-review .github-pull-guide-references
+  .github-pull-guide-reference-header:not(.disclosure-toggle),
+.github-pull-guided-review
+  .github-pull-guide-reference-header:not(.disclosure-toggle)
+  .diff-file-toggle {
   cursor: auto;
 }
 
-.github-pull-guide-reference > p {
+/* A sentence in a card, under the bar or in what the bar folds. */
+.github-pull-guide-reference > p,
+.github-pull-guide-reference > .diff-file-body > p {
   padding-inline: 10px;
 }
 /* A step's excerpts sit inside its card at its text's inset, as a review comment's hunk
@@ -2260,20 +2347,20 @@
 
 /* ── The stack page (stack-page.js; docs/design-system.md, "The Stack Page") ──
    A pull request's page made of the parts a stack has, on the pull request page's own
-   classes: its header's title, corner, branches, status, size, and Diff summary rows, its
-   tab bar, and its diff's hold. What is here is the one part a pull request's page has no
-   row for, the members, which are the stack menu's member rows (`.menu-item` and
-   `.github-pull-stack-member`, above) listed in the header in a page card (`.page-card`),
-   as a guided step's card lists a pull request it cites (`.github-pull-guide-row`): every
-   row one line at the menu's size, the state icon in the tree's icon slot, the title cut
-   short before the place and the number. No member is this page, so none takes the
-   current-row mark.
+   classes: its header's title, corner, row of ages, author's row, branches, labels,
+   status, size, and Diff summary rows, its tab bar, and its diff's hold. What is here is
+   what a pull request's page has no part for: the tally of the members' states, which
+   leads the row of ages where a pull request's one badge is; the comma between the
+   sentence's authors; and the members, which are the stack menu's member rows
+   (`.menu-item` and `.github-pull-stack-member`, above) listed on the page's ground with no
+   card, as the Diff summary's files under its toggle are, under a toggle above the Diff
+   summary: every row one line at the menu's size, the state icon in the tree's icon slot,
+   the title cut short before the place and the number. No member is this page, so none
+   takes the current-row mark. The bordered card is the stack popover menu's alone (the
+   owner's word of 2026-11-26, mb-4qpz); before, the list was a page card (`.page-card`).
 
-   The card insets its rows as every card on a pull request's page insets what it holds,
-   by the card text's inset (`--github-pull-text-inset`), so a member's state icon starts
-   where Guided Review's badge and a step's text start under it. With the menu's own inset,
-   `--menu-row-inset`, the icons stood 8 px nearer the card's edge than every other card's
-   content on the page (Chrome 152, 2026-11-25). The body's column is the pull request
+   Each row keeps the card text's inset (`--github-pull-text-inset`), so a member's state
+   icon starts in the column every card's content on a pull request's page starts in. The body's column is the pull request
    page's (`bodyInColumn` in stack-page.js). */
 .github-pull-stack-members {
   margin: 0;
@@ -2286,4 +2373,100 @@
 }
 .github-pull-stack-members .github-pull-stack-member {
   padding-inline: var(--github-pull-text-inset);
+}
+/* The tally: a state's badge for each state some member is in (`stateBadge`), each in its
+   state's ink, set apart as a cluster of chips is. The ages after it give way first, as they
+   do after a pull request's badge (their basis is nothing), and then the tally, its badges
+   together, each cut short at its end down to its floor, which keeps its count. Kept whole,
+   four two-digit badges, "12 Pulls Merged" among them, 388 px, ran 72 px past the 316 px
+   row of a 375 px pane; given way, each is 68 to 77 px there (Chrome 152,
+   tests/dom/github-stack-page-chrome.mjs, at 560 and 375 px). */
+.github-pull-stack-tally {
+  /* A badge's floor, 48 px at its size: a two-digit count and its ellipsis take 24.4 px,
+     with the pads and borders 42.4 px (measured as above), and a third digit about 6.5 px
+     more. */
+  --github-pull-tally-badge-floor: 4em;
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: var(--chip-cluster-gap);
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pull-stack-tally > .github-pull-badge {
+  flex: 0 1 auto;
+  min-width: var(--github-pull-tally-badge-floor);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A tally of all four states in a row too narrow for it leaves out each badge's noun, "12
+   Merged" for "12 Pulls Merged" (`tallyBadge` in stack-page.js): cut at its end instead, every
+   badge read "12 Pull…", so the four differed by ink alone (mb-y5yy). The row
+   is the query's container, and its bound, 392 px at the row's 14 px type, is the tally's
+   own width with two-digit counts, 388 px; without the nouns the four are 274 px, whole in
+   the 316 px row of a 375 px pane (Chrome 152, tests/dom/github-stack-page-chrome.mjs,
+   2026-11-25). A tally of fewer states fits that row whole, three two-digit badges at most
+   296 px with their gaps, and keeps its nouns. The rule is set for
+   that case alone, four badges in the 375 px pane measured: a narrower pane, a tally of
+   fewer states in a row too narrow for it, and a longer count still cut a badge short at
+   its end, and a badge cut short says its whole label in its tooltip. */
+.github-pull-stack-page .github-pull-opened {
+  container: github-pull-stack-opened / inline-size;
+}
+@container github-pull-stack-opened (width < 28em) {
+  .github-pull-stack-tally:has(> .github-pull-badge:nth-child(4)) .github-pull-stack-tally-noun {
+    display: none;
+  }
+}
+/* The comma after each author but the last, against the name it follows: the sentence's
+   gap is before it as well as after, and is taken back on its near side. */
+.github-pull-actor-sep {
+  flex: none;
+  margin-inline-start: calc(-1 * var(--github-pull-sentence-gap));
+}
+/* The members' row: the toggle, "12 Pulls", and under it the card. The toggle is the
+   shell's summary toggle, as the Diff summary's header just under it is (static/styles.css,
+   `.summary-toggle`): its words and then the registry's chevron in the tree's icon slot, its
+   hover and focus the tree rows', so the two toggles' words start at one edge and their
+   hover grounds at another. tests/dom/github-stack-page-chrome.mjs holds the two edges
+   level. While no member is named the toggle holds its row, out of sight
+   (`.github-pull-stack-members-held`). */
+.github-pull-stack-members-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.github-pull-stack-members-toggle {
+  display: flex;
+  align-items: center;
+  column-gap: 6px;
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+.github-pull-stack-members-toggle.github-pull-stack-members-held {
+  visibility: hidden;
+}
+/* The card opens and closes as every disclosure does (docs/design-system.md, "Disclosure
+   Motion"), the header's width wide. */
+.github-pull-stack-members-body {
+  align-self: stretch;
+  min-width: 0;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: clip;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
+}
+.github-pull-stack-members-body-collapsed {
+  height: 0;
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .github-pull-stack-members-body {
+    transition-duration: 1ms;
+  }
+}
+.github-pull-stack-members-body > .github-pull-stack-members {
+  margin-block-start: 4px;
 }

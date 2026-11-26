@@ -19,7 +19,7 @@ listed here and drawn nowhere, fails the build.
 | Source | What it is | Where it lives |
 | --- | --- | --- |
 | Registry | A glyph a folder’s first paint can draw | `static/icons.js`, a startup script, as `window.MetabrowserIcons`; plugins read it as `mb.icons` |
-| Shell | A glyph the server writes into a page’s first paint as markup, one of a set, which the registry would make every page pay for | A data file the server reads, `static/source-kind-glyphs.json`, and the macOS app’s copy of it |
+| Shell | A glyph the server writes into a page’s first paint as markup, with no script: a root’s mark, one of a set the registry would make every page pay for, or the glyph of a control the server draws, in its box from the first paint | A data file the server reads, `static/source-kind-glyphs.json`, and the macOS app’s copy of it; or `shell_glyphs.py` |
 | Plugin | A glyph only one plugin draws | Beside that plugin’s code, loaded with it |
 | View bundle | A glyph only a shared view helper draws | `static/plugin-sdk-views.js`, loaded on demand |
 | CSS mask | A glyph a stylesheet draws as a mask over a color token | The stylesheet rule that draws it |
@@ -329,13 +329,13 @@ The title carries the meaning; the symbol only marks the tab.
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
+| `REFRESH_SVG`, Lucide `rotate-cw` | Shell | Refresh: the navigation’s one Refresh, at the top of the navigation pane just before the Metabrowser menu’s gear on every page, which refreshes what the page shows, the parts on screen first; the server writes it into the page with its button | `shell_glyphs.py` | `--muted` at rest, `--text` on hover; dimmed while it waits | `--icon-glyph` |
 | `monitor`, Lucide `monitor` | Registry | The system theme, in the menu’s theme chooser; also the Media category’s shape | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`: a segment’s glyph is its whole label (`.menu-seg svg`) |
 | `sun`, Lucide `sun` | Registry | The light theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `moon`, Lucide `moon` | Registry | The dark theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `serif`, bespoke | Registry | The serif reading font: an “A” in the generic serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `sans`, bespoke | Registry | The sans reading font: an “A” in the generic sans-serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
-| `←` | Text | Back to the working tree, before the label of a checkout revision’s back button in the Files row | `static/source-ref-selector.js` | `--muted` | The button’s |
 | `✓` | Text | A chosen value in a filter chip’s menu | `static/filter-controls.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
 | `→` | Text | A SQLite foreign key from its columns to the referenced table | `builtin_plugins/sqlite/tables-model.js` | The text’s | The text’s |

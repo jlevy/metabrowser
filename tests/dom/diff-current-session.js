@@ -1,4 +1,4 @@
-// Browserless session: the diff's Diff | Current choice, through the production browser code.
+// Browserless session: the diff's Diff | Excerpt | Full choice, through the production browser code.
 //
 // builtin_plugins/diff/diff-view.js, diff-markdown.js and diff-structured.js load whole, as
 // the plugin loads them, with static/inert-html.js run as a page runs it and the structured
@@ -16,16 +16,16 @@
 // an attachment and runs its `activate` as it would for the first live target, and
 // tests/dom/plugin-shortcuts-session.js runs the production surface. Geometry is a model, so
 // that the place a choice keeps can be read: the pane is 600 px tall, the toolbar and a file bar
-// are 30 px, and every drawn row 20 px, so a file's place moves as Diff and Current draw more or
+// are 30 px, and every drawn row 20 px, so a file's place moves as Diff and Excerpt draw more or
 // fewer rows.
 //
-// Each step prints what the diff shows, what its toolbar holds, its Diff | Current (`*` marks
+// Each step prints what the diff shows, what its toolbar holds, its Diff | Excerpt | Full (`*` marks
 // the chosen chip), the layout control, where `N` and `L` sit, what was written to the
 // preferences, what each file bar's end group holds where that changed, and, for each file
 // whose drawing the step changed, what it draws: a code body's hunk headers and rows (the line
 // numbers, the marker, the text), a rendered body's blocks and front matter or its tree's rows,
-// and what a file with no rows says. A row Current leaves hidden is not printed. A pull
-// request's Docs tab mounts the same diff as its page does, with the layout fixed, Current
+// and what a file with no rows says. A row Excerpt leaves hidden is not printed. A pull
+// request's Docs tab mounts the same diff as its page does, with the layout fixed, Full
 // its default, and a preference of its own, and its steps print what it opens on and what is
 // written, apart from Changes' `diff.show`.
 
@@ -911,7 +911,7 @@ function chips(control) {
 let markJoins = null;
 
 // Each row's joins (`markJoins` in diff-markdown.js) are the ones the rows shown around it
-// make in what the article shows now, Diff or Current: marking it again whole, and each
+// make in what the article shows now, Diff or Excerpt: marking it again whole, and each
 // open fold, changes none of them.
 function joinsAreFresh(article) {
   const all = [];
@@ -977,7 +977,7 @@ async function main() {
   const DOCS = {
     unfold: true,
     layout: "unified",
-    show: "current",
+    show: "full",
     showPreference: "github.docs.show",
   };
 
@@ -1037,7 +1037,8 @@ async function main() {
     const host = element("div");
     pane.replaceChildren(host);
     pane.scrollTop = 0;
-    const handle = view.mountDiffView(host, structuredClone(comparison), api, {
+    const document_ = { ...structuredClone(comparison), __revision: "fixture-head" };
+    const handle = view.mountDiffView(host, document_, api, {
       showSummary: false,
       markdownViews,
       // As the route answers each view the page asks for: Docs asks for Full where the
@@ -1083,7 +1084,7 @@ async function main() {
         return child.children.map(describe);
       }
       if (child.classList.contains("diff-show-control")) {
-        return `Diff | Current: ${chips(child)}`;
+        return `Comparison view: ${chips(child)}`;
       }
       if (child.classList.contains("diff-layout-control")) {
         return `Split | Unified: ${child.children
@@ -1096,13 +1097,13 @@ async function main() {
       }
       return child.className;
     };
-    /** What each file bar's end group holds: Full | Concise | Source, or nothing. */
+    /** What each file bar's end group holds: Rendered | Source, or nothing. */
     const barEnds = () =>
       Object.fromEntries(
         sections().map((section, index) => {
           const end = section.find("diff-file-end")[0];
           const held = end.children
-            .filter((child) => !child.classList.contains("diff-markdown-progress"))
+            .filter((child) => !child.hidden && !child.classList.contains("diff-markdown-progress"))
             .map((child) =>
               child.classList.contains("diff-markdown-control") ? chips(child) : child.className,
             );
@@ -1150,7 +1151,7 @@ async function main() {
         }
         const name = control.classList.contains("diff-layout-control")
           ? "Split | Unified"
-          : "Diff | Current";
+          : "Comparison view";
         return `${name}'s ${active.textContent}`;
       },
       /**
@@ -1178,7 +1179,7 @@ async function main() {
       brief(name, extra = {}) {
         assert(
           sections().every((section) => section.find("diff-show-control").length === 0),
-          "a file bar holds a Diff | Current",
+          "a file bar holds a Diff | Excerpt | Full",
         );
         return {
           step: name,
@@ -1211,8 +1212,8 @@ async function main() {
   const steps = [];
 
   // Changes, a commit's page or a patch, opened by a reader who never chose: Diff, as before
-  // Current existed. Diff | Current is in the toolbar, before Split | Unified, and a file
-  // bar's end group holds Full | Concise | Source alone.
+  // the presentation chooser. It sits before Split | Unified, and supported file bars
+  // hold Rendered | Source.
   const diff = mount({ "diff.layout": "unified" });
   steps.push(diff.line("a reader who never chose opens Diff, today's view"));
   reveal();
@@ -1232,7 +1233,7 @@ async function main() {
   );
   steps.push(
     diff.line(
-      "Current, chosen in the toolbar: every file shows its new version, stored as diff.show",
+      "Excerpt, chosen in the toolbar: every file shows its new version around the changes, stored as diff.show",
       {
         place: `the first file's bar ${first} px down before, ${diff.topOf("docs/guide.md")} px after`,
       },
@@ -1240,15 +1241,15 @@ async function main() {
   );
 
   await diff.click("diff-markdown-control", "source", "docs/guide.md");
-  steps.push(diff.line("the Markdown file's Source in Current: the new file's lines alone"));
-  await diff.click("diff-markdown-control", "concise", "docs/guide.md");
   steps.push(
-    diff.line("and its Concise again: Full | Concise | Source is the file's own, unstored"),
+    diff.line("the Markdown file's Source in Excerpt: the new file's lines around the changes"),
   );
+  await diff.click("diff-markdown-control", "rendered", "docs/guide.md");
+  steps.push(diff.line("Rendered again keeps the comparison's Excerpt mode"));
 
-  // Layout is Diff's: in Current its chips say why, and neither they nor L change anything.
+  // Layout is Diff's: in Excerpt its chips say why, and neither they nor L change anything.
   await diff.click("diff-layout-control", "split");
-  steps.push(diff.line("Split clicked in Current: nothing changes, and nothing is written"));
+  steps.push(diff.line("Split clicked in Excerpt: nothing changes, and nothing is written"));
   await diff.press("diff.layout");
   steps.push(diff.line("nor does L"));
 
@@ -1277,8 +1278,8 @@ async function main() {
   await settle();
   steps.push(diff.brief("logo.png at the pane's top: N has not moved"));
 
-  // In a code file the row at the pane's top is a line. A removed line, which Current leaves
-  // out, gives its place to the next line Current draws, which stays where it was. Diff again
+  // In a code file the row at the pane's top is a line. A removed line, which Excerpt leaves
+  // out, gives its place to the next line Excerpt draws, which stays where it was. Diff again
   // keeps the line now at the pane's top, the one above it, and draws the removed line below.
   diff.scrollRowTo("    return 1", 0);
   await settle();
@@ -1294,7 +1295,7 @@ async function main() {
   const nextInCurrent = diff.rowTop("    x = 2");
   assert(nextInCurrent === next, `Current moved the next line to ${nextInCurrent} px`);
   steps.push(
-    diff.line("Current: the next line it draws keeps its place", {
+    diff.line("Excerpt: the next line it draws keeps its place", {
       place: `x = 2 is ${next} px from the pane's top before, ${nextInCurrent} px after`,
     }),
   );
@@ -1308,13 +1309,13 @@ async function main() {
     }),
   );
 
-  // Layout returns with Diff, and Current is one column whatever the layout.
+  // Layout returns with Diff, and Excerpt is one column whatever the layout.
   pane.scrollTop = 0;
   pane.dispatch("scroll");
   await settle();
   await diff.click("diff-layout-control", "split");
   steps.push(diff.line("Split chosen in Diff"));
-  // Focus on the layout chooser, N redraws it for Current; focus stays on its chosen chip.
+  // Focus on the layout chooser, N redraws it for Excerpt; focus stays on its chosen chip.
   diff.focus("diff-layout-control", "split");
   await diff.press("diff.show");
   assert(
@@ -1322,7 +1323,7 @@ async function main() {
     `focus left the layout chooser: ${diff.focused()}`,
   );
   steps.push(
-    diff.line("Current from Split, by N with focus on Split: one column, the layout kept", {
+    diff.line("Excerpt from Split, by N with focus on Split: one column, the layout kept", {
       focus: diff.focused(),
     }),
   );
@@ -1340,27 +1341,27 @@ async function main() {
     bound: diff.binds.filter((record) => record.bound).length,
   });
 
-  // A pull request's Docs tab: the layout fixed, so its toolbar holds Diff | Current alone,
-  // and Current its default, which a reader who never chose there opens on.
+  // A pull request's Docs tab: the layout fixed, so its toolbar holds only the presentation
+  // chooser, with Full as its default.
   const docs = mount({ "diff.layout": "split" }, DOCS);
   reveal();
   await settle();
-  steps.push(docs.line("Docs, never chosen there: Current, its default, with no layout control"));
+  steps.push(docs.line("Docs, never chosen there: Full, its default, with no layout control"));
   docs.handle.dispose();
 
   // Each surface keeps its own choice. One reader's store, across Changes and Docs:
   const store = new Map();
   const changes1 = mount(store);
   await changes1.click("diff-show-control", "current");
-  steps.push(changes1.brief("Changes: Current chosen, stored as diff.show"));
+  steps.push(changes1.brief("Changes: Excerpt chosen, stored as diff.show"));
   changes1.handle.dispose();
   const docs1 = mount(store, DOCS);
-  steps.push(docs1.brief("Docs opens on its own default, Current, which Changes did not set"));
+  steps.push(docs1.brief("Docs opens on its own default, Full, which Changes did not set"));
   await docs1.click("diff-show-control", "diff");
   steps.push(docs1.brief("Docs: Diff chosen, stored as github.docs.show"));
   docs1.handle.dispose();
   const changes2 = mount(store);
-  steps.push(changes2.brief("Changes again: Current, its own choice, which Docs did not move"));
+  steps.push(changes2.brief("Changes again: Excerpt, its own choice, which Docs did not move"));
   changes2.handle.dispose();
   const docs2 = mount(store, DOCS);
   steps.push(docs2.brief("Docs again: Diff, its own choice"));
@@ -1372,8 +1373,49 @@ async function main() {
   steps.push(odd.brief("Changes, a stored value that is not a choice: Diff, its default"));
   odd.handle.dispose();
   const oddDocs = mount({ "github.docs.show": "both" }, DOCS);
-  steps.push(oddDocs.brief("Docs, a stored value that is not a choice: Current, its default"));
+  steps.push(oddDocs.brief("Docs, a stored value that is not a choice: Full, its default"));
   oddDocs.handle.dispose();
+
+  const codeLines = [
+    "# Before the first hunk",
+    "",
+    "def f():",
+    "    x = 2",
+    "    return x",
+    "",
+    "# After the last hunk",
+  ];
+  const requests = [];
+  view.setGapLoader(async (_revision, path, ask) => {
+    assert(ask.whole === true, "Full reads one bounded complete side");
+    requests.push(path);
+    return {
+      comparison_id: comparison.resolved.comparison_id,
+      path,
+      start: 1,
+      lines: codeLines,
+      line_count: codeLines.length,
+      ends_with_newline: true,
+    };
+  });
+  const full = mount({ "diff.layout": "split" });
+  reveal();
+  await settle();
+  await full.click("diff-show-control", "full");
+  reveal();
+  await settle();
+  assert(requests.includes("a.py"), "Full asked for the source at the comparison");
+  assert(
+    full.rowTop("# Before the first hunk") < full.rowTop("# After the last hunk"),
+    "Full draws lines outside the patch",
+  );
+  steps.push(full.line("Full source includes lines before and after the hunks"));
+  await full.click("diff-show-control", "current");
+  assert(
+    !drawnRowsOf(full.root).some((row) => rowReads(row).includes("Before the first hunk")),
+    "Excerpt returns to the lines in the patch",
+  );
+  full.handle.dispose();
 
   console.log(JSON.stringify({ steps }, null, 2));
   finished = true;

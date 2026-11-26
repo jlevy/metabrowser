@@ -24,14 +24,9 @@ from pathlib import Path
 from typing import Final
 
 from metabrowser.root_identity import IdentityKind
+from metabrowser.shell_glyphs import LUCIDE_SVG_OPEN
 
 GLYPH_FILE: Final = Path(__file__).parent / "static" / "source-kind-glyphs.json"
-# The attributes every Lucide glyph is drawn with (`SA` in static/icons.js). The stroke takes the
-# element's ink, as every glyph of the chrome does: an icon never carries its own color.
-_SVG_OPEN: Final = (
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-    'stroke-linecap="round" stroke-linejoin="round">'
-)
 
 
 @functools.cache
@@ -46,4 +41,4 @@ def source_kind_svg(kind: IdentityKind) -> str:
     no part of it comes from the folder or the repository being served.
     """
 
-    return f"{_SVG_OPEN}{_glyphs()[kind]['elements']}</svg>"
+    return f"{LUCIDE_SVG_OPEN}{_glyphs()[kind]['elements']}</svg>"

@@ -362,39 +362,22 @@ try {
   compare("Changes after a switch of tabs", stackSwitchedChanges, pullChanges, DIFF);
   compare("Guided Review after a switch of tabs", stackSwitchedGuided, pullGuided, GUIDED);
 
-  // The members: a page card, as Guided Review's step list and its step's card are, and each
-  // row inset as a card's head insets what it holds, so its state icon starts where the
-  // step card's badge does under it.
+  // The members: on the page's ground with no border, as the Diff summary's files under its
+  // toggle are; the bordered card is the stack popover menu's alone (the owner's word of
+  // 2026-11-26, mb-4qpz).
   for (const [at, ours] of Object.entries(stackGuided)) {
     const { card, rows } = ours.members;
-    const list = ours.parts["step list"];
-    const head = pullGuided[at].parts["step card's head"];
     check(
-      `the members, ${at}: a page card, as the step list is`,
-      card.border.every((value, side) => value === list.border[side]) &&
-        card.borderColor === list.borderColor &&
-        card.ground === list.ground &&
-        card.radius === list.radius,
-      JSON.stringify({ card, list }),
+      `the members, ${at}: no border and no ground of their own`,
+      card.border.every((value) => value === 0) && card.ground === "rgba(0, 0, 0, 0)",
+      JSON.stringify(card),
     );
     check(
-      `the members, ${at}: the card spans the header's content, as the title does`,
+      `the members, ${at}: the list spans the header's content, as the title does`,
       near(card.left, ours.parts.title.left) && near(card.width, ours.parts.title.width),
       JSON.stringify({ card, title: ours.parts.title }),
     );
     check(`the members, ${at}: both members are listed`, rows.length === 2, String(rows.length));
-    for (const row of rows) {
-      check(
-        `the members, ${at}: a row is inset as a card's head is`,
-        near(row.padding[1], head.padding[1]) && near(row.padding[3], head.padding[3]),
-        JSON.stringify({ row: row.padding, head: head.padding }),
-      );
-      check(
-        `the members, ${at}: a member's state icon starts where the step card's badge does`,
-        near(row.icon, ours.badge),
-        JSON.stringify({ icon: row.icon, badge: ours.badge }),
-      );
-    }
   }
   check("no script error on the pages", pageErrors.length === 0, pageErrors.join("\n"));
 } finally {

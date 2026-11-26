@@ -298,7 +298,9 @@ try {
     const t = performance.now();
     const plugin = performance.getEntriesByType("resource").some((e) => e.name.includes("/plugin-static/github/") && e.name.endsWith("/index.js"));
     window.__opened = { at: t, plugin };
+    // The working tree's page opens its list on the Working tree tab; Branches is a press on.
     ${ROOT}.querySelector(".source-ref-selector-toggle").click();
+    ${ROOT}.querySelector('.source-ref-selector-kinds button[data-chip-value="branch"]').click();
     return true;
   })()`);
   await chrome.waitFor(`${SETTLED}`);
@@ -396,7 +398,9 @@ try {
       `${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
     );
     await chrome.evaluate(OVERRIDE);
-    await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
+    await chrome.evaluate(
+      `${ROOT}.querySelector(".source-ref-selector-toggle").click(); ${ROOT}.querySelector('.source-ref-selector-kinds button[data-chip-value="branch"]').click(); true`,
+    );
     await chrome.waitFor(
       `${SETTLED} && window.MetabrowserSourceRefSelector.mounted().snapshot().listing?.pull_requests?.refreshing === true`,
     );

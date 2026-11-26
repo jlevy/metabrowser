@@ -216,10 +216,10 @@ def test_golden_github_urls_open_through_a_local_stand_in(
     pull = by_command[f"{REPO}/pull/7 --api /api/git/repo"]
     assert "pull_request: 7 (not opened: " in pull.stderr and FIRST_COMMIT in pull.stdout
     assert "(gh_failed); the pin is the default branch)" in pull.stderr
-    # The Commits tab's routes walk the default branch whichever ref the address names.
+    # The Commits tab's routes walk the revision the address names, as the files are.
     pinned = by_command[f"{REPO}/tree/release/v1 --api /api/git/repo"]
     assert f"pin: {SECOND_COMMIT} (branch release/v1)\n" in pinned.stderr
-    assert f'"revision": "{FIRST_COMMIT}"' in pinned.stdout
+    assert f'"revision": "{SECOND_COMMIT}"' in pinned.stdout
 
     head = by_command[f"{REPO}/blob/HEAD/docs/guide.md --no-serve"].stdout
     assert f"pin: {FIRST_COMMIT} (default branch topic)\npath: docs/guide.md\n" in head

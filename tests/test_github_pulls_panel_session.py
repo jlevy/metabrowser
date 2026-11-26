@@ -605,7 +605,10 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
 def test_pulls_landing_leaves_connection_status_to_the_sidebar() -> None:
     paint = run_session("github-pulls-panel-session.js", "--part", "all")["paint"]
     assert paint["landing"] == "Select a pull request."
-    assert paint["ready action"] == "Refresh"
+    # The list lends the navigation's Refresh the page beside it and itself as it mounts, and
+    # its own part asks nothing while the list loads (static/refresh-plan.js).
+    assert paint["lent to the one Refresh"] == ["page", "pulls"]
+    assert paint["the list's part while the list loads"] == "asks nothing"
 
 
 def test_catalog_windows_and_late_request_ownership() -> None:

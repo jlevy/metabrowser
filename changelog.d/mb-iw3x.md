@@ -12,7 +12,7 @@
   toolbar again to hold it, opens on **Current** and remembers its own choice as
   `github.docs.show`, so neither moves the other.
   `N` switches between the two
-  ([Diff or Current](docs/reviewing-pull-requests.md#diff-or-current)), and the line or
+  ([Comparison view](docs/reviewing-pull-requests.md#comparison-view)), and the line or
   block you are reading stays where it was on the screen.
   While Current is shown, the layout control stays in place with its choices
   unavailable. In a narrow pane the two choosers move to the toolbar’s next line

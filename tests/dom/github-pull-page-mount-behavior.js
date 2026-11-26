@@ -163,6 +163,13 @@ class Element {
     if (!parent) {
       return;
     }
+    // A node already in a tree moves, as the DOM moves it, the guide's step from where it
+    // waited out of sight among them (guided-review.js).
+    for (const node of nodes) {
+      if (typeof node !== "string" && node !== this) {
+        node.remove();
+      }
+    }
     const at = parent.children.indexOf(this);
     if (at < 0) {
       return;
@@ -1086,12 +1093,16 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
     createElement: (tag) => new Element(tag),
     importNode: () => new Element("svg"),
   };
+  // *fetchFirst* answers a route it knows, or null for the 304 every other route gets;
+  // *setTimeout* is the page's timer, one that never fires unless a story says otherwise.
+  const { fetchFirst, setTimeout: schedule, ...sdk } = more;
   globalThis.window = {
     location: { pathname: `/pull/${body.number}${tab ? `/${tab}` : ""}` },
-    setTimeout: () => Symbol(),
+    setTimeout: schedule ?? (() => Symbol()),
     clearTimeout() {},
   };
-  globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
+  globalThis.fetch = async (route) =>
+    (await fetchFirst?.(route)) ?? { status: 304, headers: { get: () => null } };
   const container = new Element("main");
   const handle = page.mountPullPage(
     container,
@@ -1115,11 +1126,137 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
       },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
-      ...more,
+      ...sdk,
     },
   );
   await settle();
   return { container, handle };
+}
+
+// Guided Review's overview is the description, which shows with the guide's first answer
+// once its Markdown is in, so the overview's first paint is its last (mb-7bu6). A guide that
+// answers before that Markdown waits for it out of sight, and shows the moment the render
+// replaces the description's plain text, whatever the guide answered: here that the
+// description has no guide, as `/pull/10/guided` answers in Chrome
+// (tests/dom/github-guided-review-chrome.mjs). A render that replaced the plain text without
+// telling the wait left the guide out of sight for good. With *bounded*, the Markdown never
+// comes: past `GUIDE_INTRODUCTION_HOLD_MS` the guide shows all the same, the description
+// with its placeholder, so no render that never ends keeps the guide out of sight.
+async function guideIntroduction(page, bounded = false) {
+  const { GUIDE_INTRODUCTION_HOLD_MS } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
+  );
+  /** The page's timers that run out at the introduction's bound. */
+  const bounds = [];
+  const body = structuredClone(recorded.current.body);
+  body.record_revision = "c".repeat(64);
+  // A text of its own for each, since the page keeps the renders it has inserted.
+  const said = bounded ? "Counts to three." : "Counts to two.";
+  body.record.pull.body = `${said}\n\n\`\`\`guided-review\nsoftschema: {}\n\`\`\`\n`;
+  body.record.issue_comments = [];
+  body.record.reviews = [];
+  body.record.review_comments = [];
+  let releaseMarkdown = () => {};
+  const markdown = new Promise((resolve) => {
+    releaseMarkdown = resolve;
+  });
+  const answer = (value) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    json: async () => value,
+    text: async () => JSON.stringify(value),
+  });
+  const asked = [];
+  const warned = [];
+  const consoleWarn = console.warn;
+  console.warn = (message) => warned.push(String(message));
+  const { container, handle } = await mountOn(page, body, "guided", () => "now", {
+    ensureAsset: async () => {
+      window.MetabrowserInertHtml = {
+        sanitizeHtml: (html) => html,
+        kpressProse(html) {
+          const node = document.createElement("p");
+          node.textContent = html;
+          return node;
+        },
+      };
+    },
+    loadKpressAssets: async () => {},
+    plugins: {
+      load: async () => {
+        throw new Error("no diff plugin here");
+      },
+    },
+    fetchFirst: (route) => {
+      asked.push(route.split("?")[0].split("/").at(-1));
+      if (route.startsWith("/api/plugin/github/pull-markdown")) {
+        return markdown.then(() =>
+          answer({
+            number: 7,
+            fetched_at: body.fetched_at,
+            record_revision: body.record_revision,
+            part: "body",
+            html: `${said.slice(0, -1)}, rendered.`,
+            assets: {},
+          }),
+        );
+      }
+      if (route.startsWith("/api/plugin/github/guided-review")) {
+        return Promise.resolve(answer({ state: "absent", record_revision: body.record_revision }));
+      }
+      return null;
+    },
+    setTimeout(callback, delay) {
+      if (delay === GUIDE_INTRODUCTION_HOLD_MS) {
+        bounds.push(callback);
+      }
+      return Symbol();
+    },
+  });
+  const guide = () =>
+    [...container.descendants()].find((node) => node.classes.has("github-pull-guided-review"));
+  const shownState = () => {
+    const host = guide();
+    const notice = host?.children.find(
+      (child) =>
+        typeof child !== "string" && child.tag === "p" && child.classes.has("github-pull-quiet"),
+    );
+    const introduction = host?.children.find(
+      (child) =>
+        typeof child !== "string" &&
+        child.tag === "div" &&
+        child.querySelector?.(".github-pull-guide-introduction") !== null,
+    );
+    const waiting = host?.children.some(
+      (child) => typeof child !== "string" && child.classes.has("github-pull-guide-incoming"),
+    );
+    const text = introduction?.querySelector(".github-pull-guide-introduction");
+    // A placeholder keeps the source's box out of sight (`showPending`), so it says nothing.
+    const shows = text?.querySelector(".github-pull-plain-pending")
+      ? "its placeholder"
+      : (text?.textContent ?? "");
+    return `the notice ${notice === undefined || notice.hidden ? "hidden" : `says ${notice.textContent}`}; the description ${introduction === undefined || introduction.hidden ? "hidden" : `shows ${shows}`}; a step waits out of sight ${waiting === true}`;
+  };
+  const steps = [];
+  await settle();
+  steps.push(`asked: ${[...new Set(asked)].join(", ")}`);
+  steps.push(`the guide answered, its description's Markdown not yet: ${shownState()}`);
+  if (bounded) {
+    for (const bound of bounds.splice(0)) {
+      bound();
+    }
+    await settle();
+    steps.push(`its Markdown never comes, and the bound runs out: ${shownState()}`);
+  } else {
+    releaseMarkdown();
+    await settle();
+    steps.push(`the Markdown is inserted: ${shownState()}`);
+  }
+  console.warn = consoleWarn;
+  handle.dispose();
+  steps.push(`warned: ${warned.length}`);
+  return steps;
 }
 
 // Browse code switches the pin through the diff plugin's view, whose switch is in a module
@@ -1503,23 +1640,21 @@ async function tabKeys(page) {
   steps.push(result("g"));
   arrive("files");
   steps.push(`the route arrives: ${shown()}`);
-  // Changes numbers Browse code alone: the page has no Refresh of its own, and the Pulls
-  // tab's Refresh runs the page's `refresh` (mb-ablv), which names the comparison on screen.
+  // Changes numbers Browse code alone: the page has no Refresh of its own, and the
+  // navigation's Refresh runs the page's `refresh` as its part (static/refresh-plan.js),
+  // which names the comparison on screen.
   steps.push(`numbered on Changes: ${numbered()}`);
-  /** What the page's handle told a listener of whether it can refresh, as the Pulls tab hears. */
-  const heard = [];
-  handle.onRefreshChange(() => heard.push(handle.canRefresh()));
-  /** Press the Pulls tab's Refresh as it runs the page's, and say what the page asked for. */
+  /** Press the navigation's Refresh as it runs the page's, and say what the page asked for. */
   const pullsRefresh = async () => {
     asked.length = 0;
     const offered = handle.canRefresh();
-    handle.refresh();
+    void handle.refresh();
     for (const callback of [...timers.values()]) {
       callback();
     }
     timers.clear();
     await settle();
-    return `the Pulls tab's Refresh, the page ${offered ? "offering" : "not offering"} one: ${asked.join("; ") || "nothing asked"}`;
+    return `the navigation's Refresh, the page ${offered ? "offering" : "not offering"} one: ${asked.join("; ") || "nothing asked"}`;
   };
   // A refresh whose answer serves the pull request's head repaints Browse code as a link:
   // 1 now opens the code in the page, the action of this paint, where it asked the server
@@ -1540,10 +1675,9 @@ async function tabKeys(page) {
   steps.push(await pullsRefresh());
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("1"));
-  // While a refresh runs the page offers none, so the Pulls tab's Refresh asks it for
-  // nothing, and the page says so to the Pulls tab, which waits while the list cannot
-  // refresh either. Code on the pull request's own head offers nothing more: the server
-  // follows that head, so no switch to it is numbered.
+  // While a refresh runs the page offers none, so the navigation's Refresh asks it for
+  // nothing. Code on the pull request's own head offers nothing more: the server follows
+  // that head, so no switch to it is numbered.
   answer = atHead;
   steps.push(await pullsRefresh());
   steps.push(`numbered with the code on the head: ${numbered()}`);
@@ -1566,7 +1700,6 @@ async function tabKeys(page) {
   steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
   arrive("files");
   await settle();
-  steps.push(`the page told the Pulls tab it can refresh: ${heard.join(", ")}`);
   steps.push(await numberResult("2"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
@@ -1622,6 +1755,11 @@ async function tabKeys(page) {
   const GUIDE = "Counts to two.\n\n```guided-review\nsoftschema: {}\n```\n";
   const EXAMPLE =
     "How to write one:\n\n````markdown\n```guided-review\nsoftschema: {}\n```\n````\n";
+  // The guide asks for what draws its steps as it mounts, which this SDK lacks: what it
+  // says of each is kept, so it does not read as a fault.
+  const warned = [];
+  const consoleWarn = console.warn;
+  console.warn = (message) => warned.push(String(message));
   arrive("");
   answer = described(1, "Counts to two.");
   await elapse();
@@ -1649,6 +1787,10 @@ async function tabKeys(page) {
   answer = described(5, EXAMPLE);
   await elapse();
   steps.push(`an example of the block inside another fence: ${keyed().join(", ")}`);
+  console.warn = consoleWarn;
+  steps.push(
+    `the guide, with no diff plugin or allowlist here, said: ${[...new Set(warned)].join("; ")}`,
+  );
   handle.dispose();
   steps.push(`disposed: keys ${attached() || "none"}`);
   assert.equal(
@@ -2455,10 +2597,10 @@ async function mountScripted(page, tab, options = {}) {
 }
 
 // The page has no Refresh of its own (mb-ablv): a status line that says what to retry or
-// fetch ends in its remedy, Retry or Fetch, which runs what the Pulls tab's Refresh runs of
+// fetch ends in its remedy, Retry or Fetch, which runs what the navigation's Refresh runs of
 // the page. A pressed Retry waits, muted, until the refresh it asked for runs, and its failure
 // and it then go. Each step says the status line, its remedy, whether the note shows, what
-// the page asked the server, and whether the page offers the Pulls tab a refresh.
+// the page asked the server, and whether the page offers the navigation's Refresh one.
 async function statusRemedies(page) {
   const steps = [];
   const posts = [];
@@ -2525,7 +2667,7 @@ async function statusRemedies(page) {
         `remedy ${remedy === null ? "none" : `${remedy.textContent}${waiting}`}; ` +
         `note ${note.hidden ? "none" : "shown"}; ` +
         `asked ${posts.splice(0).join(", ") || "nothing"}; ` +
-        `the Pulls tab ${handle.canRefresh() ? "may refresh it" : "has nothing to refresh"}`,
+        `Refresh ${handle.canRefresh() ? "may refresh it" : "has nothing to refresh"}`,
     );
   };
   // A record still current whose last refresh failed: nothing will ask again by itself, so
@@ -3824,7 +3966,7 @@ async function run() {
     const opened = mounted.length;
     const onScreen = mounted.at(-1);
     const displayed = { base: onScreen.left, head: onScreen.right };
-    // The page has no Refresh of its own: the Pulls tab's Refresh runs the page's `refresh`,
+    // The page has no Refresh of its own: the navigation's Refresh runs the page's `refresh`,
     // which names the comparison on screen (mb-ablv).
     assert.ok(handle.canRefresh(), "fresh Files offers explicit repair");
     handle.refresh();
@@ -4177,6 +4319,8 @@ async function run() {
   const coldHoldSteps = await coldHold(page);
   const counterpartStepsTold = await counterpartSteps(page);
   const tabKeySteps = await tabKeys(page);
+  const guideIntroductionSteps = await guideIntroduction(page);
+  const guideIntroductionBoundSteps = await guideIntroduction(page, true);
   const textRefusalSteps = await textRefusal();
   const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
@@ -4211,6 +4355,8 @@ async function run() {
     coldHold: coldHoldSteps,
     counterpart: counterpartStepsTold,
     tabKeys: tabKeySteps,
+    guideIntroduction: guideIntroductionSteps,
+    guideIntroductionBound: guideIntroductionBoundSteps,
     textRefusal: textRefusalSteps,
     textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,

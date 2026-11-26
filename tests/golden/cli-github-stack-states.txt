@@ -77,6 +77,55 @@ status: 200
   "lacking": [
     7
   ],
+  "states": {
+    "open": 1,
+    "draft": 1,
+    "merged": 1,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    },
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [
+    {
+      "login": "octo",
+      "avatar": null
+    }
+  ],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "bugfix",
+      "color": "d73a4a",
+      "description": null
+    },
+    {
+      "name": "shared design",
+      "color": "0e8a16",
+      "description": null
+    },
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    },
+    {
+      "name": "earnings analysis",
+      "color": "5319e7",
+      "description": null
+    }
+  ],
+  "commits": 2,
+  "size": null,
   "comparison": {
     "left": "<base>",
     "right": "<draft_head>",
@@ -106,12 +155,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
     "every_s": 5.0
   },
   "moved": null
@@ -161,6 +210,46 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 1,
+    "merged": 1,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    }
+  ],
+  "mergers": [
+    {
+      "login": "octo",
+      "avatar": null
+    }
+  ],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "shared design",
+      "color": "0e8a16",
+      "description": null
+    },
+    {
+      "name": "earnings analysis",
+      "color": "5319e7",
+      "description": null
+    },
+    {
+      "name": "bugfix",
+      "color": "d73a4a",
+      "description": null
+    }
+  ],
+  "commits": 2,
+  "size": null,
   "comparison": null,
   "totals": null,
   "truncated": false,
@@ -217,6 +306,30 @@ status: 200
     9
   ],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 0,
+    "merged": 1,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    }
+  ],
+  "mergers": [
+    {
+      "login": "octo",
+      "avatar": null
+    }
+  ],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": null,
+  "commits": null,
+  "size": null,
   "comparison": null,
   "totals": null,
   "truncated": false,
@@ -488,6 +601,49 @@ status: 200
   "lacking": [
     8
   ],
+  "states": {
+    "open": 0,
+    "draft": 0,
+    "merged": 1,
+    "closed": 1
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    }
+  ],
+  "mergers": [
+    {
+      "login": "octo",
+      "avatar": null
+    }
+  ],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": null
+    },
+    {
+      "name": "shared design",
+      "color": "0e8a16",
+      "description": null
+    },
+    {
+      "name": "earnings analysis",
+      "color": "5319e7",
+      "description": null
+    }
+  ],
+  "commits": 1,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 130
+  },
   "comparison": {
     "left": "<base>",
     "right": "<closed_head>",
@@ -517,7 +673,7 @@ status: 200
   ],
   "guide": {
     "number": 8,
-    "revision": "caf5688c2a840aba4d52b5a0cb7e639e80b007d1d98fed8876c4934d5147292a"
+    "revision": "75235de61fd188022fc7e82702d008534cd793a81deaafb9e6dc4bd2b7fab55c"
   },
   "github_url": "https://github.com/octo/demo/pull/9",
   "probe": {
@@ -545,6 +701,20 @@ status: 200
   "members": [],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": null,
+  "updated_at": null,
+  "authors": [],
+  "mergers": [],
+  "fetched_at": null,
+  "labels": [],
+  "commits": null,
+  "size": null,
   "comparison": null,
   "totals": null,
   "truncated": false,
@@ -611,6 +781,16 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "bugfix",
+            "shared design"
+          ]
         ]
       },
       {
@@ -636,6 +816,19 @@ status: 202
           null,
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "enhancement"
+          ],
+          [
+            "bugfix",
+            "shared design"
+          ]
         ]
       },
       {
@@ -657,6 +850,16 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "bugfix",
+            "shared design"
+          ],
+          [
+            "shared design",
+            "earnings analysis"
+          ]
         ]
       },
       {
@@ -678,6 +881,15 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "invalid"
+          ]
         ]
       }
     ]
@@ -717,6 +929,12 @@ status: 200
       ],
       "avatars": [
         null
+      ],
+      "labels": [
+        [
+          "bugfix",
+          "shared design"
+        ]
       ]
     },
     {
@@ -742,6 +960,19 @@ status: 200
         null,
         null,
         null
+      ],
+      "labels": [
+        [
+          "shared design",
+          "earnings analysis"
+        ],
+        [
+          "enhancement"
+        ],
+        [
+          "bugfix",
+          "shared design"
+        ]
       ]
     },
     {
@@ -763,6 +994,16 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [
+          "bugfix",
+          "shared design"
+        ],
+        [
+          "shared design",
+          "earnings analysis"
+        ]
       ]
     },
     {
@@ -784,6 +1025,15 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [
+          "shared design",
+          "earnings analysis"
+        ],
+        [
+          "invalid"
+        ]
       ]
     }
   ]
@@ -823,6 +1073,39 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 1,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    }
+  ],
+  "mergers": [],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "bugfix",
+      "color": "d73a4a",
+      "description": null
+    },
+    {
+      "name": "shared design",
+      "color": "0e8a16",
+      "description": null
+    }
+  ],
+  "commits": 1,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 144
+  },
   "comparison": {
     "left": "<topic>",
     "right": "<draft_head>",
@@ -852,12 +1135,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
     "every_s": 5.0
   },
   "moved": {
@@ -1141,6 +1424,34 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 1,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    }
+  ],
+  "commits": 2,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",
@@ -1222,6 +1533,34 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 1,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    }
+  ],
+  "commits": 2,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 131
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_earlier>",
@@ -1301,6 +1640,34 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 1,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    }
+  ],
+  "commits": 2,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",
@@ -1390,6 +1757,34 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 1,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    }
+  ],
+  "commits": 2,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",
@@ -1470,6 +1865,34 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 1,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    }
+  ],
+  "commits": 2,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",

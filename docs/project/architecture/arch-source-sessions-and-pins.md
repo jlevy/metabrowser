@@ -363,16 +363,26 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   `RefNamespaces` in `cache/resolve.py` says where each kind is kept: a mirror’s
   branches are its origin’s under `refs/remotes/origin/`, a checkout’s are
   `refs/heads/`, and its remote-tracking branches are a third list, `kind=remote`.
-  `kinds` names the lists a subject has, `working_tree` is null for a mirror and
-  otherwise says whether the working tree is served, which branch `HEAD` is on, and the
-  folder’s `name` and `location`, as the page names the folder, and a row’s
-  `checked_out` marks that branch, which lists first.
-  Every ref is listed, the rest newest first by the committer date each row shows, then
-  by name, as a mirror’s are, and the answer is kept, within the same limits, under the
-  checkout’s ref state and the branch `HEAD` is on, as a mirror’s is under its store’s.
-  Each row has its commit and `committed_at`, the committer date a row’s age is read
-  from: a tag’s is its commit’s, by `for-each-ref`’s `*committerdate`, in the same one
-  process. The page shortens the commit as every line names one (`shortCommit` in
+  `kinds` names the lists a subject has, in the order of the chooser’s tabs: a
+  checkout’s begin with `working_tree`, which lists no ref.
+  `working_tree` is null for a mirror and otherwise says whether the working tree is
+  served, which branch `HEAD` is on and which commit it is at, and the folder’s `name`
+  and `location`, as the page names the folder, and a row’s `checked_out` marks that
+  branch, which lists first.
+  `HEAD` is read from the checkout’s own files as each listing is made
+  (`checked_out_head`), not from the repository identity `repo_info` keeps for a few
+  seconds, and a kept identity those files contradict is dropped, so a listing asked for
+  the moment a page hears `HEAD` moved names the branch just checked out.
+  `kind=working_tree` answers `working_tree` alone and runs no Git: it is what the
+  chooser’s Working tree tab shows and what a page asks each time its watch on
+  `HEAD_WATCH_PATH` says `HEAD` moved
+  ([File Watches](arch-live-delivery.md#file-watches)). Every ref is listed, the rest
+  newest first by the committer date each row shows, then by name, as a mirror’s are,
+  and the answer is kept, within the same limits, under the checkout’s ref state and the
+  branch `HEAD` is on, as a mirror’s is under its store’s. Each row has its commit and
+  `committed_at`, the committer date a row’s age is read from: a tag’s is its commit’s,
+  by `for-each-ref`’s `*committerdate`, in the same one process.
+  The page shortens the commit as every line names one (`shortCommit` in
   `static/formatters.js`), and keeps the folder’s `name` whole at the end of its
   `location`.
 - **Showing one.** `POST /api/source/pin` resolves a selection in the checkout’s refs
@@ -383,19 +393,20 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   Nothing is fetched for a selection the checkout lacks.
   The folder’s inventory and watcher are not closed, so they are current when the
   working tree is served again.
-- **The Commits tab is the checkout’s.** The chooser is the Files tab’s, so while a
-  revision is served, the history routes, `/api/git/repo`, `/api/git/refs`,
-  `/api/git/summary`, and `/api/git/log`, read the folder as its working tree’s page
-  does (`history_git_location` in `git/routes.py`): `HEAD`, its upstream, and the trunk
-  refs, or every ref with `scope=all`. Those commands diff nothing, so no driver can
-  run, and each sets `log.showSignature=false`. A commit’s page and its diffs stay at
-  the revision’s store target (`session_git_location`), under the policies below.
-  Since none of these answers depends on the revision served, the guard answers a
-  checkout’s `/api/git/` routes whatever revision a page names, so a switch made in
-  another tab never stops a Commits tab.
-  A mirror’s Commits tab is independent of its pin in the same way: it walks the
-  origin’s default branch as the mirror holds it (`ServedMirror.default_tip`), and the
-  pin only when the mirror has recorded no default branch or no longer holds it.
+- **The Commits tab shows the revision.** The chooser heads the Files and Commits tabs
+  alike, and the history routes, `/api/git/repo`, `/api/git/refs`, `/api/git/summary`,
+  and `/api/git/log`, read the revision’s store target as a commit’s page and its diffs
+  do (`session_git_location` in `git/routes.py`), under the policies below: its commit’s
+  ancestry, or with `scope=all` every ref of the Git directory the revision is read
+  from, and a detached `HEAD` at the commit.
+  That directory is the checkout’s, except for an origin branch or tag read from the
+  origin’s store (`read_from` `origin`, set in `CheckoutRevisions.switch_pin`, as
+  [Open Modes](arch-open-modes.md) says when one is), whose `scope=all` lists only the
+  store’s refs: the origin’s branches and tags, without the checkout’s own branches.
+  A mirror’s Commits tab walks its pin the same way.
+  Since every one of these answers depends on the revision served, the guard refuses a
+  page’s `/api/git/` requests that name a revision no longer served, as it refuses its
+  tree’s, and the page offers to reload.
 - **Returning.** `{"working_tree": true}` on the same route calls
   `restore_filesystem_subject`, which attaches the folder under a new generation and
   then closes the revision’s batch readers.

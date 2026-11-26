@@ -17,6 +17,14 @@ Option-Tab is the one chord the list keeps, since Safari moves focus with it.
 The plain keys still work: `↓` from the filter reaches the first row, Tab and Option-Tab
 wrap from the last stop, and Escape closes the list and returns focus to its button.
 
+`workingTreeTab` is a checkout’s chooser on a page that shows a branch.
+An arrow key onto the **Working tree** tab shows the tab and asks for its listing, and
+asks the pin route nothing; a press on the tab, which a pointer’s click and Enter or
+Space on it both are, asks the pin route for the working tree, once.
+`refresh` is a press on the navigation’s Refresh with the list open: the one press
+beside the list that leaves it open, since Refresh reads it again, after which the row
+that had focus has it back, while a press anywhere else closes the list.
+
 This browserless session loads the production `static/filter-controls.js` and
 `static/source-ref-selector.js` on the stand-in DOM of `tests/dom/key-reveal-dom.js`,
 mounts the selector as the shell does, and answers its listing with the recorded
@@ -93,7 +101,47 @@ $ node tests/dom/source-ref-selector-keys-session.js
       "focus": "Switch branch or tag",
       "listOpen": false
     }
-  ]
+  ],
+  "workingTreeTab": {
+    "opened": {
+      "tabs": [
+        "Working tree",
+        "Branches (shown)",
+        "Remotes",
+        "Tags"
+      ],
+      "focus": "the filter"
+    },
+    "arrowed": {
+      "tabs": [
+        "Working tree (shown)",
+        "Branches",
+        "Remotes",
+        "Tags"
+      ],
+      "focus": "Working tree",
+      "requests": [
+        "/api/source/refs?kind=working_tree"
+      ]
+    },
+    "pressed": {
+      "requests": [
+        "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/\"}"
+      ]
+    },
+    "refresh": {
+      "after": {
+        "listOpen": true,
+        "requests": [
+          "/api/source/refs?kind=branch"
+        ],
+        "focus": "the row refs/remotes/origin/feature"
+      },
+      "pressedElsewhere": {
+        "listOpen": false
+      }
+    }
+  }
 }
 ? 0
 ```

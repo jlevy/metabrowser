@@ -586,7 +586,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert transcript["hunks"] and transcript["place"]
 
 
-# What the Pulls tab's Refresh asks of the page in the mount session (mb-ablv): a refresh
+# What the navigation's Refresh asks of the page in the mount session (mb-ablv): a refresh
 # that recovers the comparison on screen.
 _PULLS_REFRESH = (
     'POST /api/plugin/github/pull-refresh {"number":7,"retry":true,"recovery":'
@@ -811,29 +811,27 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "G: opened the files route",
             "the route arrives: Changes",
             # The page has no Refresh of its own (mb-ablv): Changes numbers Browse code alone,
-            # and the Pulls tab's Refresh runs the page's `refresh`, which names the comparison
-            # on screen. While a refresh runs the page offers none, and says so to the Pulls
-            # tab, which waits while the list cannot refresh either. Code on the pull
-            # request's head numbers no switch to it: the server follows that head.
+            # and the navigation's Refresh runs the page's `refresh` as its part
+            # (static/refresh-plan.js), which names the comparison on screen. While a refresh
+            # runs the page offers none. Code on the pull request's head numbers no switch to
+            # it: the server follows that head.
             "numbered on Changes: 1 Browse code",
-            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            f"the navigation's Refresh, the page offering one: {_PULLS_REFRESH}",
             "numbered after a refresh serves the head: 1 Browse code",
             "1: navigation.open /view/",
-            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            f"the navigation's Refresh, the page offering one: {_PULLS_REFRESH}",
             "numbered after a refresh with no pin: none",
             "1: not handled",
-            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            f"the navigation's Refresh, the page offering one: {_PULLS_REFRESH}",
             "numbered with the code on the head: 1 Browse code",
-            f"the Pulls tab's Refresh, the page offering one: {_PULLS_REFRESH}",
+            f"the navigation's Refresh, the page offering one: {_PULLS_REFRESH}",
             "while that refresh runs, the page can refresh: false",
-            "the Pulls tab's Refresh, the page not offering one: nothing asked",
+            "the navigation's Refresh, the page not offering one: nothing asked",
             # Once the refresh ends the page offers one again on Changes; on Conversation
             # nothing is left to refresh.
             "once the refresh ends, the page can refresh: true",
             "on Conversation once the refresh ends, the page can refresh: false",
             "numbered on Conversation once the refresh ends: 1 Browse code",
-            "the page told the Pulls tab it can refresh: "
-            "false, true, false, true, false, true, false, true, false, true",
             "2: not handled",
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
@@ -873,7 +871,36 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "R: showed Guided Review",
             "an example of the block inside another fence: "
             "Guided Review R, Conversation C, Docs D, Changes G, Checks E",
+            # The guide loads what draws its steps as it mounts, so a step shows whole
+            # (mb-7bu6); this page has neither, and the guide says so once for each.
+            "the guide, with no diff plugin or allowlist here, said: "
+            "metabrowser github: the diff plugin did not load for the guide; "
+            "metabrowser github: the guide's notes will show as typed",
             "disposed: keys none",
+        ],
+        # The guide's first step waits for the description it draws above it (mb-7bu6):
+        # a pending Markdown render keeps the step out of sight, and its insertion,
+        # which ends the wait, shows the step whole.
+        "guideIntroduction": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "the Markdown is inserted: the notice says This pull request has no guide.; "
+            "the description shows Counts to two, rendered.; a step waits out of sight "
+            "false",
+            "warned: 2",
+        ],
+        # A description whose Markdown never comes keeps the guide out of sight only until
+        # the introduction's bound, `GUIDE_INTRODUCTION_HOLD_MS` (review of #859, M2): then
+        # the step shows with the description's placeholder.
+        "guideIntroductionBound": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "its Markdown never comes, and the bound runs out: the notice says This pull "
+            "request has no guide.; the description shows its placeholder; a step waits out "
+            "of sight false",
+            "warned: 2",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
         # one notice right after its plain text, which a rebuilt text element keeps, a
@@ -911,26 +938,26 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # or fetch ends in its remedy, which waits, muted, until the refresh it asked for runs.
         "statusRemedies": [
             'a current record whose last refresh failed: status "Could not reach '
-            'GitHub.DetailsRetry"; remedy Retry; note shown; asked nothing; the Pulls tab '
-            "may refresh it",
+            'GitHub.DetailsRetry"; remedy Retry; note shown; asked nothing; Refresh may '
+            "refresh it",
             'Retry pressed, its refresh not yet started: status "Could not reach '
             'GitHub.DetailsRetry"; remedy Retry (waiting); note shown; asked POST '
-            '/api/plugin/github/pull-refresh {"number":8,"retry":true}; the Pulls tab has '
+            '/api/plugin/github/pull-refresh {"number":8,"retry":true}; Refresh has '
             "nothing to refresh",
             'Retry pressed again while it waits: status "Could not reach GitHub.DetailsRetry"; '
-            "remedy Retry (waiting); note shown; asked nothing; the Pulls tab has nothing to "
+            "remedy Retry (waiting); note shown; asked nothing; Refresh has nothing to "
             "refresh",
-            "the refresh runs: status none; remedy none; note shown; asked nothing; the Pulls "
-            "tab has nothing to refresh",
+            "the refresh runs: status none; remedy none; note shown; asked nothing; Refresh "
+            "has nothing to refresh",
             'a direct link to a pull request whose fetch failed: status "This pull request has '
             'not been fetched yet.Could not reach GitHub.DetailsFetch"; remedy Fetch; note '
-            "none; asked nothing; the Pulls tab may refresh it",
+            "none; asked nothing; Refresh may refresh it",
             'Fetch pressed: status "Fetching the pull request…Could not reach GitHub.Details"; '
             "remedy none; note none; asked POST /api/plugin/github/pull-refresh "
-            '{"number":7,"retry":true,"wait_core":true}; the Pulls tab has nothing to refresh',
+            '{"number":7,"retry":true,"wait_core":true}; Refresh has nothing to refresh',
             'a direct link to a copy saved by another version: status "The saved copy of this '
             'pull request is from another version.Fetch"; remedy Fetch; note none; asked '
-            "nothing; the Pulls tab may refresh it",
+            "nothing; Refresh may refresh it",
         ],
     }
 

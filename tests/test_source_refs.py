@@ -586,7 +586,7 @@ def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient
     shell = served.get("/view/").text
     # First paint reserves a branch chip and a separate chooser above the usual filters.
     assert (
-        '<div class="nav-files-ref" id="nav-files-ref">'
+        '<div class="nav-source-ref" id="nav-source-ref">'
         '<div class="source-ref-selector" id="source-ref-selector">'
         '<span class="source-ref-selector-button">'
         '<span class="source-ref-selector-label"><span class="git-ref git-ref-remote">'
@@ -595,8 +595,8 @@ def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient
         ' aria-label="Switch branch or tag" aria-haspopup="dialog" aria-expanded="false"'
         ' data-tip-text="Switch branch or tag"></button></span></div></div>'
     ) in shell
-    assert shell.index('class="tab-bar nav-tab-bar"') < shell.index('id="nav-files-ref"')
-    assert shell.index('id="nav-files-ref"') < shell.index('id="nav-filter-bar"')
+    assert shell.index('class="tab-bar nav-tab-bar"') < shell.index('id="nav-source-ref"')
+    assert shell.index('id="nav-source-ref"') < shell.index('id="nav-filter-bar"')
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
     bundles = bundles[: bundles.index("</script>")]
     assert '"source-ref-selector": [{"src": "/static/source-ref-selector.js' in bundles

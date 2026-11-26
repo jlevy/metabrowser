@@ -4,42 +4,31 @@ sandbox: false
 env:
   TZ: "UTC"
 ---
-# Golden Test: What a Diff Shows in Diff and in Current
+# Golden Test: Diff, Excerpt, and Full
 
-The diff’s toolbar ends with one group of choosers, **Diff | Current** before **Split |
-Unified**, or **Diff | Current** alone where the host fixes the layout, as a pull
-request’s Docs tab does.
-A file bar’s end group holds a rendered file’s view chooser alone: **Full | Concise |
-Source** for Markdown, **Rendered | Source** for YAML and JSON. **Diff** is the diff as
-it was before the chooser existed.
-**Current** shows the new version alone: a code body draws only the new file’s lines, in
-one column whatever the layout, each hunk’s header naming the new side’s range without
-the heading Git takes from the old file, added lines marked `+` and no removed line
-drawn; a rendered Markdown body keeps its added blocks and keys and hides its removed
-ones; a YAML or JSON tree is drawn without its removed entries; a deleted file and a
-file left empty say why they have no lines.
-The choice is one for the whole diff.
-Each surface opens on its own default and remembers its own choice: Changes, a commit’s
-page and a patch open on **Diff** and share `diff.show`; a pull request’s Docs tab opens
-on **Current** and keeps `github.docs.show`, so a choice on one does not move the other.
-A stored value that is not a choice reads as the surface’s default and is not rewritten.
-A file’s view chooser stays its own and is not stored.
-When the choice changes, the line or block at the pane’s top keeps its place on the
-screen; where **Current** leaves that row out, the next row it draws keeps it.
-While the diff shows **Current**, the layout control keeps its place and shows the
-layout **Diff** draws, its chips `aria-disabled` and saying why, and neither they nor
-`L` change anything; **Diff** comes back in that layout.
-Focus on the layout control stays on its chosen chip when the choice draws it again.
-`N` chooses the other chip, through the same path as a click.
-The diff attaches it once, through the SDK’s shortcut surface, on the chip it would
-select in the toolbar’s chooser, and moves it to the new chip after each draw, wherever
-the pane is scrolled.
+The toolbar groups **Diff | Excerpt | Full** before **Split | Unified**. Docs fixes the
+layout and shows just the presentation chooser.
+A patch without a complete snapshot offers Diff and Excerpt.
+**Diff** shows additions and removals with context.
+**Excerpt** shows the new side around the changes in one column, using markers for
+deletions. **Full** draws the whole new side when available.
+A deleted file and a file left empty explain their status.
+A Markdown, YAML, or JSON file has its own **Rendered | Source** choice, which survives
+a change in presentation.
+
+Changes, commits, and patches start on Diff and share `diff.show`. Docs prefers Full and
+uses `github.docs.show`. Unknown preference values fall back to those defaults.
+The line or block at the top keeps its place, using the next drawn row when needed.
+In either reading mode the layout chips stay visible and disabled, and reopening Diff
+restores the chosen layout and focus.
+`N` switches between Diff and Excerpt.
+The shortcut follows the chip it activates.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js`,
 `builtin_plugins/diff/diff-markdown.js`, and `builtin_plugins/diff/diff-structured.js`,
 with `static/inert-html.js` and the structured plugin’s tree helpers, and mounts a
 comparison of six files into a small element tree, as Changes mounts it and as a pull
-request’s Docs tab does, with the layout fixed, **Current** its default, and its own
+request’s Docs tab does, with the layout fixed, **Full** its default, and its own
 preference. The rendered files’ answers are the server’s projections recorded in
 `tests/fixtures/diff-markdown-responses.json` and
 `tests/fixtures/diff-structured-responses.json`. The chip family, the preference store,
@@ -60,17 +49,17 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: Split | *Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Split"
       ],
       "written": [],
       "bar ends": {
-        "docs/guide.md": "Full | *Concise | Source",
+        "docs/guide.md": "*Rendered | Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -120,12 +109,12 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: Split | *Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Split"
       ],
       "written": [],
@@ -168,12 +157,12 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "Current, chosen in the toolbar: every file shows its new version, stored as diff.show",
+      "step": "Excerpt, chosen in the toolbar: every file shows its new version around the changes, stored as diff.show",
       "place": "the first file's bar 30 px down before, 30 px after",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -182,7 +171,7 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "files": {
         "docs/guide.md": {
@@ -211,15 +200,13 @@ $ node tests/dom/diff-current-session.js
         "config/app.yaml": {
           "rendered": [
             "modified: {4 keys}",
-            "  context: name: \"demo\"",
+            "  removed: version: removed",
             "  added: version: 4",
             "  modified: services: {1 keys}",
             "    modified: web: {2 keys}",
-            "      context: image: \"nginx\"",
             "      modified: ports: [2 items]",
-            "        context: - 80",
             "        added: - 443",
-            "  context: flags: [\"fast\", \"safe\"]"
+            "    removed: db: removed"
           ]
         },
         "old.txt": {
@@ -235,11 +222,11 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "the Markdown file's Source in Current: the new file's lines alone",
+      "step": "the Markdown file's Source in Excerpt: the new file's lines around the changes",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -248,10 +235,10 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "bar ends": {
-        "docs/guide.md": "Full | Concise | *Source",
+        "docs/guide.md": "Rendered | *Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -280,11 +267,11 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "and its Concise again: Full | Concise | Source is the file's own, unstored",
+      "step": "Rendered again keeps the comparison's Excerpt mode",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -293,10 +280,10 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "bar ends": {
-        "docs/guide.md": "Full | *Concise | Source",
+        "docs/guide.md": "*Rendered | Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -321,11 +308,11 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "Split clicked in Current: nothing changes, and nothing is written",
+      "step": "Split clicked in Excerpt: nothing changes, and nothing is written",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -334,7 +321,7 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "files": {}
     },
@@ -343,7 +330,7 @@ $ node tests/dom/diff-current-session.js
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -352,7 +339,7 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "files": {}
     },
@@ -362,7 +349,7 @@ $ node tests/dom/diff-current-session.js
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -371,26 +358,26 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "files": {}
     },
     {
       "step": "N: Diff again, stored, and the block at the pane's top keeps its place",
-      "place": "Unchanged paragraph 1. is 0 px from the pane's top before, 0 px after; the Markdown file's bar -110 px before, -130 px after",
+      "place": "Unchanged paragraph 1. is 0 px from the pane's top before, 0 px after; the Markdown file's bar -110 px before, -150 px after",
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: Split | *Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff"
       ],
       "files": {
@@ -460,16 +447,16 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: Split | *Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff"
       ]
     },
@@ -480,26 +467,26 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: Split | *Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff"
       ]
     },
     {
-      "step": "Current: the next line it draws keeps its place",
+      "step": "Excerpt: the next line it draws keeps its place",
       "place": "x = 2 is 20 px from the pane's top before, 20 px after",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: Split (unavailable) | *Unified (unavailable)"
         ]
       ],
@@ -508,9 +495,9 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "files": {
         "docs/guide.md": {
@@ -539,15 +526,13 @@ $ node tests/dom/diff-current-session.js
         "config/app.yaml": {
           "rendered": [
             "modified: {4 keys}",
-            "  context: name: \"demo\"",
+            "  removed: version: removed",
             "  added: version: 4",
             "  modified: services: {1 keys}",
             "    modified: web: {2 keys}",
-            "      context: image: \"nginx\"",
             "      modified: ports: [2 items]",
-            "        context: - 80",
             "        added: - 443",
-            "  context: flags: [\"fast\", \"safe\"]"
+            "    removed: db: removed"
           ]
         },
         "old.txt": {
@@ -568,18 +553,18 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: Split | *Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Split"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff"
       ],
       "files": {
@@ -649,20 +634,19 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: *Split | Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Unified"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.show=current",
-        "diff.show=diff",
-        "diff.layout=split"
+        "diff.show=excerpt",
+        "diff.show=diff"
       ],
       "files": {
         "a.py": {
@@ -686,12 +670,12 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "Current from Split, by N with focus on Split: one column, the layout kept",
+      "step": "Excerpt from Split, by N with focus on Split: one column, the layout kept",
       "focus": "Split | Unified's Split",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: *Split (unavailable) | Unified (unavailable)"
         ]
       ],
@@ -700,12 +684,11 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Unified"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.layout=split",
-        "diff.show=current"
+        "diff.show=excerpt"
       ],
       "files": {
         "docs/guide.md": {
@@ -734,15 +717,13 @@ $ node tests/dom/diff-current-session.js
         "config/app.yaml": {
           "rendered": [
             "modified: {4 keys}",
-            "  context: name: \"demo\"",
+            "  removed: version: removed",
             "  added: version: 4",
             "  modified: services: {1 keys}",
             "    modified: web: {2 keys}",
-            "      context: image: \"nginx\"",
             "      modified: ports: [2 items]",
-            "        context: - 80",
             "        added: - 443",
-            "  context: flags: [\"fast\", \"safe\"]"
+            "    removed: db: removed"
           ]
         },
         "old.txt": {
@@ -762,21 +743,20 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: *Split | Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Unified"
       ],
       "written": [
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff",
-        "diff.layout=split",
-        "diff.show=current",
+        "diff.show=excerpt",
         "diff.show=diff"
       ],
       "files": {
@@ -844,11 +824,11 @@ $ node tests/dom/diff-current-session.js
       "bound": 0
     },
     {
-      "step": "Docs, never chosen there: Current, its default, with no layout control",
-      "shows": "current",
+      "step": "Docs, never chosen there: Full, its default, with no layout control",
+      "shows": "full",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current"
+          "Comparison view: Diff | Excerpt | *Full"
         ]
       ],
       "keys": [
@@ -857,7 +837,7 @@ $ node tests/dom/diff-current-session.js
       ],
       "written": [],
       "bar ends": {
-        "docs/guide.md": "*Full | Concise | Source",
+        "docs/guide.md": "*Rendered | Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -924,11 +904,11 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "Changes: Current chosen, stored as diff.show",
+      "step": "Changes: Excerpt chosen, stored as diff.show",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: *Split (unavailable) | Unified (unavailable)"
         ]
       ],
@@ -937,15 +917,15 @@ $ node tests/dom/diff-current-session.js
         "L on the toolbar's Unified"
       ],
       "written": [
-        "diff.show=current"
+        "diff.show=excerpt"
       ]
     },
     {
-      "step": "Docs opens on its own default, Current, which Changes did not set",
-      "shows": "current",
+      "step": "Docs opens on its own default, Full, which Changes did not set",
+      "shows": "full",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current"
+          "Comparison view: Diff | Excerpt | *Full"
         ]
       ],
       "keys": [
@@ -959,11 +939,11 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current"
+          "Comparison view: *Diff | Excerpt | Full"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "not attached"
       ],
       "written": [
@@ -971,11 +951,11 @@ $ node tests/dom/diff-current-session.js
       ]
     },
     {
-      "step": "Changes again: Current, its own choice, which Docs did not move",
+      "step": "Changes again: Excerpt, its own choice, which Docs did not move",
       "shows": "current",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current",
+          "Comparison view: Diff | *Excerpt | Full",
           "Split | Unified: *Split (unavailable) | Unified (unavailable)"
         ]
       ],
@@ -990,11 +970,11 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current"
+          "Comparison view: *Diff | Excerpt | Full"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "not attached"
       ],
       "written": []
@@ -1002,7 +982,7 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "what the store holds",
       "stored": {
-        "diff.show": "current",
+        "diff.show": "excerpt",
         "github.docs.show": "diff"
       }
     },
@@ -1011,22 +991,22 @@ $ node tests/dom/diff-current-session.js
       "shows": "diff",
       "toolbar": [
         [
-          "Diff | Current: *Diff | Current",
+          "Comparison view: *Diff | Excerpt | Full",
           "Split | Unified: *Split | Unified"
         ]
       ],
       "keys": [
-        "N on the toolbar's Current",
+        "N on the toolbar's Excerpt",
         "L on the toolbar's Unified"
       ],
       "written": []
     },
     {
-      "step": "Docs, a stored value that is not a choice: Current, its default",
-      "shows": "current",
+      "step": "Docs, a stored value that is not a choice: Full, its default",
+      "shows": "full",
       "toolbar": [
         [
-          "Diff | Current: Diff | *Current"
+          "Comparison view: Diff | Excerpt | *Full"
         ]
       ],
       "keys": [
@@ -1034,6 +1014,91 @@ $ node tests/dom/diff-current-session.js
         "not attached"
       ],
       "written": []
+    },
+    {
+      "step": "Full source includes lines before and after the hunks",
+      "shows": "full",
+      "toolbar": [
+        [
+          "Comparison view: Diff | Excerpt | *Full",
+          "Split | Unified: *Split (unavailable) | Unified (unavailable)"
+        ]
+      ],
+      "keys": [
+        "N on the toolbar's Diff",
+        "L on the toolbar's Unified"
+      ],
+      "written": [
+        "diff.show=full"
+      ],
+      "bar ends": {
+        "docs/guide.md": "*Rendered | Source",
+        "a.py": "nothing",
+        "config/app.yaml": "*Rendered | Source",
+        "old.txt": "nothing",
+        "notes.txt": "nothing",
+        "logo.png": "nothing"
+      },
+      "files": {
+        "docs/guide.md": {
+          "rendered": [
+            "front matter added: owner = platform",
+            "front matter context: title = Guide",
+            "context: Guide",
+            "added: Read the first setup notes first.",
+            "context: Unchanged paragraph 0.",
+            "context: Unchanged paragraph 1.",
+            "context: Unchanged paragraph 2.",
+            "context: Unchanged paragraph 3.",
+            "context: Unchanged paragraph 4.",
+            "context: Unchanged paragraph 5.",
+            "context: Unchanged paragraph 6.",
+            "context: Unchanged paragraph 7.",
+            "context: [image]",
+            "added: The new closing line."
+          ]
+        },
+        "a.py": {
+          "source": [
+            "1 | # Before the first hunk",
+            "2 | ",
+            "3 | def f():",
+            "4 |+    x = 2",
+            "5 |+    return x",
+            "6 | ",
+            "7 | # After the last hunk"
+          ]
+        },
+        "config/app.yaml": {
+          "rendered": [
+            "modified: {4 keys}",
+            "  context: name: \"demo\"",
+            "  added: version: 4",
+            "  modified: services: {1 keys}",
+            "    modified: web: {2 keys}",
+            "      context: image: \"nginx\"",
+            "      modified: ports: [2 items]",
+            "        context: - 80",
+            "        added: - 443",
+            "  context: flags: [\"fast\", \"safe\"]"
+          ]
+        },
+        "old.txt": {
+          "source": [
+            "says: This file was deleted, so it has no current version."
+          ]
+        },
+        "notes.txt": {
+          "source": [
+            "says: This file is empty now."
+          ]
+        },
+        "logo.png": {
+          "source": [
+            "says: Binary file; no textual diff."
+          ]
+        }
+      }
     }
   ]
 }

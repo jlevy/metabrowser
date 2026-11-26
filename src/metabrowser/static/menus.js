@@ -65,8 +65,12 @@
     if (listening.has(doc)) {
       return;
     }
-    // The open menus the last press went down in. Its click is theirs wherever it lands:
-    // a drag from a field in a menu to outside it clicks on an ancestor of both.
+    // The open menus the last press went down in, until its click or a key. Its click is
+    // theirs wherever it lands: a drag from a field in a menu to outside it clicks on an
+    // ancestor of both. So is the focus it moves: WebKit, the macOS app's engine, focuses no
+    // button on a press, and gives focus to the nearest ancestor a press can focus instead,
+    // which for every menu in a view is the preview pane (`tabindex="-1"`). Closing on that
+    // rebuilt the menu under the press, so its click never reached the row (mb-iwfs).
     /** @type {Set<OpenMenu>} */
     let pressedIn = new Set();
     // A press, a click an assistive technology sends with no press, or focus arriving
@@ -75,7 +79,7 @@
     /** @param {Event} event */
     const outside = (event) => {
       const node = /** @type {Node} */ (event.target);
-      const held = event.type === "click" ? pressedIn : null;
+      const held = event.type === "pointerdown" ? null : pressedIn;
       if (event.type !== "focusin") {
         pressedIn = new Set();
       }
@@ -94,6 +98,9 @@
     /** @param {Event} event */
     const onEscape = (event) => {
       const key = /** @type {KeyboardEvent} */ (event);
+      // Focus a key moves is the key's, never a press's: a press let go with no click, as
+      // one dragged off a row that was rebuilt, must not keep Tab from closing its menu.
+      pressedIn = new Set();
       const last = openMenusOf(doc).at(-1);
       if (
         last &&
@@ -164,15 +171,22 @@
         if (!doc || (entry && openMenus.has(entry))) {
           return;
         }
+        // A menu another holder has open is that holder's, by its trigger: a container
+        // bound around a bound control finds the control's dropdown drawn open, as a
+        // diff's Markdown layer finds the File type menu in the diff it binds, and
+        // opening it again here closed it under the reader at each mount (mb-iwfs).
+        const trigger = triggerOf(menu);
+        if (openMenusOf(doc).some((other) => triggerOf(other.menu) === trigger)) {
+          return;
+        }
         for (const other of openMenusOf(doc)) {
           closeMenu(other, "other");
         }
         entry = { menu, doc };
         openMenus.add(entry);
         listen(doc);
-        // Focus goes with the menu. A press in WebKit leaves it where it was, on a tree row
-        // say, and a rebuild that put it back there would arrive outside and close the menu.
-        const trigger = triggerOf(menu);
+        // Focus goes with the menu. A press in WebKit gives a trigger none, and a rebuild
+        // that put focus back on a tree row, say, would arrive outside and close the menu.
         const active = doc.activeElement;
         if (
           trigger?.isConnected &&

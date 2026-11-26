@@ -1017,16 +1017,26 @@ the Chrome tier’s interpreters:
 | --- | --- | --- |
 | When | a push to `main`; a pull request while `main` is red | a pull request while `main` is green |
 | Interpreters, every tier | `PYTHONS` | `PR_CHROME_PYTHON` |
-| Chrome tier | whole (`make test-chrome`) | without its slow tests (`make test-chrome-fast`), and only when the change touches a browser path |
+| Chrome tier | whole (`make test-chrome`) | whole, and only when the change touches a browser path; until 2026-11-25, without its slow tests |
 | `admitted-git` | every admitted release | the lowest, which is the security floor |
 | Parts | fewer, longer | more, shorter, on the one interpreter |
 
-- **Slow Chrome tests** are those measured at `SLOW_TEST_S` or more in
-  `devtools/shard_weights.json` (`tests/suite_tiers.py`, `--skip-slow`). The owner chose
-  that they run on every push to `main`, in the nightly soak, and in the release gate
-  (`make test`, `make verify`), and not on a pull request.
-  They are derived from the measurements, not marked, so a refresh keeps the set
-  current, and a test with no measurement yet runs on its own pull request.
+- **Slow Chrome tests** were those measured at 20 seconds or more in
+  `devtools/shard_weights.json`. The owner chose that they run on every push to `main`,
+  in the nightly soak, and in the release gate (`make test`, `make verify`), and not on
+  a pull request, which passed `--skip-slow`.
+
+  *2026-11-25: withdrawn.* In one week three pull requests (#835, #855, and #858) merged
+  green and broke a slow Chrome test on `main`, and each red `main` held every other
+  merge until its fix landed; the owner’s direction was “We need to be able to make
+  faster progress.” A pull request that touches a browser path now runs the whole tier,
+  in more parts so that its longest job is about what it was (`CHROME_SHARDS_PR` in
+  `devtools/ci_plan.sh`, with the measurement), and `--skip-slow` and
+  `make test-chrome-fast` are gone, so no run can hold part of the tier.
+  Choosing slow tests by the files a change touches was rejected: #858 renumbered keys
+  in the shell’s scripts and broke a test of the Files tab, which no map by module would
+  have named. Bead `mb-593d` has the three failures.
+
 - **Browser paths** are `BROWSER_PATHS` in `devtools/ci_plan.sh`, each with its reason:
   what the browser loads, the Python that builds the shell page and what it writes into
   it, the Chrome tests and the support they share, and what decides and runs the tier.
@@ -1036,14 +1046,16 @@ the Chrome tier’s interpreters:
   The net is the one [The browser tier’s interpreters](#decisions-and-open-questions)
   already relies on: every push to `main` runs the whole tier on every interpreter, and
   while `main` is red every pull request does.
+
 - **One interpreter** for the unit, goldens, and serial tiers follows the precedent of
   decision 3 for the Chrome tier, and for the same reason.
   A break only another interpreter shows is found on `main`, as a Chrome one was.
+
 - **The parts** each path deals a tier into are constants in `devtools/ci_plan.sh`,
   beside the measurements that set them.
 
 `devtools/check_ci.py` holds every tier’s interpreters, parts, and Gits to the `plan`
-job’s outputs and the Chrome job to the plan’s target and condition, and
+job’s outputs and the Chrome job to the whole tier and the plan’s condition, and
 `tests/test_ci_plan.py` holds that the main path narrows nothing: all of `PYTHONS`,
 every part, the whole Chrome tier, and every admitted Git.
 

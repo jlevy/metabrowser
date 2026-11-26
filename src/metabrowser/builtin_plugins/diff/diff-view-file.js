@@ -55,6 +55,7 @@
  *   switch changes the served pin first.
  * @property {string} label The control's text.
  * @property {string} detail What following it does, for its tooltip and accessible name.
+ * @property {boolean} [commitOnly] Open the comparison's pinned commit without selecting a ref.
  */
 
 /**
@@ -388,6 +389,29 @@ export function createViewFileOpener(host, options = {}) {
         ];
   }
 
+  /** @param {Record<string, unknown>} change @param {Record<string, unknown>} resolved */
+  function fullFileAction(change, resolved) {
+    const side = viewFileSide(change, resolved);
+    if (host.kind !== "pin" || side === null) {
+      return null;
+    }
+    const href = host.href(side.address);
+    return href === null
+      ? null
+      : {
+          ...describeViewFile(side, href, {
+            kind: host.kind,
+            pin: host.pin,
+            branch: null,
+            // A notice can stay visible through a pin change in another tab. Always
+            // open the comparison's commit, including when it is still the current pin.
+            pinChanged: true,
+          }),
+          label: "Open full file",
+          commitOnly: true,
+        };
+  }
+
   /**
    * Switch the served pin to an action's commit and go to its file there.
    *
@@ -401,7 +425,7 @@ export function createViewFileOpener(host, options = {}) {
     const outcome = await host.pinSwitch.switchTo(
       {
         oid: action.commit,
-        ...(host.branch === null ? {} : { under: host.branch }),
+        ...(host.branch === null || action.commitOnly ? {} : { under: host.branch }),
         view: action.href,
       },
       () => !disposed,
@@ -419,6 +443,7 @@ export function createViewFileOpener(host, options = {}) {
 
   return Object.freeze({
     actions,
+    fullFileAction,
     switchTo,
     switching: () => host.pinSwitch.switching(),
     dispose() {

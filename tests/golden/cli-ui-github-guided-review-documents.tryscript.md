@@ -13,12 +13,15 @@ A step that cites no such file never loads the rendered layer, and a document lo
 File type filter and asks for no type counts.
 A range of the same file, a file the route answers with its hunks, and a file past the
 step’s budget draw as before.
-Moving to another step disposes every view the step drew; a document’s read still on its
-way when the reader moves on is aborted, and its late answer draws nothing.
-A document shows its progress mark while its read is on its way, and not once it is
-drawn. A step read at another merge base or another head than the page’s says the file’s
-diff is unavailable, and a comparison that names no rendered route draws the document
-without the rendered layer.
+A step shows only once its documents are drawn: while a document’s read is on its way,
+the step waits out of sight, and the step shown before it stays, every view it drew with
+it, with the arrows’ delayed mark beside the step list until the step shows, and the
+arrows move on from the step that waits, so Previous goes back from it.
+Moving on again before the read answers withdraws the waiting step, which aborts its
+read, whose late answer draws nothing, and the next step replaces the shown one, which
+disposes its views. A step read at another merge base or another head than the page’s
+says the file’s diff is unavailable, and a comparison that names no rendered route draws
+the document without the rendered layer.
 A document of another pull request is drawn from that pull request’s own comparison,
 whose routes the step’s answer names: its one-file read and its Rendered go to that pull
 request’s routes, and it draws in a step read at another comparison than the page’s. A
@@ -27,8 +30,9 @@ shows the guide’s bar for it, with its name and its Open full diff, above the 
 notice, and the page’s end removes the notice.
 A stale guide’s changed document says so above the document’s own view, and the page’s
 end disposes it. The Docs tab draws its documents with every option a step’s Markdown
-document has, and adds only the sentence it says when it has no document; Changes draws
-its files with exactly the options a step’s YAML document has.
+document has but how long Rendered waits, which for a step’s document is as long as the
+rendered route can take, and adds only the sentence it says when it has no document;
+Changes draws its files with exactly the options a step’s YAML document has.
 
 ```console
 $ node tests/dom/github-guided-review-documents-behavior.js
@@ -38,13 +42,13 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "its one-file reads: pull-comparison file=docs/guide.md, pull-comparison file=config/settings.yaml",
   "its documents load the rendered layer true, the File type filter false",
   "its documents' other reads: none",
-  "a Markdown document's view is drawn with: changedFiles: object, layout: \"unified\", markdownHoldMs: 200, markdownTargets: function, markdownViews: object, renderMarkdown: function, show: \"current\", showPreference: \"github.docs.show\", showSummary: false, summaryHost: null, unfold: true, viewFile: null",
-  "a YAML document's view is drawn with: changedFiles: object, markdownHoldMs: 200, markdownTargets: function, markdownViews: object, renderMarkdown: function, showSummary: false, summaryHost: null, viewFile: null",
+  "a Markdown document's view is drawn with: changedFiles: object, embedded: true, layout: \"unified\", markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, show: \"full\", showPreference: \"github.docs.show\", showSummary: false, summaryHost: null, unfold: true, viewFile: null",
+  "a YAML document's view is drawn with: changedFiles: object, embedded: true, layout: \"unified\", markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, showSummary: false, summaryHost: null, viewFile: null",
   "its Rendered is asked of: pull-rendered-diff file=id-docs/guide.md",
-  "step 2 disposes step 1's: 2 of 2 documents, 2 of 2 patches",
-  "step 2 draws, its read on its way: a document still loading",
-  "step 3 before it answered: read aborted true; views drawn after 0; src/app.py: patch",
-  "a held document: progress marks 1 while its read is held, 0 once drawn; docs/held.md: document",
+  "step 2 waits for its document: a step waits out of sight true, the arrows' mark shows true; step 1's disposed: 0 of 2 documents, 0 of 2 patches",
+  "on screen meanwhile: docs/guide.md: document | docs/guide.md: patch | src/app.py: patch | config/settings.yaml: document | notes.md: says This file's diff is too large to show in this step.",
+  "step 3 before it answered: read aborted true; views drawn after 0; step 1's disposed: 2 of 2 documents, 2 of 2 patches; src/app.py: patch",
+  "a held document: while its read is held, the step shows nothing, a step waits out of sight true, the arrows' mark shows true, the arrows to press Previous step and Next step; once drawn, docs/held.md: document, a step waits false, the arrows' mark shows false",
   "a step read at another merge base: docs/guide.md: says This file's diff is unavailable.",
   "a step read at another head: docs/guide.md: says This file's diff is unavailable.",
   "a comparison with no rendered route: docs/guide.md: document, its rendered layer absent",
@@ -57,9 +61,9 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "a changed document of a stale guide: docs/guide.md: document (This file changed after the guide was written.)",
   "the page ends: its document disposed true",
   "Docs has, and a step's docs/guide.md has not: emptyText",
-  "a step's docs/guide.md has, and Docs has not: nothing",
+  "a step's docs/guide.md has, and Docs has not: embedded",
   "Changes has, and a step's config/settings.yaml has not: nothing",
-  "a step's config/settings.yaml has, and Changes has not: nothing"
+  "a step's config/settings.yaml has, and Changes has not: embedded, layout"
 ]
 ? 0
 ```

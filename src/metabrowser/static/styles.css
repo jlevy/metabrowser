@@ -341,11 +341,9 @@
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
-     One relative size: --git-ref-font-size, a ref chip's, is
-     --git-ref-font-scale of the text it sits in, so a chip is slightly
-     smaller than that text wherever it appears (docs/design-system.md,
-     "Branch Chips"). A short commit ID is its line's size
-     (--font-sans-ex-height, "Short Commit IDs").
+     A ref chip has one size of its own, --git-ref-font-size, wherever it
+     appears (docs/design-system.md, "Branch Chips"). A short commit ID is
+     its line's size (--font-sans-ex-height, "Short Commit IDs").
 
      Document (rendered prose) sizes — ONE token, deliberately:
        --document-body-font-size         prose (one step above chrome body)
@@ -384,14 +382,17 @@
      the author's text, the title's held second line, and under a two-line one 4 px
      (measured 2026-11-18 in Chrome 152). */
   --page-title-gap: 12px;
-  /* A ref chip is slightly smaller than the text around it: one ratio, not
-     one size. Measured in Chrome, the text a chip sits in is 12px (a Pulls
-     row, the ref selector) to 14px (a pull request's header, a commit's
-     summary), so chips run 10.8px to 12.6px. The em resolves where the chip
-     uses it, against the size it inherits; the smallest, 10.8px bold, is
-     above the 10px micro marks, so the ratio needs no floor. */
+  /* A ref chip is one size everywhere: the size it has in the navigation
+     column, --git-ref-font-scale of that column's text, and no part of it
+     follows the text the chip sits in (mb-uokj). As a ratio of the
+     surrounding text it ran 10.8px to 12.6px against a box that stayed
+     --compact-chip-height, so the name sat differently in the box from one
+     page to the next: level in a history row, low in a commit's header and
+     a pull request's. The measurements are in
+     explorations/performance-loop/design-rule-measurements.md, "Branch
+     Chip Sizes". */
   --git-ref-font-scale: 0.9;
-  --git-ref-font-size: calc(var(--git-ref-font-scale) * 1em);
+  --git-ref-font-size: calc(var(--git-ref-font-scale) * var(--nav-font-size));
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
   --mono-block-font-size: var(--ui-small-font-size);
@@ -499,6 +500,10 @@
      Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
      pull request's title 4px wider. It is --icon-glyph, so the two cannot part. */
   --tree-icon-slot: var(--icon-glyph);
+  /* How far a summary toggle pulls left of where it is placed, and pads back in, so its
+     words start where it is placed and its hover ground reaches a little past them
+     (`.summary-toggle`). */
+  --summary-toggle-pull: 4px;
   /* A tree row's gap from its icon slot to its name (.tree-item), which the paging row's
      inset and a category heading's icon (--category-icon-gap) also take, so a heading's
      name and its rows' names stay on one column. */
@@ -1860,7 +1865,10 @@ body {
   width: 100%;
   height: 100%;
 }
-.app-header > .settings-toggle {
+/* The row's end: the navigation's Refresh, then the Metabrowser menu, two icon buttons at
+   the row's gap, both on every page from the first paint (server.py). Refresh takes the auto
+   margin. */
+.app-header > .nav-refresh {
   margin-left: auto;
 }
 /* A pin with no mirror's heading: it has no name and no ref selector, so its ref
@@ -2036,6 +2044,40 @@ body {
   .metabrowser-kpress-host .kpress details > summary::after {
     background-color: CanvasText;
   }
+}
+/* ── Summary toggles — a summary's header that opens it ──────────
+   Its words, a count summary's, then the registry's chevron in the tree's icon slot: the
+   Diff summary's header (diff-view.js) and the stack page's members toggle, "12 Pulls"
+   (stack-page.js), one rule, so the two cannot drift and their words and hover grounds
+   start at one edge (docs/design-system.md, "One Chevron, One Row Contract"). Its hover
+   and focus ring are the tree rows' under it (`.changed-file-row`): square, the ring drawn
+   inside the box, so the header and its rows hover and focus as one tree. Each surface
+   sets its own line: its display, gap, ink, and size. */
+.summary-toggle {
+  min-height: var(--ui-row-height);
+  margin: 0 0 0 calc(-1 * var(--summary-toggle-pull));
+  padding: 0 6px 0 var(--summary-toggle-pull);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.summary-toggle:hover {
+  background: var(--hover-bg);
+}
+.summary-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  background: var(--hover-bg);
+}
+.summary-toggle-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
 }
 /* ── Disclosure toggles — a toggle never selects text ────────────
    Every control that shows or hides content carries .disclosure-toggle: a tree row
@@ -2230,6 +2272,20 @@ details[open] > summary.fold-expander::before {
 .icon-btn-reveal:focus-visible {
   opacity: 1;
   pointer-events: auto;
+}
+/* An icon button that cannot act now keeps its place, dimmed as a waiting chip's label is,
+   and the pointer raises no surface over it, since a press does nothing. Up is `disabled` at
+   the served root. The navigation's Refresh waits while what is on screen refreshes:
+   `aria-disabled`, which leaves it its focus, its tooltip, and its number
+   (docs/design-system.md, "Refresh, Retry, and Reload Page"). */
+.icon-btn:is(:disabled, [aria-disabled="true"]) {
+  opacity: var(--dimmed-content-opacity);
+  cursor: default;
+}
+.icon-btn:is(:disabled, [aria-disabled="true"]):hover:not(:focus-visible) {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
 }
 .icon-btn[hidden] {
   display: none;
@@ -2892,7 +2948,7 @@ html.theme-anim .menu {
 /* The navigation frame and Files list keep their first font for this page.
    A late Source Sans response cannot reposition the tabs, folder menu, or filter bar. */
 html:not([data-app-font="system"]) .tree-pane
-  > :where(.app-header, .nav-tab-bar, .nav-files-ref, [data-nav-toolbar], .nav-metadata-band),
+  > :where(.app-header, .nav-tab-bar, .nav-source-ref, [data-nav-toolbar], .nav-metadata-band),
 html:not([data-app-font="system"]) .tree-pane #tab-files {
   --font-sans: "Metabrowser Sidebar Sans", var(--app-sans-system);
   font-family: var(--font-sans);
@@ -3067,27 +3123,27 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   white-space: nowrap;
 }
 
-/* The Files source sits above its filters. The adjacent chooser opens a menu as
-   wide as the row so branch names, commit IDs, and ages have room. */
-.nav-files-ref {
+/* The served revision sits above the Files filters and the Commits tally, the two tabs
+   that show it. The adjacent chooser opens a menu as wide as the row so branch names,
+   commit IDs, and ages have room. */
+.nav-source-ref {
   position: relative;
   z-index: 3;
   flex-shrink: 0;
 }
-.nav-files-ref[hidden],
-.nav-files-ref:has(> .source-ref-selector[hidden]),
+.nav-source-ref[hidden],
+.nav-source-ref:has(> .source-ref-selector[hidden]),
 .source-ref-selector[hidden] {
   display: none;
 }
-/* A checkout's row says which view the page shows (docs/design-system.md, "The Ref
-   Selector"): "Working tree" or "Revision" in the row's ink, a muted dot, then the ref.
-   A revision ends the row with its way back, a .btn at the row's end, which goes under
-   the rest when the pane is too narrow for both, so the ref is never cut to make room. */
+/* The row is one line whatever it names, its label and the chooser's button, so nothing
+   in it moves when the page shows something else or the chooser opens. A checkout's row
+   on its files on disk says so before the branch (docs/design-system.md, "The Ref
+   Selector"): "Working tree" in the row's ink, a muted dot, then the ref, which is cut
+   short before the words are. */
 .source-ref-selector {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
   padding: var(--nav-toolbar-gap) var(--pane-header-padding-x) 0;
 }
 .source-ref-selector-view,
@@ -3097,21 +3153,6 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 }
 .source-ref-selector-sep {
   color: var(--muted);
-}
-.source-ref-selector-back {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-.source-ref-selector-back[hidden] {
-  display: none;
-}
-.source-ref-selector-back-arrow {
-  color: var(--muted);
-  line-height: 1;
 }
 .source-ref-selector-button {
   display: inline-flex;
@@ -3154,6 +3195,11 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   width: 100%;
   padding-block: 3px;
   font: inherit;
+}
+/* The working tree's tab has its one entry in place of a filter and a list. */
+.source-ref-selector-filter[hidden],
+.source-ref-selector-list[hidden] {
+  display: none;
 }
 /* The list holds every ref and draws only the rows near its view
    (static/source-ref-selector.js, `drawWindow`): the sizer is as tall as every row, and
@@ -3288,33 +3334,31 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 .source-ref-selector-error {
   color: var(--status-error-text);
 }
-/* Why the back button's switch failed, on a line of its own under the row and in line with
-   its words; the list's error line is padded as the list's rows are. */
-.source-ref-selector-back-error {
-  flex-basis: 100%;
-  padding: 0;
-}
 /* What a checkout's list says of the store its origin's refs are read from: a note, and
    a warning's colour when the origin could not be fetched. */
 .source-ref-selector-origin[data-tone="warning"] {
   color: var(--status-warning-text);
 }
-/* A checkout's working tree: a row like a ref's, above the lists and ruled off from
-   them, since it is the one choice that is not a ref. The folder's path stands where a
-   ref's commit does, muted, with its last part, the folder's own name, in the row's
-   colour. The path gives way before the name, and what is before the folder's name
+/* A checkout's working tree, the one entry of its tab: a row like a ref's, with the
+   branch its files are on where a ref's row has its name. The folder's path stands where
+   a ref's commit does, muted, with its last part, the folder's own name, in the row's
+   colour. The path gives way before the branch, and what is before the folder's name
    gives way before it, entirely: a share of the shortfall, however small, cut the
    folder's name too. */
 .source-ref-selector-working-tree {
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
 }
 .source-ref-selector-working-tree-name {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .source-ref-selector-location {
   display: flex;
+  /* Against the branch's 1: the path takes all of a shortfall it can before the branch
+     is cut at all. */
+  flex: 0 9999 auto;
   min-width: 0;
   margin-left: auto;
   color: var(--muted);
@@ -3357,27 +3401,6 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   background: var(--sidebar-bg);
   color: var(--muted);
   line-height: 1.2;
-}
-.source-freshness-label {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.source-freshness-label:hover,
-.source-freshness-label:focus-visible {
-  color: var(--link);
-}
-.source-freshness-label:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset-outset);
-  border-radius: var(--radius-chrome);
-}
-.source-freshness-label:disabled {
-  color: inherit;
-  cursor: default;
 }
 .source-freshness[data-tone="warning"] .source-freshness-label {
   color: var(--status-warning-text);
@@ -4564,38 +4587,38 @@ a.tab-btn {
    In a pane too narrow for that, the row wraps between its controls, in order and as
    late as it can, so no control is cut, scrolled out of reach, or cut short: the
    leading controls stay first, and the trailing group, which takes the line's end
-   with an auto margin (Clear and the chevron on Files, Refresh on Pulls), moves down
-   whole and stays right-aligned. A segmented group wider than a whole line takes the
-   cluster layout instead (`.chip-group[data-fit="wrap"]`).
+   with an auto margin (Clear and the chevron on Files), moves down whole and stays
+   right-aligned. A segmented group wider than a whole line takes the cluster layout
+   instead (`.chip-group[data-fit="wrap"]`).
 
    Lines are `--nav-toolbar-line-height` tall and `--nav-toolbar-gap` apart, the gap
    between controls and above the first line and below the last, so a toolbar grows
    by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
    control is one line tall: a shorter one is centred in a line's height rather than
    making its line shorter, as Show ignored's checkbox is in the Files drawer
-   (`.filter-drawer-row`), and a taller one, a `.btn` such as Refresh (26 px at the
-   default size, two over a chip), is held to it rather than making its line, and so
-   the one-line toolbar, taller. A cluster's own lines are a row's apart.
+   (`.filter-drawer-row`), and a taller one, such as a `.btn` (26 px at the default
+   size, two over a chip), is held to it rather than making its line, and so the
+   one-line toolbar, taller. A cluster's own lines are a row's apart.
 
    Measured in headless Chrome on 2026-11-15, and the Files rows again on 2026-11-18
    once Show ignored moved into the drawer (mb-ey0d), and the Pulls rows again on
-   2026-11-24 once Reload became Refresh (mb-qkvr), pane widths 179 px (the
-   narrowest, 180 less the pane's border) to 420 px, both font sets; the themes lay out
-   alike. The widths each row fits one line from, default set / system set, the Pulls
-   tallies "Open 100, Closed 2, All 102" unless four-digit:
+   2026-11-25 once Refresh moved to the top of the navigation (mb-te3c), pane widths
+   179 px (the narrowest, 180 less the pane's border) to 420 px, both font sets; the
+   themes lay out alike. The widths each row fits one line from, default set / system
+   set, the Pulls tallies "Open 100, Closed 2, All 102" unless four-digit:
      Files, no filter set                             179 / 179 (the narrowest)
      Files, a filter set, "No grouping" (its widest)  204 / 216
-     Pulls, Show and Refresh                          279 / 312
-     Pulls, Show and Refresh, four-digit tallies      306 / 346
+     Pulls, Show                                      218 / 245
+     Pulls, Show, four-digit tallies                  244 / 278
    Before this rule, the Files row ran up to 17.69 px past the default pane in the
    system set and 118 px past the narrowest pane, and the Pulls toolbar 8.05 px past
    the default pane in the system set, scrolled out of sight (35.77 px in the default
-   set while it held a Stacks chip). The Pulls Show group alone is joined from
-   218 / 245 with three-digit tallies and 244 / 278 with four, and the cluster below.
-   At the narrowest pane, with a filter set, the Files row is two lines (67 px) and
-   the Pulls toolbar three or four. tests/test_files_tab_chrome.py and
-   tests/test_github_pulls_stacks_chrome.py sweep those widths and hold the wrap to
-   this rule (tests/dom/nav-toolbar-wrap.mjs). */
+   set while it held a Stacks chip). The Pulls toolbar holds the Show group alone, so
+   it is one line from the width the group is joined from and the cluster below it.
+   At the narrowest pane, with a filter set, the Files row is two lines (67 px), and
+   the Pulls toolbar two in the default set and three in the system set (67 / 97 px).
+   tests/test_files_tab_chrome.py and tests/test_github_pulls_stacks_chrome.py sweep
+   those widths and hold the wrap to this rule (tests/dom/nav-toolbar-wrap.mjs). */
 .nav-toolbar-row {
   display: flex;
   flex-wrap: wrap;
@@ -5003,21 +5026,13 @@ a.tab-btn {
 /* Up is an icon button (`.icon-btn`): the arrow alone at rest, and the hover surface and
    its hairline only while hovered or focused, as the navigation's collapse chevron
    (`.nav-collapse-toggle`), at a box the eyebrow's row holds. At the served root it is
-   disabled in place, dimmed, and surfaces nothing. */
+   disabled in place, dimmed, and surfaces nothing, as any disabled icon button is
+   (`.icon-btn:disabled`). */
 .view-header-eyebrow > .folder-up {
   --icon-btn-size: var(--view-header-up-size);
 }
 .view-header-eyebrow > .folder-up > .parent-nav-arrow {
   color: inherit;
-}
-.view-header-eyebrow > .folder-up[disabled] {
-  cursor: default;
-  opacity: 0.4;
-}
-.view-header-eyebrow > .folder-up[disabled]:hover {
-  color: var(--muted);
-  background: transparent;
-  border-color: transparent;
 }
 .view-header-eyebrow > .file-header-path {
   font-weight: var(--weight-normal);
@@ -6187,6 +6202,13 @@ pre.code-block code.hljs {
 }
 .hljs .hljs-bullet {
   color: var(--color-syntax-number);
+}
+/* Lean's grammar (syntax/lean.js) scopes `sorry` and `admit`, which leave a proof
+   unfinished and which the official Lean 4 grammar marks invalid, apart from keywords
+   so a reader can find them. */
+.hljs .hljs-sorry {
+  color: var(--status-warning-text);
+  font-weight: var(--weight-bold);
 }
 .hljs .hljs-emphasis {
   font-style: italic;
@@ -8004,15 +8026,19 @@ pre.code-block.metabrowser-source-lines > code {
    size the name carries the meaning, so it is always bold, and the
    square corner separates "a ref" from "a filter" at a glance.
 
-   The type scales with the surrounding text. The box shares the compact
+   One size everywhere: the type is --git-ref-font-size, a length of its
+   own, and the line is the box's height, so the name sits in the box the
+   same way on every page and nothing about the chip follows the text it
+   sits in. No rule but this one sets a chip's type or box
+   (test_branch_chips_are_one_size_everywhere). The box shares the compact
    chip height with labels, so a HEAD ring (1px out, 1px off) fits inside a
    22px history row. The menu chevron overlays the label. */
 .git-ref {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  /* Wide enough for the branch names this project actually uses, and in
-     em so the bound keeps its meaning at whatever size the chip is. Measured in
+  /* Wide enough for the branch names this project actually uses, in em of
+     the chip's own fixed size, so it is one width everywhere. Measured in
      Chrome against this repository's 497 branches, remote branches, and
      tags, as copyable chips: at 10px, 220px clipped 63; at 12px, 220px
      clipped 150 and 22em (264px) clips 54, names like
@@ -8083,9 +8109,9 @@ pre.code-block.metabrowser-source-lines > code {
    grid's "maximize tracks" step grows both name tracks equally from
    zero and freezes each at its full width.
    The group never gets narrower than both chips' padding, an ellipsis
-   in each, and the arrow with its spaces (about 1.3em). Each chip
-   is --git-ref-font-scale of the surrounding text, so 3em covers the arrow at the group's
-   size and the two ellipses at the chips' smaller one.
+   in each, and the arrow with its spaces (about 1.3em). A chip's
+   type is never larger than the text of a line that holds a merge, so 3em covers the
+   arrow at the group's size and the two ellipses at the chips' own.
    The equal growth gives each name at least its chip's frame and an
    ellipsis, and what is left is the arrow's. A line too short for that floor moves the merge
    to a line of its own. */
@@ -8097,7 +8123,7 @@ pre.code-block.metabrowser-source-lines > code {
   max-width: 100%;
   vertical-align: middle;
   /* No size of its own: the arrow is the size of the text around the merge,
-     and each chip slightly smaller than it (`.git-ref`). */
+     and each chip its own one size (`.git-ref`). */
 }
 /* The spaces around the glyph are text, kept so a copied selection reads
    "wip → topic"; `pre` keeps them in their own grid cell. */

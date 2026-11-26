@@ -3,6 +3,32 @@
     "readme": "/view/README.md",
     "readme_revision": "/view/g1-UkVBRE1FLm1k"
   },
+  "working_tree": {
+    "status": 200,
+    "body": {
+      "kind": "working_tree",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/topic",
+        "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": []
+    }
+  },
   "branches": {
     "status": 200,
     "body": {
@@ -11,14 +37,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -63,14 +91,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -106,14 +136,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -222,14 +254,16 @@
       "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
       "ref": "refs/heads/feature",
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": false,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -266,6 +300,32 @@
       ]
     }
   },
+  "working_tree_on_revision": {
+    "status": 200,
+    "body": {
+      "kind": "working_tree",
+      "query": "",
+      "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "ref": "refs/heads/feature",
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": false,
+        "head": "refs/heads/topic",
+        "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": []
+    }
+  },
   "switch_checked_out": {
     "status": 200,
     "body": {
@@ -297,6 +357,60 @@
       },
       "read_from": "checkout",
       "view_href": "/view/g1-UkVBRE1FLm1k"
+    }
+  },
+  "branches_on_checked_out": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/heads/topic",
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": false,
+        "head": "refs/heads/topic",
+        "head_name": "topic",
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": [
+        {
+          "name": "topic",
+          "ref": "refs/heads/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": false,
+          "checked_out": true,
+          "current": true
+        },
+        {
+          "name": "local-work",
+          "ref": "refs/heads/local-work",
+          "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+          "committed_at": 1769904000.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        },
+        {
+          "name": "feature",
+          "ref": "refs/heads/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
     }
   },
   "switch_working_tree": {
@@ -332,6 +446,112 @@
       "view_href": "/view/README.md"
     }
   },
+  "working_tree_moved": {
+    "status": 200,
+    "body": {
+      "kind": "working_tree",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/feature",
+        "head_name": "feature",
+        "head_commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": []
+    }
+  },
+  "branches_moved": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/feature",
+        "head_name": "feature",
+        "head_commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": [
+        {
+          "name": "feature",
+          "ref": "refs/heads/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": true,
+          "current": false
+        },
+        {
+          "name": "local-work",
+          "ref": "refs/heads/local-work",
+          "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+          "committed_at": 1769904000.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        },
+        {
+          "name": "topic",
+          "ref": "refs/heads/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "working_tree_detached": {
+    "status": 200,
+    "body": {
+      "kind": "working_tree",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": null,
+        "head_name": null,
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": []
+    }
+  },
   "branches_detached": {
     "status": 200,
     "body": {
@@ -340,14 +560,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": null,
         "head_name": null,
+        "head_commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -382,6 +604,38 @@
           "current": false
         }
       ]
+    }
+  },
+  "switch_from_commits": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 5,
+        "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref": "refs/heads/feature",
+        "ref_name": "feature",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout"
     }
   },
   "not_a_repository": {

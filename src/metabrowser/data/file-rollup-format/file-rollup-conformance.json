@@ -28,8 +28,8 @@
           "others": null
         },
         "registry": {
-          "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
-          "revision": 4,
+          "fingerprint": "526dd932ae6bbed9e2e5e4a2d134b3f4aeacf9abcb6a156a9f3b94724c16708c",
+          "revision": 5,
           "schema_version": 5
         },
         "remaining_types": {
@@ -465,8 +465,8 @@
           }
         },
         "registry": {
-          "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
-          "revision": 4,
+          "fingerprint": "526dd932ae6bbed9e2e5e4a2d134b3f4aeacf9abcb6a156a9f3b94724c16708c",
+          "revision": 5,
           "schema_version": 5
         },
         "remaining_types": {
@@ -1764,6 +1764,34 @@
       },
       "logical_extension": ".sql",
       "name": "sample.sql"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".lean",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "lean",
+        "group_id": "code",
+        "kind_id": "lean",
+        "logical_extension": ".lean"
+      },
+      "logical_extension": ".lean",
+      "name": "sample.lean"
+    },
+    {
+      "expected": {
+        "canonical_extension": ".hlean",
+        "confidence": "exact",
+        "content_family": "code",
+        "detection_source": "extension",
+        "family_id": "lean",
+        "group_id": "code",
+        "kind_id": "lean",
+        "logical_extension": ".hlean"
+      },
+      "logical_extension": ".hlean",
+      "name": "sample.hlean"
     },
     {
       "expected": {
@@ -3307,8 +3335,8 @@
     }
   ],
   "registry": {
-    "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24",
-    "revision": 4,
+    "fingerprint": "526dd932ae6bbed9e2e5e4a2d134b3f4aeacf9abcb6a156a9f3b94724c16708c",
+    "revision": 5,
     "schema_version": 5
   },
   "schema": "file-type-conformance-v1"

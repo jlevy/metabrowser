@@ -427,7 +427,7 @@ and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
   pull request’s head starts one observation (`follow_adopted_head` in
   `builtin_plugins/github/pull_route.py`, `MirrorSession.observe_pull_head`). So the
   server never serves a branch behind where the mirror has it, a page or none open, and
-  Files and the Commits tab, which walks the default branch, agree.
+  Files and the Commits tab, which walks the served commit’s history, agree.
   A ref the origin deleted is not followed; its last commit stays served, and the row
   says the ref is gone.
 - **The page follows:** `static/source-freshness.js` sees on its next poll that the ref
@@ -513,7 +513,7 @@ in sight:
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
 - **Commit:** the navigation heading shows the name.
-  The revision row below Files names the ref.
+  The revision row below the Files and Commits tabs names the ref.
   Its chip opens the ref’s actions, and the separate chevron opens the chooser, whose
   list shows short commit IDs.
 - **Location:** the Info menu shows the local path to the bare repository with a short

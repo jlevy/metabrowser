@@ -14,6 +14,20 @@ status: 200
   "members": [],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": null,
+  "updated_at": null,
+  "authors": [],
+  "mergers": [],
+  "fetched_at": null,
+  "labels": [],
+  "commits": null,
+  "size": null,
   "comparison": null,
   "totals": null,
   "truncated": false,
@@ -87,6 +101,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        null,
+        null
       ]
     },
     {
@@ -112,6 +130,11 @@ status: 200
         null,
         null,
         null
+      ],
+      "labels": [
+        null,
+        null,
+        null
       ]
     },
     {
@@ -133,6 +156,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        null,
+        null
       ]
     },
     {
@@ -152,6 +179,10 @@ status: 200
         null
       ],
       "avatars": [
+        null,
+        null
+      ],
+      "labels": [
         null,
         null
       ]
@@ -210,6 +241,20 @@ status: 200
     10
   ],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 0,
+    "merged": 0,
+    "closed": 0
+  },
+  "opened_at": null,
+  "updated_at": null,
+  "authors": [],
+  "mergers": [],
+  "fetched_at": null,
+  "labels": null,
+  "commits": null,
+  "size": null,
   "comparison": null,
   "totals": null,
   "truncated": false,
@@ -306,6 +351,46 @@ status: 200
   ],
   "pending": [],
   "lacking": [],
+  "states": {
+    "open": 0,
+    "draft": 1,
+    "merged": 1,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    }
+  ],
+  "mergers": [
+    {
+      "login": "octo",
+      "avatar": null
+    }
+  ],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "bugfix",
+      "color": "d73a4a",
+      "description": null
+    },
+    {
+      "name": "shared design",
+      "color": "0e8a16",
+      "description": null
+    },
+    {
+      "name": "earnings analysis",
+      "color": "5319e7",
+      "description": null
+    }
+  ],
+  "commits": 2,
+  "size": null,
   "comparison": {
     "left": "<base>",
     "right": "<draft_head>",
@@ -335,12 +420,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
+    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
     "every_s": 5.0
   },
   "moved": null
