@@ -3092,21 +3092,22 @@ failure, a message, or an offer comes and goes, and for nothing else: never betw
 tabs, nor as the age ticks, or a rate limit’s hold begins or lifts.
 Otherwise it is decided in every state: the row of ages begins with the state’s badge,
 as wide as the widest state, then an open pull request’s readiness badge, as wide as the
-widest verdict ([A Pull Request’s Readiness](#a-pull-requests-readiness)), then
-“Opened”, the ages, and Browse code, and ends in the stack chip’s slot (see native stack
-navigation below), one line at a chip’s height whose ages are cut short at their end,
-the links after them whole down to 420 px, or 560 px beside two stacks’ chips, below
-which they are clipped at the row’s end; the author’s row is one line, the author and
-the sentence, then the freshness note; where that row has no room left, the note leaves
-it first, whole, and then the sentence is cut short at its end, the action first and
-then the author, never moved or wrapped; the branches have the line under it to
-themselves, one line in every state, their names cut short rather than wrapping it; a
-pull request with labels has a row of them, one line at a label’s height, and one with
-none has no labels row and no gap for it; and a cold page keeps every row, empty, at its
-height. The freshness note is muted, after a muted dot, at the sentence’s size, stepping
-back by its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit ·
-Fetched just now via GitHub CLI”, never a second time for a check that found nothing
-changed, since that makes what is shown no newer.
+widest verdict, or its glyph alone in a narrow row
+([A Pull Request’s Readiness](#a-pull-requests-readiness)), then “Opened”, the ages, and
+Browse code, and ends in the stack chip’s slot (see native stack navigation below), one
+line at a chip’s height whose ages are cut short at their end, the links after them
+whole down to 420 px, or 560 px beside two stacks’ chips, below which they are clipped
+at the row’s end; the author’s row is one line, the author and the sentence, then the
+freshness note; where that row has no room left, the note leaves it first, whole, and
+then the sentence is cut short at its end, the action first and then the author, never
+moved or wrapped; the branches have the line under it to themselves, one line in every
+state, their names cut short rather than wrapping it; a pull request with labels has a
+row of them, one line at a label’s height, and one with none has no labels row and no
+gap for it; and a cold page keeps every row, empty, at its height.
+The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
+its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
+now via GitHub CLI”, never a second time for a check that found nothing changed, since
+that makes what is shown no newer.
 A rate limit’s hold is said in its place, “GitHub rate limit reached.
 Next attempt after 2:05 PM.”, in the failure’s ink: it begins and lifts by itself and
 asks nothing of the reader, so it adds no line.
@@ -3864,6 +3865,17 @@ closed or merged one, or before a record or core is shown.
   the badge always says the label its readiness came with.
   Its comment in the plugin’s `styles.css` records what the slot measured in Chrome and
   that Browse code stays whole at the row’s limits.
+- **In a narrow row** the badge gives way to the verdict’s glyph alone (`readinessIcon`,
+  in the tone’s ink), and the slot is the glyph’s width.
+  The link, its accessible name, and its tooltip are the badge’s, and the glyph is
+  hidden from assistive technology, so the two forms say the same.
+  A container query on the row of ages (`@container github-pull-opened` in the plugin’s
+  `styles.css`) draws the full badge only where it leaves the ages what they had at the
+  row’s 420 px limit before the badge came; the comment beside the rule records the
+  bound and its measurement.
+  `tests/dom/github-pull-header-chrome.mjs` (its `readiness` part) holds each form to
+  its side of the bound, the ages at 420 px to what they had less the glyph and its gap,
+  and every verdict’s glyph and label in either form to a row that does not move.
 - **The Merge status section** opens the Checks tab: the verdict’s badge and the
   sentence of the requirement that heads it, the first at the worst status, then a row
   for each requirement and one for auto-merge while it is on.

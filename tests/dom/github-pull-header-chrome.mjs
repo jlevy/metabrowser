@@ -726,12 +726,97 @@ const MEASURE = `async (name, change, tab, width) => {
       }
     }
     shownBadge.textContent = said;
-    return { said, labels: labels.length, ...before, widest, moved };
+    // A narrow row draws the glyph alone (mb-io36): the slot is then the glyph's width.
+    const glyph = readinessSlot.querySelector(".github-pull-readiness-link .github-pull-readiness-icon");
+    const compact = getComputedStyle(glyph).display !== "none" && getComputedStyle(shownBadge).display === "none";
+    return { said, labels: labels.length, ...before, widest, moved, compact, glyph: r2(box(glyph).width) };
   })();
+  // The readiness's two forms across the row's widths (change.sweep, the "readiness" part):
+  // at each pane width, the form the row draws and what the ages keep with it, and what they
+  // keep with no readiness, as before the badge came, and with the full badge forced, by
+  // inline styles over the container query's. Then, at some widths, each verdict's glyph and
+  // each label set in the link in turn, and whether the ages or the slot moved.
+  let readinessSweep = null;
+  if (change.sweep && readinessSlot !== null) {
+    const row = header.querySelector(".github-pull-opened");
+    const link = readinessSlot.querySelector(".github-pull-readiness-link");
+    const shownBadge = link.querySelector(".github-pull-badge");
+    const shownIcon = link.querySelector(".github-pull-readiness-icon");
+    const sizers = [...readinessSlot.querySelectorAll(".github-pull-badge-sizer")];
+    const agesNode = row.querySelector(".github-pull-ages");
+    const said = () => JSON.stringify([
+      link.getAttribute("href"),
+      link.getAttribute("aria-label"),
+      link.dataset.tipText ?? null,
+      link.getAttribute("aria-description"),
+    ]);
+    const shows = (node) => getComputedStyle(node).display !== "none";
+    const form = () => (shows(shownIcon) && !shows(shownBadge) && !sizers.some(shows)
+      ? "compact"
+      : !shows(shownIcon) && shows(shownBadge) && sizers.every(shows)
+        ? "full"
+        : "mixed");
+    const measured = () => ({ ages: r2(box(agesNode).width), agesLeft: r2(box(agesNode).left), slot: r2(box(readinessSlot).width) });
+    const forced = (how) => {
+      readinessSlot.style.display = how === "none" ? "none" : "";
+      shownBadge.style.display = how === "full" ? "block" : "";
+      for (const sizer of sizers) sizer.style.display = how === "full" ? "block" : "";
+      shownIcon.style.display = how === "full" ? "none" : "";
+      const read = measured();
+      readinessSlot.style.display = "";
+      shownBadge.style.display = "";
+      for (const sizer of sizers) sizer.style.display = "";
+      shownIcon.style.display = "";
+      return read;
+    };
+    const widths = [];
+    for (const each of change.sweep.widths) {
+      pane.style.width = each + "px";
+      await frames();
+      widths.push({
+        width: each,
+        row: r2(box(row).width),
+        font: parseFloat(getComputedStyle(row).fontSize),
+        gap: parseFloat(getComputedStyle(row).columnGap),
+        form: form(),
+        said: said(),
+        glyph: r2(box(shownIcon).width),
+        natural: measured(),
+        before: forced("none"),
+        full: forced("full"),
+      });
+    }
+    const vocabulary = await import("/github/pull-readiness.js");
+    const verdicts = [];
+    for (const each of change.sweep.verdictWidths) {
+      pane.style.width = each + "px";
+      await frames();
+      const start = measured();
+      const moved = [];
+      for (const verdict of Object.keys(vocabulary.VERDICT_GLYPHS)) {
+        for (const label of vocabulary.SLOT_LABELS) {
+          const shown = { verdict, tone: "attention", label };
+          link.replaceChildren(
+            vocabulary.readinessBadge(shown),
+            vocabulary.readinessIcon(shown, { named: false }),
+          );
+          const now = measured();
+          if (Math.abs(now.agesLeft - start.agesLeft) > 0.5 || Math.abs(now.ages - start.ages) > 0.5 || Math.abs(now.slot - start.slot) > 0.5) {
+            moved.push({ verdict, label, ...now });
+          }
+        }
+      }
+      link.replaceChildren(shownBadge, shownIcon);
+      verdicts.push({ width: each, form: form(), cases: Object.keys(vocabulary.VERDICT_GLYPHS).length * vocabulary.SLOT_LABELS.length, start, moved });
+    }
+    pane.style.width = width + "px";
+    readinessSweep = { widths, verdicts };
+  }
   const result = {
     edges,
     agesRow,
     readiness,
+    readinessSweep,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
@@ -1983,6 +2068,7 @@ const PARTS = [
   "summary-wait",
   "cold-landing",
   "corner",
+  "readiness",
 ];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
@@ -2217,12 +2303,17 @@ async function main() {
               }
             }
             if (shape.readiness !== null) {
-              // The readiness slot is its widest label's badge, so whichever verdict the
-              // server gives moves nothing in the row (mb-io36).
+              // The readiness slot is its widest label's badge, or in a narrow row the glyph
+              // alone, so whichever verdict the server gives moves nothing in the row (mb-io36).
               check(
-                `${where}: the readiness slot is as wide as its widest label, and no label moves the row`,
+                `${where}: the readiness slot is as wide as its widest label, or its glyph in a narrow row, and no label moves the row`,
                 shape.readiness.labels > 0 &&
-                  Math.abs(shape.readiness.slot - shape.readiness.widest.width) <= 0.5 &&
+                  Math.abs(
+                    shape.readiness.slot -
+                      (shape.readiness.compact
+                        ? shape.readiness.glyph
+                        : shape.readiness.widest.width),
+                  ) <= 0.5 &&
                   shape.readiness.moved.length === 0,
                 JSON.stringify(shape.readiness),
               );
@@ -2716,6 +2807,91 @@ async function main() {
       // reading column ends short of the button and two where it reaches it, in both themes,
       // with a title of one line and one cut short at two. At the middle width the pointer is
       // put on the chevron, then moved away.
+      if (runs("readiness")) {
+        // The readiness badge in a narrow row (mb-io36): the row of ages beside one stack's
+        // chip, the row's 420 px case, from 400 to 760 px, and a pixel at a time around the
+        // bound github/styles.css sets (`@container github-pull-opened`). The full badge is
+        // drawn exactly where it leaves the ages what they had at 420 px before it came, the
+        // glyph alone below that, and the link says the same in either form.
+        const sweepWidths = [420, 560];
+        for (let each = 400; each <= 760; each += 8) {
+          sweepWidths.push(each);
+        }
+        for (let each = 540; each <= 556; each += 1) {
+          sweepWidths.push(each);
+        }
+        const shape = await browser.evaluate(
+          `(${MEASURE})("current", ${JSON.stringify({ stackChip: 1, sweep: { widths: [...new Set(sweepWidths)].sort((a, b) => a - b), verdictWidths: [420, 760] } })}, "", 760)`,
+        );
+        const sweep = shape.readinessSweep;
+        check(
+          "the readiness part measures the slot",
+          sweep !== null,
+          JSON.stringify(shape.readiness),
+        );
+        if (sweep !== null) {
+          const at420 = sweep.widths.find((each) => each.width === 420);
+          // What the ages had at the row's 420 px limit before the badge came.
+          const before = at420.before.ages;
+          const said = new Set(sweep.widths.map((each) => each.said));
+          check(
+            "the link's address, name, and tooltip are one in both forms",
+            said.size === 1,
+            JSON.stringify([...said]),
+          );
+          for (const each of sweep.widths) {
+            const where = `${each.width} px (a ${each.row} px row)`;
+            check(`${where}: the slot draws one form`, each.form !== "mixed", JSON.stringify(each));
+            if (each.form === "full") {
+              check(
+                `${where}: the full badge leaves the ages what they had at 420 px before it`,
+                each.full.ages >= before - 0.5 &&
+                  Math.abs(each.natural.slot - each.full.slot) <= 0.5,
+                JSON.stringify({ before, ...each }),
+              );
+            } else if (each.form === "compact") {
+              // Below the bound, which is the measured width rounded up to a tenth of an em.
+              check(
+                `${where}: the glyph alone is drawn only where the full badge would leave the ages less`,
+                each.full.ages < before + 0.1 * each.font,
+                JSON.stringify({ before, ...each }),
+              );
+              check(
+                `${where}: the compact slot is the glyph's width`,
+                Math.abs(each.natural.slot - each.glyph) <= 0.5,
+                JSON.stringify(each),
+              );
+            }
+          }
+          check("420 px draws the glyph alone", at420.form === "compact", JSON.stringify(at420));
+          check(
+            "760 px draws the full badge",
+            sweep.widths.find((each) => each.width === 760)?.form === "full",
+          );
+          // The glyph and the row's gap are all the readiness takes from the ages at 420 px.
+          check(
+            "at 420 px the ages keep what they had before the badge, less the glyph and its gap",
+            at420.natural.ages >= before - (at420.glyph + at420.gap) - 0.5,
+            JSON.stringify({ before, ...at420 }),
+          );
+          for (const each of sweep.verdicts) {
+            check(
+              `${each.width} px: no verdict's glyph or label moves the ages or the slot in the ${each.form} form`,
+              each.cases > 0 &&
+                each.moved.length === 0 &&
+                each.form === (each.width === 420 ? "compact" : "full"),
+              JSON.stringify(each),
+            );
+          }
+          if (process.env.READINESS_SLOT_REPORT) {
+            const firstFull = sweep.widths.find((each) => each.form === "full");
+            process.stderr.write(
+              `readiness part: before at 420 px ${before}; at 420 px ${JSON.stringify(at420)}; first full ${JSON.stringify(firstFull)}\n`,
+            );
+          }
+        }
+        lap("the readiness forms measured");
+      }
       if (runs("corner")) {
         // The server's default reading width, which the caller passes from settings.py.
         const maxChars = Number(process.env.METABROWSER_DOC_MAX_CHARS_DEFAULT);

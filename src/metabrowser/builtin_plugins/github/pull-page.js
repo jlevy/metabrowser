@@ -61,6 +61,7 @@ import {
 } from "./guide-reads.js";
 import {
   readinessBadge,
+  readinessIcon,
   readinessSizers,
   requirementBadge,
   STATUS_TONES,
@@ -6861,6 +6862,11 @@ export function mountPullPage(container, ctx, mb) {
    * on, its tooltip the requirements that are not met. Kept across paints while what it says
    * is the same. Answers whether there is one to show.
    *
+   * The link holds the verdict's glyph too (`readinessIcon`), hidden from assistive
+   * technology, which a narrow row of ages shows in the badge's place
+   * (github/styles.css, `@container github-pull-opened`): the link's own name says the
+   * label in either form, so the two read alike.
+   *
    * @param {ReadinessModel | null} readiness
    */
   function paintReadiness(readiness) {
@@ -6872,10 +6878,9 @@ export function mountPullPage(container, ctx, mb) {
       headerPart("readiness", [verdict, tone, label, name, tip], () => {
         const link = pageLink({ number, tab: "checks" }, "github-pull-readiness-link", [
           readinessBadge({ verdict, tone, label }) ?? label,
+          readinessIcon({ verdict, tone, label }, { named: false }) ?? "",
         ]);
-        if (name !== label) {
-          link.setAttribute("aria-label", name);
-        }
+        link.setAttribute("aria-label", name);
         if (tip !== null) {
           link.dataset.tipText = tip;
           link.setAttribute("aria-description", tip);

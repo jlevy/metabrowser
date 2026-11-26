@@ -340,6 +340,9 @@
    strut holds the row at a chip's height, and a page with no record yet holds the line with
    no badge. The row positions the stack's menu, which hangs from its end. */
 .github-pull-opened {
+  /* What a narrow row's readiness badge is measured against (`.github-pull-readiness-slot`);
+     a stack's page names its own row (`github-pull-stack-opened`). */
+  container: github-pull-opened / inline-size;
   position: relative;
   display: flex;
   flex-wrap: nowrap;
@@ -457,11 +460,11 @@
    checks finish moves nothing in the row. A closed or merged pull request has no slot.
    Measured in headless Chrome for Testing 158, 2026-11-26: the slot is 118.48 px, the badge
    of the widest label, "Changes requested", at every verdict and width, and the row keeps
-   Browse code whole at its limits, 420 px beside one stack's chip, with 23.8 px of the ages'
-   195 left, and 560 px beside two stacks' named chips, with 62.23 px; at 560 px beside one
-   chip the ages keep 163.8 px. So no label is shortened: the ages give way first, as they do
-   to a chip (tests/dom/github-pull-header-chrome.mjs, "the readiness slot is as wide as its
-   widest label"). */
+   Browse code whole at its limits, 420 px beside one stack's chip and 560 px beside two
+   stacks' named chips. So no label is shortened. But the ages give way first, and beside
+   one chip at 420 px the full badge left them 23.8 px of their 195, where they had 150.28
+   before the badge came; so a narrow row draws the verdict's glyph alone
+   (`@container github-pull-opened`, after the glyph's rules below). */
 .github-pull-readiness-slot {
   display: inline-grid;
   flex: none;
@@ -1250,6 +1253,31 @@
 .github-pull-readiness-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
+}
+/* The link's glyph, shown only in a narrow row's compact form (below): after the glyph's
+   own rule above, whose display it overrides. */
+.github-pull-readiness-link > .github-pull-readiness-icon {
+  display: none;
+}
+/* A narrow row of ages draws the verdict's glyph in its tone in the badge's place, and the
+   slot is the glyph's width: the link, its name, and its tooltip are the badge's, so it says
+   the same. The bound is where the full badge leaves the ages what they had before it, at
+   the row's 420 px limit: there the ages had 150.28 px beside one stack's chip, and the full
+   badge leaves them that much from a row of 488.48 px (a 546.48 px pane), 34.89em at the
+   row's 14 px type; the bound is 35em, 490 px, where it leaves them 151.8 px. Below it the
+   glyph costs the ages 22 px, its 14 px and the row's gap, so at 420 px they keep 128.28 px.
+   Measured in headless Chrome for Testing 158, 2026-11-26, by setting a pane's width a pixel
+   at a time; tests/dom/github-pull-header-chrome.mjs ("readiness" part) holds each form to
+   its side of the bound. Two stacks' named chips take 101.56 px more of the row, which the
+   bound does not answer: Browse code stays whole beside them from 560 px. */
+@container github-pull-opened (width < 35em) {
+  .github-pull-readiness-link > .github-pull-badge,
+  .github-pull-readiness-slot > .github-pull-badge-sizer {
+    display: none;
+  }
+  .github-pull-readiness-link > .github-pull-readiness-icon {
+    display: inline-flex;
+  }
 }
 
 /* ── The Pulls tab ───────────────────────────────────────────────

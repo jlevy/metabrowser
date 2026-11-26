@@ -4224,11 +4224,22 @@ async function run() {
       .join(" ");
     assert.equal(readinessLink.dataset.tipText, notMet);
     assert.equal(readinessLink.getAttribute("aria-description"), notMet);
-    const [verdictBadge] = readinessLink.children;
+    // The badge, and the verdict's glyph a narrow row draws in its place (github/styles.css,
+    // `@container github-pull-opened`), hidden from assistive technology: the link's own name
+    // says the label in either form.
+    const [verdictBadge, verdictGlyph] = readinessLink.children;
+    assert.equal(readinessLink.children.length, 2);
     assert.deepEqual(
       [verdictBadge.dataset.verdict, verdictBadge.dataset.tone, verdictBadge.textContent],
       [shownReadiness.verdict, shownReadiness.tone, shownReadiness.label],
     );
+    assert.ok(verdictGlyph.classes.has("github-pull-readiness-icon"));
+    assert.deepEqual(
+      [verdictGlyph.dataset.verdict, verdictGlyph.dataset.tone],
+      [shownReadiness.verdict, shownReadiness.tone],
+    );
+    assert.equal(verdictGlyph.getAttribute("aria-hidden"), "true");
+    assert.equal(verdictGlyph.getAttribute("aria-label"), null);
     assert.ok(readinessSizers.length > 0);
     assert.ok(
       readinessSizers.every(

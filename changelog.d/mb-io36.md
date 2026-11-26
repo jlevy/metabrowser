@@ -2,7 +2,8 @@
   after its state, such as **Merge conflicts**, **Checks pending**, or **Ready to
   merge**, green, yellow, or red as GitHub’s CLI colors it, whose tooltip lists what
   stands in the way and which opens **Checks**. The badge keeps one width whatever it
-  says, so nothing in its row moves as checks finish
+  says, so nothing in its row moves as checks finish, and in a narrow pane it is the
+  verdict’s icon alone, so the dates beside it keep their room
   ([A Pull Request’s Readiness](docs/design-system.md#a-pull-requests-readiness)).
 
 - The **Checks** tab opens with **Merge status**: the verdict, then a row for each thing

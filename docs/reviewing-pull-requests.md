@@ -144,6 +144,7 @@ hover.
 The verdict is green when nothing stands in the way, yellow while the pull request
 waits on a check, a reviewer, the merge queue, or GitHub itself, and red when its author
 must change something.
+In a narrow pane it is its icon alone, in the same color.
 Hovering it lists what stands in the way, and clicking it opens **Checks**. Until GitHub
 has answered for the head shown it says **Checking**; a closed or merged pull request
 shows its state alone.
