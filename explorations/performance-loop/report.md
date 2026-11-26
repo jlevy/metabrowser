@@ -129,6 +129,8 @@ against one that did.
 | exp-106 | [Focused HTTP Loop for Named API Cases](experiments/exp-106-focused-http-loop.md) | H129 | `requests recorded for the short API iteration` | diagnostic |
 | exp-107 | [Upstream KPress Sanitizer Diagnostics](experiments/exp-107-upstream-kpress-diagnostics.md) | H130 | `first seeded PR description through the real server` | diagnostic |
 | exp-108 | [Integrated Chrome and Native Startup Diagnostics](experiments/exp-108-integrated-browser-native-diagnostics.md) | H125, H131 | `first useful content after ready` | diagnostic |
+| exp-109 | [Prepare the Git Diff Assets During Browser Idle](experiments/exp-109-browser-idle-diff-assets.md) | H131 | `first Commits click diff asset requests` | diagnostic |
+| exp-110 | [An Acquired Store Still Needs Comparison Admission](experiments/exp-110-existing-store-admission.md) | H127 | `exact idle comparison request admission` | diagnostic |
 
 ## Absolute numbers, per condition
 
