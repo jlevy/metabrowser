@@ -14,6 +14,9 @@ the design that follows from them is
 stdout, and binds plugin code to the plugin environment’s own Metabrowser through
 private names (`_set_root_dir`, `_PLUGIN_ADAPTERS`). It measured transport, memory, and
 log-parsing cost. The plan rejects its binding.
+A week after the runs, Metabrowser 0.13.0 replaced `_PLUGIN_ADAPTERS` with `_ADAPTERS`
+and a public `registered_log_adapters`, so this worker now runs only on an environment
+older than 0.13.0. That is the skew the second shape removes.
 
 **The second shape** (`runtime_worker.py`, `runtime_metabrowser.py`, `host_runtime.py`)
 is the plan’s:

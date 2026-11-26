@@ -11,7 +11,8 @@ SPIKE SHORTCUTS, which the plan replaces with the plugin SDK's binding:
 - ``set_root`` calls the environment's own ``metabrowser.paths_safe._set_root_dir``, a
   private name of whatever Metabrowser version that environment holds.
 - adapter names and parser factories come from that version's private
-  ``_PLUGIN_ADAPTERS``.
+  ``_PLUGIN_ADAPTERS``, which Metabrowser 0.13.0 renamed, so this worker runs only on an
+  environment older than that: the version skew the plan's runtime removes.
 - a hook gets a Starlette ``Request``, Starlette being the plugins' own dependency.
 """
 
@@ -68,6 +69,14 @@ def _version(dist: str) -> str | None:
         return None
 
 
+def _adapter_registry() -> dict[str, Any]:
+    """The environment's private adapter registry, by the name it had before 0.13.0."""
+    from metabrowser.logutil import parsing
+
+    registry: dict[str, Any] = vars(parsing)["_PLUGIN_ADAPTERS"]
+    return registry
+
+
 def op_hello(_header: Header, _body: bytes) -> Reply:
     return {
         "protocol": PROTOCOL,
@@ -98,9 +107,7 @@ def op_list(_header: Header, _body: bytes) -> Reply:
             errors.append(f"{ep.name}: {type(exc).__name__}: {exc}")
     adapters: list[str] = []
     try:
-        from metabrowser.logutil import parsing
-
-        adapters = sorted(parsing._PLUGIN_ADAPTERS)  # pyright: ignore[reportPrivateUsage]
+        adapters = sorted(_adapter_registry())
     except Exception as exc:  # an environment without the registry has no adapters
         errors.append(f"adapters: {exc}")
     return {"plugins": plugins, "adapters": adapters, "errors": errors}, b""
@@ -171,13 +178,10 @@ def op_detect(header: Header, _body: bytes) -> Reply:
 
 
 def op_parse(header: Header, body: bytes) -> Reply:
-    from metabrowser.logutil import parsing
-
     stream: str = header["stream"]
     parser = _streams.get(stream)
     if parser is None:
-        registry = parsing._PLUGIN_ADAPTERS  # pyright: ignore[reportPrivateUsage]
-        parser = registry[header["adapter"]][1]()
+        parser = _adapter_registry()[header["adapter"]][1]()
         _streams[stream] = parser
     started = time.perf_counter()
     events: list[Any] = []
