@@ -123,9 +123,9 @@ are at their transfer budget (`performance-budgets.toml`).
 A URL is a **repository link** when its scheme is `http` or `https`, its host is
 `github.com` or `www.github.com`, it carries no credentials or port, and its first two
 path segments are ASCII names of the served repository, compared without case and with
-one trailing `.git` removed. Anything else is left as it is, and so is a link whose query
-holds a `%` that starts no escape, which a raw HTML link can carry and no `/view/`
-address can spell.
+one trailing `.git` removed.
+Anything else is left as it is, and so is a link whose query holds a `%` that starts no
+escape, which a raw HTML link can carry and no `/view/` address can spell.
 
 | Repository link | In-app target |
 | --- | --- |
@@ -162,7 +162,8 @@ path-relative reference becomes against that page, and is read as the repository
 names, at the head. A pull-request address begins with GitHub’s `new`, the page that
 opens a pull request, or with a number followed by nothing or one of a pull request’s
 pages (`files`, `changes`, `checks`, `commits`), so `7/files` is still pull request 7’s
-Changes and `2024/notes.md` is a folder named with digits. A bare `pull` is no reference.
+Changes and `2024/notes.md` is a folder named with digits.
+A bare `pull` is no reference.
 The path opens where Metabrowser can show that file without switching what it serves:
 
 1. in place at `/view/<path>`, when the served revision is the head and the path is

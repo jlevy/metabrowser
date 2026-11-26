@@ -29,8 +29,9 @@ null, for a link left as written.
   commit by its full ID, and the pull request list open their pages.
   Another branch, a tag, an abbreviated commit, an issue, a comparison, a comment’s
   fragment, a query the page would lose, another repository or host, an owner spelled
-  with a sign that folds to a letter, and a malformed address stay external, a query with
-  a `%` that starts no escape among them, since the navigation codec cannot spell it.
+  with a sign that folds to a letter, and a malformed address stay external, a query
+  with a `%` that starts no escape among them, since the navigation codec cannot spell
+  it.
 - `subfolder` serves `packages/handbook` of the same checkout: a path outside it, the
   repository’s root among them, stays external.
 - `pin` is a mirror pinned at `main`, whose addresses spell each path in the GitPath
@@ -51,11 +52,12 @@ An in-app link loses the new tab the allowlist gave it; a plain click on a `/vie
 target opens it through `metabrowser.navigation.open`, a pull request’s page opens
 another in place through the page’s own router, and every other click is the browser’s.
 A text read again once the page knows the files its pull request changes reads each link
-as the text wrote it, which the first pass kept, and moves the link’s one click handler to
-the new answer.
-A commit’s message has no text context, so its path-relative reference stays as written.
-`tests/test_repository_links_js.py` holds these answers to the server’s own reading of
-the same URLs.
+as the text wrote it, which the first pass kept, and moves the link’s one click handler
+to the new answer.
+A commit’s message has no text context, so its path-relative reference
+stays as written.
+`tests/test_repository_links_js.py` holds these answers to the server’s
+own reading of the same URLs.
 
 ```console
 $ node tests/dom/repository-links-session.js

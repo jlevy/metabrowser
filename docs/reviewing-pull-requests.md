@@ -247,9 +247,10 @@ one paragraph, and a blank line starts the next.
 A Mermaid block in a note shows as code.
 Write a link to a file in a note as its path from the repository’s root, such as
 `docs/plan.md`: it opens that file at the pull request’s head, here when Metabrowser can
-show it and on GitHub otherwise. GitHub shows the guide’s block as code, so such a link
-costs nothing there; in the description, which GitHub renders, a path like this leads
-nowhere on GitHub, so write a full link there if its readers matter.
+show it and on GitHub otherwise.
+GitHub shows the guide’s block as code, so such a link costs nothing there; in the
+description, which GitHub renders, a path like this leads nowhere on GitHub, so write a
+full link there if its readers matter.
 A full GitHub link into the repository opens its page in Metabrowser when there is one
 ([Links in a Pull Request’s Text](#links-in-a-pull-requests-text)). A note whose render
 takes too long, or fails, shows as typed, with its line breaks kept and the line a
