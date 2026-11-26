@@ -5,8 +5,12 @@ title: Unify diff presentation across Metabrowser reviews
 kind: epic
 status: in_progress
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-25-diff-presentation.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/871
+    at: 2026-11-26T06:45:44.792Z
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -19,6 +23,6 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T04:21:03.039Z
-updated_at: 2026-11-26T05:06:12.923Z
+updated_at: 2026-11-26T06:45:44.793Z
 started_at: 2026-11-26T04:21:30.635Z
 ---
