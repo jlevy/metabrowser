@@ -117,7 +117,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, Final, Literal, cast
 
-from metabrowser import kpress_adapter
+from metabrowser import event_log, kpress_adapter
 from metabrowser.diff.format import FilePatch
 
 if TYPE_CHECKING:
@@ -921,7 +921,13 @@ class ProjectionWorker:
                 return
             self._starts = 0
         self._starts += 1
-        self._starting = loop.create_task(self._launch())
+        # A job in the event log, so the time a page waited for a start is told apart from
+        # the projection it then waited for (mb-1jp0).
+        self._starting = loop.create_task(
+            event_log.job(
+                self._launch(), "markdown_projection_worker.start", attrs={"renders": renders}
+            )
+        )
 
     async def _launch(self) -> None:
         try:
