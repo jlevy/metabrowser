@@ -267,8 +267,10 @@ const COMMIT_IDS = `(() => {
 
 /** The main tab in front. */
 const FRONT = `document.querySelector(".tab-btn.active")?.dataset.tab`;
-// Commits is in front at a commit's address, with its history's first row drawn.
-const COMMITS_LANDED = `(${FRONT} === "git" && location.pathname.startsWith("/commit/") &&
+// Commits is in front at a commit's address, with its history's first row drawn. The tab
+// is named by its label, as clickTab names it.
+const COMMITS_LANDED = `(document.querySelector(".tab-btn.active")?.textContent.trim() === "Commits" &&
+  location.pathname.startsWith("/commit/") &&
   document.querySelector('.git-graph-row[data-ordinal="0"]') !== null)`;
 
 /** Bring the main tab named *label* to the front by its button. */
