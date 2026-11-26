@@ -154,7 +154,10 @@
    * in the GitPath wire (static/git-path.js), a folder's as its inventory escapes `%`. A
    * rendered diff's head link is always a pin's address, as `viewFileUrl` in
    * static/repository-links.js reads it. A path that does not decode names nothing a card
-   * can say, so it has none. Pure.
+   * can say, so it has none. A file's or folder's subject also keeps the navigation target
+   * as the address spelled it (`target`), so a provider looks it up and opens it by the
+   * resolver's own spelling rather than spelling the display path again: a view target's
+   * own, and a head link's wire path with its fragment decoded. Pure.
    *
    * @param {Target | null | undefined} target
    * @param {"filesystem" | "git_revision"} [sourceKind] The page's (`mb.sourceKind()`).
@@ -169,16 +172,39 @@
     }
     if (target.kind === "view") {
       const opens = target.localization === "working-tree" ? "working-tree" : "here";
-      return pathSubject(target.target?.path, sourceKind === "git_revision", opens);
+      return pathSubject(target.target, sourceKind === "git_revision", opens);
     }
     if (target.kind === "view-head" && typeof target.href === "string") {
       if (!target.href.startsWith(VIEW_PREFIX)) {
         return null;
       }
-      const [wire = ""] = target.href.slice(VIEW_PREFIX.length).split("#", 1);
-      return pathSubject(wire, true, "here");
+      const address = target.href.slice(VIEW_PREFIX.length);
+      const cut = address.indexOf("#");
+      if (cut < 0) {
+        return pathSubject({ path: address }, true, "here");
+      }
+      const fragment = safeDecode(address.slice(cut + 1));
+      return fragment === null
+        ? null
+        : pathSubject(
+            { path: address.slice(0, cut), ...(fragment ? { fragment } : {}) },
+            true,
+            "here",
+          );
     }
     return null;
+  }
+
+  /**
+   * @param {string} value
+   * @returns {string | null}
+   */
+  function safeDecode(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch (_error) {
+      return null;
+    }
   }
 
   /**
@@ -211,16 +237,26 @@
   }
 
   /**
-   * A file or folder by its address's path: a folder when it ends in `/` or is the root.
+   * A file or folder by its navigation target: a folder when its path ends in `/` or is the
+   * root. The target is kept, copied, with only the fields a navigation target has.
    *
-   * @param {unknown} raw
+   * @param {Extract<Target, {kind: "view"}>["target"] | undefined} address
    * @param {boolean} wire Whether the path is in the GitPath wire.
    * @param {"here" | "working-tree"} opens
    * @returns {Subject | null}
    */
-  function pathSubject(raw, wire, opens) {
+  function pathSubject(address, wire, opens) {
+    const raw = address?.path;
     if (typeof raw !== "string") {
       return null;
+    }
+    /** @type {{path: string, query?: string, fragment?: string}} */
+    const target = { path: raw };
+    if (typeof address?.query === "string") {
+      target.query = address.query;
+    }
+    if (typeof address?.fragment === "string") {
+      target.fragment = address.fragment;
     }
     const folder = raw === "" || raw.endsWith("/");
     const spelled = folder ? raw.slice(0, -1) : raw;
@@ -234,7 +270,12 @@
     if (path === null) {
       return null;
     }
-    return Object.freeze({ kind: folder ? "folder" : "file", path, opens });
+    return Object.freeze({
+      kind: folder ? "folder" : "file",
+      path,
+      opens,
+      target: Object.freeze(target),
+    });
   }
 
   /** @returns {"filesystem" | "git_revision"} */

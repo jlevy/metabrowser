@@ -181,9 +181,12 @@ fit (Follow-ups).
   never aborted.
 - `window.MetabrowserLinkPreviews.subject(target, sourceKind?)`: what a target names,
   pure: `pull` (`number`, `tab`, `file`), `stack` (`number`, `file`), `commit`
-  (`revision`), `file` or `folder` (`path`, `opens`), or `pulls`. A `/view/` path is
-  read as the page’s source kind spells it, `mb.sourceKind()` when not given, since only
-  that tells a pin’s GitPath wire from a folder’s name that looks like one.
+  (`revision`), `file` or `folder` (`path`, `opens`, `target`), or `pulls`. A `/view/`
+  path is read as the page’s source kind spells it, `mb.sourceKind()` when not given,
+  since only that tells a pin’s GitPath wire from a folder’s name that looks like one.
+  `path` is the display path the card shows, and `target` the navigation target as the
+  address spelled it, the resolver’s own, or for a head link its wire path and decoded
+  fragment, so a provider looks a file up and opens it by the resolver’s spelling.
 - `window.MetabrowserLinkPreviews.card(subject, preview, { linkText, authorTitle })`:
   the one renderer, data in and escaped markup out.
 - `window.MetabrowserLinkPreviews.INTENT_MS`: the intent delay, the tree’s

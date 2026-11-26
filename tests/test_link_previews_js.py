@@ -196,12 +196,41 @@ def test_a_surface_puts_away_only_its_own_card() -> None:
 
 
 def test_a_pins_address_reads_as_the_same_path() -> None:
-    subjects = {row["label"]: row.get("subject") for row in _session()["subjects"]}
-    checkout = subjects["a file at the served commit"]
-    assert subjects["the same file on the pin"] == checkout
-    assert subjects["a rendered diff's head link"] == checkout
-    assert subjects["the same file on the pin, as the page's source kind reads it"] == checkout
+    rows = _session()["subjects"]
+    subjects = {row["label"]: row.get("subject") for row in rows}
+    shown = ("kind", "path", "opens")
+    checkout = {key: subjects["a file at the served commit"][key] for key in shown}
+    for label in (
+        "the same file on the pin",
+        "a rendered diff's head link",
+        "the same file on the pin, as the page's source kind reads it",
+    ):
+        assert {key: subjects[label][key] for key in shown} == checkout, label
     assert subjects["a head link whose name is not text"] is None
+
+
+def test_a_files_subject_keeps_the_resolvers_own_spelling() -> None:
+    """A provider opens the address the resolver spelled, never the display path again."""
+
+    rows = _session()["subjects"]
+    subjects = {row["label"]: row.get("subject") for row in rows}
+    wire = next(row["path"] for row in rows if row["label"] == "a pin's address for it")
+    assert subjects["the same file on the pin"]["target"] == {"path": wire}
+    assert subjects["a file at the served commit"]["target"] == {"path": "docs/guide.md"}
+    assert subjects["a name holding %"]["target"] == {"path": "docs/100%25.md"}
+    assert subjects["a folder on the served branch"]["target"] == {"path": "docs/"}
+    assert subjects["a file with a query and an anchor"]["target"] == {
+        "path": "docs/guide.md",
+        "query": "plain=1",
+        "fragment": "install",
+    }
+    # A head link's target is its wire path and its fragment, decoded.
+    assert subjects["a rendered diff's head link"]["target"] == {
+        "path": wire,
+        "fragment": "install",
+    }
+    assert subjects["a head link with an escaped anchor"]["target"]["fragment"] == "über-uns"
+    assert subjects["a head link whose anchor does not decode"] is None
 
 
 def test_the_card_loads_with_the_resolver_and_is_no_startup_script() -> None:

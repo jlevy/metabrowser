@@ -29,8 +29,11 @@ the session read the `tooltip` the reader would see.
   commit, the pull request list, a file or folder by a branch’s link, which opens in the
   served working tree, or by the served commit’s, and the root.
   A pin’s GitPath wire decodes to the same path, by the page’s source kind, and so does
-  a rendered diff’s head link; a name that is not text, another site, and a malformed
-  route name nothing.
+  a rendered diff’s head link; a name that is not text, an anchor that does not decode,
+  another site, and a malformed route name nothing.
+  A file’s or folder’s subject keeps the navigation target as the address spelled it,
+  the resolver’s own or a head link’s wire path with its fragment decoded, for a
+  provider to look up and open.
 - `cards` is what `card` draws for each kind with and without a provider’s data.
   A line that is the link’s own text, in any case and spacing, or a line above is left
   out, and the first line kept leads with the mark.
@@ -120,7 +123,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "file",
     "path": "docs/guide.md",
-    "opens": "working-tree"
+    "opens": "working-tree",
+    "target": {
+     "path": "docs/guide.md"
+    }
    }
   },
   {
@@ -128,7 +134,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "file",
     "path": "docs/guide.md",
-    "opens": "here"
+    "opens": "here",
+    "target": {
+     "path": "docs/guide.md"
+    }
    }
   },
   {
@@ -136,7 +145,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "folder",
     "path": "docs",
-    "opens": "working-tree"
+    "opens": "working-tree",
+    "target": {
+     "path": "docs/"
+    }
    }
   },
   {
@@ -144,7 +156,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "folder",
     "path": "",
-    "opens": "working-tree"
+    "opens": "working-tree",
+    "target": {
+     "path": ""
+    }
    }
   },
   {
@@ -152,7 +167,23 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "file",
     "path": "docs/100%.md",
-    "opens": "working-tree"
+    "opens": "working-tree",
+    "target": {
+     "path": "docs/100%25.md"
+    }
+   }
+  },
+  {
+   "label": "a file with a query and an anchor",
+   "subject": {
+    "kind": "file",
+    "path": "docs/guide.md",
+    "opens": "working-tree",
+    "target": {
+     "path": "docs/guide.md",
+     "query": "plain=1",
+     "fragment": "install"
+    }
    }
   },
   {
@@ -164,7 +195,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "file",
     "path": "docs/guide.md",
-    "opens": "here"
+    "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
+    }
    }
   },
   {
@@ -172,7 +206,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "folder",
     "path": "docs",
-    "opens": "here"
+    "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/"
+    }
    }
   },
   {
@@ -180,7 +217,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "folder",
     "path": "g1-ZG9jcw",
-    "opens": "here"
+    "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/"
+    }
    }
   },
   {
@@ -188,8 +228,28 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "file",
     "path": "docs/guide.md",
-    "opens": "here"
+    "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ",
+     "fragment": "install"
+    }
    }
+  },
+  {
+   "label": "a head link with an escaped anchor",
+   "subject": {
+    "kind": "file",
+    "path": "docs/guide.md",
+    "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ",
+     "fragment": "über-uns"
+    }
+   }
+  },
+  {
+   "label": "a head link whose anchor does not decode",
+   "subject": null
   },
   {
    "label": "a head link whose name is not text",
@@ -220,7 +280,10 @@ $ node tests/dom/link-previews-session.js
    "subject": {
     "kind": "file",
     "path": "docs/guide.md",
-    "opens": "here"
+    "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
+    }
    }
   }
  ],

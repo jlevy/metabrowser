@@ -417,6 +417,11 @@ function subjects() {
   read("a folder on the served branch", local("/tree/main/docs", checkout, folder));
   read("the repository", local("", checkout, folder));
   read("a name holding %", local("/blob/main/docs/100%25.md", checkout, folder), "filesystem");
+  read(
+    "a file with a query and an anchor",
+    local("/blob/main/docs/guide.md?plain=1#install", checkout, folder),
+    "filesystem",
+  );
   const pinned = local(`/blob/${PINNED}/docs/guide.md`, pin, { sourceKind: "git_revision" });
   rows.push({ label: "a pin's address for it", path: pinned.target.path });
   read("the same file on the pin", pinned, "git_revision");
@@ -427,6 +432,14 @@ function subjects() {
   read("a pin's folder read as a folder's", pinFolder, "filesystem");
   const wire = page.sandbox.MetabrowserGitPath.wire("docs/guide.md");
   read("a rendered diff's head link", { kind: "view-head", href: `/view/${wire}#install` });
+  read("a head link with an escaped anchor", {
+    kind: "view-head",
+    href: `/view/${wire}#%C3%BCber-uns`,
+  });
+  read("a head link whose anchor does not decode", {
+    kind: "view-head",
+    href: `/view/${wire}#%E0%A4%A`,
+  });
   read("a head link whose name is not text", { kind: "view-head", href: "/view/g1-_w" });
   read("a head link that is not a file's", { kind: "view-head", href: "/pull/12" });
   read("a link to another site", { kind: "external", url: `${base}/issues/1` });
@@ -491,10 +504,13 @@ function cards(page) {
   const checks = previews.subject(pullRoute(12, "checks"));
   const stack = Object.freeze({ kind: "stack", number: 3, file: "src/app.py" });
   const commit = Object.freeze({ kind: "commit", revision: COMMIT });
-  const file = Object.freeze({ kind: "file", path: "docs/guide.md", opens: "here" });
-  const branchFile = Object.freeze({ kind: "file", path: "docs/guide.md", opens: "working-tree" });
-  const docs = Object.freeze({ kind: "folder", path: "docs", opens: "here" });
-  const root = Object.freeze({ kind: "folder", path: "", opens: "working-tree" });
+  /** A file's or folder's subject as the resolver's view target names it. */
+  const view = (path, localization) =>
+    previews.subject({ kind: "view", target: { path }, localization }, "filesystem");
+  const file = view("docs/guide.md", "revision");
+  const branchFile = view("docs/guide.md", "working-tree");
+  const docs = view("docs/", "revision");
+  const root = view("", "working-tree");
   const pulls = Object.freeze({ kind: "pulls" });
   const title = "fix(parser): keep a heading's trailing text";
   const rows = [

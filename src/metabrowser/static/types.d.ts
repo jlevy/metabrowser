@@ -4024,6 +4024,9 @@ declare global {
         path: string;
         /** "working-tree" for a link to a branch, which opens whatever is served. */
         opens: "here" | "working-tree";
+        /** The navigation target as the address spelled it: a view target's own, or a head
+         *  link's GitPath wire path and decoded fragment. `card` does not read it. */
+        target: MetabrowserNavigationTarget;
       }>
     | Readonly<{ kind: "pulls" }>;
 
