@@ -86,7 +86,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 90,
@@ -106,7 +108,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }

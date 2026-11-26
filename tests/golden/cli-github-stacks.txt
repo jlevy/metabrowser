@@ -84,7 +84,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 90,
@@ -104,7 +106,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
@@ -161,7 +165,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 90,
@@ -181,7 +187,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
@@ -232,7 +240,21 @@ status: 200
       "labels": [
         [],
         []
-      ]
+      ],
+      "updated_at": "2026-09-17T08:08:00Z",
+      "leaders": {
+        "open": {
+          "number": 8,
+          "title": "Work item 8",
+          "state": "open",
+          "draft": false,
+          "author": "contributor",
+          "author_avatar_url": null,
+          "updated_at": "2026-09-17T08:08:00Z",
+          "head_oid": "0000000000000000000000000000000000000000",
+          "merged": false
+        }
+      }
     },
     {
       "number": 90,
@@ -252,7 +274,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
@@ -304,7 +328,21 @@ status: 200
         "labels": [
           [],
           []
-        ]
+        ],
+        "updated_at": "2026-09-17T08:08:00Z",
+        "leaders": {
+          "open": {
+            "number": 8,
+            "title": "Work item 8",
+            "state": "open",
+            "draft": false,
+            "author": "contributor",
+            "author_avatar_url": null,
+            "updated_at": "2026-09-17T08:08:00Z",
+            "head_oid": "0000000000000000000000000000000000000000",
+            "merged": false
+          }
+        }
       },
       {
         "number": 90,
@@ -324,7 +362,9 @@ status: 200
         ],
         "labels": [
           null
-        ]
+        ],
+        "updated_at": null,
+        "leaders": {}
       }
     ]
   },
@@ -381,7 +421,21 @@ status: 202
         "labels": [
           [],
           []
-        ]
+        ],
+        "updated_at": "2026-09-17T08:08:00Z",
+        "leaders": {
+          "open": {
+            "number": 8,
+            "title": "Work item 8",
+            "state": "open",
+            "draft": false,
+            "author": "contributor",
+            "author_avatar_url": null,
+            "updated_at": "2026-09-17T08:08:00Z",
+            "head_oid": "0000000000000000000000000000000000000000",
+            "merged": false
+          }
+        }
       },
       {
         "number": 90,
@@ -401,7 +455,9 @@ status: 202
         ],
         "labels": [
           null
-        ]
+        ],
+        "updated_at": null,
+        "leaders": {}
       }
     ]
   },
@@ -448,7 +504,21 @@ status: 200
       "labels": [
         [],
         []
-      ]
+      ],
+      "updated_at": "2026-09-17T08:08:00Z",
+      "leaders": {
+        "open": {
+          "number": 8,
+          "title": "Work item 8",
+          "state": "open",
+          "draft": false,
+          "author": "contributor",
+          "author_avatar_url": null,
+          "updated_at": "2026-09-17T08:08:00Z",
+          "head_oid": "0000000000000000000000000000000000000000",
+          "merged": false
+        }
+      }
     },
     {
       "number": 90,
@@ -468,7 +538,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
@@ -528,7 +600,21 @@ status: 202
         "labels": [
           [],
           []
-        ]
+        ],
+        "updated_at": "2026-09-17T08:08:00Z",
+        "leaders": {
+          "open": {
+            "number": 8,
+            "title": "Work item 8",
+            "state": "open",
+            "draft": false,
+            "author": "contributor",
+            "author_avatar_url": null,
+            "updated_at": "2026-09-17T08:08:00Z",
+            "head_oid": "0000000000000000000000000000000000000000",
+            "merged": false
+          }
+        }
       },
       {
         "number": 90,
@@ -548,7 +634,9 @@ status: 202
         ],
         "labels": [
           null
-        ]
+        ],
+        "updated_at": null,
+        "leaders": {}
       }
     ]
   },
@@ -595,7 +683,21 @@ status: 200
       "labels": [
         [],
         []
-      ]
+      ],
+      "updated_at": "2026-09-17T08:08:00Z",
+      "leaders": {
+        "open": {
+          "number": 8,
+          "title": "Work item 8",
+          "state": "open",
+          "draft": false,
+          "author": "contributor",
+          "author_avatar_url": null,
+          "updated_at": "2026-09-17T08:08:00Z",
+          "head_oid": "0000000000000000000000000000000000000000",
+          "merged": false
+        }
+      }
     },
     {
       "number": 90,
@@ -615,7 +717,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
@@ -671,7 +775,21 @@ status: 200
         "labels": [
           [],
           []
-        ]
+        ],
+        "updated_at": "2026-09-17T08:08:00Z",
+        "leaders": {
+          "open": {
+            "number": 8,
+            "title": "Work item 8",
+            "state": "open",
+            "draft": false,
+            "author": "contributor",
+            "author_avatar_url": null,
+            "updated_at": "2026-09-17T08:08:00Z",
+            "head_oid": "0000000000000000000000000000000000000000",
+            "merged": false
+          }
+        }
       },
       {
         "number": 90,
@@ -691,7 +809,9 @@ status: 200
         ],
         "labels": [
           null
-        ]
+        ],
+        "updated_at": null,
+        "leaders": {}
       }
     ]
   },
@@ -745,7 +865,21 @@ status: 200
       "labels": [
         [],
         []
-      ]
+      ],
+      "updated_at": "2026-09-17T08:08:00Z",
+      "leaders": {
+        "open": {
+          "number": 8,
+          "title": "Work item 8",
+          "state": "open",
+          "draft": false,
+          "author": "contributor",
+          "author_avatar_url": null,
+          "updated_at": "2026-09-17T08:08:00Z",
+          "head_oid": "0000000000000000000000000000000000000000",
+          "merged": false
+        }
+      }
     },
     {
       "number": 90,
@@ -765,7 +899,9 @@ status: 200
       ],
       "labels": [
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
