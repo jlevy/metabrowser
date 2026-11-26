@@ -547,7 +547,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
 {
   "panel": [
     {
-      "step": "mounted: every row's readiness column is there and empty; nothing is read yet",
+      "step": "mounted, and the reader scrolls to the end of the list's first window, which reads its second: every row's readiness column is there and empty; nothing is read yet",
       "rows": {
         "#106": {
           "glyph": null,
@@ -701,7 +701,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
         }
       },
       "requests": [
-        "GET /api/plugin/github/pull-statuses?numbers=106,105,104,103,102,101,100,99,… (98)"
+        "GET /api/plugin/github/pull-statuses?numbers=106,105,104,103,102,101,100,99,… (100)"
       ]
     },
     {
@@ -782,7 +782,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
       },
       "requests": [
         "POST /api/plugin/github/pulls-refresh: status_scan=started",
-        "GET /api/plugin/github/pull-statuses?numbers=106,105,104,103,102,101,100,99,… (98)"
+        "GET /api/plugin/github/pull-statuses?numbers=106,105,104,103,102,101,100,99,… (100)"
       ]
     },
     {
@@ -863,7 +863,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
       },
       "requests": [
         "POST /api/plugin/github/pulls-refresh: status_scan=not_due",
-        "GET /api/plugin/github/pull-statuses?numbers=106,105,104,103,102,101,100,99,… (98)"
+        "GET /api/plugin/github/pull-statuses?numbers=106,105,104,103,102,101,100,99,… (100)"
       ]
     },
     {

@@ -68,6 +68,9 @@ const rowsOf = (answer) => answer.body.rows.map((row) => JSON.parse(row));
 const summed = fixture("github-pull-files-summary-responses.json").summed.body;
 const ANSWERS = {
   list: { ...recorded.list.body, rows: rowsOf(recorded.list) },
+  // The list's second page, by activity, which holds #8 and #7: the panel reads it once the
+  // end of the first is in view.
+  more: { ...recorded.more.body, rows: rowsOf(recorded.more) },
   stacks: fixture("github-stacks-responses.json").current.body,
   statuses: {
     ...recorded.scanned.body,
@@ -171,13 +174,17 @@ const MOUNT = `async (width, theme) => {
     if (url.pathname === "/api/plugin/github/pull-files-summary") {
       return respond({ source: answers.lines.source, rows: numbers.map((number) => ({ ...answers.lines.row, number })) });
     }
-    if (url.pathname === "/api/plugin/github/pulls") return respond(answers.list);
+    if (url.pathname === "/api/plugin/github/pulls") {
+      const after = url.searchParams.get("after");
+      return respond(after === String(answers.list.next_after) ? answers.more : answers.list);
+    }
     if (url.pathname === "/api/plugin/github/stacks") return respond(answers.stacks);
     if (url.pathname === "/api/plugin/github/pulls-prefetch") return respond({ prefetch: "not_due" });
     return respond(null, 404);
   };
   const pane = document.getElementById("pane");
-  // Tall enough that the window draws every row, the list's oldest, #10 and #9, among them.
+  // Tall enough that the window draws every row of both pages, the oldest, #8 and #7, among
+  // them.
   pane.style.cssText = "width:" + width + "px;height:12000px;overflow:auto;position:relative";
   const container = document.createElement("div");
   pane.replaceChildren(container);

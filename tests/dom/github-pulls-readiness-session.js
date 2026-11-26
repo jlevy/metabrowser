@@ -71,17 +71,15 @@ function rowsOf(...names) {
 }
 
 /** The server's answer for *numbers* from the recorded answer *name*: its envelope, with the
- * rows asked for, in their order. */
+ * rows asked for, in their order. The rows of the list's second page were asked apart, in the
+ * answer named `<name>_more`. */
 function answerFor(name, numbers) {
-  const rows = rowsOf(...(name === "unscanned" ? ["unscanned", "unscanned_more"] : [name]));
-  const more = name === "scanned" ? rowsOf("scanned_more") : new Map();
+  const more = `${name}_more`;
+  const rows = rowsOf(...(more in recorded ? [name, more] : [name]));
   const body = recorded[name].body;
   return {
     status: 200,
-    body: {
-      ...body,
-      rows: numbers.map((number) => rows.get(number) ?? more.get(number)).filter(Boolean),
-    },
+    body: { ...body, rows: numbers.map((number) => rows.get(number)).filter(Boolean) },
   };
 }
 
@@ -143,7 +141,10 @@ async function laneStory(readiness) {
     now: () => now,
     changed: (numbers) => repaints.push(numbers === null ? "every row" : numbers.join(",")),
   });
-  const list = new Map(recorded.list.body.rows.map((row) => [row.number, row]));
+  // The list's two pages: by activity, #8 and #7 are on the second.
+  const list = new Map(
+    [...recorded.list.body.rows, ...recorded.more.body.rows].map((row) => [row.number, row]),
+  );
   const stateOf = (row) =>
     row.merged ? "merged" : row.state === "closed" ? "closed" : row.draft ? "draft" : "open";
   let rows = SHOWN.map((number) => {
@@ -447,7 +448,12 @@ async function panelStory() {
   const timers = [];
   let phase = "unscanned";
   let refreshAnswer = recorded.scan_not_due;
+  // The list's two pages, by activity: #8 and #7 are on the second, which the panel reads
+  // once the reader reaches the end of the first.
   let listAnswer = recorded.list.body;
+  let moreAnswer = recorded.more.body;
+  /** @type {((entries: {isIntersecting: boolean}[]) => void) | null} */
+  let reachEnd = null;
   const globals = {
     document,
     window: {
@@ -473,6 +479,9 @@ async function panelStory() {
       }
     },
     IntersectionObserver: class {
+      constructor(callback) {
+        reachEnd = callback;
+      }
       takeRecords() {}
       observe() {}
       disconnect() {}
@@ -493,7 +502,8 @@ async function panelStory() {
         return respond(refreshAnswer.body, refreshAnswer.status);
       }
       if (route.startsWith("/api/plugin/github/pulls?")) {
-        return respond(listAnswer);
+        const after = new URL(route, "http://x").searchParams.get("after");
+        return respond(after === String(listAnswer.next_after) ? moreAnswer : listAnswer);
       }
       if (route === "/api/plugin/github/pulls-prefetch") {
         return respond({ prefetch: "not_due" });
@@ -529,6 +539,15 @@ async function panelStory() {
     /** The production Pulls panel, mounted in this document. */
     const mount = () => {
       const into = new PanelElement("div");
+      // A view tall enough to hold every row of both pages, so each is drawn.
+      into.bounds = () => ({
+        top: 0,
+        bottom: 100_000,
+        height: 100_000,
+        left: 0,
+        right: 800,
+        width: 800,
+      });
       return {
         container: into,
         handle: panel.mountPullsPanel(
@@ -540,7 +559,7 @@ async function panelStory() {
               current: null,
               shown: true,
               refreshAhead: false,
-              scrollRoot: null,
+              scrollRoot: into,
               open() {},
               file: null,
               fileHref: (number, file) => `/pull/${number}/files/${file}`,
@@ -622,8 +641,12 @@ async function panelStory() {
       steps.push({ step: what, rows: rowsDrawn(), requests: [...requests] });
     };
     await step(
-      "mounted: every row's readiness column is there and empty; nothing is read yet",
-      paint,
+      "mounted, and the reader scrolls to the end of the list's first window, which reads its second: every row's readiness column is there and empty; nothing is read yet",
+      async () => {
+        await paint();
+        reachEnd?.([{ isIntersecting: true }]);
+        await paint();
+      },
     );
     const cellsBefore = SHOWN.map(cellOf);
     await step(
@@ -696,6 +719,7 @@ async function panelStory() {
     }
     // A push the list finds: its next answer names #105's new head.
     listAnswer = recorded.pushed_list.body;
+    moreAnswer = recorded.pushed_more.body;
     phase = "pushed";
     await step(
       "a poll: the list names #105's new head, so its verdict, which judged the old one, is drawn no more, and #105 alone is read again; the server has no status for the new head",

@@ -206,6 +206,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             clock[0] += timedelta(seconds=20)
             recorded["scan_started"] = ask(state="all", target=500, background=True)
             recorded["scanning"] = statuses(numbers)
+            recorded["scanning_more"] = statuses(more)
             recorded["scan_joined"] = ask(state="all", target=500, background=True)
             gate.set()
             scanned()
@@ -243,6 +244,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             listed()
             scanned()
             recorded["pushed_list"] = read()
+            recorded["pushed_more"] = read(after=str(recorded["pushed_list"]["body"]["next_after"]))
             recorded["pushed"] = statuses([PUSHED])
 
             # Another tab's Refresh starts a scan this story's lane does not hear, as a look at
@@ -302,7 +304,12 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["scan_joined"]["body"]["status_scan"] == "joined"
     assert recorded["scanned"]["body"]["scanning"] is False
     assert recorded["scan_not_due"]["body"]["status_scan"] == "not_due"
-    by_number = {row["number"]: row for row in recorded["scanned"]["body"]["rows"]}
+    # The list's two pages, by activity: 8 and 7 were updated before the first page's rows.
+    by_number = {
+        row["number"]: row
+        for answer in ("scanned", "scanned_more")
+        for row in recorded[answer]["body"]["rows"]
+    }
     tones = {
         number: row["readiness"]["tone"] if row["readiness"] else None
         for number, row in by_number.items()
@@ -349,7 +356,9 @@ def test_every_row_draws_the_verdict_its_answer_gives() -> None:
 
     recording = read_recording(RECORDING)
     rows = {
-        json.loads(row)["number"]: json.loads(row) for row in recording["scanned"]["body"]["rows"]
+        json.loads(row)["number"]: json.loads(row)
+        for answer in ("scanned", "scanned_more")
+        for row in recording[answer]["body"]["rows"]
     }
     drawn = run_session(SESSION, "--part", "all")["invariants"]
     for number, shown in drawn["panel"].items():
