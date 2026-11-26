@@ -51,6 +51,8 @@ the session read the `tooltip` the reader would see.
   rather than aborting them, and a link the pointer leaves before its intent delay is
   never read.
 - `modality`: focus, keys, and a touch show no card; a pen’s rest does.
+  A Tab or a click onto the link the pointer rests on, while its read is out, ends the
+  rest: the read’s answer and the state glyphs it loads bring no card back.
 - `failures`: a provider that throws or rejects is asked again at the next rest, and one
   that answers null is not; each card still says where the link opens.
 - `disposal`: `dispose` puts away its own root’s card and leaves another root’s; a
@@ -729,6 +731,68 @@ $ node tests/dom/link-previews-session.js
    {
     "at": 1400,
     "tooltip": "[pull] Pull request #12 | Keep the tail | Opens here in Metabrowser"
+   }
+  ],
+  "focus during the read": [
+   {
+    "at": 0,
+    "show": "twelve",
+    "card": "[pull] Pull request #12 | Opens here in Metabrowser"
+   },
+   {
+    "at": 250,
+    "summary": "pull 12"
+   },
+   {
+    "at": 250,
+    "prefetch": "pull 12"
+   },
+   {
+    "at": 260,
+    "focus": "twelve"
+   },
+   {
+    "at": 280,
+    "tooltip": null
+   },
+   {
+    "at": 290,
+    "load": "github"
+   },
+   {
+    "at": 1000,
+    "tooltip": null
+   }
+  ],
+  "a press during the read": [
+   {
+    "at": 0,
+    "show": "twelve",
+    "card": "[pull] Pull request #12 | Opens here in Metabrowser"
+   },
+   {
+    "at": 250,
+    "summary": "pull 12"
+   },
+   {
+    "at": 250,
+    "prefetch": "pull 12"
+   },
+   {
+    "at": 260,
+    "press": "twelve"
+   },
+   {
+    "at": 280,
+    "tooltip": null
+   },
+   {
+    "at": 290,
+    "load": "github"
+   },
+   {
+    "at": 1000,
+    "tooltip": null
    }
   ]
  },

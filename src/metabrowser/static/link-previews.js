@@ -25,7 +25,9 @@
 //    Only Its Own Tooltip").
 //
 // Pointer only: focus never shows a card, and a touch is a tap that opens the link
-// (docs/design-system.md, "Tooltip Input Modality").
+// (docs/design-system.md, "Tooltip Input Modality"). The reader's press or a focus that moves
+// ends the rest the pointer is on: the shell puts the tooltip away on focus, and nothing a
+// rest asked for brings its card back, though the pointer stays on the link.
 //
 // Providers (`provide`) return data, never markup, and `card` escapes every value. Loaded
 // on demand in the `repository-links` bundle, after the resolver (server.py has the
@@ -91,8 +93,9 @@
    */
 
   /**
-   * The pointer's rest on one link: its timer, whether the intent delay has passed, and
-   * whether this rest has asked for its summary.
+   * The pointer's rest on one link: its timer, whether the intent delay has passed, whether
+   * this rest has asked for its summary, and whether the reader's press or a focus has ended
+   * it while the pointer stays on the link (`endOnInput`).
    *
    * @typedef {{
    *   anchor: Element,
@@ -100,6 +103,7 @@
    *   timer: ReturnType<typeof setTimeout> | null,
    *   intent: boolean,
    *   asked: boolean,
+   *   ended: boolean,
    * }} Rest
    */
 
@@ -703,7 +707,7 @@
       left.entry.mb.tooltip.hide(left.anchor);
     }
     /** @type {Rest} */
-    const rest = { anchor, entry, timer: null, intent: false, asked: false };
+    const rest = { anchor, entry, timer: null, intent: false, asked: false, ended: false };
     current = rest;
     show(rest);
     rest.timer = setTimeout(() => {
@@ -745,11 +749,36 @@
   }
 
   /**
-   * Ask the tooltip for *rest*'s card, with what the page knows of its subject now.
+   * The reader pressed, or focus moved, which never shows a card (docs/design-system.md,
+   * "Tooltip Input Modality"): the current rest asks for nothing more, and no answer that
+   * arrives later, no state glyph, and no later registration shows its card again. The shell
+   * has put the tooltip away on the focus (`hideTooltipOnFocus` in static/app.js). The rest
+   * stays the pointer's until it leaves the link, so moving within it changes nothing, and
+   * leaving puts away a card a focus repair kept. Listened for on the document, in the
+   * capture phase, so a press or focus a surface stops still ends it.
+   */
+  function endOnInput() {
+    const rest = current;
+    if (rest === null) {
+      return;
+    }
+    if (rest.timer !== null) {
+      clearTimeout(rest.timer);
+      rest.timer = null;
+    }
+    rest.ended = true;
+  }
+
+  /**
+   * Ask the tooltip for *rest*'s card, with what the page knows of its subject now, unless
+   * the reader's press or a focus has ended the rest.
    *
    * @param {Rest} rest
    */
   function show(rest) {
+    if (rest.ended) {
+      return;
+    }
     const { anchor, entry } = rest;
     const html = card(entry.subject, answers.get(keyOf(entry.subject)) ?? null, {
       linkText: anchor.textContent,
@@ -773,7 +802,7 @@
    */
   function work() {
     const rest = current;
-    if (rest === null || !rest.intent || !rest.anchor.isConnected) {
+    if (rest === null || rest.ended || !rest.intent || !rest.anchor.isConnected) {
       return;
     }
     const { subject: target, mb } = rest.entry;
@@ -883,6 +912,9 @@
       },
     );
   }
+
+  document.addEventListener("pointerdown", endOnInput, true);
+  document.addEventListener("focusin", endOnInput, true);
 
   window.MetabrowserLinkPreviews = Object.freeze({
     INTENT_MS,

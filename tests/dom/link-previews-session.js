@@ -198,6 +198,7 @@ function createPage(options = {}) {
   const warnings = [];
   const document = new FakeElement("body");
   document.isDocument = true;
+  document.createElement = (tag) => new FakeElement(tag);
 
   // The page's one tooltip: app.js's own code.
   const classes = new Set();
@@ -287,7 +288,8 @@ function createPage(options = {}) {
     console: {
       warn: (message, error) => warnings.push(`${message}: ${error?.message ?? error}`),
     },
-    document: { createElement: (tag) => new FakeElement(tag) },
+    // The page's document, which the module listens on for the reader's presses and focus.
+    document,
     metabrowser: mb,
     MetabrowserIcons: { layers: '<svg data-glyph="layers"></svg>' },
   };
@@ -298,6 +300,9 @@ function createPage(options = {}) {
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
   const previews = sandbox.MetabrowserLinkPreviews;
+  // app.js's own focus listener, lifted with the tooltip, on the same document: focus moving
+  // puts the pointer's tooltip away. It listens in the bubbling phase, after the module's.
+  document.addEventListener("focusin", (event) => shell.hideTooltipOnFocus(event));
 
   /** A root of rendered text holding one link per `[name, words, target, options]`. */
   function text(rootName, ...entries) {
@@ -328,8 +333,17 @@ function createPage(options = {}) {
     await clock.to(time);
     log.push({ at: clock.now, tooltip: shown() });
   }
+  /** The reader acts at *time* on *element*: `focus` (a Tab), or `press` (a click). */
+  async function act(time, element, what) {
+    await clock.to(time);
+    log.push({ at: clock.now, [what]: element.name });
+    if (what === "press") {
+      dispatch(element, "pointerdown");
+    }
+    dispatch(element, "focusin");
+  }
 
-  return { clock, log, warnings, document, mb, previews, sandbox, text, point, look };
+  return { clock, log, warnings, document, mb, previews, sandbox, text, point, look, act };
 }
 
 /** A provider whose reads and prefetches take *delays* ms, recording what it is asked. */
@@ -718,7 +732,34 @@ async function modality() {
     page.log.some((entry) => "show" in entry),
     "a pen's rest asked for no card",
   );
-  return { "focus, keys, and a touch": quiet, "then a pen": page.log.slice(quiet.length) };
+  const sessions = {
+    "focus, keys, and a touch": quiet,
+    "then a pen": page.log.slice(quiet.length),
+  };
+  // Focus moving onto the link during a rest, by a Tab or by a click, before the card's read
+  // has answered: its tooltip goes, and neither the read's answer nor the state glyphs it
+  // loads bring the card back, though the pointer is still on the link and moves within it.
+  for (const what of ["focus", "press"]) {
+    const rested = createPage();
+    rested.previews.provide(
+      "pull",
+      stub(rested, { title: "Keep the tail", state: "merged" }, { summary: 40, prefetch: 1 })
+        .provider,
+    );
+    const link = rested.text("description", ["twelve", "#12", pullRoute(12)]).anchors.twelve;
+    await rested.point(0, link);
+    await rested.act(260, link, what);
+    await rested.look(280);
+    await rested.point(400, link.childNodes[0]);
+    await rested.look(1000);
+    const after = rested.log.slice(rested.log.findIndex((entry) => entry[what]));
+    assert(
+      !after.some((entry) => "show" in entry || entry.tooltip),
+      `a card came back after ${what === "focus" ? "focus" : "a press"} moved onto its link`,
+    );
+    sessions[what === "focus" ? "focus during the read" : "a press during the read"] = rested.log;
+  }
+  return sessions;
 }
 
 /** A provider that fails still leaves the card with what the link opens. */

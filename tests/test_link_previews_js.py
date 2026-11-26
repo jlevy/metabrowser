@@ -179,6 +179,18 @@ def test_focus_and_touch_show_no_card() -> None:
     assert any("show" in entry for entry in modality["then a pen"])
 
 
+def test_focus_or_a_press_during_a_rest_brings_no_card_back() -> None:
+    """A Tab or a click onto the rested link ends the rest: no later answer shows its card."""
+
+    modality = _session()["modality"]
+    for name, act in (("focus during the read", "focus"), ("a press during the read", "press")):
+        log = modality[name]
+        acted = next(index for index, entry in enumerate(log) if act in entry)
+        # The read was asked for before the reader acted, and answered after.
+        assert any("summary" in entry for entry in log[:acted]), name
+        assert not any("show" in entry or entry.get("tooltip") for entry in log[acted:]), name
+
+
 def test_a_failing_provider_leaves_the_card_with_where_it_opens() -> None:
     for name, session in _session()["failures"].items():
         assert session["cards"] == ["Commit 0123456 | Opens here in Metabrowser"] * 2, name
