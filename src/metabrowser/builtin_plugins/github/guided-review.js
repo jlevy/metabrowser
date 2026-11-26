@@ -28,6 +28,7 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   `{commit}` row names; both null for a commit whose line passed its bound.
  * @typedef {{kind: "file" | "pull_file" | "pull" | "commit", path: string | null,
  *   side: "old" | "new" | null, pull: number | null, commit: string | null, state: string,
+ *   start_line?: number | null, end_line?: number | null, deleted?: boolean,
  *   rendered: Rendered | null, href: string | null, hunks: Hunk[], truncated: boolean,
  *   comparison: PullComparison | null, target: PullTarget | CommitTarget | null}}
  *   Reference What a step cites (`_references` in guided_review.py): a file of the pull
@@ -38,15 +39,23 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   *rendered* is the format of a file named alone that the rendered route renders, by
  *   that route's own rule (`rendered_format` in pull_rendered_diff.py): the page draws it
  *   whole, and the route sends no hunks for it.
- * @typedef {(body: HTMLElement, change: Record<string, unknown>,
- *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
+ * @typedef {"diff" | "current" | "full"} Presentation
+ * @typedef {{dispose: () => void, show?: (mode: Presentation) => void}} GuidedDrawing
+ * @typedef {((body: HTMLElement, change: Record<string, unknown>,
+ *   patch: {hunks: Hunk[], truncated: boolean}, fullFile?: FullFile | null) => GuidedDrawing) & {
+ *   disclose?: (section: HTMLElement, bar: HTMLElement, toggle: HTMLElement, body: HTMLElement) => void,
+ *   controls?: (host: HTMLElement, full: boolean, initial: Presentation | null,
+ *     choose: (mode: Presentation) => void) => GuidedDrawing
+ * }} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
  *   them.
  * @typedef {{merge_base: string | null, head: string}} Pins
+ * @typedef {{path: string, load: (signal: AbortSignal) => Promise<unknown>}} FullFile
  * @typedef {{
  *   draws(pins: Pins | PullComparison): boolean,
- *   mount(body: HTMLElement, path: string, format: Rendered, pins: Pins | PullComparison):
- *     {settled: Promise<boolean>, dispose: () => void},
+ *   source?(path: string, pins: Pins | PullComparison): FullFile | null,
+ *   mount(body: HTMLElement, path: string, format: Rendered | null, pins: Pins | PullComparison):
+ *     GuidedDrawing & {settled: Promise<boolean>},
  * }} DrawDocument The diff plugin's `mountRenderedFile`, bound by the page to its
  *   comparison: whether it draws a file read at *pins*, which it does for the comparison a
  *   step was read at only while that is the page's own, and always for another pull
@@ -74,7 +83,7 @@ import { stackMemberRow } from "./stack-member-row.js";
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
  *   What draws a step's references, each null when the diff plugin did not load, and the
  *   comparison the step was read at.
- * @typedef {{drawn: Array<{dispose: () => void}>, waits: Promise<unknown>[]}} Drawing What a
+ * @typedef {{drawn: GuidedDrawing[], waits: Promise<unknown>[]}} Drawing What a
  *   step drew: the views to dispose of when another step is shown or the guide ends, and what
  *   the step waits for before it shows, the documents it draws whole, each until drawn as it
  *   stays.
@@ -573,6 +582,13 @@ export function referenceDrawing(reference, drawers) {
   return reference.hunks.length === 0 || drawers.patch === null ? "said" : "patch";
 }
 
+/** @param {Reference} reference @param {Drawers} drawers */
+function wholeSource(reference, drawers) {
+  return reference.side === null && reference.path !== null && !reference.deleted
+    ? (drawers.document?.source?.(reference.path, reference.comparison ?? drawers.pins) ?? null)
+    : null;
+}
+
 /**
  * Whether *event* is a plain press of the main button, which a link the page opens in place
  * takes over; any other, as one that opens a new tab, is the browser's.
@@ -688,33 +704,60 @@ function commitRow(reference, words) {
  *
  * @param {Reference} reference @param {() => void} open
  */
-function referenceBar(reference, open) {
+function referenceLink(reference, open) {
   const path = reference.path ?? "";
-  const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
-  const name = element("span", "", "diff-file-toggle");
   const other = reference.kind === "pull_file" ? reference.pull : null;
-  if (other !== null) {
-    name.append(element("span", `#${other}`, "github-pull-guide-reference-pull"));
+  if (reference.href === null) {
+    return null;
   }
-  name.append(element("span", path, "diff-file-path"));
+  const full = document.createElement("a");
+  full.className = "diff-file-view";
+  full.href = reference.href;
+  full.textContent = "Open full diff";
+  full.setAttribute(
+    "aria-label",
+    `Open full diff for ${path}${other === null ? "" : ` in pull request #${other}`}`,
+  );
+  full.addEventListener("click", (event) => {
+    if (plainPress(event)) {
+      event.preventDefault();
+      open();
+    }
+  });
+  return full;
+}
+
+/**
+ * @param {Reference} reference @param {() => void} open
+ * @param {HTMLElement} section @param {HTMLElement} body @param {DrawPatch | null} patch
+ */
+function referenceBar(reference, open, section, body, patch) {
+  const bar = element(
+    "div",
+    "",
+    "diff-file-bar github-pull-guide-reference-header disclosure-toggle",
+  );
+  const name = element(patch?.disclose ? "button" : "span", "", "diff-file-toggle");
+  if (patch?.disclose) {
+    name.setAttribute("type", "button");
+  }
+  if (reference.kind === "pull_file") {
+    name.append(element("span", `#${reference.pull}`, "github-pull-guide-reference-pull"));
+  }
+  name.append(element("span", reference.path ?? "", "diff-file-path"));
+  if (reference.side && reference.start_line != null && reference.end_line != null) {
+    const range =
+      reference.start_line === reference.end_line
+        ? String(reference.start_line)
+        : `${reference.start_line}–${reference.end_line}`;
+    name.append(element("span", `Cited ${reference.side} lines ${range}`, "diff-file-note"));
+  }
   bar.append(name);
-  if (reference.href !== null) {
-    const full = document.createElement("a");
-    full.className = "diff-file-view";
-    full.href = reference.href;
-    full.textContent = "Open full diff";
-    full.setAttribute(
-      "aria-label",
-      `Open full diff for ${path}${other === null ? "" : ` in pull request #${other}`}`,
-    );
-    full.addEventListener("click", (event) => {
-      if (plainPress(event)) {
-        event.preventDefault();
-        open();
-      }
-    });
+  const full = referenceLink(reference, open);
+  if (full !== null) {
     bar.append(full);
   }
+  patch?.disclose?.(section, bar, name, body);
   return bar;
 }
 
@@ -730,12 +773,12 @@ function referenceBar(reference, open) {
  * it is and can open it in Changes. The step waits for the file, which is shown only once
  * drawn as it stays (`Drawing`).
  *
- * @param {Reference} reference @param {Rendered} format @param {HTMLElement | null} note
+ * @param {Reference} reference @param {Rendered | null} format @param {HTMLElement | null} note
  * @param {() => void} open
  * @param {DrawDocument} drawDocument @param {Pins | PullComparison} pins
- * @param {Drawing} drawing Where the drawn view is kept, and what the step waits for.
+ * @param {Drawing} drawing @param {DrawPatch | null} patch
  */
-function renderDocument(reference, format, note, open, drawDocument, pins, drawing) {
+function renderDocument(reference, format, note, open, drawDocument, pins, drawing, patch) {
   const path = reference.path ?? "";
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
   const body = element("div", "", "github-pull-guide-document-body");
@@ -745,7 +788,14 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawi
   drawing.waits.push(
     view.settled.then((drawnFile) => {
       if (!drawnFile) {
-        section.prepend(referenceBar(reference, open));
+        section.classList.add("diff-file");
+        section.prepend(referenceBar(reference, open, section, body, patch));
+      } else {
+        const bar = body.querySelector(".diff-file-bar");
+        const full = referenceLink(reference, open);
+        if (full !== null) {
+          bar?.append(full);
+        }
       }
     }),
   );
@@ -784,31 +834,51 @@ function renderReference(reference, ways, change, drawers, drawing) {
         )
       : null;
   const format = typeof reference.rendered === "string" ? reference.rendered : null;
-  if (how === "document" && drawers.document !== null && format !== null) {
+  if (how === "document" && drawers.document !== null) {
     const pins = reference.comparison ?? drawers.pins;
-    return renderDocument(reference, format, changed, open, drawers.document, pins, drawing);
+    return renderDocument(
+      reference,
+      format,
+      changed,
+      open,
+      drawers.document,
+      pins,
+      drawing,
+      drawers.patch,
+    );
   }
   const section = element("section", "", "diff-file github-pull-guide-reference");
-  section.append(referenceBar(reference, open));
+  const content = element("div", "", "diff-file-body");
+  section.append(referenceBar(reference, open, section, content, drawers.patch), content);
   if (changed !== null) {
-    section.append(changed);
+    content.append(changed);
   }
   const drawPatch = drawers.patch;
   if (reference.state === "ready" && format === null && reference.hunks.length === 0) {
     // A rename, a mode change, or a binary file: a change with no text to show.
-    section.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
+    content.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
   } else if (how === "patch" && drawPatch !== null) {
     const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
     body.setAttribute("role", "group");
     body.setAttribute("aria-label", `Diff excerpt for ${path}`);
-    section.append(body);
+    content.append(body);
     const side = { path };
+    const excerpt = drawPatch(
+      body,
+      reference.deleted
+        ? { id: path, kind: "deleted", old: side, new: null }
+        : { id: path, old: side, new: side },
+      { hunks: reference.hunks, truncated: reference.truncated },
+      wholeSource(reference, drawers),
+    );
     drawing.drawn.push(
-      drawPatch(
-        body,
-        { id: path, old: side, new: side },
-        { hunks: reference.hunks, truncated: reference.truncated },
-      ),
+      reference.side === "old"
+        ? { dispose: excerpt.dispose }
+        : {
+            dispose: excerpt.dispose,
+            show: (mode) =>
+              excerpt.show?.(mode === "full" && reference.side !== null ? "current" : mode),
+          },
     );
   } else {
     /** @type {Readonly<Record<string, string | undefined>>} */
@@ -820,7 +890,7 @@ function renderReference(reference, ways, change, drawers, drawing) {
       reference.state === "ready"
         ? REFERENCE_MESSAGES.diff_unavailable
         : (said[reference.state] ?? ordinary[reference.state]);
-    section.append(element("p", message ?? "This excerpt is unavailable.", "github-pull-quiet"));
+    content.append(element("p", message ?? "This excerpt is unavailable.", "github-pull-quiet"));
   }
   return section;
 }
@@ -1055,6 +1125,8 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   let drawDocument = null;
   /** @type {DrawProse | null} */
   let drawProse = null;
+  /** @type {Map<string, Presentation>} */
+  const blockModes = new Map();
   // What draws a step, asked for as the guide mounts, beside its first read. Without the diff
   // plugin a step still reads, and says its excerpts are unavailable; a file the rendered
   // route renders says its diff is unavailable, beside its Open full diff. The view loads the
@@ -1382,6 +1454,38 @@ export function mountGuidedReview(host, introduction, subject, deps) {
         renderReference(reference, ways, changeOf(stale, reference), by, stage),
       ),
     );
+    const kinds = answered.references.map((reference) => referenceDrawing(reference, by));
+    const canShowFull =
+      answered.references.some(
+        (reference, index) => kinds[index] === "document" && !reference.deleted,
+      ) ||
+      answered.references.some(
+        (reference, index) => kinds[index] === "patch" && wholeSource(reference, by) !== null,
+      );
+    const canShowExcerpt = answered.references.some(
+      (reference, index) => kinds[index] === "patch" && reference.side !== "old",
+    );
+    if (drawPatch?.controls && (canShowFull || canShowExcerpt || kinds.includes("document"))) {
+      const key = `${answered.comparison.head}:${answered.step}`;
+      const saved = blockModes.get(key) ?? (kinds.includes("document") ? null : "diff");
+      const initial = saved === "full" && !canShowFull ? "current" : saved;
+      const toolbar = element("div");
+      /** @param {Presentation} mode */
+      const apply = (mode) => {
+        for (const view of stage.drawn) {
+          view.show?.(mode);
+        }
+      };
+      const control = drawPatch.controls(toolbar, canShowFull, initial, (mode) => {
+        blockModes.set(key, mode);
+        apply(mode);
+      });
+      if (initial !== null) {
+        apply(initial);
+      }
+      stage.drawn.push(control);
+      references.prepend(toolbar);
+    }
     // A step is a card, as Conversation draws a comment, headed as the author's guided
     // review so it reads apart from the discussion.
     const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");

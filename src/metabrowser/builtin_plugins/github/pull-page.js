@@ -8804,7 +8804,7 @@ export function mountPullPage(container, ctx, mb) {
           // manifest.toml).
           loadDrawPatch: async () => {
             const diff = await mb.plugins.load("diff");
-            return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+            return diff.guidePatchDrawer();
           },
           // A file a step cites whole that the rendered route renders is the diff plugin's
           // own view of it, from this page's comparison while it is the one the step was read
@@ -8831,6 +8831,15 @@ export function mountPullPage(container, ctx, mb) {
             };
             return {
               draws: (pins) => at(pins) !== null,
+              source(path, pins) {
+                const comparison = at(pins);
+                return comparison === null
+                  ? null
+                  : {
+                      path,
+                      load: (signal) => diff.loadFullSource(comparison, path, signal),
+                    };
+              },
               mount(body, path, format, pins) {
                 const comparison = at(pins);
                 if (comparison === null) {

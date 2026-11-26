@@ -66,7 +66,9 @@ type MetabrowserRenderContext = {
    *  surface (Diff unless the host says Current), and the preference that choice is
    *  remembered as (`diff.show` unless the host keeps its own): a pull request's Docs tab
    *  opens on `"current"` and remembers it as `github.docs.show`. */
-  show?: "diff" | "current";
+  show?: "diff" | "current" | "full";
+  /** Render a file card inside a block that supplies the comparison controls. */
+  embedded?: boolean;
   showPreference?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
@@ -1516,6 +1518,10 @@ type AgentsExports = {
 
 /** What the diff plugin exports to a plugin that requires it. */
 type DiffExports = {
+  loadFullSource: typeof import("../builtin_plugins/diff/index.js").loadFullSource;
+  guidePatchDrawer: () => ReturnType<
+    typeof import("../builtin_plugins/diff/index.js").guidePatchDrawer
+  >;
   /** One file's hunks, as the diff route answers them, drawn as Changes draws a file's
    * body: each hunk under its header bar, long changed runs behind fold bars, then changed
    * runs paired and syntax colored. Unified only. `dispose` stops what is still to come. */
@@ -1535,7 +1541,11 @@ type DiffExports = {
     comparison: NonNullable<MetabrowserRenderContext["comparison"]>,
     path: string,
     ctx?: MetabrowserRenderContext,
-  ) => { settled: Promise<boolean>; dispose(): void };
+  ) => {
+    settled: Promise<boolean>;
+    show(mode: "diff" | "current" | "full"): void;
+    dispose(): void;
+  };
 };
 
 /** What the GitHub plugin exports for the shell. */

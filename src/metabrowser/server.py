@@ -1862,6 +1862,7 @@ async def index(
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
     remote_images_url = _static_asset_url("remote-images.js")
+    diff_settings_url = _static_asset_url("diff-settings.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -2406,9 +2407,11 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
-        # The menu's Block remote images checkbox draws from the page's settings and
-        # needs this only to change them, once.
-        "remote-images": [{"src": remote_images_url, "provides": "MetabrowserRemoteImages"}],
+        # These preferences need listeners only when the reader opens the menu.
+        "settings-menu": [
+            {"src": remote_images_url, "provides": "MetabrowserRemoteImages"},
+            {"src": diff_settings_url},
+        ],
         # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
         # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
         # page that shows a pull request's files or a multi-file diff asks for it: a diff
@@ -2667,6 +2670,14 @@ async def index(
             </div>
             <div class="menu-separator"></div>
             <select class="field menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <div class="menu-separator"></div>
+            <label class="menu-row" for="default-diff-layout">Default diff layout
+              <select class="field" id="default-diff-layout" disabled
+                      data-tip-text="Layout for source diffs in new comparisons">
+                <option value="split">Split</option>
+                <option value="unified">Unified</option>
+              </select>
+            </label>
             <div class="menu-separator"></div>
             <label class="menu-row" for="doc-max-chars-input">Max text width
               <input class="field menu-number" id="doc-max-chars-input" type="number"

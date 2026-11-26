@@ -918,7 +918,14 @@ def _file_answer(
     else:
         state, hunks, used = _excerpt(patch, reference, budget.excerpts)
         budget.excerpts -= used
-    return {"state": state, "rendered": rendered, "href": href, "hunks": hunks, "truncated": cut}
+    return {
+        "state": state,
+        "rendered": rendered,
+        "href": href,
+        "hunks": hunks,
+        "truncated": cut,
+        **({"deleted": True} if change is not None and change.new is None else {}),
+    }
 
 
 def _references(

@@ -24,13 +24,13 @@ arrived.
 A container with no width yet, as a commit’s stage has until it is placed, draws
 nothing until its first report, and draws in that report, before the browser paints.
 `L` switches to the other layout through the same path as a click, so where Split does
-not fit it chooses Split and its sideways scroll, and it writes the preference a click
-writes. The diff attaches it once, through the SDK’s shortcut surface, on the chip it
-would select, and moves it to the new chip after each draw.
-A host that fixes the layout at **Unified**, as a pull request’s Docs tab does, gets it
-at every width under any stored choice, with no layout control and no `L`, reads and
-writes no layout preference, and its toolbar holds **Diff | Current** alone
-(`tests/golden/cli-ui-diff-current.tryscript.md`).
+not fit it chooses Split and its sideways scroll.
+These choices stay with the open comparison.
+The diff attaches the shortcut to the chip it would select and moves it to the new chip
+after each draw. A host that fixes the layout at **Unified**, as a pull request’s Docs
+tab does, gets it at every width under any stored choice.
+It has no layout control, shortcut, or layout preference, and its toolbar holds the
+presentation chooser alone (`tests/golden/cli-ui-diff-current.tryscript.md`).
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
 mounts a document of the conformance corpus into a small element tree.
@@ -185,9 +185,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "split",
       "tips": [],
-      "preference": [
-        "diff.layout=split"
-      ]
+      "preference": []
     },
     {
       "step": "narrower or wider, it stays while the pane stays narrow",
@@ -197,9 +195,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "split",
       "tips": [],
-      "preference": [
-        "diff.layout=split"
-      ]
+      "preference": []
     },
     {
       "step": "the pane has room",
@@ -209,9 +205,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "split",
       "tips": [],
-      "preference": [
-        "diff.layout=split"
-      ]
+      "preference": []
     },
     {
       "step": "narrow again: the fallback is back",
@@ -223,9 +217,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "tips": [
         "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
       ],
-      "preference": [
-        "diff.layout=split"
-      ]
+      "preference": []
     },
     {
       "step": "choosing Unified is a choice, and is written",
@@ -235,11 +227,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "unified",
       "tips": [],
-      "preference": [
-        "diff.layout=split",
-        "diff.layout=split",
-        "diff.layout=unified"
-      ]
+      "preference": []
     },
     {
       "step": "with room, Unified stays",
@@ -249,11 +237,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "unified",
       "tips": [],
-      "preference": [
-        "diff.layout=split",
-        "diff.layout=split",
-        "diff.layout=unified"
-      ]
+      "preference": []
     },
     {
       "step": "a reader who chose Unified, wide",
@@ -486,9 +470,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "unified",
       "tips": [],
-      "preference": [
-        "diff.layout=unified"
-      ],
+      "preference": [],
       "key": {
         "attached": "L diff.layout, controls",
         "on": "Split (aria-checked false)",
@@ -503,10 +485,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "split",
       "tips": [],
-      "preference": [
-        "diff.layout=unified",
-        "diff.layout=split"
-      ],
+      "preference": [],
       "key": {
         "attached": "L diff.layout, controls",
         "on": "Unified (aria-checked false)",
@@ -523,10 +502,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "tips": [
         "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
       ],
-      "preference": [
-        "diff.layout=unified",
-        "diff.layout=split"
-      ],
+      "preference": [],
       "key": {
         "attached": "L diff.layout, controls",
         "on": "Split (aria-checked false)",
@@ -541,11 +517,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "builtSplit": true,
       "control": "split",
       "tips": [],
-      "preference": [
-        "diff.layout=unified",
-        "diff.layout=split",
-        "diff.layout=split"
-      ],
+      "preference": [],
       "key": {
         "attached": "L diff.layout, controls",
         "on": "Unified (aria-checked false)",

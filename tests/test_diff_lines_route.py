@@ -180,6 +180,23 @@ def repository(tmp_path: Path) -> Path:
 
 
 @needs_git
+def test_full_source_reads_the_pinned_new_side(repository: Path) -> None:
+    status, body = _lines(file="app.py", whole="1")
+    assert status == 200
+    assert body["start"] == 1
+    assert len(body["lines"]) == body["line_count"] == 40
+    assert [body["lines"][i] for i in (0, 4, 15, 29, 39)] == [
+        "line 1",
+        "line 5, changed",
+        "line 16",
+        "line 30, changed",
+        "line 40",
+    ]
+    status, refusal = _lines(file="app.py", whole="1", count="20")
+    assert status == 400 and "whole=1" in refusal["message"]
+
+
+@needs_git
 def test_a_run_of_the_new_side_between_hunks(repository: Path) -> None:
     status, body = _lines(file="app.py", start="9", count="3")
     assert status == 200, body

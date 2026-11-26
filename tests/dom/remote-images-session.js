@@ -87,6 +87,38 @@ const noBox = remoteImages.mount(
 const fromOff = box(false, false);
 const fromOn = box(true, true);
 
+const diffSettingsPath = path.join(repoRoot, "src/metabrowser/static/diff-settings.js");
+const diffSettings = fs.readFileSync(diffSettingsPath, "utf8");
+function sourceLayout(stored) {
+  const writes = [];
+  const select = {
+    disabled: true,
+    value: "",
+    addEventListener(_type, listener) {
+      this.change = listener;
+    },
+  };
+  vm.runInNewContext(
+    diffSettings,
+    {
+      document: { getElementById: (id) => (id === "default-diff-layout" ? select : null) },
+      window: {
+        metabrowser: {
+          prefs: {
+            get: (_key, fallback) => stored ?? fallback,
+            set: (key, value) => writes.push({ key, value }),
+          },
+        },
+      },
+    },
+    { filename: diffSettingsPath },
+  );
+  const opened = { value: select.value, disabled: select.disabled, writes: [...writes] };
+  select.value = select.value === "split" ? "unified" : "split";
+  select.change();
+  return { opened, writes };
+}
+
 console.log(
   JSON.stringify(
     {
@@ -112,6 +144,10 @@ console.log(
         "served off, ticked": fromOff.tick(true),
         "served off, ticked and unticked": fromOff.tick(false),
         "served on, unticked": fromOn.tick(false),
+      },
+      sourceLayout: {
+        unset: sourceLayout(),
+        savedUnified: sourceLayout("unified"),
       },
     },
     null,
