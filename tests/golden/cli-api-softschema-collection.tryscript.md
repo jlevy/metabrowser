@@ -9,7 +9,7 @@ env:
   METABROWSER_LOG_LEVEL: "ERROR"
 before: >-
   mkdir -p library/_schemas library/people library/empty &&
-  printf '%s\n' '{"type":"object","properties":{"name":{"type":"string","description":"The person’s display name."}},"required":["name"],"x-softschema":{"contract":"example:Person/v1"}}'
+  printf '%s\n' '{"type":"object","properties":{"name":{"type":"string","description":"The person’s display name."}},"required":["name"]}'
   > library/_schemas/person.schema.json &&
   printf '%s\n' '{"softschema":{"contract":"example:Person/v1","envelope":"person","schema":"../_schemas/person.schema.json"},"person":{"name":"Ada Lovelace"}}'
   > library/people/ada.json

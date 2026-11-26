@@ -66,7 +66,7 @@ mb.registerView("folder", "table", {
       const table = document.createElement("table");
       table.className = "data-grid";
       const heading = table.createTHead().insertRow();
-      for (const caption of ["Contract", "Records"]) {
+      for (const caption of ["Table", "Records"]) {
         const th = document.createElement("th");
         th.scope = "col";
         th.textContent = caption;

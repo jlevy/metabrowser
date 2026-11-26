@@ -6,7 +6,7 @@ import hashlib
 import json
 import threading
 from array import array
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from dataclasses import field as dc_field
@@ -338,8 +338,13 @@ def _schema(
             if field != "id" and isinstance(value, str) and value in locations:
                 targets[field].add(locations[value].table)
     descriptions: dict[str, FieldInfo] = {}
+    bound_schemas = (
+        {row.record.schema for row in rows if row.record is not None}
+        if name != _PROBLEMS
+        else set()
+    )
     for definition in snapshot.schemas:
-        if definition.contract == name:
+        if definition.path in bound_schemas or definition.contract == name:
             for info in definition.view().iter_fields(include_refs=False):
                 descriptions.setdefault(info.name, info)
     fields: list[TableField] = []
@@ -453,9 +458,18 @@ class CollectionSource:
     def tables(self) -> Sequence[TableInfo]:
         if self.version.snapshot is None:
             return ()
+        tables = self._projection().tables
+        titles = {name: _table_label(name) for name in tables}
+        labels = Counter(titles.values())
         return tuple(
-            TableInfo(name, _table_label(name), "tables", True, len(table.rows))
-            for name, table in self._projection().tables.items()
+            TableInfo(
+                name,
+                titles[name] if labels[titles[name]] == 1 else name,
+                "tables",
+                True,
+                len(table.rows),
+            )
+            for name, table in tables.items()
         )
 
     def _table(self, table: str) -> _Memory:
