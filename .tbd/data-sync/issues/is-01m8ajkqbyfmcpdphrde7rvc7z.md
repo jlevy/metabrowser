@@ -5,16 +5,17 @@ title: "Stack page header: a pull request's header for the whole stack (state ta
 kind: feature
 status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 child_order_hints:
   - is-01m8ar6wz990fewz7m05yjp9yk
+  - is-01m8b1r8jqg4k4r71n0c57fbgn
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:03:14.938Z
-updated_at: 2026-11-26T03:49:33.148Z
+updated_at: 2026-11-26T04:27:52.275Z
 started_at: 2026-11-26T00:03:21.103Z
 closed_at: 2026-11-26T03:49:33.146Z
 close_reason: "Stack header redesign merged in #861 (30d37076c)"
