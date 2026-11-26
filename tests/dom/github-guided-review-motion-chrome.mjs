@@ -21,8 +21,10 @@
 // The guide is measured cold, with nothing read ahead: a page loaded on Guided Review, and a
 // step the guide has not read; and warm: Guided Review opened once the page has read its first
 // step ahead, a step next to the one shown, and the tab again after another, where a warm
-// guide must show no loading state at all. Browserless, what is read ahead and kept is pinned
-// in github-guided-review-session.js and github-guided-review-mount-behavior.js.
+// guide must show no loading state at all, but for the arrows' delayed mark while a step's
+// documents draw, which are drawn as it shows and not read ahead (mb-ukmm). Browserless,
+// what is read ahead and kept is pinned in github-guided-review-session.js and
+// github-guided-review-mount-behavior.js.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import fs from "node:fs";
@@ -136,11 +138,13 @@ const RECORDER = `(() => {
  * What moved in a recording: a frame of the settled step whose parts are not where, or not
  * the size, they settle at, or that lacks one the settled step has; before the settled step
  * shows, a frame where the step the reader left changed, or, on a tab or page opening, where
- * part of the guide showed; and, warm, any frame that shows a loading state.
+ * part of the guide showed; and, warm, any frame that shows a loading state, or, for a step
+ * whose answer is in hand and whose documents draw as it is shown (`"documents"`), the
+ * loading block, since only the arrows' delayed mark may say its documents are on their way.
  *
  * @param {Array<{t: number, key: string | null, loading: boolean, waiting: boolean,
  *   parts: Array<[string, unknown]>, pieces: Array<[string, unknown]>}>} frames
- * @param {boolean} warm
+ * @param {boolean | "documents"} warm
  */
 function motion(frames, warm) {
   const settled = frames.at(-1);
@@ -195,8 +199,8 @@ function motion(frames, warm) {
       out.push(...differs(frame, before));
     }
   }
-  if (warm) {
-    for (const frame of frames.filter((each) => each.loading || each.waiting)) {
+  if (warm !== false) {
+    for (const frame of frames.filter((each) => each.loading || (warm === true && each.waiting))) {
       out.push(`${frame.t} ms: a loading state shows, warm`);
     }
   }
@@ -313,7 +317,8 @@ try {
     );
     // Warm: the step before it, read ahead of step 1, and the last step again, kept.
     await record("pull: Previous to step 2, read ahead", second, arrow("Previous step"));
-    await record("pull: Next to the last step again, kept", true, arrow("Next step"));
+    // Its documents are drawn again as it shows (mb-ukmm): the arrows' mark may show.
+    await record("pull: Next to the last step again, kept", "documents", arrow("Next step"));
     // Another tab and back: the guide is mounted again over what the document kept.
     await evaluate(tab("Conversation"));
     await waitFor(`document.querySelector(".github-pull-guided-review") === null`);
@@ -349,9 +354,10 @@ try {
       "step 2 is read ahead",
       `performance.getEntriesByType("resource").some((entry) => entry.name.includes("/api/plugin/github/guided-review?stack=70&") && entry.name.includes("step=2") && entry.responseEnd > 0)`,
     );
+    // Its answer is read ahead and its document drawn as it shows (mb-ukmm).
     const drafted = await record(
       "stack: Next to its document's step, read ahead",
-      second,
+      second ? "documents" : false,
       arrow("Next step"),
     );
     check(

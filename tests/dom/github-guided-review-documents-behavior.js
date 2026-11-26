@@ -390,6 +390,10 @@ async function harness() {
         incoming() {
           return container.querySelector(".github-pull-guide-incoming") !== null;
         },
+        /** Whether the arrows' delayed mark is set to show, saying a step is on its way. */
+        marked() {
+          return container.querySelector(".github-pull-guide-waiting")?.hidden === false;
+        },
         /** Each reference of the step on screen, as it is drawn: not a step that waits. */
         drawn() {
           const shown = container
@@ -573,7 +577,7 @@ async function run() {
     await settle();
     const disposedViews = () => world.views.slice(0, before).filter((drawn) => drawn.disposed);
     steps.push(
-      `step 2 waits for its document: a step waits out of sight ${view.incoming()}; step 1's disposed: ${disposedViews().length} of ${before} documents, ${drawnPatches.filter((drawn) => drawn.disposed).length} of ${drawnPatches.length} patches`,
+      `step 2 waits for its document: a step waits out of sight ${view.incoming()}, the arrows' mark shows ${view.marked()}; step 1's disposed: ${disposedViews().length} of ${before} documents, ${drawnPatches.filter((drawn) => drawn.disposed).length} of ${drawnPatches.length} patches`,
     );
     steps.push(`on screen meanwhile: ${view.drawn()}`);
     const waiting = world.requests.find((asked) => asked.params.file === "docs/second.md");
@@ -595,11 +599,11 @@ async function run() {
   {
     world.hold.add("docs/held.md");
     const view = await opened(world, body, step(body, 1, [markdown("docs/held.md")]));
-    const held = `${view.drawn() || "nothing"}, a step waits out of sight ${view.incoming()}`;
+    const held = `${view.drawn() || "nothing"}, a step waits out of sight ${view.incoming()}, the arrows' mark shows ${view.marked()}`;
     world.release("docs/held.md");
     await settle();
     steps.push(
-      `a held document: while its read is held, the step shows ${held}; once drawn, ${view.drawn()}, a step waits ${view.incoming()}`,
+      `a held document: while its read is held, the step shows ${held}; once drawn, ${view.drawn()}, a step waits ${view.incoming()}, the arrows' mark shows ${view.marked()}`,
     );
     view.handle.dispose();
   }

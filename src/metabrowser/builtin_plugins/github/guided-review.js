@@ -1446,7 +1446,8 @@ export function mountGuidedReview(host, introduction, subject, deps) {
   /**
    * Show *stage* now when nothing it waits for is out, and otherwise lay it out of sight, in
    * the guide's column (`.github-pull-guide-incoming`), so its documents draw at the width
-   * they show at, and show it once they are in.
+   * they show at, and show it once they are in. Meanwhile the arrows' delayed mark says it
+   * is on its way, as it does while a step is read.
    *
    * @param {Stage} stage
    */
@@ -1459,6 +1460,7 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     incoming = stage;
     stage.detail.classList.add("github-pull-guide-incoming");
     host.append(stage.detail);
+    waiting.hidden = false;
     void Promise.all(stage.waits.map((wait) => wait.catch(() => {}))).then(() => {
       if (incoming === stage) {
         show(stage);

@@ -1164,6 +1164,8 @@ the module’s import on Guided Review’s own, a stack’s page at the comparis
 and the guide reads the steps next to the one shown when the page is idle
 (`createGuideNavigation`’s `prefetch` and `peek`), so a step one move away, or one read
 before, shows in the same task as the press.
+A step’s documents are not read ahead: they are drawn as it is composed, and the arrows’
+delayed mark shows while they are (mb-ukmm).
 A step can also cite past its pull request, with the format’s other
 [reference kinds](arch-collection-format.md#the-record), each answered with its `kind`
 and every field, null where its kind has none (`_references` in `guided_review.py`), and

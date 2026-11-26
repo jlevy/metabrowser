@@ -15,7 +15,8 @@ A range of the same file, a file the route answers with its hunks, and a file pa
 step’s budget draw as before.
 A step shows only once its documents are drawn: while a document’s read is on its way,
 the step waits out of sight, and the step shown before it stays, every view it drew with
-it. Moving on again before the read answers withdraws the waiting step, which aborts its
+it, with the arrows’ delayed mark beside the step list until the step shows.
+Moving on again before the read answers withdraws the waiting step, which aborts its
 read, whose late answer draws nothing, and the next step replaces the shown one, which
 disposes its views. A step read at another merge base or another head than the page’s
 says the file’s diff is unavailable, and a comparison that names no rendered route draws
@@ -43,10 +44,10 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "a Markdown document's view is drawn with: changedFiles: object, layout: \"unified\", markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, show: \"current\", showPreference: \"github.docs.show\", showSummary: false, summaryHost: null, unfold: true, viewFile: null",
   "a YAML document's view is drawn with: changedFiles: object, markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, showSummary: false, summaryHost: null, viewFile: null",
   "its Rendered is asked of: pull-rendered-diff file=id-docs/guide.md",
-  "step 2 waits for its document: a step waits out of sight true; step 1's disposed: 0 of 2 documents, 0 of 2 patches",
+  "step 2 waits for its document: a step waits out of sight true, the arrows' mark shows true; step 1's disposed: 0 of 2 documents, 0 of 2 patches",
   "on screen meanwhile: docs/guide.md: document | docs/guide.md: patch | src/app.py: patch | config/settings.yaml: document | notes.md: says This file's diff is too large to show in this step.",
   "step 3 before it answered: read aborted true; views drawn after 0; step 1's disposed: 2 of 2 documents, 2 of 2 patches; src/app.py: patch",
-  "a held document: while its read is held, the step shows nothing, a step waits out of sight true; once drawn, docs/held.md: document, a step waits false",
+  "a held document: while its read is held, the step shows nothing, a step waits out of sight true, the arrows' mark shows true; once drawn, docs/held.md: document, a step waits false, the arrows' mark shows false",
   "a step read at another merge base: docs/guide.md: says This file's diff is unavailable.",
   "a step read at another head: docs/guide.md: says This file's diff is unavailable.",
   "a comparison with no rendered route: docs/guide.md: document, its rendered layer absent",
