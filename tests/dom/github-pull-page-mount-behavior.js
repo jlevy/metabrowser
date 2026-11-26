@@ -817,6 +817,27 @@ async function textLinks() {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
+  // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
+  // recording stand-in in the resolver's realm, which the page reaches through its runtime.
+  // A card is its link's, by identity, with its root and target; a disposal forgets its
+  // root's.
+  const cards = new Map();
+  sandbox.MetabrowserLinkPreviews = {
+    register(root, anchor, target) {
+      cards.set(anchor, { root, target });
+      return true;
+    },
+    forget(anchor) {
+      cards.delete(anchor);
+    },
+    dispose(root) {
+      for (const [anchor, card] of cards) {
+        if (card.root === root) {
+          cards.delete(anchor);
+        }
+      }
+    },
+  };
   const comparison = recorded.current.body.record.comparison;
   // Each pass of the links over a text, which the steps count.
   let passes = 0;
@@ -1060,12 +1081,38 @@ async function textLinks() {
     return `${text}: ${event.defaultPrevented ? opened.join(", ") : "the browser follows it"}`;
   };
   const proses = (container) => container.querySelectorAll(".kpress-prose");
+  /**
+   * What each link of *holder*, a text's prose, has for its card: the kind of page it opens,
+   * at the link's own address, with the text as its root, or none; and no tooltip of its own.
+   */
+  const carded = (holder) =>
+    anchors(holder)
+      .map((link) => {
+        assert.equal(link.getAttribute("data-tip-text"), null, "a link has no tooltip of its own");
+        const card = cards.get(link);
+        if (card === undefined) {
+          return `${link.textContent} none`;
+        }
+        const { root, target } = card;
+        assert.equal(root, holder, "a link's card has its text as its root");
+        assert.equal(
+          target.kind === "view" ? `/view/${target.target.path}` : target.href,
+          link.getAttribute("href"),
+          "a link's card is for what its address opens",
+        );
+        return `${link.textContent} ${target.kind}${target.kind === "view" ? ` ${target.localization}` : ""}`;
+      })
+      .join(", ");
+  /** How many of the links of *holders* still have a card. */
+  const cardsLeft = (holders) =>
+    holders.flatMap((holder) => anchors(holder)).filter((link) => cards.has(link)).length;
 
   // Served at the head the text describes: the head's file opens in place, before the
   // comparison is read and after.
   const atHead = await mount(comparison.head);
   const [headBody] = proses(atHead.container);
   steps.push(`served at the head: ${told(headBody)}`);
+  steps.push(`  cards: ${carded(headBody)}`);
   steps.push(`  click ${click(headBody, "the changed guide", atHead)}`);
   await atHead.idle();
   steps.push(`  the comparison read: ${told(headBody)}`);
@@ -1076,7 +1123,10 @@ async function textLinks() {
     "a stale pin drops view links and keeps the PR head",
   );
   steps.push(`  after the served revision moves: ${told(headBody)}`);
+  steps.push(`  cards: ${carded(headBody)}`);
+  const headTexts = proses(atHead.container);
   atHead.handle.dispose();
+  steps.push(`  the page ends: ${cardsLeft(headTexts)} cards left`);
 
   // Served away from it: github.com at the head, then Changes for a changed file.
   const away = await mount(comparison.base_commit);
@@ -1102,6 +1152,7 @@ async function textLinks() {
   await away.idle();
   assert.equal(description.isConnected, true, "Conversation shows the same description again");
   steps.push(`  back on Conversation, ${passes} texts read again: ${told(description)}`);
+  steps.push(`  cards: ${carded(description)}; ${carded(comment)}`);
   for (const [text, holder] of [
     ["the changed guide", description],
     ["an unchanged file", description],
@@ -1130,6 +1181,7 @@ async function textLinks() {
     assert.equal(listeners.get(link) ?? 0, inApp ? 1 : 0, "an in-app link has one listener");
   }
   away.handle.dispose();
+  steps.push(`  the page ends: ${cardsLeft([description, comment])} cards left`);
   Element.prototype.addEventListener = addEventListener;
   return steps;
 }

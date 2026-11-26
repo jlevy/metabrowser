@@ -909,6 +909,25 @@ async function noteLinks(page, mb) {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
+  // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
+  // recording stand-in in the resolver's realm, which the page reaches through its runtime.
+  const cards = new Map();
+  sandbox.MetabrowserLinkPreviews = {
+    register(cardRoot, anchor, target) {
+      cards.set(anchor, { root: cardRoot, target });
+      return true;
+    },
+    forget(anchor) {
+      cards.delete(anchor);
+    },
+    dispose(cardRoot) {
+      for (const [anchor, card] of cards) {
+        if (card.root === cardRoot) {
+          cards.delete(anchor);
+        }
+      }
+    },
+  };
   const allowlist = window.MetabrowserInertHtml;
   window.MetabrowserInertHtml = {
     sanitizeHtml(html, base, keepPathRelative) {
@@ -1040,7 +1059,21 @@ async function noteLinks(page, mb) {
     }
   }
   said.clicks = clicks;
+  // Each in-app link's card is for its own address, with the note as its root; a link that
+  // leaves for github.com has none, and no link has a tooltip of its own.
+  const drawnLinks = note().querySelectorAll("a[href]");
+  said.cards = drawnLinks.map((link) => {
+    assert.equal(link.getAttribute("data-tip-text"), null, "a link has no tooltip of its own");
+    const card = cards.get(link);
+    if (card === undefined) {
+      return `${link.textContent}: none`;
+    }
+    assert.equal(card.root, note(), "a link's card has its note as its root");
+    assert.equal(card.target.href, link.getAttribute("href"), "a card is for the link's address");
+    return `${link.textContent}: ${card.target.kind}`;
+  });
   handle.dispose?.();
+  said.cards_left_once_the_page_ends = drawnLinks.filter((link) => cards.has(link)).length;
   window.MetabrowserInertHtml = allowlist;
   return said;
 }

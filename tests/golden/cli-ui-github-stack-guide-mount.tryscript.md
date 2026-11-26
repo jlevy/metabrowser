@@ -78,7 +78,10 @@ page’s glue between them.
   A member’s page opens in place through the page’s own `open` too, and a commit’s page
   and the list of pull requests through the shell’s, `navigation.openRoute`, which is
   asked only for what the page declined; a modified click on any of them is the
-  browser’s.
+  browser’s. Each link that opens in place has its link card, the tooltip that says what
+  it opens (`static/link-previews.js`, a recording stand-in here), for its own address
+  and with the note as its root, and no tooltip of its own; a link that leaves for
+  github.com has none, and the page’s end puts the note’s cards away.
 
 ```console
 $ node tests/dom/github-stack-guide-mount-session.js
@@ -432,7 +435,15 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "Command-click a commit: the browser follows it",
       "Command-click the pull requests: the browser follows it",
       "Command-click a member: the browser follows it"
-    ]
+    ],
+    "cards": [
+      "the draft: route",
+      "an unchanged file: none",
+      "a commit: route",
+      "the pull requests: route",
+      "a member: route"
+    ],
+    "cards_left_once_the_page_ends": 0
   }
 }
 ? 0

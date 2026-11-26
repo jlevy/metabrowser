@@ -2119,7 +2119,9 @@ export function mountStackPage(container, ctx, mb) {
    * Make a note's links open what *text* says they open, and mark each outside link as a
    * description's is. A pull request's or this stack's page opens in place through the
    * page's own `open`, which switches this page's tab without mounting it again; a commit's
-   * or the list's through the shell's, which `enhance` falls back to.
+   * or the list's through the shell's, which `enhance` falls back to. Each link that opens
+   * here has its link card, registered with *prose*, the note's own element, which the
+   * guide's end puts away (`disposeBody`).
    *
    * @param {Element} prose
    * @param {MetabrowserRepositoryTextContext} text
@@ -2358,6 +2360,13 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   function disposeBody() {
+    // The guide's notes take their links' cards with them (`linkNote`), and the one up on
+    // any of them.
+    for (const prose of body.querySelectorAll(".kpress-prose")) {
+      if (noteProses.has(prose)) {
+        repositoryLinks?.disposePreviews(prose);
+      }
+    }
     handle?.dispose?.();
     handle = null;
     guidedView = null;

@@ -729,6 +729,26 @@ async function step(label, revision, body, before = null) {
       return true;
     },
   };
+  // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
+  // recording stand-in, which the panel reaches through the resolver's runtime. A card is
+  // its link's, by identity, with its root and target; a disposal forgets its root's.
+  const cards = new Map();
+  sandbox.MetabrowserLinkPreviews = {
+    register(root, anchor, target) {
+      cards.set(anchor, { root, target });
+      return true;
+    },
+    forget(anchor) {
+      cards.delete(anchor);
+    },
+    dispose(root) {
+      for (const [anchor, card] of cards) {
+        if (card.root === root) {
+          cards.delete(anchor);
+        }
+      }
+    },
+  };
   Object.assign(
     transcript,
     await step("a body's links into the served repository", LINKED, "linked"),
@@ -781,6 +801,27 @@ async function step(label, revision, body, before = null) {
         ]),
       "a plain click opens an in-app page in place, and a modified click is the browser's",
     );
+    // Each link that opens here has its card, for its own address, with the body's article
+    // as its root, and no link has a tooltip of its own; when another page has the pane,
+    // the panel puts the body's cards away.
+    const article = placed.querySelector(".kpress-inert");
+    const bodyLinks = placed.querySelectorAll("a[href]");
+    linked.cards = bodyLinks.map((anchor) => {
+      assert(anchor.getAttribute("data-tip-text") === null, "a link has no tooltip of its own");
+      const card = cards.get(anchor);
+      if (card === undefined) {
+        return `${anchor.textContent}: none`;
+      }
+      const { root, target } = card;
+      assert(root === article, "a link's card has the body's article as its root");
+      const opens = target.kind === "view" ? `/view/${target.target.path}` : target.href;
+      assert(opens === anchor.getAttribute("href"), "a link's card is for its own address");
+      return `${anchor.textContent}: ${target.kind}${target.kind === "view" ? ` ${target.localization}` : ""}`;
+    });
+    sandbox.MetabrowserGitPanel.cancelPending();
+    linked["cards left once another page has the pane"] = bodyLinks.filter((anchor) =>
+      cards.has(anchor),
+    ).length;
   }
   sandbox.MetabrowserSourcePinGuard = { hasChanged: () => true };
   const staleCommit = summary(LINKED, "linked");

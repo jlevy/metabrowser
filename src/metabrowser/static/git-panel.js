@@ -1656,14 +1656,40 @@
   }
 
   /**
+   * The commit bodies whose links have link cards (`linkCommitProse`), until their page goes.
+   *
+   * @type {Set<Element>}
+   */
+  const linkedBodies = new Set();
+
+  /**
+   * Put away the link cards of every commit body but those in *keep*, and the one up on any
+   * of their links, as the page that shows them goes: to another commit's, which is *keep*,
+   * or to another owner of the pane.
+   *
+   * @param {Element | null} [keep]
+   */
+  function unlinkCommitBodies(keep = null) {
+    for (const article of linkedBodies) {
+      if (keep === null || !keep.contains(article)) {
+        window.MetabrowserRepositoryLinks?.disposePreviews(article);
+        linkedBodies.delete(article);
+      }
+    }
+  }
+
+  /**
    * @param {Element} article
    * @param {MetabrowserRepositoryLinksRuntime | null} links
    * @param {boolean} views
    */
   function linkCommitProse(article, links, views) {
     const pluginSdk = sdk();
-    if (pluginSdk) {
-      links?.enhance(article, pluginSdk, { views });
+    if (pluginSdk && links) {
+      // Each link that opens here has its link card, registered with the body's article,
+      // which its page puts away with it (`unlinkCommitBodies`).
+      links.enhance(article, pluginSdk, { views });
+      linkedBodies.add(article);
     }
     for (const anchor of article.querySelectorAll("a[href]")) {
       if (anchor instanceof HTMLElement) {
@@ -2896,6 +2922,7 @@
     const relinquished = commitDiffHandle;
     commitDiffHandle = null;
     releaseMountedSummary();
+    unlinkCommitBodies();
     relinquished?.cancelPending?.();
     return relinquished ? () => relinquished.dispose?.() : null;
   }
@@ -3366,6 +3393,7 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      unlinkCommitBodies(stage);
       mountCommitCounterpart(stage, commit.id);
       const identity = stage.querySelector(".git-commit-identity");
       // A detail the cache did not hand out is the caller's, which vouches for it.
@@ -3492,6 +3520,7 @@
     commitDiffHandle?.dispose?.();
     commitDiffHandle = null;
     releaseMountedSummary();
+    unlinkCommitBodies();
   }
 
   /**

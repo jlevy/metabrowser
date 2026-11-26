@@ -28,7 +28,11 @@ plain click has the shell open in place (`navigation.openRoute`), and a file on 
 served branch its `/view/` address, which a plain click opens through the navigation; a
 modified click on any of them is the browser’s. A relative reference stays text, as on
 github.com, where a commit’s message is not Markdown, and another site stays an outside
-link.
+link. Each link that opens in place has its link card, the tooltip that says what it
+opens (`static/link-previews.js`, a recording stand-in here), for its own address and
+with the body’s article as its root, the link to the served branch’s file saying it
+opens the served working tree, and no link has a tooltip of its own (`cards`); when
+another page has the pane, the panel puts the body’s cards away.
 
 A body the route will not render shows as written: one too long, with a notice that is
 not asked for again, and one past the renderer’s deadline, with a notice that is.
@@ -535,7 +539,15 @@ $ node tests/dom/git-commit-body-session.js
       "Command-click the pull requests: the browser follows it",
       "Command-click the guide: the browser follows it",
       "Command-click another site: the browser follows it"
-    ]
+    ],
+    "cards": [
+      "the pull request: route",
+      "a commit: route",
+      "the pull requests: route",
+      "the guide: view working-tree",
+      "another site: none"
+    ],
+    "cards left once another page has the pane": 0
   },
   "a commit with no body": {
     "waiting": false,
