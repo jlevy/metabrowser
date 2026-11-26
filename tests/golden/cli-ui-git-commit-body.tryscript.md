@@ -31,8 +31,9 @@ github.com, where a commit’s message is not Markdown, and another site stays a
 link. Each link that opens in place has its link card, the tooltip that says what it
 opens (`static/link-previews.js`, a recording stand-in here), for its own address and
 with the body’s article as its root, the link to the served branch’s file saying it
-opens the served working tree, and no link has a tooltip of its own (`cards`); when
-another page has the pane, the panel puts the body’s cards away.
+opens the served working tree, and the link to another site has the card that says where
+it goes; no link has a tooltip of its own (`cards`), and when another page has the pane,
+the panel puts the body’s cards away.
 
 A body the route will not render shows as written: one too long, with a notice that is
 not asked for again, and one past the renderer’s deadline, with a notice that is.
@@ -545,7 +546,7 @@ $ node tests/dom/git-commit-body-session.js
       "a commit: route",
       "the pull requests: route",
       "the guide: view working-tree",
-      "another site: none"
+      "another site: external"
     ],
     "cards left once another page has the pane": 0
   },

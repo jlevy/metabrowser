@@ -29,8 +29,11 @@ the session read the `tooltip` the reader would see.
   commit, the pull request list, a file or folder by a branch’s link, which opens in the
   served working tree, or at the served revision on a pin, or by the served commit’s,
   and the root. A pin’s GitPath wire decodes to the same path, by the page’s source kind,
-  and so does a rendered diff’s head link; a name that is not text, an anchor that does
-  not decode, another site, and a malformed route name nothing.
+  and so does a rendered diff’s head link.
+  A page on another site is its `http` or `https` address and the host it goes to,
+  whatever a user name in the address says, and an address with no scheme takes the
+  page’s. A name that is not text, an anchor that does not decode, a mail link, and a
+  malformed route name nothing.
   A file’s or folder’s subject keeps the navigation target as the address spelled it,
   the resolver’s own or a head link’s wire path with its fragment decoded, for a
   provider to look up and open.
@@ -42,6 +45,9 @@ the session read the `tooltip` the reader would see.
   The root is named by the served folder, or the repository, and is `/` only on a page
   with no repository identity.
   A provider’s text is escaped, and an answer that is not data is none.
+  An author’s title is quoted, after the identity, which it never takes the place of.
+  A link to another site has one line, where it goes, and “in a new tab” only where the
+  link opens one, with its author’s title after it and no mark.
 - `states`: a pull request’s state glyph is drawn only where its summary gives the
   state, once the github plugin’s glyphs have loaded, which the first such summary asks
   for.
@@ -54,6 +60,8 @@ the session read the `tooltip` the reader would see.
 - `requests`: one read and one prefetch are in flight; a newer rest waits for them
   rather than aborting them, and a link the pointer leaves before its intent delay is
   never read.
+- `outside`: a rest on a link to another site shows its card on the tooltip’s own delay
+  and asks nothing of a provider.
 - `modality`: focus, keys, and a touch show no card; a pen’s rest does.
   A Tab or a click onto the link the pointer rests on, while its read is out, ends the
   rest: the read’s answer and the state glyphs it loads bring no card back.
@@ -284,6 +292,34 @@ $ node tests/dom/link-previews-session.js
   },
   {
    "label": "a link to another site",
+   "subject": {
+    "kind": "external",
+    "url": "https://github.com/example/docs/issues/1",
+    "host": "github.com"
+   }
+  },
+  {
+   "label": "a link whose user name names one site and whose host another",
+   "subject": {
+    "kind": "external",
+    "url": "https://github.com@elsewhere.example/docs",
+    "host": "elsewhere.example"
+   }
+  },
+  {
+   "label": "a mail link",
+   "subject": null
+  },
+  {
+   "label": "a link with no scheme of its own",
+   "subject": {
+    "kind": "external",
+    "url": "https://example.com/docs",
+    "host": "example.com"
+   }
+  },
+  {
+   "label": "an address that does not parse",
    "subject": null
   },
   {
@@ -506,6 +542,31 @@ $ node tests/dom/link-previews-session.js
    "label": "the link's text is the subject",
    "linkText": "fix(parser): keep a heading's trailing text",
    "text": "Commit 0123456 | Opens here in Metabrowser"
+  },
+  {
+   "label": "another site, in a new tab",
+   "linkText": "elsewhere",
+   "newTab": true,
+   "text": "Opens example.com in a new tab"
+  },
+  {
+   "label": "another site, in the same tab",
+   "linkText": "elsewhere",
+   "newTab": false,
+   "text": "Opens example.com"
+  },
+  {
+   "label": "another site, with its author's title",
+   "linkText": "elsewhere",
+   "newTab": true,
+   "authorTitle": "The other guide",
+   "text": "Opens example.com in a new tab | “The other guide”"
+  },
+  {
+   "label": "another site, whose link's text is its address",
+   "linkText": "https://example.com/elsewhere",
+   "newTab": true,
+   "text": "Opens example.com in a new tab"
   },
   {
    "label": "not a subject",
@@ -762,6 +823,25 @@ $ node tests/dom/link-previews-session.js
    "signals": 0
   }
  },
+ "outside": [
+  {
+   "at": 0,
+   "show": "elsewhere",
+   "card": "Opens example.com in a new tab"
+  },
+  {
+   "at": 299,
+   "tooltip": null
+  },
+  {
+   "at": 320,
+   "tooltip": "Opens example.com in a new tab"
+  },
+  {
+   "at": 700,
+   "hide": "elsewhere"
+  }
+ ],
  "modality": {
   "focus, keys, and a touch": [
    {

@@ -1095,8 +1095,14 @@ async function textLinks() {
         }
         const { root, target } = card;
         assert.equal(root, holder, "a link's card has its text as its root");
+        let address = target.href;
+        if (target.kind === "view") {
+          address = `/view/${target.target.path}`;
+        } else if (target.kind === "external") {
+          address = target.url;
+        }
         assert.equal(
-          target.kind === "view" ? `/view/${target.target.path}` : target.href,
+          address,
           link.getAttribute("href"),
           "a link's card is for what its address opens",
         );

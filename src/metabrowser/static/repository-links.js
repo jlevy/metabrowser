@@ -46,7 +46,8 @@
 // `openHeadLinks`), so the links of one text open alike.
 //
 // Each link `enhance` makes in-app has its link card, the tooltip that says what it opens
-// (static/link-previews.js, loaded right after this module in the same bundle). A plugin
+// (static/link-previews.js, loaded right after this module in the same bundle), and so has
+// each link it leaves for another site, whose card says where it goes. A plugin
 // reaches the cards through this runtime, `previewLink`, `forgetPreview`, and
 // `disposePreviews`, which `metabrowser.loadRepositoryLinks()` already gives it, and never
 // through that module's global (AGENTS.md, Browser and Plugin Boundary); each is a no-op
@@ -635,11 +636,11 @@
    * modified click, a new tab, and a copied address use the same `href`, and so does a
    * plain click the shell cannot open in place. Returns how many links it changed.
    *
-   * Each in-app link it makes is registered for its link card with *root* (`previewLink`),
-   * so *root* is the text's own element, the boundary whose card its page puts away when
-   * the text goes (`disposePreviews`), and a link it restores or makes an outside one loses
-   * its card. It shows no tooltip of its own: the card says what a link opens, and that a
-   * link to the served branch opens the served working tree.
+   * Each link it reads is registered for its link card with *root* (`previewLink`), so
+   * *root* is the text's own element, the boundary whose card its page puts away when the
+   * text goes (`disposePreviews`): an in-app link's card says what it opens, and that a link
+   * to the served branch opens whatever the page serves, and a link it leaves for another
+   * site, or restores to one, says where it goes. It shows no tooltip of its own.
    *
    * It may run again over the same text with more context, and then reads each link as the
    * text wrote it and moves its one click handler and its card to the new answer.
@@ -680,6 +681,7 @@
         if (original) {
           restoreAuthoredLink(anchor, original);
         }
+        previewOutside(root, anchor, mb);
         continue;
       }
       let href;
@@ -697,6 +699,7 @@
         if (original) {
           restoreAuthoredLink(anchor, original);
         }
+        previewOutside(root, anchor, mb);
         continue;
       }
       changed += 1;
@@ -714,7 +717,7 @@
         anchor.setAttribute("rel", "noopener noreferrer");
         anchor.removeAttribute("data-metabrowser-github-localization");
         opens.delete(anchor);
-        forgetPreview(anchor);
+        previewOutside(root, anchor, mb);
         continue;
       }
       anchor.removeAttribute("target");
@@ -755,8 +758,8 @@
   // the rest of this runtime; each is a no-op where that module is not loaded.
 
   /**
-   * Give *anchor*, a link of *root* that opens *target* here, its link card, in place of
-   * any it had. *root* is the element whose cards its surface puts away together
+   * Give *anchor*, a link of *root* that opens *target*, its link card, in place of any it
+   * had: a page here, or one on another site (`{kind: "external", url}`). *root* is the element whose cards its surface puts away together
    * (`disposePreviews`): a text, a rendered document, or a rendered diff's block. *mb* is
    * the surface's SDK, which draws the card. *authorTitle* is a title the author gave the
    * link, which the surface takes off the link and the card says, so the reader never sees
@@ -771,6 +774,19 @@
    */
   function previewLink(root, anchor, target, mb, options) {
     return window.MetabrowserLinkPreviews?.register(root, anchor, target, mb, options) ?? false;
+  }
+
+  /**
+   * Give *anchor*, a link of *root* that leaves for another site, the card that says where
+   * it goes, by the address it now has; a link whose address names no site, such as a mail
+   * link's or a place in the text, has none.
+   *
+   * @param {Element} root
+   * @param {Element} anchor
+   * @param {MetabrowserPublicSdk} mb
+   */
+  function previewOutside(root, anchor, mb) {
+    previewLink(root, anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" }, mb);
   }
 
   /**

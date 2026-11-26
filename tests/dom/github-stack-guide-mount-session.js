@@ -1059,8 +1059,9 @@ async function noteLinks(page, mb) {
     }
   }
   said.clicks = clicks;
-  // Each in-app link's card is for its own address, with the note as its root; a link that
-  // leaves for github.com has none, and no link has a tooltip of its own.
+  // Each link's card is for its own address, with the note as its root: an in-app link's
+  // says what it opens, and one that leaves for github.com where it goes. No link has a
+  // tooltip of its own.
   const drawnLinks = note().querySelectorAll("a[href]");
   said.cards = drawnLinks.map((link) => {
     assert.equal(link.getAttribute("data-tip-text"), null, "a link has no tooltip of its own");
@@ -1069,7 +1070,11 @@ async function noteLinks(page, mb) {
       return `${link.textContent}: none`;
     }
     assert.equal(card.root, note(), "a link's card has its note as its root");
-    assert.equal(card.target.href, link.getAttribute("href"), "a card is for the link's address");
+    assert.equal(
+      card.target.kind === "external" ? card.target.url : card.target.href,
+      link.getAttribute("href"),
+      "a card is for the link's address",
+    );
     return `${link.textContent}: ${card.target.kind}`;
   });
   handle.dispose?.();

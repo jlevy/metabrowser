@@ -6842,7 +6842,7 @@ name, and a rendered document’s own links and embeds.
 | --- | --- |
 | A short string | `data-tip-text="…"` |
 | Rich content: counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
-| A link that opens a page in Metabrowser | The link card: register the link with `MetabrowserLinkPreviews.register` ([Tooltips on Links](#tooltips-on-links)) |
+| A link in authored text, in-app or to another site | The link card: register the link through the resolver’s runtime, `previewLink` ([Tooltips on Links](#tooltips-on-links)) |
 
 **A tooltip reads at body size**, `--tooltip-font-size`, and so do its subordinate
 lines, which set no size and read at the tooltip’s: a file’s size and age under its name
@@ -7019,8 +7019,15 @@ leaves the app; the app’s own chrome names what it opens.
 | Link | Tooltip |
 | --- | --- |
 | Opens a page in Metabrowser, in text whose words say nothing about what it opens (rendered Markdown, a pull request’s text, a Guided Review note, a commit’s message, a rendered diff) | The **link card**: what it opens, its title where known, and that it opens here |
-| Leaves for another site | None: the [External GitHub Links](#external-github-links) mark says it leaves, and the browser shows the address |
+| Leaves for another site, in the same texts | The link card’s one line saying where it goes, “Opens example.com in a new tab”, with “in a new tab” only where the link opens one |
 | The app’s own chrome, whose text names what it opens (a Pulls row’s title, a crumb, a Files row) | None, as [Tooltips Add Information](#tooltips-add-information) says |
+
+An outside link has a card because its words do not say where it goes, and nothing else
+there does: the macOS app’s web view has no status bar to show its address, and the
+[External GitHub Links](#external-github-links) mark is only a GitHub address’s. The
+card names the host the address goes to, as the URL parser reads it, so a link whose
+words or user name name another site still says which one it opens, and an in-app card’s
+“Opens here in Metabrowser” reads against it.
 
 The card is the app’s one tooltip
 ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)), so it keeps every rule
@@ -7041,7 +7048,8 @@ tooltip does:
    Changes · docs/guide.md”.
 2. **Its title**, when the app knows it: a pull request’s title, a commit’s subject, a
    stack’s top member’s title, drawn as every title is ([Titles](#titles)).
-3. **The author’s title**, when the author gave the link one.
+3. **The author’s title**, when the author gave the link one, in quotation marks, as the
+   author’s words and never the app’s.
 4. **A detail**, in `.tip-detail`, when its data has one.
 5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, or, for a
    link to a branch, which opens whatever the page serves rather than what it named,
@@ -7054,6 +7062,12 @@ A line that is the link’s own text, in any case and spacing, or a line above i
 out: a card never says its link’s words again, as a Files row’s tooltip leaves out the
 row’s name. The first line the card keeps leads with the object’s mark, so a card whose
 identity is its link’s text still shows its state.
+A card that quotes its author keeps its identity first even then, so the author’s words
+never stand where the app says what the link opens.
+
+**An outside link’s card** is one line in the tooltip’s own ink, where it goes, then its
+author’s title, quoted, and no mark: its object is another site’s, of which the app
+knows nothing more.
 
 **The mark** is the [icon catalog](design-system-icons.md#git-and-github-objects)’s for
 the object: a pull request’s state glyph only where its data gives the state, and the
@@ -7063,9 +7077,10 @@ establishes a state; a stack’s `layers`; a file’s type, from `fileTypeIcon`.
 ends in `/` and a commit is its ID, as the catalog draws neither.
 
 **An author’s title is folded in.** A trusted Markdown link can carry its author’s
-`title`. The surface that registers the link takes it off the link and hands it to the
-card, which shows it as the card’s description, or as its own line beside the object’s
-title, and never twice, so the reader never sees two tooltips.
+`title`, an in-app link’s or an outside link’s. The surface that registers the link
+takes it off the link and hands it to the card, which quotes it on its own line after
+the identity and the object’s title, and never twice, so the reader never sees two
+tooltips.
 
 **Its timing.** The card is asked for as soon as the pointer arrives and appears on the
 tooltip’s own appear delay, `TOOLTIP_APPEAR_DELAY` in `static/app.js`. Once the pointer

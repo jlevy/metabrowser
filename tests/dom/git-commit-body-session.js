@@ -801,9 +801,10 @@ async function step(label, revision, body, before = null) {
         ]),
       "a plain click opens an in-app page in place, and a modified click is the browser's",
     );
-    // Each link that opens here has its card, for its own address, with the body's article
-    // as its root, and no link has a tooltip of its own; when another page has the pane,
-    // the panel puts the body's cards away.
+    // Each link has its card, for its own address, with the body's article as its root: one
+    // that opens here says what it opens, and one to another site where it goes. No link has
+    // a tooltip of its own; when another page has the pane, the panel puts the body's cards
+    // away.
     const article = placed.querySelector(".kpress-inert");
     const bodyLinks = placed.querySelectorAll("a[href]");
     linked.cards = bodyLinks.map((anchor) => {
@@ -814,7 +815,12 @@ async function step(label, revision, body, before = null) {
       }
       const { root, target } = card;
       assert(root === article, "a link's card has the body's article as its root");
-      const opens = target.kind === "view" ? `/view/${target.target.path}` : target.href;
+      let opens = target.href;
+      if (target.kind === "view") {
+        opens = `/view/${target.target.path}`;
+      } else if (target.kind === "external") {
+        opens = target.url;
+      }
       assert(opens === anchor.getAttribute("href"), "a link's card is for its own address");
       return `${anchor.textContent}: ${target.kind}${target.kind === "view" ? ` ${target.localization}` : ""}`;
     });

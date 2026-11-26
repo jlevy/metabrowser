@@ -73,10 +73,11 @@ const authorTitles = new WeakMap();
  *   Metabrowser its link card, the tooltip that says what the link opens
  *   (static/link-previews.js), registered with *container*, whose cards `dispose` puts
  *   away: a link to a file or folder by its path, a wiki link, a PDF's View, and a
- *   `github.com` link this resolver opens here. A link to a place in the same document has
- *   none: it opens no other page. A title the author gave such a link moves into its card,
- *   so the reader never sees two tooltips; an outside link keeps its title, and, without
- *   the runtime, so does every link.
+ *   `github.com` link this resolver opens here; and each link to another site its card
+ *   that says where it goes. A link to a place in the same document has none: it opens no
+ *   other page. A title the author gave a link with a card moves into its card, so the
+ *   reader never sees two tooltips; a link with none keeps its title, and, without the
+ *   runtime, so does every link.
  *   `rawVersions` is the render's `raw_versions`: the version of each served file it
  *   embeds, by identity, which that file's address carries.
  *   `pagePath` is the path of the page that shows this document as its own, when that is
@@ -126,10 +127,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   let fragmentFrame = 0;
 
   /**
-   * Give *anchor*, a link this document opens in Metabrowser, its link card, saying the
-   * title its author gave it, which then leaves the link. A link whose card cannot be drawn,
-   * as on a page with no resolver, keeps its title, and a download, which saves the file
-   * rather than opening its page, has none.
+   * Give *anchor*, a link this document opens in Metabrowser or one to another site, its
+   * link card, saying the title its author gave it, which then leaves the link. A link whose
+   * card cannot be drawn, as on a page with no resolver, keeps its title, and a download,
+   * which saves the file rather than opening its page, has none.
    *
    * @param {Element} anchor
    * @param {MetabrowserLinkPreviewTarget} target
@@ -228,6 +229,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             anchor.removeAttribute("rel");
             anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
             previewLink(anchor, localized);
+          } else {
+            // It leaves for another site, and its card says which: a mail or phone link names
+            // none, and keeps what it had.
+            previewLink(anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" });
           }
           mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
         } else {

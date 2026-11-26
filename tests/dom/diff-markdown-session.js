@@ -490,12 +490,18 @@ function cardsIn(container) {
       return `${link.textContent}: none`;
     }
     const { root, target } = card;
-    // A link's root is the block that holds it, which the file's article puts away.
-    assert(root.className === "kpress-prose" && contains(root, link), "a card has its block");
-    const opens =
-      target.kind === "view"
-        ? `view ${target.localization} /view/${target.target.path}`
-        : `${target.kind} ${target.href}`;
+    // A link's root is the block that holds it, which the file's article puts away, or the
+    // article itself, for a link it read again once the pin changed (`closeHeadLinks`).
+    assert(
+      (root.className === "kpress-prose" || target.kind === "external") && contains(root, link),
+      "a card has its block",
+    );
+    let opens = `${target.kind} ${target.href}`;
+    if (target.kind === "view") {
+      opens = `view ${target.localization} /view/${target.target.path}`;
+    } else if (target.kind === "external") {
+      opens = `external ${target.url}`;
+    }
     return `${link.textContent}: ${opens}`;
   });
 }

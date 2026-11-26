@@ -81,7 +81,8 @@ page’s glue between them.
   browser’s. Each link that opens in place has its link card, the tooltip that says what
   it opens (`static/link-previews.js`, a recording stand-in here), for its own address
   and with the note as its root, and no tooltip of its own; a link that leaves for
-  github.com has none, and the page’s end puts the note’s cards away.
+  github.com has the card that says where it goes, and the page’s end puts the note’s
+  cards away.
 
 ```console
 $ node tests/dom/github-stack-guide-mount-session.js
@@ -438,7 +439,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
     ],
     "cards": [
       "the draft: route",
-      "an unchanged file: none",
+      "an unchanged file: external",
       "a commit: route",
       "the pull requests: route",
       "a member: route"

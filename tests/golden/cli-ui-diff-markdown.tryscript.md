@@ -92,9 +92,9 @@ Each link that opens in place has its link card, the tooltip that says what it o
 holds it: a link to the served branch as a file or folder of the served working tree,
 and a link to a file of the head the server spelled as that file (`view-head`), so no
 link carries a tooltip of its own.
-The pin change takes every card, and gives none back, since no link opens here any more,
-and the views’ disposal puts away the cards of each file’s article and every block it
-drew.
+The pin change takes every card, and gives back only the card of where each link now
+goes, another site’s (`external`), since no link opens here any more, and the views’
+disposal puts away the cards of each file’s article and every block it drew.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
 `builtin_plugins/diff/index.js`, `static/repository-links.js`, and
@@ -171,8 +171,8 @@ $ node tests/dom/diff-markdown-session.js
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
         ],
         "cards": [
-          "the setup notes: none",
-          "the docs folder: none"
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       },
       "pinned on the pull request's branch before its last push": {
@@ -182,8 +182,8 @@ $ node tests/dom/diff-markdown-session.js
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
         ],
         "cards": [
-          "the setup notes: none",
-          "the docs folder: none"
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       },
       "beside a checkout at the head, which has no pin": {
@@ -193,8 +193,8 @@ $ node tests/dom/diff-markdown-session.js
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
         ],
         "cards": [
-          "the setup notes: none",
-          "the docs folder: none"
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       },
       "pinned at the comparison's head, after another tab changed the pin": {
@@ -204,8 +204,8 @@ $ node tests/dom/diff-markdown-session.js
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
         ],
         "cards": [
-          "the setup notes: none",
-          "the docs folder: none"
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       }
     }
@@ -1130,11 +1130,11 @@ $ node tests/dom/diff-markdown-session.js long
       },
       "after": {
         "f1": [
-          "first setup notes: none"
+          "first setup notes: external https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
         ],
         "f12": [
-          "the setup notes: none",
-          "the docs folder: none"
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       }
     },

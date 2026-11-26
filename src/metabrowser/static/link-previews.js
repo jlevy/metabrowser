@@ -2,9 +2,12 @@
 // rest, saying what it opens, that object's title where the app knows it, and that it opens
 // here (docs/design-system.md, "Tooltips on Links").
 //
-// A surface that draws in-app links in authored text registers each one here by identity,
-// with what the resolver (static/repository-links.js) said it opens: a resolver's `view` or
-// `route` target, or a rendered diff's link to a file of its head (`view-head`). This module
+// A surface that draws links in authored text registers each one here by identity, with
+// what the resolver (static/repository-links.js) said it opens: a resolver's `view` or
+// `route` target, a rendered diff's link to a file of its head (`view-head`), or, for a link
+// that leaves for another site, its address (`external`), whose card says where it goes,
+// since the macOS app's web view shows no status bar and only a GitHub address has a mark
+// (`decorateExternalLink`). This module
 // then owns everything about the card: one delegated pointer listener per registered root,
 // one intent timer, the reads and prefetches a rest starts, and the one renderer, `card`,
 // so no surface can draw a card of its own (devtools/check_tooltips.py holds that).
@@ -77,6 +80,11 @@
   /** @type {ReadonlySet<string>} */
   const STATES = new Set(["open", "closed", "merged", "draft"]);
   const COMMIT_HREF = /^\/commit\/([0-9a-f]{40})$/;
+  // The schemes of an address on another site whose card says where it goes.
+  /** @type {ReadonlySet<string>} */
+  const OUTSIDE_SCHEMES = new Set(["http:", "https:"]);
+  /** Bounds URL parsing work for one link, as the resolver's `MAX_URL_LENGTH` does. */
+  const MAX_OUTSIDE_URL_LENGTH = 16 * 1024;
   const VIEW_PREFIX = "/view/";
   // The plugin that owns a pull request's state glyphs (builtin_plugins/github/pull-state.js).
   const STATE_GLYPH_PLUGIN = "github";
@@ -159,9 +167,10 @@
   // ── What a target names ────────────────────────────────────────
 
   /**
-   * What *target* names, or null for a target that opens no page here: a pull request, one
-   * of its tabs or changed files, a stack's changed file, a commit, a file or folder, or the
-   * pull request list. A `/view/` target's path is read as *sourceKind* spells it: a pin's
+   * What *target* names, or null for a target the card says nothing of: a pull request, one
+   * of its tabs or changed files, a stack's changed file, a commit, a file or folder, the
+   * pull request list, or a page on another site, by its `http` or `https` address and the
+   * host it names. A `/view/` target's path is read as *sourceKind* spells it: a pin's
    * in the GitPath wire (static/git-path.js), a folder's as its inventory escapes `%`. A
    * rendered diff's head link is always a pin's address, as `viewFileUrl` in
    * static/repository-links.js reads it. A path that does not decode names nothing a card
@@ -180,6 +189,9 @@
     }
     if (target.kind === "route") {
       return routeSubject(target);
+    }
+    if (target.kind === "external") {
+      return outsideSubject(target.url);
     }
     if (target.kind === "view") {
       const pinned = sourceKind === "git_revision";
@@ -209,6 +221,32 @@
           );
     }
     return null;
+  }
+
+  /**
+   * A page on another site, by an `http` or `https` address with a host, as the URL parser
+   * reads it: its host is where the address goes, whatever its user name says, and is in
+   * ASCII, so a name that only looks like another site's says which it is. An address with
+   * no scheme of its own (`//example.com/`) takes the page's, as the browser follows it.
+   *
+   * @param {unknown} url
+   * @returns {Subject | null}
+   */
+  function outsideSubject(url) {
+    if (typeof url !== "string" || url.length > MAX_OUTSIDE_URL_LENGTH) {
+      return null;
+    }
+    const scheme = window.location?.protocol === "http:" ? "http:" : "https:";
+    let parsed;
+    try {
+      parsed = new URL(url.startsWith("//") ? `${scheme}${url}` : url);
+    } catch (_error) {
+      return null;
+    }
+    if (!OUTSIDE_SCHEMES.has(parsed.protocol) || parsed.host === "") {
+      return null;
+    }
+    return Object.freeze({ kind: "external", url: parsed.href, host: parsed.host });
   }
 
   /**
@@ -328,14 +366,22 @@
    * commit is its ID, as the icon catalog has them (docs/design-system-icons.md). A mark
    * needs the page's SDK and is left out without it. Empty for a subject that is not one.
    *
+   * A page on another site has one line of its own, in the tooltip's own ink: where it
+   * goes, "Opens example.com", and "in a new tab" when *newTab* says the link opens one; an
+   * author's title comes after it, as after an identity, and there is no mark and no
+   * provider.
+   *
    * @param {Subject} target
    * @param {Preview | null | undefined} preview
-   * @param {{linkText?: string | null, authorTitle?: string | null}} [options]
+   * @param {{linkText?: string | null, authorTitle?: string | null, newTab?: boolean}} [options]
    * @returns {string}
    */
   function card(target, preview, options = {}) {
     if (!isSubject(target)) {
       return "";
+    }
+    if (target.kind === "external") {
+      return outsideCard(target, options);
     }
     const answer = normalizePreview(preview);
     const seen = new Set([fold(options.linkText)]);
@@ -382,6 +428,27 @@
   }
 
   /**
+   * A page on another site's card: where it goes, then an author's title, quoted, unless it
+   * says the link's own text or where the link goes.
+   *
+   * @param {Extract<Subject, {kind: "external"}>} target
+   * @param {{linkText?: string | null, authorTitle?: string | null, newTab?: boolean}} options
+   * @returns {string}
+   */
+  function outsideCard(target, options) {
+    const goes = `Opens ${target.host}${options.newTab === true ? " in a new tab" : ""}`;
+    const authored = fold(options.authorTitle);
+    const lines = [`<div>${escapeHtml(goes)}</div>`];
+    if (authored !== "" && authored !== fold(options.linkText) && authored !== fold(goes)) {
+      const words = String(options.authorTitle).trim();
+      lines.push(
+        `<div class="link-card-title">${OPEN_QUOTE}${escapeHtml(words)}${CLOSE_QUOTE}</div>`,
+      );
+    }
+    return lines.join("");
+  }
+
+  /**
    * The first line's words, as text to compare and as markup.
    *
    * @param {Subject} target
@@ -406,6 +473,8 @@
       parts = ["Pull requests"];
     } else if (target.kind === "folder") {
       parts = [`${target.path === "" ? rootName() : target.path}/`];
+    } else if (target.kind === "external") {
+      parts = [target.host];
     } else {
       parts = [target.path];
     }
@@ -546,6 +615,10 @@
         return typeof target.path === "string" && Object.hasOwn(OPENS, String(target.opens));
       case "pulls":
         return true;
+      case "external":
+        return (
+          typeof target.url === "string" && typeof target.host === "string" && target.host !== ""
+        );
       default:
         return false;
     }
@@ -835,6 +908,7 @@
     const html = card(entry.subject, preview, {
       linkText: anchor.textContent,
       authorTitle: entry.authorTitle,
+      newTab: anchor.getAttribute("target") === "_blank",
     });
     if (html === rest.html) {
       return;

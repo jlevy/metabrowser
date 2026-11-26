@@ -4021,12 +4021,13 @@ declare global {
 
   /**
    * What a link with a link card opens (static/link-previews.js): a resolver's in-app
-   * answer, or a rendered diff's link to a file of its head, a pin's `/view/<GitPath
-   * wire>[#fragment]` address.
+   * answer, a rendered diff's link to a file of its head, a pin's `/view/<GitPath
+   * wire>[#fragment]` address, or a page on another site, by its address.
    */
   type MetabrowserLinkPreviewTarget =
     | Extract<MetabrowserRepositoryLinkTarget, { kind: "view" | "route" }>
-    | Readonly<{ kind: "view-head"; href: string }>;
+    | Readonly<{ kind: "view-head"; href: string }>
+    | Readonly<{ kind: "external"; url: string }>;
 
   /** What a link card is about, as `MetabrowserLinkPreviews.subject` reads a target. */
   type MetabrowserLinkPreviewSubject =
@@ -4044,7 +4045,9 @@ declare global {
          *  link's GitPath wire path and decoded fragment. `card` does not read it. */
         target: MetabrowserNavigationTarget;
       }>
-    | Readonly<{ kind: "pulls" }>;
+    | Readonly<{ kind: "pulls" }>
+    /** A page on another site: its `http` or `https` address, and the host it goes to. */
+    | Readonly<{ kind: "external"; url: string; host: string }>;
 
   /** A provider's answer for a subject: plain text only, never markup. */
   type MetabrowserLinkPreview = Readonly<{
@@ -4103,7 +4106,7 @@ declare global {
     card(
       subject: MetabrowserLinkPreviewSubject,
       preview: MetabrowserLinkPreview | null | undefined,
-      options?: { linkText?: string | null; authorTitle?: string | null },
+      options?: { linkText?: string | null; authorTitle?: string | null; newTab?: boolean },
     ): string;
   }>;
 

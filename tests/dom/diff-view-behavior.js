@@ -932,16 +932,30 @@ async function headLinkChecks(mountDiffView, byName) {
     return { cards, disposed };
   }
   /** What *link*'s card in *cards* says it opens, and whether the block holding it is its root. */
+  /**
+   * The address of each of *links*' cards of another site, or null for a link whose card is
+   * none, not of another site, or rooted where the link is not: what `closeHeadLinks` gives
+   * the links it sends to github.com, rooted with the article it read them in.
+   */
+  function outsideCards(cards, links) {
+    return links.map((link) => {
+      const card = cards.get(link);
+      return card?.target.kind === "external" && card.root.contains(link) ? card.target.url : null;
+    });
+  }
+
   function cardOf(cards, link) {
     const card = cards.get(link);
     if (card === undefined) {
       return null;
     }
     const { root, target } = card;
-    const opens =
-      target.kind === "view"
-        ? `view ${target.localization} /view/${target.target.path}`
-        : `${target.kind} ${target.href}`;
+    let opens = `${target.kind} ${target.href}`;
+    if (target.kind === "view") {
+      opens = `view ${target.localization} /view/${target.target.path}`;
+    } else if (target.kind === "external") {
+      opens = `external ${target.url}`;
+    }
     return root.classList.contains("kpress-prose") && root.contains(link)
       ? opens
       : `${opens}, rooted elsewhere`;
@@ -1557,11 +1571,13 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     branchOpen = false;
     branchPinChanged?.();
+    const branchCardsClosed = outsideCards(branchCards.cards, branchLinks());
     check(
-      "once the pin changes, none has a card, since none opens here",
-      branchCards.cards.size === 0 &&
+      "once the pin changes, each has the card of the site it goes to, since none opens here",
+      JSON.stringify(branchCardsClosed) ===
+        JSON.stringify(branchLinks().map((link) => link.getAttribute("href"))) &&
         branchLinks().every((link) => branchCards.disposed.includes(link.closest(".kpress-prose"))),
-      JSON.stringify({ left: branchCards.cards.size, disposed: branchCards.disposed.length }),
+      JSON.stringify({ cards: branchCardsClosed, disposed: branchCards.disposed.length }),
     );
     navigated.length = 0;
     const closed = branchLinks().map((link) => ({
@@ -1726,10 +1742,12 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     spelledOpen = false;
     spelledPinChanged?.();
+    const spelledCardsClosed = outsideCards(spelledCards.cards, spelledLinks());
     check(
-      "once the pin changes, a link to a file of the head has no card",
-      spelledCards.cards.size === 0,
-      JSON.stringify([...spelledCards.cards.values()].map(({ target }) => target)),
+      "once the pin changes, a link to a file of the head has the card of the site it goes to",
+      JSON.stringify(spelledCardsClosed) ===
+        JSON.stringify(spelledLinks().map((link) => link.getAttribute("href"))),
+      JSON.stringify(spelledCardsClosed),
     );
     const spelledClosed = spelledLinks().map((link) => ({
       href: link.getAttribute("href"),

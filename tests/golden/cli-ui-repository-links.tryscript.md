@@ -800,11 +800,11 @@ reading of the same URLs.
 heard: each link `enhance` makes in-app is registered with the text it was given, for
 what its address opens, a link to the served branch among them, whose card says it opens
 the served working tree, so no link carries a tooltip of its own.
-A link it makes an outside one, as a path-relative reference away from its head, or
-restores, as a rendered diff’s link to the branch once the served pin moves, loses its
-card, and the page’s disposal of the text, through the runtime’s `disposePreviews`, puts
-its cards away. On a page whose cards have not loaded, the links open as they do with
-them.
+A link it leaves for another site, makes an outside one, as a path-relative reference
+away from its head, or restores, as a rendered diff’s link to the branch once the served
+pin moves, has the card that says where its address goes (`external`), and the page’s
+disposal of the text, through the runtime’s `disposePreviews`, puts its cards away.
+On a page whose cards have not loaded, the links open as they do with them.
 
 ```console
 $ node tests/dom/repository-links-session.js
@@ -933,9 +933,11 @@ $ node tests/dom/repository-links-session.js
       },
       "previews": [
         "register file in the text: view revision /view/g1-ZG9jcw/g1-bmV3Lm1k",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },
@@ -1020,11 +1022,12 @@ $ node tests/dom/repository-links-session.js
         ]
       },
       "previews": [
-        "forget file",
+        "register file in the text: external https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/new.md",
         "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },
@@ -1110,16 +1113,18 @@ $ node tests/dom/repository-links-session.js
         ]
       },
       "previews": [
-        "forget file",
+        "register file in the text: external https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/new.md",
         "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "register file in the text: route /pull/7/files/docs/new.md",
         "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },
@@ -1211,16 +1216,19 @@ $ node tests/dom/repository-links-session.js
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
-        "forget file",
+        "register other in the text: external https://example.com/",
+        "register file in the text: external https://github.com/example/docs/blob/dddddddddddddddddddddddddddddddddddddddd/docs/new.md",
         "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "register file in the text: route /pull/7/files/docs/new.md",
         "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },
@@ -1302,14 +1310,19 @@ $ node tests/dom/repository-links-session.js
         ]
       },
       "previews": [
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
         "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
         "forget branch",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },
@@ -1390,9 +1403,12 @@ $ node tests/dom/repository-links-session.js
         ]
       },
       "previews": [
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },
@@ -1473,9 +1489,12 @@ $ node tests/dom/repository-links-session.js
         ]
       },
       "previews": [
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
         "register pull in the text: route /pull/12/files",
         "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
         "dispose the text"
       ]
     },

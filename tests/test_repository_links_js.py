@@ -238,9 +238,10 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
 
 def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
     """A link ``enhance`` leaves in-app has its link card, for what its address opens, with
-    the text it was given as the root; a link it restores or makes an outside one has none,
-    and no link carries a tooltip of its own; the page's disposal of the text comes last.
-    Without the cards loaded, the links open as they do with them."""
+    the text it was given as the root; a link it restores or makes an outside one has the
+    card that says where its address goes, and no link carries a tooltip of its own; the
+    page's disposal of the text comes last. Without the cards loaded, the links open as
+    they do with them."""
 
     runs = _session()["enhanced"]
     for name, run in runs.items():
@@ -257,10 +258,15 @@ def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
         for link, attributes in run["anchors"].items():
             assert "data-tip-text" not in attributes, (name, link)
             localization = attributes.get("data-metabrowser-github-localization")
-            if localization is None or not run["previews"]:
+            # Without the cards, or on a page with no repository identity, which `enhance`
+            # leaves as written, no link has one.
+            if not any(call.startswith("register ") for call in run["previews"]):
                 assert link not in cards, (name, link)
                 continue
             href = attributes["href"]
+            if localization is None:
+                assert cards[link] == f"external {href}", (name, link)
+                continue
             kind = f"view {localization}" if href.startswith("/view/") else "route"
             assert cards[link] == f"{kind} {href}", (name, link)
     without = runs["a text on a page whose link cards have not loaded"]

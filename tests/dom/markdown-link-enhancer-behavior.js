@@ -288,10 +288,17 @@ async function loadModule() {
 (async () => {
   const module = await loadModule();
   // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
-  // recording stand-in, which the enhancer reaches through the resolver's runtime.
+  // recording stand-in, which the enhancer reaches through the resolver's runtime. Like the
+  // module, it gives an outside link a card only for a web address, and answers whether it
+  // did, which is what tells the enhancer to take the link's title.
   const cards = { calls: [], registered: new Map() };
   global.MetabrowserLinkPreviews = {
     register(root, anchor, target, _mb, options = {}) {
+      if (target.kind === "external" && !/^(https?:)?\/\//i.test(target.url)) {
+        cards.calls.push(["forget", anchor]);
+        cards.registered.delete(anchor);
+        return false;
+      }
       cards.calls.push(["register", anchor]);
       cards.registered.set(anchor, { root, target, authorTitle: options.authorTitle ?? null });
       return true;
@@ -312,8 +319,8 @@ async function loadModule() {
   const sameDocument = new FakeElement("a", { href: "#Install" });
   const internal = new FakeElement("a", { href: "guide.md#Install" });
   const published = new FakeElement("a", { href: "/published/", title: "Published guide" });
-  // An author's title on a link the document opens here, which moves into its card, and on
-  // an outside link, which keeps it.
+  // An author's title on a link the document opens here, and on an outside link: each moves
+  // into the link's card.
   const titled = new FakeElement("a", { href: "setup.md", title: "How to set it up" });
   const githubTitled = new FakeElement("a", {
     href: "https://github.com/example/docs/blob/main/docs/guide.md",
@@ -530,10 +537,12 @@ async function loadModule() {
       return null;
     }
     const { kind } = entry.target;
-    const opens =
-      kind === "view"
-        ? `${entry.target.localization} ${entry.target.target.path}${entry.target.target.fragment ? `#${entry.target.target.fragment}` : ""}`
-        : entry.target.href;
+    let opens = entry.target.href;
+    if (kind === "view") {
+      opens = `${entry.target.localization} ${entry.target.target.path}${entry.target.target.fragment ? `#${entry.target.target.fragment}` : ""}`;
+    } else if (kind === "external") {
+      opens = entry.target.url;
+    }
     return `${entry.root === container ? "" : "not the rendered root: "}${kind} ${opens}`;
   };
   check(
@@ -552,8 +561,9 @@ async function loadModule() {
   // Each link the document opens in Metabrowser has its card, registered with the rendered
   // root, for what it opens: a file by its path opens here, as a link to the served commit
   // does, and a github.com link what the resolver answered, the served branch's working
-  // tree among them. A link to a place in the document, an outside link, a disabled link,
-  // and a download have none, and no link has a tooltip of the app's own.
+  // tree among them. An outside link has the card of the site it goes to, by its address. A
+  // link to a place in the document, a disabled link, and a download have none, and no link
+  // has a tooltip of the app's own.
   const expectedCards = new Map([
     [internal, "view revision docs/guide.md#Install"],
     [published, "view revision docs/published.md"],
@@ -565,6 +575,10 @@ async function loadModule() {
     [githubCommit, `route /commit/${"b".repeat(40)}`],
     [githubPulls, "route /pulls"],
     [newTab, "view revision docs/other.md"],
+    [externalTitled, "external https://example.com/elsewhere"],
+    [external, "external https://example.com/docs"],
+    [externalIssue, "external //github.com/another/repo/issues/23"],
+    [githubOtherBranch, "external https://github.com/example/docs/blob/release/docs/guide.md"],
   ]);
   const drawnCards = container.elements
     .filter((element) => element.tagName === "A")
@@ -588,8 +602,9 @@ async function loadModule() {
     JSON.stringify([...cards.registered.values()].map((entry) => entry.authorTitle)),
   );
   check(
-    "an outside link keeps its title, and a disabled one its explanation",
-    externalTitled.getAttribute("title") === "Somewhere else" &&
+    "an outside link's title moves into its card, and a disabled one keeps its explanation",
+    !externalTitled.hasAttribute("title") &&
+      cards.registered.get(externalTitled)?.authorTitle === "Somewhere else" &&
       unsafe.getAttribute("title")?.startsWith("Metabrowser ") === true,
     JSON.stringify([externalTitled.getAttribute("title"), unsafe.getAttribute("title")]),
   );

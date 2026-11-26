@@ -88,6 +88,9 @@ class FakeElement {
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
   }
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
   contains(other) {
     for (let at = other; at; at = at.parentNode) {
       if (at === this) {
@@ -480,6 +483,13 @@ function subjects() {
   read("a head link whose name is not text", { kind: "view-head", href: "/view/g1-_w" });
   read("a head link that is not a file's", { kind: "view-head", href: "/pull/12" });
   read("a link to another site", { kind: "external", url: `${base}/issues/1` });
+  read("a link whose user name names one site and whose host another", {
+    kind: "external",
+    url: "https://github.com@elsewhere.example/docs",
+  });
+  read("a mail link", { kind: "external", url: "mailto:someone@example.com" });
+  read("a link with no scheme of its own", { kind: "external", url: "//example.com/docs" });
+  read("an address that does not parse", { kind: "external", url: "https://" });
   read("a pull request numbered 0", pullRoute(0));
   read("a commit by a short ID", {
     kind: "route",
@@ -645,6 +655,30 @@ function cards(page) {
     checkCard(html, linkText, preview);
     rows.push({ label: name, linkText, text: lines(html) });
   }
+  // A page on another site: one line saying where it goes, and that it opens a new tab only
+  // where the link does, and after it the author's title.
+  const outside = previews.subject({ kind: "external", url: "https://example.com/elsewhere" });
+  for (const [name, options] of [
+    ["another site, in a new tab", { linkText: "elsewhere", newTab: true }],
+    ["another site, in the same tab", { linkText: "elsewhere", newTab: false }],
+    [
+      "another site, with its author's title",
+      { linkText: "elsewhere", newTab: true, authorTitle: "The other guide" },
+    ],
+    [
+      "another site, whose link's text is its address",
+      { linkText: "https://example.com/elsewhere", newTab: true },
+    ],
+  ]) {
+    const html = previews.card(outside, null, options);
+    const said = lines(html).split(" | ");
+    assert(
+      said[0] === `Opens example.com${options.newTab ? " in a new tab" : ""}`,
+      `an outside link's card did not say first where it goes: ${html}`,
+    );
+    assert(!STATE_MARK.test(html) && !html.includes("link-card-mark"), `a mark: ${html}`);
+    rows.push({ label: name, ...options, text: lines(html) });
+  }
   const invalid = previews.card({ kind: "issue", number: 1 }, null, {});
   assert(invalid === "", "a card was drawn for something that is not a subject");
   rows.push({ label: "not a subject", html: invalid });
@@ -780,6 +814,30 @@ async function requests() {
     "a newer rest did not wait for the read in flight",
   );
   return { log: page.log, counts };
+}
+
+/** A link to another site: its card on the tooltip's own delay, and nothing read. */
+async function outside() {
+  const page = createPage();
+  const { anchors } = page.text("comment", [
+    "elsewhere",
+    "the other guide",
+    { kind: "external", url: "https://example.com/elsewhere" },
+  ]);
+  anchors.elsewhere.setAttribute("target", "_blank");
+  await page.point(0, anchors.elsewhere);
+  await page.look(299);
+  await page.look(320);
+  await page.point(700, page.document);
+  assert(
+    page.log.at(-2).tooltip === "Opens example.com in a new tab",
+    "an outside link's card did not come up saying where it goes",
+  );
+  assert(
+    !page.log.some((entry) => entry.summary || entry.prefetch),
+    "a rest on an outside link asked something of a provider",
+  );
+  return page.log;
 }
 
 /** Focus and touch show nothing; the pointer does. */
@@ -928,6 +986,7 @@ async function main() {
     states: await states(),
     timing: await timing(),
     requests: await requests(),
+    outside: await outside(),
     modality: await modality(),
     failures: await failures(),
     disposal: await disposal(),

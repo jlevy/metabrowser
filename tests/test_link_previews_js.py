@@ -134,6 +134,29 @@ def test_an_authors_title_is_the_authors_and_never_the_identitys() -> None:
             assert not said[0].startswith("“"), row["label"]
 
 
+def test_an_outside_link_says_where_it_goes() -> None:
+    """A link to another site has a one-line card naming the host it goes to, and that it
+    opens a new tab only where the link does; it has no mark and asks no provider."""
+
+    session = _session()
+    rows = [row for row in session["cards"] if row["label"].startswith("another site")]
+    assert len(rows) >= 2 and {row["newTab"] for row in rows} == {True, False}
+    for row in rows:
+        said = row["text"].split(" | ")
+        tab = " in a new tab" if row["newTab"] else ""
+        assert said[0] == f"Opens example.com{tab}", row["label"]
+    subjects = {row["label"]: row.get("subject") for row in session["subjects"]}
+    assert subjects["a link to another site"]["host"] == "github.com"
+    spoofed = subjects["a link whose user name names one site and whose host another"]
+    assert spoofed["host"] == "elsewhere.example"
+    assert subjects["a mail link"] is None
+    rest = session["outside"]
+    assert [entry["tooltip"] for entry in rest if entry.get("tooltip")] == [
+        "Opens example.com in a new tab"
+    ]
+    assert not any("summary" in entry or "prefetch" in entry for entry in rest)
+
+
 def test_a_providers_text_is_never_markup() -> None:
     row = next(row for row in _session()["cards"] if row["label"] == "a title with markup")
     assert "<img" not in row["html"]

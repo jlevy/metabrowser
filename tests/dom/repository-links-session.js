@@ -37,10 +37,12 @@ const previews = [];
 /** @type {Map<object, string>} */
 const names = new Map();
 const named = (element) => names.get(element) ?? "an element of no name";
-const described = (target) =>
-  target.kind === "view"
-    ? `view ${target.localization} /view/${target.target.path}`
-    : `${target.kind} ${target.href}`;
+const described = (target) => {
+  if (target.kind === "view") {
+    return `view ${target.localization} /view/${target.target.path}`;
+  }
+  return `${target.kind} ${target.kind === "external" ? target.url : target.href}`;
+};
 const cards = {
   register(root, anchor, target, _mb, options = {}) {
     const title = options.authorTitle ? ` titled ${JSON.stringify(options.authorTitle)}` : "";

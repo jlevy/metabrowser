@@ -88,14 +88,21 @@ every link in the app follows it:
 | Link | Tooltip |
 | --- | --- |
 | Opens a page in Metabrowser, in text whose words say nothing about what it opens (rendered Markdown, a pull request’s text, a Guided Review note, a commit’s message, a rendered diff) | The **link card**: what it opens, its title where known, and that it opens here |
-| Leaves for another site | None: the [External GitHub Links](../../../design-system.md#external-github-links) mark says it leaves, and the browser shows the address |
+| Leaves for another site, in the same texts | The link card’s one line saying where it goes, “Opens example.com in a new tab”, with “in a new tab” only where the link opens one |
 | The app’s own chrome, whose text names what it opens (a Pulls row’s title, a crumb, a Files row) | None, as [Tooltips Add Information](../../../design-system.md#tooltips-add-information) already says |
 
 The card is the app’s one tooltip, so it obeys every rule already there: shown on
 pointer rest and never on focus, placed on its link and holding still, and put away by
 the surface that drew the link (`hide(within)`). A link in a text the author titled
-keeps that title as the card’s description, and loses its native `title`, so the reader
-never sees two tooltips.
+keeps that title, quoted as the author’s, in its card, and loses its native `title`, so
+the reader never sees two tooltips.
+
+An outside link has a card too, decided with the owner on 2026-11-26 after review: the
+macOS app’s web view has no status bar, and `decorateExternalLink` marks only a GitHub
+address, so a link to another site otherwise says nothing of where it goes.
+Its card names the host as the URL parser reads it, and says “in a new tab” only where
+the link has `target="_blank"`; an in-app card’s “Opens here in Metabrowser” reads
+against it.
 
 ### The Card
 
@@ -172,10 +179,11 @@ fit (Follow-ups).
 
 - `window.MetabrowserLinkPreviews.register(root, anchor, target, mb, { authorTitle })`:
   called by the resolver’s `enhance`, the Markdown enhancer, and the rendered diff for
-  each in-app link; `target` is the resolver’s answer, a `view` or `route` target, or
-  `{kind: "view-head", href}` for a rendered diff’s link to a file of its head.
-  A later call replaces the entry; a link the resolver leaves as written is dropped.
-  It answers whether the link has a card.
+  each link; `target` is the resolver’s answer, a `view` or `route` target,
+  `{kind: "view-head", href}` for a rendered diff’s link to a file of its head, or
+  `{kind: "external", url}` for a link to another site.
+  A later call replaces the entry; a target the card says nothing of, such as a mail
+  link’s, is dropped. It answers whether the link has a card.
 - `window.MetabrowserLinkPreviews.forget(anchor)`: drops one link and puts its card
   away.
 - `window.MetabrowserLinkPreviews.dispose(root)`: forgets a root’s links, stops
@@ -188,14 +196,16 @@ fit (Follow-ups).
   so a provider is given no signal.
 - `window.MetabrowserLinkPreviews.subject(target, sourceKind?)`: what a target names,
   pure: `pull` (`number`, `tab`, `file`), `stack` (`number`, `file`), `commit`
-  (`revision`), `file` or `folder` (`path`, `opens`, `target`), or `pulls`. A `/view/`
-  path is read as the page’s source kind spells it, `mb.sourceKind()` when not given,
-  since only that tells a pin’s GitPath wire from a folder’s name that looks like one.
+  (`revision`), `file` or `folder` (`path`, `opens`, `target`), `pulls`, or `external`
+  (`url`, `host`). A `/view/` path is read as the page’s source kind spells it,
+  `mb.sourceKind()` when not given, since only that tells a pin’s GitPath wire from a
+  folder’s name that looks like one.
   `path` is the display path the card shows, and `target` the navigation target as the
   address spelled it, the resolver’s own, or for a head link its wire path and decoded
   fragment, so a provider looks a file up and opens it by the resolver’s spelling.
-- `window.MetabrowserLinkPreviews.card(subject, preview, { linkText, authorTitle })`:
-  the one renderer, data in and escaped markup out.
+- `window.MetabrowserLinkPreviews.card(subject, preview, { linkText, authorTitle, newTab })`:
+  the one renderer, data in and escaped markup out; *newTab* is whether the link opens a
+  new tab, which the registry reads from the link as the card is asked for.
 - `window.MetabrowserLinkPreviews.INTENT_MS`: the intent delay, the tree’s
   `FILE_PREFETCH_HOVER_DELAY_MS`.
 - A plugin reaches these through the resolver’s runtime, which
