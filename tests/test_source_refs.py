@@ -584,10 +584,14 @@ def test_a_switch_without_a_view_answers_no_href(served: TestClient) -> None:
 
 def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient) -> None:
     shell = served.get("/view/").text
-    # First paint reserves a branch chip and a separate chooser above the usual filters.
+    synced_at = served.get("/api/source/status").json()["last_fetch_at"]
+    assert synced_at is not None
+    # First paint reserves a branch chip and chooser and gives the last sync without
+    # publishing the local mirror's origin path in the selector.
     assert (
         '<div class="nav-source-ref" id="nav-source-ref">'
-        '<div class="source-ref-selector" id="source-ref-selector">'
+        '<div class="source-ref-selector" id="source-ref-selector"'
+        f' data-source-mode="local-mirror" data-source-synced-at="{synced_at}">'
         '<span class="source-ref-selector-button">'
         '<span class="source-ref-selector-label"><span class="git-ref git-ref-remote">'
         '<span class="git-ref-label">topic</span></span></span>'

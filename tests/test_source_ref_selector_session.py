@@ -138,6 +138,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     recorded: dict[str, Any] = {"views": {"readme": _view("README.md"), "notes": _view("NOTES.md")}}
     try:
         with TestClient(server.app) as client:
+            page = client.get("/view/").text
+            assert 'data-source-mode="local-mirror"' in page
+            assert f'data-source-synced-at="{FETCHED_AT}"' in page
+            assert "data-source-path=" not in page
 
             def listing(**params: str) -> dict[str, Any]:
                 return answer(client.get("/api/source/refs", params=params))
