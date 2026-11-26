@@ -1124,14 +1124,16 @@ export function renderFileBody(state, layout) {
  *
  * The host draws its own card around the body, and takes the card's bar from here:
  * *disclose* is `fileDisclosure`, the bar and chevron that fold a file in Changes, for the
- * host's card and whatever of it the bar folds, the body alone or a box that holds it.
+ * host's card and whatever of it the bar folds, the body alone or a box that holds it. It
+ * reads nothing of this mount: it is on the handle only so that a host which binds this
+ * function has the builder too, and it answers the same after `dispose`.
  *
  * @param {HTMLElement} body The element the hunks are drawn into.
  * @param {Record<string, unknown>} change A changed file: its `old` and `new` paths.
  * @param {Record<string, unknown>} patch Its `hunks`, as the diff route answers them.
  * @param {DiffViewApi} api
  * @returns {{dispose: () => void,
- *   disclose: (section: HTMLElement, folded: HTMLElement) => FileDisclosure}}
+ *   disclose: (section: HTMLElement, folded: HTMLElement) => DiffFileDisclosure}}
  */
 export function mountFilePatch(body, change, patch, api) {
   const controller = new AbortController();
@@ -2129,7 +2131,7 @@ function repaintViewFileControls(view) {
  * bar's far end. Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
- * @param {Pick<FileDisclosure, "bar" | "toggle">} disclosure The file's bar and its trigger,
+ * @param {Pick<DiffFileDisclosure, "bar" | "toggle">} disclosure The file's bar and its trigger,
  *   which this fills (`fileDisclosure`).
  * @param {string} factsId The id of the stats and notes, which describe the trigger.
  * @param {MountedDiffState} view
@@ -2215,40 +2217,33 @@ function renderFileBar(change, disclosure, factsId, view) {
 }
 
 /**
- * @typedef {{bar: HTMLElement, toggle: HTMLButtonElement, sequence: number,
- *   expanded: () => boolean, setExpanded: (next: boolean) => void}} FileDisclosure
- *   A file card's disclosure: its *bar*, empty, and its *toggle*, holding the chevron, for
- *   the caller to name the file in and place first on the bar; *sequence*, the card's own
- *   number in the document, which its other ids are made from; and its state.
- */
-
-/**
  * A file card's disclosure, the one every card that shows a file's changes has
  * (docs/design-system.md, "Diff File Bar"): Changes' files, and a guided review step's
  * excerpts, which draw their own card around `mountFilePatch` and take this from it. It
  * makes the card's bar and the button that leads it, with the shell's disclosure chevron,
- * and binds them to *section* and *body*: the whole bar is one activation surface, like a
+ * and binds them to *section* and *folded*: the whole bar is one activation surface, like a
  * tree row, and the
  * button stays the semantic trigger for focus and the keyboard, whose synthesized click
  * bubbles to the bar. Only a control on the bar that acts for itself opts out: the copy
  * control, a file's view chooser, and a link or control that views the file
- * (`.diff-file-view`). A card starts open. Collapsing keeps the body in the document, at no
+ * (`.diff-file-view`). A card starts open. Collapsing keeps *folded* in the document, at no
  * height, so nothing it drew is disposed, and the bar stays where it was.
  *
  * The caller appends what names the file to *toggle*, places *toggle* and its other
- * controls in *bar*, and puts *bar* and *body* in *section*.
+ * controls in *bar*, and puts *bar* and *folded* in *section*. *folded* takes an id of the
+ * card's own, which anything else of the card can be named from.
  *
- * @param {HTMLElement} section The card. @param {HTMLElement} body What the bar shows or hides.
+ * @param {HTMLElement} section The card.
+ * @param {HTMLElement} folded What the bar shows or hides.
  * @param {(expanded: boolean) => void} [changed] Hears each change, after it is drawn.
- * @returns {FileDisclosure}
+ * @returns {DiffFileDisclosure} The one shape of it, in `static/types.d.ts`.
  */
-export function fileDisclosure(section, body, changed) {
+export function fileDisclosure(section, folded, changed) {
   sectionSequence += 1;
-  const sequence = sectionSequence;
-  const toggleId = `diff-file-toggle-${sequence}`;
-  const bodyId = `diff-file-body-${sequence}`;
+  const toggleId = `diff-file-toggle-${sectionSequence}`;
+  const bodyId = `diff-file-body-${sectionSequence}`;
   section.setAttribute("aria-labelledby", toggleId);
-  body.setAttribute("id", bodyId);
+  folded.setAttribute("id", bodyId);
   const bar = el("div", "diff-file-bar disclosure-toggle");
   const toggle = /** @type {HTMLButtonElement} */ (el("button", "diff-file-toggle expanded"));
   toggle.setAttribute("type", "button");
@@ -2267,7 +2262,7 @@ export function fileDisclosure(section, body, changed) {
     toggle.setAttribute("aria-expanded", String(expanded));
     toggle.classList.toggle("expanded", expanded);
     toggle.classList.toggle("collapsed", !expanded);
-    body.classList.toggle("diff-file-body-collapsed", !expanded);
+    folded.classList.toggle("diff-file-body-collapsed", !expanded);
     section.classList.toggle("diff-file-collapsed", !expanded);
     changed?.(expanded);
   };
@@ -2283,7 +2278,7 @@ export function fileDisclosure(section, body, changed) {
     }
     setExpanded(!expanded);
   });
-  return { bar, toggle, sequence, expanded: () => expanded, setExpanded };
+  return { bar, toggle, expanded: () => expanded, setExpanded };
 }
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
@@ -4908,7 +4903,7 @@ function renderFileSection(change, patch, context, view, draw) {
     view.notifyCurrentFile();
   });
   const { bar } = disclosure;
-  const factsId = `diff-file-facts-${disclosure.sequence}`;
+  const factsId = `${body.id}-facts`;
   const { end, notice } = renderFileBar(change, disclosure, factsId, view);
   if (notice) {
     section.append(bar, notice, body);

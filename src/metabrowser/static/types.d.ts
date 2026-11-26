@@ -1522,7 +1522,10 @@ type DiffExports = {
    * `disclose` makes the bar and the chevron that fold a file's card in Changes, for the
    * card the caller draws around the body: *section* is that card and *folded* what the bar
    * shows or hides, the body or a box that holds it. The caller names the file in `toggle`,
-   * places it first in `bar`, and puts `bar` and *folded* in the card, which starts open. */
+   * places it first in `bar`, and puts `bar` and *folded* in the card, which starts open.
+   * It is the diff view's `fileDisclosure` and reads nothing of the patch: it rides on the
+   * handle so a host that already binds `mountFilePatch` needs no second export, and it
+   * answers the same before and after `dispose`, each call a card of its own. */
   mountFilePatch: (
     body: HTMLElement,
     change: Record<string, unknown>,
@@ -1530,15 +1533,7 @@ type DiffExports = {
     api: MetabrowserPublicSdk,
   ) => {
     dispose(): void;
-    disclose(
-      section: HTMLElement,
-      folded: HTMLElement,
-    ): {
-      bar: HTMLElement;
-      toggle: HTMLButtonElement;
-      expanded(): boolean;
-      setExpanded(next: boolean): void;
-    };
+    disclose(section: HTMLElement, folded: HTMLElement): DiffFileDisclosure;
   };
   /** One changed file of a comparison drawn whole from the comparison route's one-file
    * answer by the diff view's own `render`, rendered layer included, *ctx* as a host passes
@@ -4993,6 +4988,17 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
+  /** A file card's disclosure, as the diff view's `fileDisclosure` makes one: its `bar`,
+   * empty, and its `toggle`, the button that holds the chevron, for the caller to name the
+   * file in and place first on the bar; and the card's state, open at first. The one shape
+   * of it: the diff view returns it, and a plugin that requires the diff plugin takes it
+   * from `mountFilePatch`'s handle. */
+  type DiffFileDisclosure = {
+    bar: HTMLElement;
+    toggle: HTMLButtonElement;
+    expanded(): boolean;
+    setExpanded(next: boolean): void;
+  };
   type MetabrowserPluginAssets = PluginAssets;
   type MetabrowserAgentLogRenderers = AgentLogRenderers;
   type MetabrowserGithubPullStateIcon = GithubExports["pullStateIcon"];

@@ -29,6 +29,19 @@
 //    on the trigger, which keeps the focus.
 // 4. Folding does not lose the reader's place: the bar stays where it was in the document,
 //    and the scroller does not move while it still has room to stay.
+//
+// A press is made at a point measured one protocol call earlier, so nothing may move the
+// target in between. In Changes something can: a Markdown file above the measured card gets
+// its rendered layer from a request of its own (`/api/plugin/github/pull-rendered-diff`), the
+// page shows the diff after `CHANGES_FIRST_SCREEN_MS` whether or not that layer is in, and
+// the layer's arrival makes its card taller and moves every card under it down. A press
+// measured before that and made after it lands on the Markdown above, in no bar, and folds
+// nothing; a loaded machine, whose server answers late, did that once (review A on #872,
+// A1). So Changes is measured only once no rendered layer is still on its way, which the
+// diff marks in the document (`drawProgress` in diff-markdown.js). The check does not leave
+// that to the machine's speed: it holds the rendered answers itself until Changes shows
+// without them, and lets go of any it still holds between the measurement and the press, so
+// a check that measured too early misses every time.
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
@@ -41,6 +54,13 @@ const SHOTS = process.env.SHOTS ?? "";
 const SHOTS_ONLY = process.env.SHOTS_ONLY === "1";
 // One page load or fake gh fetch; a loaded machine has needed several seconds for one.
 const STEP_MS = 30000;
+// How long the check holds the rendered answers once Changes shows without them: long enough
+// that a measurement made without waiting for them comes first, at a few protocol calls of
+// some milliseconds each, and short beside the run.
+const RENDERED_HOLD_MS = 1500;
+/** Whether no rendered layer of the diff is still on its way: a file whose layer is pending
+ * or being read marks its bar's progress so (`drawProgress` in diff-markdown.js). */
+const LAYERS_IN = `document.querySelector(".diff-markdown-progress.mb-delayed-loading") === null`;
 const ROUTES = { guide: "/pull/7", changes: "/pull/7/files" };
 
 const failures = [];
@@ -167,15 +187,12 @@ try {
     await waitFor(`${STANDS(card)}.moving === false`);
     return evaluate(STANDS(card));
   };
-  /** A real press on the middle of what *expression* finds, once it has stopped moving: a
-   * page still laying out its files, as Changes is while they arrive, can move the target
-   * between the press and its release, and that click is no longer the target's. */
-  const press = async (expression) => {
-    await waitFor(`new Promise((resolve) => {
-      const top = () => (${expression}).getBoundingClientRect().top;
-      const first = top();
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve(top() === first)));
-    })`);
+  /** A real press on the middle of what *expression* finds. The point is measured in one
+   * protocol call and pressed in the next, so the caller makes sure beforehand that nothing
+   * is still to move the target between the two: what moved it in Changes was a rendered
+   * layer landing above it (the head of this file). *between* runs after the measurement
+   * and before the press, where a check puts the arrival it must have waited out. */
+  const press = async (expression, between = async () => {}) => {
     const point = await evaluate(`(() => {
       const target = (${expression});
       const rect = target.getBoundingClientRect();
@@ -187,6 +204,7 @@ try {
     if (!point.hits) {
       throw new Error(`a press at ${point.x}, ${point.y} would land on ${point.hit}`);
     }
+    await between();
     for (const type of ["mousePressed", "mouseReleased"]) {
       await chrome.send("Input.dispatchMouseEvent", {
         x: point.x,
@@ -220,8 +238,37 @@ try {
   /** @type {Record<string, unknown>} */
   let changesFolded = {};
   if (!SHOTS_ONLY) {
+    // The rendered layers' answers are held here, so Changes shows without them, as it does
+    // when the server is slow, and are let go after `RENDERED_HOLD_MS` or at the press,
+    // whichever is first.
+    /** @type {string[]} */
+    const held = [];
+    let holding = true;
+    chrome.on("Fetch.requestPaused", (params) => {
+      if (holding) {
+        held.push(params.requestId);
+      } else {
+        void chrome.send("Fetch.continueRequest", { requestId: params.requestId });
+      }
+    });
+    const letGo = async () => {
+      holding = false;
+      for (const requestId of held.splice(0)) {
+        await chrome.send("Fetch.continueRequest", { requestId });
+      }
+    };
+    await chrome.send("Fetch.enable", { patterns: [{ urlPattern: "*pull-rendered-diff*" }] });
     await go(ROUTES.changes);
     await waitFor(`${CHANGES_CARD} !== undefined`);
+    check(
+      "Changes shows with a rendered layer still on its way, which the check holds",
+      held.length > 0 && !(await evaluate(LAYERS_IN)),
+      `${held.length} answers held`,
+    );
+    const release = setTimeout(() => void letGo(), RENDERED_HOLD_MS);
+    // Nothing in Changes is measured until every rendered layer is in: one landing later
+    // moves the cards under it.
+    await waitFor(LAYERS_IN);
     // The card found is the one measured throughout, folded too, when it no longer has rows
     // with height to be found by.
     await evaluate(`(${CHANGES_CARD}).setAttribute("data-fold-measured", "")`);
@@ -234,7 +281,13 @@ try {
       window.__foldClicks = [];
       document.addEventListener("click", (event) => window.__foldClicks.push(event.target.className), true);
     })()`);
-    await press(`${measured}.querySelector(".diff-file-bar .diff-file-path")`);
+    // Had a layer still been on its way at the measurement, it lands here, before the press.
+    await press(`${measured}.querySelector(".diff-file-bar .diff-file-path")`, async () => {
+      clearTimeout(release);
+      await letGo();
+      await waitFor(LAYERS_IN);
+    });
+    await chrome.send("Fetch.disable");
     changesFolded = { bar: await evaluate(BAR(measured)), stands: await rest(measured) };
     check(
       "Changes' file folds at a press on its bar",

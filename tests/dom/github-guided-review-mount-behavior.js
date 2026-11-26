@@ -679,7 +679,7 @@ async function run() {
     // chevron: the trigger is a button that leads the bar and names the file, everything
     // under the bar folds, and folding disposes nothing the diff drew. A card that holds a
     // sentence in a diff's place has no trigger. The bar's motion and where it sits are
-    // Chrome's (tests/dom/github-guided-review-chrome.mjs).
+    // Chrome's (tests/dom/github-guided-review-fold-chrome.mjs).
     const fileOne = fileCard(view.container);
     assert.equal(
       fileOne.toggle.tag,

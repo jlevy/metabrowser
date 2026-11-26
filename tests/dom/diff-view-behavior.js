@@ -3076,6 +3076,16 @@ async function main() {
     );
   }
   patchHandle.dispose();
+  {
+    // The builder is on the handle, not of the patch: it answers the same once the patch is
+    // disposed (review A on #872, A3).
+    const late = patchHandle.disclose(new FakeElement("section"), new FakeElement("div"));
+    late.bar.click();
+    check(
+      "a disposed patch's handle still makes a card's bar, which folds",
+      late.expanded() === false && late.toggle.getAttribute("aria-expanded") === "false",
+    );
+  }
 
   // Disposed before its enhancement runs, a file patch stays as first painted, and a fold
   // still materializing stops.

@@ -38,14 +38,13 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   *rendered* is the format of a file named alone that the rendered route renders, by
  *   that route's own rule (`rendered_format` in pull_rendered_diff.py): the page draws it
  *   whole, and the route sends no hunks for it.
- * @typedef {{bar: HTMLElement, toggle: HTMLElement}} Disclosure A file card's bar and the
- *   trigger that leads it, as the diff plugin's `fileDisclosure` makes them.
  * @typedef {(body: HTMLElement, change: Record<string, unknown>,
  *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void,
- *   disclose: (section: HTMLElement, folded: HTMLElement) => Disclosure}} DrawPatch
+ *   disclose: (section: HTMLElement, folded: HTMLElement) => DiffFileDisclosure}} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
- *   them, and, from what it drew, *disclose*, the bar and chevron that fold a file's card in
- *   Changes (`fileDisclosure`), for the card and what it folds.
+ *   them, and on its handle *disclose*, the bar and chevron that fold a file's card in
+ *   Changes (`fileDisclosure`), for the card and what it folds. The builder reads nothing
+ *   of the patch; it comes with the handle because that is what the page hands the guide.
  * @typedef {{merge_base: string | null, head: string}} Pins
  * @typedef {{
  *   draws(pins: Pins | PullComparison): boolean,
@@ -695,7 +694,7 @@ function commitRow(reference, words) {
  * diff, the bar only names the file.
  *
  * @param {Reference} reference @param {() => void} open
- * @param {Disclosure | null} disclosure
+ * @param {DiffFileDisclosure | null} disclosure
  */
 function referenceBar(reference, open, disclosure) {
   const path = reference.path ?? "";

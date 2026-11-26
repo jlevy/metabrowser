@@ -5,6 +5,6 @@
   ([Diff File Bar](docs/design-system.md#diff-file-bar)).
 
 - **Plugin authors:** the handle the diff plugin’s `mountFilePatch` returns has
-  `disclose(section, body)`, which makes the bar and chevron that fold a file’s card in
-  Changes, for a page that draws its own card around the patch
-  ([Declared Dependencies](docs/plugins.md#declared-dependencies)).
+  `disclose(section, folded)`, which makes the bar and chevron that fold a file’s card
+  in Changes, for a page that draws its own card around the patch; it does not depend on
+  the patch ([Declared Dependencies](docs/plugins.md#declared-dependencies)).
