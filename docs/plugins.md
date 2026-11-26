@@ -1001,8 +1001,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   A late load can serve future views.
   A view that shows Markdown or other authored text passes each rendered element to the
   runtime’s `enhance`, which makes a link into the served repository open its page in
-  Metabrowser; `static/repository-links.js` documents which GitHub URLs open which
-  pages.
+  Metabrowser, in place on a plain click; `static/repository-links.js` documents which
+  GitHub URLs open which pages.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
   event log what the page waits for
@@ -1027,6 +1027,14 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   another view of the same file.
   `{ replace: true }` replaces the current history entry instead of pushing one, for a
   step Back should not stop at, such as the text typed into a search field.
+- `navigation.openRoute(href)` opens an in-app page other than a file’s in place, by the
+  address a link to it carries: a pull request’s page, one of its tabs or changed files,
+  a stack’s page, the list of pull requests, or a commit (`/pull/…`, `/stack/…`,
+  `/pulls`, `/commit/…`). The shell pushes a history entry, brings the tab that holds
+  the page to the front, and shows the page, and the call returns `true`. It returns
+  `false` for any other address, a file’s among them, and before the shell’s tabs have
+  loaded; leave the click to the browser then, which follows the link’s `href`. The
+  links `loadRepositoryLinks()`’s `enhance` makes already open this way.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length
@@ -1057,6 +1065,23 @@ link.addEventListener("click", (event) => {
   }
   event.preventDefault();
   void mb.navigation.open(target);
+});
+```
+
+A link to another in-app page is the same, with the page’s address as its `href`, and
+cancels the click only when the shell opened it:
+
+```javascript
+const revision = "8f3c2a9d1b7e4f6a0c5d2e8b9a1f3c7d6e4b2a90"; // a full commit ID
+const commit = document.createElement("a");
+commit.href = `/commit/${revision}`;
+commit.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  if (mb.navigation.openRoute(commit.getAttribute("href"))) {
+    event.preventDefault();
+  }
 });
 ```
 
