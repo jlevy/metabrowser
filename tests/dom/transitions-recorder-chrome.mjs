@@ -1549,6 +1549,35 @@ try {
         );
       }
     });
+    await check("Changes hunk requires text on the visible, selected pull request", async () => {
+      await d.evaluate(
+        `(() => {
+        history.replaceState(null, "", "/pull/353/files");
+        document.body.innerHTML = ` +
+          JSON.stringify(
+            '<div class="nav-tab-bar"><button class="tab-btn active" data-tab="pulls">Pulls</button></div><div id="preview-pane"><div class="pull-request-host" data-core-preview="false"><h1 class="github-pull-title">#353</h1><div class="tab-bar"><a class="tab-btn active" href="/pull/353/files">Changes</a></div><div class="github-pull-body"><div class="diff-root"><section class="diff-file"><header>example.js</header></section></div></div></div></div>',
+          ) +
+          `; return true; })()`,
+      );
+      const hunkReady = `(${MILESTONES.prChangesHunk(353)})()`;
+      assert.equal(await d.evaluate(hunkReady), false, "a file header alone has no hunk");
+      await d.evaluate(`(() => {
+        const hunk = document.createElement("div");
+        hunk.className = "diff-hunk";
+        hunk.style.visibility = "hidden";
+        hunk.innerHTML = '<span class="diff-line-text">let ready = true;</span>';
+        document.querySelector(".diff-file").append(hunk);
+        return true;
+      })()`);
+      assert.equal(await d.evaluate(hunkReady), false, "a hidden hunk does not count");
+      await d.evaluate('document.querySelector(".diff-hunk").style.visibility = "visible"; true');
+      assert.equal(
+        await d.evaluate(hunkReady),
+        true,
+        "the named pull request has visible hunk text",
+      );
+      assert.equal(await d.evaluate(`(${MILESTONES.prChangesHunk(351)})()`), false);
+    });
   } else {
     throw new Error(
       `unknown group ${group}; frames, frames2, content, network, landing, search, window, or readings`,

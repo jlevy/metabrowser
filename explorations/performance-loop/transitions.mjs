@@ -275,6 +275,7 @@ async function pass({
   memoryAtEnd = false,
   recordStartup = false,
   pullSubjects = null,
+  changesHunks = false,
 }) {
   const out = [];
   for (const name of journeys) {
@@ -295,6 +296,7 @@ async function pass({
         memoryAfter,
         recordStartup,
         pullSubjects,
+        changesHunks,
         loadavg: () => loadavg()[0],
       });
       // Retained memory once the journey's last transition is done (revision 6): its
@@ -360,7 +362,8 @@ async function pass({
 
 async function oneRun(options) {
   const { exp, series, condition, runIndex, pairIndex, corpus, journeys, headed, warmup } = options;
-  const { keepGoing, subset, memoryAfter, firstVisit, expectedNewest, pullSubjects } = options;
+  const { keepGoing, subset, memoryAfter, firstVisit, expectedNewest, pullSubjects, changesHunks } =
+    options;
   const expDir = path.join(BENCH, exp);
   fs.mkdirSync(expDir, { recursive: true, mode: 0o700 });
   const stateRoot = path.join(expDir, "state", condition.label);
@@ -405,6 +408,7 @@ async function oneRun(options) {
       no_warmup: !warmup,
       ...(firstVisit ? { first_visit: true } : {}),
       ...(pullSubjects ? { pull_subjects: pullSubjects } : {}),
+      ...(changesHunks ? { changes_hunks: true } : {}),
       journey_subset: subset,
       keep_going: keepGoing,
       memory_after: memoryAfter,
@@ -501,6 +505,7 @@ async function oneRun(options) {
         memoryAtEnd: true,
         recordStartup: firstVisit,
         pullSubjects,
+        changesHunks,
       });
       row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
       // Which Commits landing this build has; compare pairs only runs that agree.
@@ -566,6 +571,7 @@ async function cmdRun(argv) {
       "first-visit": { type: "boolean", default: false },
       "expect-newest": { type: "string" },
       "pull-subjects": { type: "string" },
+      "changes-hunks": { type: "boolean", default: false },
       "keep-going": { type: "boolean", default: false },
       "memory-after": { type: "string" },
       order: { type: "string", default: "alternate" },
@@ -639,6 +645,10 @@ async function cmdRun(argv) {
   ) {
     throw new CompareRefusal("--pull-subjects requires four distinct positive PR numbers");
   }
+  const changesHunks = values["changes-hunks"];
+  if (changesHunks && !journeys.includes("pulls")) {
+    throw new CompareRefusal("--changes-hunks requires the pulls journey");
+  }
   const subset = !sameJson(journeys, Object.keys(JOURNEYS));
   // Transitions after which retained memory is read; its garbage collection changes what
   // each journey measures after them, so a run that names any is not the standard regime.
@@ -648,6 +658,7 @@ async function cmdRun(argv) {
     !subset &&
     !firstVisit &&
     !pullSubjects &&
+    !changesHunks &&
     !values.headed &&
     !values["no-warmup"] &&
     !values["keep-going"] &&
@@ -662,7 +673,7 @@ async function cmdRun(argv) {
   );
   if (!standard) {
     console.log(
-      `NOT THE STANDARD REGIME: ${[firstVisit && "fresh-state first visit", pullSubjects && "alternate pull subjects", subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
+      `NOT THE STANDARD REGIME: ${[firstVisit && "fresh-state first visit", pullSubjects && "alternate pull subjects", changesHunks && "visible Changes hunks", subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
     );
   }
   let refused = 0;
@@ -693,6 +704,7 @@ async function cmdRun(argv) {
         firstVisit,
         expectedNewest,
         pullSubjects,
+        changesHunks,
         keepGoing: values["keep-going"],
         subset,
         memoryAfter,
@@ -798,7 +810,7 @@ const USAGE = `usage:
                       [--condition LABEL=PATH/TO/metab] [--runs 5] [--journeys a,b]
                       [--headed] [--no-warmup | --first-visit [--expect-newest OID]]
                       [--keep-going] [--order alternate|fixed]
-                      [--pull-subjects PR,PR,PR,PR] [--memory-after TRANSITION,...] [--out FILE]
+                      [--pull-subjects PR,PR,PR,PR] [--changes-hunks] [--memory-after TRANSITION,...] [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                       [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]

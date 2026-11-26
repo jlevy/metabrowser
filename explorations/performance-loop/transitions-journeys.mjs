@@ -201,17 +201,23 @@ const commitConverged = (rev) => `() => {
 
 const pullPath = (n, tab) => `/pull/${n}${tab ? `/${tab}` : ""}`;
 
-const pullReady = (n, tab = "") => `() => {
-  if (location.pathname !== ${J(pullPath(n, tab))} || ${activeNav} !== "pulls") { return false; }
+const activePullView = (n, tab) => `() => {
+  if (location.pathname !== ${J(pullPath(n, tab))} || ${activeNav} !== "pulls") { return null; }
   const pane = document.getElementById("preview-pane");
   const host = pane && pane.querySelector(":scope > .pull-request-host");
-  if (!host || host.dataset.corePreview !== "false" || !window.__tr.rendered(host)) { return false; }
+  if (!host || host.dataset.corePreview !== "false" || !window.__tr.rendered(host)) { return null; }
   const title = host.querySelector(".github-pull-title");
-  if (!title || !/#${n}\\b/.test(title.textContent || "")) { return false; }
+  if (!title || !/#${n}\\b/.test(title.textContent || "")) { return null; }
   const active = host.querySelector(".tab-bar .tab-btn.active");
-  if (!active || active.getAttribute("href") !== ${J(pullPath(n, tab))}) { return false; }
+  if (!active || active.getAttribute("href") !== ${J(pullPath(n, tab))}) { return null; }
   const body = host.querySelector(":scope > .github-pull-body");
-  if (!body || body.childElementCount === 0) { return false; }
+  return body?.childElementCount ? { host, body } : null;
+}`;
+
+const pullReady = (n, tab = "") => `() => {
+  const view = (${activePullView(n, tab)})();
+  if (!view) { return false; }
+  const { host, body } = view;
   if (${J(tab)} === "files" && !body.querySelector(".diff-root section.diff-file")) { return false; }
   if (${J(tab)} === "checks" && !body.querySelector(".github-pull-section")) { return false; }
   return !window.__tr.hasPlaceholder(host) && window.__tr.hasUseful(body);
@@ -293,9 +299,23 @@ const prDescription = (n, final) => `() => {
   if (!(${onScreen})(body)) { return false; }
   return !${final} || (!body.querySelector(":scope > .github-pull-plain") && !!body.querySelector(":scope > .metabrowser-kpress-host, :scope > .github-pull-empty"));
 }`;
-const pullMilestones = (n, tab) =>
+// A file card can be ready before its source hydrates. Look for visible hunk text
+// on the active Changes page of the named pull request.
+const prChangesHunk = (n) => `() => {
+  const view = (${activePullView(n, "files")})();
+  if (!view) { return false; }
+  const lines = view.body.querySelectorAll(".diff-root section.diff-file .diff-hunk .diff-line-text");
+  for (const line of lines) {
+    if ((${onScreen})(line) && window.__tr.hasUseful(line)) { return true; }
+  }
+  return false;
+}`;
+const pullMilestones = (n, tab, changesHunks) =>
   tab
-    ? { prHeader: prHeader(n) }
+    ? {
+        prHeader: prHeader(n),
+        ...(tab === "files" && changesHunks ? { prChangesHunk: prChangesHunk(n) } : {}),
+      }
     : {
         prHeader: prHeader(n),
         prDescriptionShown: prDescription(n, false),
@@ -439,6 +459,7 @@ function context(d, base, journey, rows, options) {
     facts,
     newestCommit,
     pullSubjects: options.pullSubjects,
+    changesHunks: options.changesHunks,
   };
 }
 
@@ -879,7 +900,7 @@ async function pulls(ctx) {
       converged: pullConverged(n, tab),
       subjectRequest: pullRequest(n),
       subjectPull: n,
-      milestones: pullMilestones(n, tab),
+      milestones: pullMilestones(n, tab, ctx.changesHunks),
       settleMs,
       timeoutMs: 60000,
       gapMs: 1500,
@@ -1046,7 +1067,7 @@ export const JOURNEYS = {
 };
 
 /** In-page milestone predicates, for the instrument's own tests. */
-export const MILESTONES = { sourceHighlighted };
+export const MILESTONES = { sourceHighlighted, prChangesHunk };
 
 /** Run one journey on an open browser; transition rows are appended to `rows`. */
 export async function runJourney(name, d, base, rows, options = {}) {

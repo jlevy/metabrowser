@@ -1,0 +1,17 @@
+Exp-111 — diagnose the first visible source line on the Pulls Changes tab
+Registered 2026-11-26 before the real Pulls journey.
+
+The Changes navigation's existing painted-ready predicate accepts a useful file
+card. Add an opt-in milestone for visible hunk text on the active Changes page
+for the requested pull request. The standalone Chrome fixture checks a card
+without its hunk, a hidden hunk, a visible hunk and a mismatched pull request.
+
+Take one live first-visit Chrome smoke against the pinned public checkout,
+with the ordinary origin store and provider behavior. Use merged PR subjects
+888, 882, 887 and 880. Run one fresh profile and fresh application state.
+Retain refusal flags and the file-card, visible-hunk, and first-view startup
+clocks separately. A missing hunk is preserved, including when a pull
+request's visible Changed Files do not include source text.
+
+The smoke has no comparative verdict. Stop with one real journey. Read the
+authenticated GitHub quota before and after without targeting any rate limit.

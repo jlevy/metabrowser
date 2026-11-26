@@ -253,6 +253,7 @@ export const METRICS = [
     ["pr_header_ms", "prHeader"],
     ["pr_description_shown_ms", "prDescriptionShown"],
     ["pr_description_final_ms", "prDescriptionFinal"],
+    ["pr_changes_hunk_ms", "prChangesHunk"],
   ].map(([key, name]) => ({
     ...T(key, (t) => t.milestones?.[name]),
     milestone: name,
@@ -726,10 +727,11 @@ export function compareRuns(
     flags.no_warmup ||
     flags.journey_subset ||
     flags.pull_subjects ||
+    flags.changes_hunks ||
     memoryAfter.length
   ) {
     notes.push(
-      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.first_visit ? "fresh-state first visit" : flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", flags.pull_subjects && "alternate pull subjects", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
+      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.first_visit ? "fresh-state first visit" : flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", flags.pull_subjects && "alternate pull subjects", flags.changes_hunks && "visible Changes hunks", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
     );
   }
   const harnesses = new Set(
@@ -1102,6 +1104,7 @@ const TABLES = [
       ["pr_header_ms", "PR header ms"],
       ["pr_description_shown_ms", "PR description shown ms"],
       ["pr_description_final_ms", "PR description final ms"],
+      ["pr_changes_hunk_ms", "PR first visible hunk ms"],
     ],
   },
   {

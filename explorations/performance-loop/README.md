@@ -959,12 +959,14 @@ names a file, and `compare` refuses to mix it with standard runs.
 
 Use one journey per fresh server and one browser profile per journey.
 For example, with `CORPUS` set to the pinned clone and `PULL_SUBJECTS` set to four
-comma-separated merged PR numbers from the catalog:
+comma-separated merged PR numbers from the catalog.
+Add `--changes-hunks` when examining when the first visible source line arrives in
+Changes.
 
 ```shell
 node explorations/performance-loop/transitions.mjs run --exp exp-NNN \
   --corpus "$CORPUS" --condition baseline="$PWD/.venv/bin/metab" \
-  --journeys pulls --pull-subjects "$PULL_SUBJECTS" --first-visit --runs 3
+  --journeys pulls --pull-subjects "$PULL_SUBJECTS" --first-visit --changes-hunks --runs 3
 ```
 
 For `commits` and `maintabs`, pass `--expect-newest` with the full first commit ID from
@@ -980,6 +982,12 @@ number of instrumented browser fetches still in flight at that boundary.
 This is a declared start of browsing, with any remaining preparation reported.
 Later clicks retain state created by earlier clicks.
 Report startup and after-startup click timings separately.
+
+With `--changes-hunks`, each Changes transition also reports `prChangesHunk`. The
+milestone waits for visible hunk text on the active Changes page for the requested pull
+request. File-card readiness keeps its existing clock.
+A pull request with no visible text diff records a missing milestone.
+Compare runs with the same flag.
 
 Keep first-visit timings apart from the reused-state `--no-warmup` diagnostic and the
 standard warm-server comparison.
