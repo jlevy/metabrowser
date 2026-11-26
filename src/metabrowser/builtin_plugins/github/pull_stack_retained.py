@@ -13,11 +13,16 @@ process no longer holds it in memory. Each pair names the store that computed it
 reader whose records named it, and is admitted only for that store and, once a reader is
 observed, that reader.
 
-Admission reads it with :func:`retained_stack_pair`, which fails closed: a file it cannot
-read now admits nothing and says so, and a malformed one retains nothing. The ``stack``
+Admission reads it with :func:`retained_stack_pair`, and the ``stack`` route's ``since``,
+which says what moved since a drawn pair, with :func:`retained_stack_digest`. Both fail
+closed: a file they cannot read now admits nothing and says so, and a malformed one retains
+nothing. The ``stack``
 route writes it when it answers a pair the file does not end with, by atomic replacement
 under the source's alias lock, as every writer of the ``pulls`` directory does, so two
-writers lose no pair and a cache clear removes the file whole.
+writers lose no pair and a cache clear removes the file whole. Each page's poll names the
+pair it draws, its ``since``, and the file keeps that pair just before the one it ends with,
+written again when another page named another, so the pair a page polls on is never the
+oldest when one goes.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import logging
 import os
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal
 
@@ -45,8 +51,14 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # How many earlier comparisons of one stack stay admitted: one per move, a member's push or
-# a change to the member list. A page holds the one it drew, so this outlives seven moves
-# while a page stays open on it.
+# a change to the member list. A page holds the one it drew, and names it in each poll
+# (`since`), which moves it just before the newest, so it stays while the page polls unless
+# seven moves come between two of its polls, as they can for a page out of sight, which
+# does not poll; the page then draws the stack's own comparison again (`answerAction` in
+# stack-page.js). A stack whose members' records arrive one by one moves once for each that
+# lagged: on 2026-11-25 a 22-member stack's file held eight pairs, all with the same two
+# commits. Two pages open on one stack write the file again at each poll, each moving its
+# own pair, since each names another.
 MAX_RETAINED_STACK_PAIRS: Final = 8
 # The file's read bound. Eight pairs of a 64-member stack with the longest fields the model
 # accepts (64-hex IDs, a 103-character reader, a `sha256:` store ID, five-digit numbers)
@@ -74,10 +86,13 @@ class RetainedStackPair(_Model):
 _PAIRS = TypeAdapter(tuple[RetainedStackPair, ...])
 
 # The file each stack's pairs were last seen in, by its identity (device, inode,
-# modification time, and size), and the pair it ends with: a page's poll, which answers the
-# same pair each time, then costs one lstat and writes nothing, and a file that cache-clear
-# removed or another writer replaced is read and written again.
-_LAST: OrderedDict[tuple[str, str, int], tuple[str, str, str, _Identity]] = OrderedDict()
+# modification time, and size), the pair it ends with, and the pair the last write kept just
+# before it: a page's poll, which answers the same pair and names the same one each time,
+# then costs one lstat and writes nothing, and a poll that names another pair, a file that
+# cache-clear removed, or one another writer replaced is read and written again.
+_LAST: OrderedDict[tuple[str, str, int], tuple[str, str, str, str | None, _Identity]] = (
+    OrderedDict()
+)
 _LAST_LOCK: Final = threading.Lock()
 _MAX_LAST: Final = 64
 
@@ -96,8 +111,11 @@ def _identity(home: Path, slug: str, number: int) -> _Identity | None:
     return (status.st_dev, status.st_ino, status.st_mtime_ns, status.st_size)
 
 
-def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) -> None:
-    """Keep *pair*, which the ``stack`` route answers now, as stack's most recent. Blocking:
+def retain_stack_pair(
+    published: PublishedSource, pair: StackPair, reader: str, held: str | None = None
+) -> None:
+    """Keep *pair*, which the ``stack`` route answers now, as stack's most recent, and the
+    pair whose digest is *held*, the one the asking page draws, just before it. Blocking:
     run it with :func:`~metabrowser.cache.locks.run_lock_section`.
 
     It writes under the source's alias lock, which every writer of the ``pulls`` directory
@@ -111,10 +129,10 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
     assert isinstance(pair, _Pair)
     home, slug, number = published.home, published.slug, pair.number
     seen = (str(home), slug, number)
-    last = (published.store_id, reader, pair.digest)
+    last = (published.store_id, reader, pair.digest, held)
     with _LAST_LOCK:
         known = _LAST.get(seen)
-    if known is not None and known[:3] == last and known[3] == _identity(home, slug, number):
+    if known is not None and known[:4] == last and known[4] == _identity(home, slug, number):
         with _LAST_LOCK:
             if seen in _LAST:
                 _LAST.move_to_end(seen)
@@ -134,7 +152,7 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
         return
     try:
         with source_alias_lock(home, slug):
-            _write(home, slug, number, entry)
+            _write(home, slug, number, entry, held)
             identity = _identity(home, slug, number)
     except (OSError, PrivateStorageError) as exc:
         log.debug("not retaining stack %s's comparison: %s", number, exc)
@@ -148,12 +166,14 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
             _LAST.popitem(last=False)
 
 
-def _write(home: Path, slug: str, number: int, entry: RetainedStackPair) -> None:
+def _write(home: Path, slug: str, number: int, entry: RetainedStackPair, held: str | None) -> None:
     """End stack *number*'s file with *entry*, keeping its reader's earlier pairs within the
-    bounds. Under the source's alias lock."""
+    bounds, the pair *held* names last among them, so the oldest of the others goes first.
+    Under the source's alias lock."""
 
     previous = _history_for_write(home, slug, number)
     kept = [old for old in previous if old.reader == entry.reader and old.digest != entry.digest]
+    kept.sort(key=lambda old: old.digest == held)
     kept.append(entry)
     kept = kept[-MAX_RETAINED_STACK_PAIRS:]
     body = b""
@@ -195,6 +215,33 @@ def retained_stack_pair(
     this store and, when *reader* is given, that reader; ``unknown`` when the file is there
     but cannot be read now. Blocking and bounded."""
 
+    return _retained(
+        published,
+        number,
+        reader,
+        lambda entry: (
+            (entry.base, entry.head) == (base, head) and (digest is None or entry.digest == digest)
+        ),
+    )
+
+
+def retained_stack_digest(
+    published: PublishedSource, number: int, reader: str, digest: str
+) -> StackPair | Literal["unknown"] | None:
+    """The retained pair of stack *number* whose members' digest is *digest*, for this store
+    and reader: the comparison a page drew, which the ``stack`` route's ``since`` names to
+    say what moved since. ``unknown`` when the file is there but cannot be read now.
+    Blocking and bounded."""
+
+    return _retained(published, number, reader, lambda entry: entry.digest == digest)
+
+
+def _retained(
+    published: PublishedSource,
+    number: int,
+    reader: str | None,
+    matches: Callable[[RetainedStackPair], bool],
+) -> StackPair | Literal["unknown"] | None:
     from metabrowser.builtin_plugins.github.pull_stack import StackPair
 
     try:
@@ -207,8 +254,7 @@ def retained_stack_pair(
         if (
             entry.store == published.store_id
             and (reader is None or entry.reader == reader)
-            and (entry.base, entry.head) == (base, head)
-            and (digest is None or entry.digest == digest)
+            and matches(entry)
             and len(entry.members) == len(entry.in_top)
             and entry.members
         ):
@@ -222,5 +268,6 @@ __all__ = [
     "MAX_RETAINED_STACK_PAIRS",
     "RetainedStackPair",
     "retain_stack_pair",
+    "retained_stack_digest",
     "retained_stack_pair",
 ]

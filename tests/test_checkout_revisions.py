@@ -810,13 +810,15 @@ def test_following_a_branch_writes_nothing_into_the_checkout(checkout: Path) -> 
     assert snapshot(checkout) == before
 
 
-def test_the_commits_tab_is_the_checkouts_whichever_revision_files_shows(
-    served: TestClient,
+def test_the_commits_tab_shows_the_revision_the_files_tab_shows(
+    checkout: Path, served: TestClient
 ) -> None:
-    """The chooser is the Files tab's: the Commits tab's routes answer as on the working tree.
+    """One choice for both tabs: the history is the served revision's, as the files are.
 
-    Its history is the checkout's, from its ``HEAD``, its upstream, and its trunk refs, or
-    every ref, whether the folder or one of its branches, tags, or remote branches is shown.
+    On the working tree it walks the checkout's ``HEAD``, its upstream, and its trunk
+    refs. On a branch, tag, remote-tracking branch, or commit it is that commit's own
+    history, Git's walk from the commit the Files tab shows, which is its first row. Back
+    on the working tree, every answer is what it was.
     """
 
     routes = (
@@ -824,8 +826,8 @@ def test_the_commits_tab_is_the_checkouts_whichever_revision_files_shows(
         "/api/git/refs",
         "/api/git/summary",
         "/api/git/summary?scope=all",
-        "/api/git/log?limit=5",
-        "/api/git/log?limit=5&scope=all",
+        "/api/git/log?limit=50",
+        "/api/git/log?limit=50&scope=all",
     )
 
     def answers() -> dict[str, Any]:
@@ -833,11 +835,19 @@ def test_the_commits_tab_is_the_checkouts_whichever_revision_files_shows(
         assert all(reply.status_code == 200 for reply in replies.values()), replies
         return {route: reply.json() for route, reply in replies.items()}
 
+    def walked(answer: dict[str, Any]) -> list[str]:
+        return [commit["id"] for commit in answer["/api/git/log?limit=50"]["commits"]]
+
     on_the_folder = answers()
     assert on_the_folder["/api/git/repo"]["head"]["ref"] == "refs/heads/topic"
+    assert walked(on_the_folder)[0] == git(checkout, "rev-parse", "HEAD")
     for selection in ({"ref": "feature"}, {"ref": "v1"}, {"ref": "origin/topic"}, {"oid": FIRST}):
-        _pin(served, **selection)
-        assert answers() == on_the_folder, selection
+        shown = _pin(served, **selection)["status"]["pin"]
+        on_revision = answers()
+        assert on_revision["/api/git/repo"]["head"]["revision"] == shown, selection
+        history = git(checkout, "rev-list", "--date-order", shown).split()
+        assert walked(on_revision) == history, selection
+        assert on_revision["/api/git/summary"]["commit_count"] == len(history), selection
     _pin(served, working_tree=True)
     assert answers() == on_the_folder
 
@@ -1195,42 +1205,42 @@ def test_a_page_that_names_nothing_is_refused_while_a_revision_is_served(
     assert served.get("/api/tree", headers=page_fetch).status_code == 200
 
 
-def test_a_switch_in_another_tab_does_not_fail_the_commits_tab(served: TestClient) -> None:
-    """A page left on its Commits tab keeps its history when another tab switches.
+def test_a_commits_tab_left_behind_is_refused_as_files_is(served: TestClient) -> None:
+    """A switch made in another tab is a reload for this page's Commits tab too.
 
-    The chooser is in the Files toolbar, which the Commits tab hides, so a refusal there
-    would stop the tab with its reload offer out of sight. Its routes answer the same
-    whichever revision is served, so the guard answers them, for the working tree's page
-    and a revision's, and for a page whose guard has not arrived. Files' routes are still
-    refused.
+    Its history is the revision the page was drawn for, so once another is served, the
+    guard refuses its history and its commits as it refuses its tree, for the working
+    tree's page and a revision's, and for a page whose guard has not arrived. The page's
+    freshness row then offers the reload on every tab.
     """
 
     page_fetch = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "empty"}
     routes = (
+        "/api/tree",
         "/api/git/repo",
         "/api/git/refs",
         "/api/git/summary",
         "/api/git/log?limit=5",
         "/api/git/log?limit=5&scope=all",
+        f"/api/git/commit/{FIRST}",
     )
     on_tree = {**page_fetch, PIN_HEADER: WORKING_TREE_PIN}
-    before = {route: served.get(route, headers=on_tree).json() for route in routes}
-    commit = f"/api/git/commit/{FIRST}"
-    assert served.get(commit, headers=on_tree).status_code == 200
+    for route in routes:
+        assert served.get(route, headers=on_tree).status_code == 200, route
     pinned = _pin(served, ref="feature")["status"]["pin"]
+    on_revision = {**page_fetch, PIN_HEADER: pinned}
     for headers in (on_tree, page_fetch):
-        assert served.get("/api/tree", headers=headers).status_code == 409
         for route in routes:
             reply = served.get(route, headers=headers)
-            assert (reply.status_code, reply.json()) == (200, before[route]), route
-        assert served.get(commit, headers=headers).status_code == 200
+            assert (reply.status_code, reply.json()["code"]) == (409, "pin_changed"), route
+            assert reply.headers[PIN_CHANGED_HEADER] == pinned, route
+    for route in routes:
+        assert served.get(route, headers=on_revision).status_code == 200, route
     # And the revision's page, once another tab has gone back to the working tree.
     _pin(served, working_tree=True)
-    on_revision = {**page_fetch, PIN_HEADER: pinned}
-    assert served.get("/api/tree", headers=on_revision).status_code == 409
     for route in routes:
-        assert served.get(route, headers=on_revision).json() == before[route], route
-    assert served.get(commit, headers=on_revision).status_code == 200
+        reply = served.get(route, headers=on_revision)
+        assert (reply.status_code, reply.headers[PIN_CHANGED_HEADER]) == (409, ""), route
 
 
 # ── The checkout is never written ────────────────────────────
@@ -1332,9 +1342,8 @@ def test_the_snapshot_sees_an_index_rewritten_with_the_same_entries(checkout: Pa
 
 
 # The reads that honor a repository's configuration: the Commits tab's history, a commit's
-# view, and its diffs, whole and one file. While a revision is served, the history is still
-# the checkout's own, read from the folder (`history_git_location` in git/routes.py), and a
-# commit's view and its diffs are read from its Git directory.
+# view, and its diffs, whole and one file. While a revision is served, each is read at its
+# store target (`session_git_location` in git/routes.py), under the store policies.
 def _commit_views(*commits: str) -> tuple[str, ...]:
     views = [
         "/api/git/repo",
@@ -1441,9 +1450,9 @@ def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
     that commit out of it. Every ``diff`` and ``show`` at a store target says
     ``--no-textconv --no-ext-diff``, and every command says ``log.showSignature=false``
     (``git/process.py``). So across a revision's files, its commit views, and its diffs,
-    and the Commits tab beside it, which is the checkout's own history read from the
-    folder by commands that diff nothing: no marker, the signed commit is in the history
-    and opens, and every entry under the checkout is what it was.
+    and the Commits tab beside it, which is the revision's history read at the same store
+    target: no marker, the signed commit is in the history and opens, and every entry
+    under the checkout is what it was.
     """
 
     signed = signed_branch(checkout)
@@ -1454,10 +1463,11 @@ def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
     with TestClient(server.app) as client:
         _read_revisions(client, ("feature", "topic", "signed", "v1", "origin/topic"), views)
         _pin(client, ref="signed")
-        # The Commits tab is the checkout's, whichever revision the Files tab shows: its
-        # history starts at the checkout's HEAD, and every ref's walk has the signed commit.
+        # The Commits tab shows the revision the Files tab shows: its history starts at the
+        # signed commit, which a signature program's lines would have taken out of it, and
+        # every ref's walk has it too.
         log = client.get("/api/git/log", params={"limit": "5"}).json()
-        assert log["commits"][0]["id"] == git(checkout, "rev-parse", "HEAD")
+        assert log["commits"][0]["id"] == signed
         every = client.get("/api/git/log", params={"limit": "50", "scope": "all"}).json()
         assert signed in [commit["id"] for commit in every["commits"]]
         assert client.get(f"/api/git/commit/{signed}").json()["commit"]["id"] == signed

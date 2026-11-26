@@ -42,10 +42,14 @@
 //   (`{"for": "page"}`), which fetches a store older than the server's freshness window,
 //   and asks for the list again while that runs.
 //
-// The selector chooses the source of the Files tab. The server draws its row above the
-// Files toolbar (server.py); the Pulls and Commits tabs do not follow it. Each listed ref shows its commit as the history
-// does, Git's short ID in the commit-ID face, and the commit's age by the shared
-// formatter (docs/design-system.md, "Age").
+// The selector chooses the revision the Files and Commits tabs both show: the server's
+// one source session, whose files the tree reads and whose history the graph walks
+// (`session_git_location` in git/routes.py). The server draws its one row under the tabs,
+// above both tabs' toolbars, and it hides under Pulls, which has its own scope (server.py,
+// static/main-tabs.js). A switch keeps the reader on the tab it was made from
+// (`switchTo`). Each listed ref shows its commit as the history does, Git's short ID in
+// the commit-ID face, and the commit's age by the shared formatter (docs/design-system.md,
+// "Age").
 //
 // A branch that is the head of a pull request shows it on a second line: its state's
 // icon, its title, and its number, from the listing's `pulls`, which the server reads from
@@ -83,6 +87,12 @@
   const BACK_LABEL = "Back to the working tree";
   const BACK_TIP = "Back to the working tree, the files on disk";
   const PULL_HEAD = /^refs\/pull\/([1-9][0-9]{0,9})\/head$/;
+  // The Commits tab's id among the main tabs (static/main-tabs.js, `MAIN_TABS`), and the
+  // history entry's state that is the tab's own landing: it has no address of its own, so
+  // a page reloaded on `/view/` with this state opens on Commits at its newest commit
+  // (main-tabs.js, `openMainTab`; app.js, `isGitHistoryLanding`).
+  const COMMITS_TAB = "git";
+  const COMMITS_LANDING = Object.freeze({ gitLanding: true });
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
   const FILTER_DELAY_MS = 150;
@@ -685,7 +695,8 @@
    *
    * *options.shown* is the pin and ref the page was rendered for, which the server
    * writes into a pin's page. A switch that leaves the server serving exactly that
-   * only closes the selector; any other answer opens where the server says.
+   * only closes the selector; any other answer opens the new revision on the tab
+   * `deps.tab` names: Files where the server says, Commits at its own landing.
    * *options.checkout* is whether the page is a checkout's: with no pin it shows the
    * working tree, which is then what a switch is compared with. *options.workingBranch*
    * is the branch the working tree is on, and *options.workingCommit* the commit a
@@ -991,8 +1002,11 @@
       state.switching = true;
       state.error = null;
       render();
+      // Commits keeps no file or folder for the answer to translate: it lands on the new
+      // history's newest commit, so it names no address.
+      const commits = deps.tab?.() === COMMITS_TAB;
       const view = deps.currentView();
-      if (view?.startsWith(VIEW_PREFIX)) {
+      if (!commits && view?.startsWith(VIEW_PREFIX)) {
         body.view = view;
       }
       // From here the server may serve the other subject while this page is still here,
@@ -1036,10 +1050,18 @@
             close();
             return;
           }
+          // The page goes to the tab it was on. From Files, the same file or folder in the
+          // new revision when it has it, else the root (`view_href`). From Commits, the
+          // tab's own landing, which selects the newest commit of the history now served,
+          // as a press on the tab does.
           const href = answer.view_href;
-          deps.navigate(
-            typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
-          );
+          if (commits) {
+            deps.navigate(VIEW_PREFIX, COMMITS_LANDING);
+          } else {
+            deps.navigate(
+              typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
+            );
+          }
           decided(true);
           return;
         }
@@ -1835,9 +1857,8 @@
     }
     // What a checkout's page says when the server comes to show something else, as a
     // freshness row: at the foot of the navigation pane, where a mirror's makes the same
-    // offer, so every tab shows it. The Pulls tab's requests and a comparison's are
-    // refused as the Files tab's are, and the chooser is in the Files row, which the
-    // other tabs hide.
+    // offer, so every tab shows it. Every tab's requests are refused then, the Pulls
+    // tab's too, and the chooser's row hides under Pulls.
     const stale = document.createElement("div");
     stale.className = "source-freshness source-ref-selector-stale";
     stale.setAttribute("role", "status");
@@ -2020,8 +2041,19 @@
         schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
         render: (model) => paint(parts, model),
-        navigate: (href) => window.location.assign(href),
+        navigate(href, state) {
+          if (state === undefined) {
+            window.location.assign(href);
+            return;
+          }
+          // A landing that is a history entry's state, which a reload keeps.
+          window.history.pushState(state, "", href);
+          window.location.reload();
+        },
         currentView: () => window.location.pathname,
+        // The main tab in front, as the tab bar marks it (static/main-tabs.js).
+        tab: () =>
+          document.querySelector(".nav-tab-bar .tab-btn.active")?.getAttribute("data-tab") ?? null,
         hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
       },
       {

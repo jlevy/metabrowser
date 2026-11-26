@@ -4028,7 +4028,7 @@ members.
  | [state] Say more in the guide           1/2 · #8 · maintainer |
  +--------------------------------------------------------------+
  wip -> main
- This stack has changed since its comparison was drawn.  Show the new comparison
+ #8 joined the stack.  Show the new comparison
  1 file changed
  1 A · +1 >
  DOCS   CHANGES
@@ -4066,12 +4066,14 @@ Each part of a pull request’s page, and what the stack’s page does with it:
 - **Labels:** dropped.
   Labels are each member’s.
 - **Status line:** kept.
-  The pull request’s status line and text actions: a failed read, “This stack has
-  changed since its comparison was drawn.”
-  with Show the new comparison, members the top does not contain, and members being
-  fetched or that could not be, with Retry.
-  Retry and Show the new comparison are numbered, as a pull request’s status line’s
-  controls are (`numberHeaderControls`).
+  The pull request’s status line and text actions: a failed read, a new comparison
+  offered, members the top does not contain, and members being fetched or that could not
+  be, with Retry. Retry and Show the new comparison are numbered, as a pull request’s
+  status line’s controls are (`numberHeaderControls`). A new comparison is offered only
+  when it would change what the reader sees, the two commits or the files the comparison
+  keeps, and only once the reader has done something on the page: before then, the page
+  is catching up as members’ records arrive, and draws the new one with no notice
+  ([A New Comparison](#a-new-comparison)).
 - **Size line:** adapted.
   The [change size line](#change-size-line) of the files alone, “1 file changed”, since
   the stack’s answer counts no commits or bytes yet.
@@ -4117,6 +4119,47 @@ A member row is not measured either: the page draws it with the stack menu’s b
 `stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction.
 The guide’s ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their
 freshness ink.
+
+#### A New Comparison
+
+**A new comparison is drawn without a word until the reader has done something on the
+page, and offered with what changed after.** A stack’s members’ records arrive one at a
+time when its page opens on a stale cache, each one a new comparison, so a notice then
+would describe the page catching up, and a reader who has not moved has nothing to lose
+to a redraw. One rule decides each answer (`answerAction` in `stack-page.js`):
+
+- **Before the reader’s first move**, a wheel, a touch, a press, or a key on the page,
+  or opening another tab or a file, a new comparison is drawn in place of the old.
+- **One that looks the same**, the same two commits and the same files with the same
+  totals (`comparisonLook`), is no change, before or after that move: Docs, Changes, and
+  the Diff summary are drawn from those alone, so the page goes on drawing the one it
+  has, and the reader keeps their place.
+  The server keeps the one drawn admitted while the page’s poll names it (`since`),
+  unless the stack moves more than `MAX_RETAINED_STACK_PAIRS` times between two polls,
+  as it can while the page is out of sight; an answer then says it no longer keeps it
+  (no `moved`), and the page draws the new one in its place if it looks the same and
+  otherwise offers it at once, so a refusal of what the page draws always has a remedy
+  in reach.
+- **While a member it waits on is fetched**, it is held, and the status line says
+  “Fetching #10 before its new comparison can be shown.”
+- **Otherwise it is offered** on the status line, with Show the new comparison, which
+  draws it and clears the notice.
+
+The notice says what became of each member since the comparison drawn, top first, in one
+sentence (`changeText`): “#845 has 2 new commits, #843 was merged, and #848 joined the
+stack.”, naming at most `CHANGES_NAMED` changes, or one fewer and a count of the rest,
+“and 2 more pull requests changed”.
+A member whose branch no longer holds the head drawn “was rewritten”; one that moved
+where no count is known “was updated”; one whose new head the comparison drawn already
+shows, its record catching up, is named nowhere; and when only the order changed, the
+notice says so. The answer an unchanged-looking comparison came in becomes the one the
+notice counts from, so a record that caught up while the page kept its comparison is not
+named later.
+The new commits, those the comparison drawn did not show, are counted by the
+stack route, which the page asks `since` the comparison it draws (`moved` on
+`GET stack`); the rest it reads from the two answers’ members.
+The notice names no commit and no branch; a title or an author in it would take the
+shared order of a pull request’s fields, and it has neither.
 
 #### The Stack Page’s Spacing
 
@@ -5878,8 +5921,10 @@ The tab’s shortcut moves focus to the newest row without scrolling the list, s
 focus until the row arrives, unless the reader moves focus first.
 An empty history selects nothing, and the pane says “No commits yet.”
 Clicking Commits while it is already in front changes nothing.
-`static/git-panel.js` (`landOnNewestCommit`) owns the selection;
-`tests/dom/git-commit-history-session.js` runs it.
+The history is the revision the Files tab shows, under the same revision row, and a
+revision chosen there reloads the page on Commits at its newest commit
+([The Ref Selector](#the-ref-selector)). `static/git-panel.js` (`landOnNewestCommit`)
+owns the selection; `tests/dom/git-commit-history-session.js` runs it.
 
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
@@ -6262,8 +6307,9 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   `--nav-metadata-rule-width`, under it.
   The padding is derived from the slot’s height, the line height, and the rule, so one
   line of it is exactly the toolbar slot’s height, and on Commits, which has no toolbar
-  of its own, the line stands in the slot and its text sits as far from either rule as
-  it does under the Files and Pulls toolbars.
+  of its own, the line stands in the slot and its text sits as far from what stands over
+  it, the tab bar’s rule or a checkout’s revision row, and from the rule under it, as it
+  does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
 - **Placement.** Every line stands in the fixed chrome over its panel, never in the
   panel’s scroller, so it stays in view while the tree or the list scrolls, and its rule
@@ -6755,10 +6801,10 @@ children. Visually similar surfaces do not borrow the wrong role merely to share
 
 ### The Ref Selector
 
-A served mirror or a served checkout has a revision row directly below the Files tab and
-above the filters, including Group by (`static/source-ref-selector.js`). A checkout’s
-row first says which view the page shows, **Working tree** or **Revision**, in words; a
-mirror’s names the ref alone.
+A served mirror or a served checkout has a revision row directly below the tab bar,
+above the Files filters, including Group by, and above the Commits tally
+(`static/source-ref-selector.js`). A checkout’s row first says which view the page
+shows, **Working tree** or **Revision**, in words; a mirror’s names the ref alone.
 The row has these targets:
 
 - **The branch or tag chip** names the ref the page shows, or, on a checkout’s working
@@ -6773,10 +6819,21 @@ The row has these targets:
   click, as described below.
 
 The chooser has a filter box and one row per ref.
-The revision row belongs to Files.
-Pulls has its own scope, and a checkout’s Commits shows its history across Files
-revisions
-([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
+
+- **One choice heads Files and Commits.** The server serves one source at a time, and
+  both tabs show it: Files its files, and Commits its history, from the chosen commit,
+  or, on a checkout’s working tree, from `HEAD`, its upstream, and the trunk refs
+  ([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
+  So the row is one element with one chooser, mounted once, which `activateNavPanel` in
+  `static/main-tabs.js` shows under both tabs.
+  The two tabs cannot name different revisions, and a tab switch neither resets the row
+  nor draws it again; it only closes an open list, as each tab’s own menus close.
+  Pulls has its own scope, and the row hides there.
+
+- **A switch keeps the reader on their tab.** Chosen under Files, the page reloads on
+  the same file or folder in the new revision when it has it, else at the root.
+  Chosen under Commits, the page reloads on Commits at the tab’s own landing, the newest
+  commit of the new history, as a press on the tab lands (`switchTo`).
 
 - **A ref’s row is its name, its commit, and its age.** The name is its
   [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
@@ -6911,11 +6968,10 @@ revisions.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload page”
-  (`.source-ref-selector-stale`). Every tab shows it because the Pulls tab and
-  comparison requests can also be refused.
-  The chooser belongs to Files.
-  A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
-  `source_routes.py`). It appears only after another tab has switched the server.
+  (`.source-ref-selector-stale`). Every tab shows it because every tab’s requests are
+  refused then (`SourcePinGuard` in `source_routes.py`): the Files tree’s, the Commits
+  history’s, which is the revision’s, and the Pulls tab’s and a comparison’s. It appears
+  only after another tab has switched the server.
 
 - **The revision row keeps its box from first paint.** The server draws the row, its
   view’s word and a revision’s button back included, before the chooser module loads.

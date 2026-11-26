@@ -445,14 +445,6 @@ class ServedMirror(Protocol):
         gone is left out."""
         ...
 
-    async def default_tip(self) -> str | None:
-        """The commit the origin's default branch names in the mirror now, or ``None``.
-
-        ``None`` when the mirror has recorded no default branch or no longer holds it.
-        The Commits tab walks it, whichever pin the Files tab shows.
-        """
-        ...
-
     async def default_ref(self) -> str | None:
         """The store's record of the origin's default branch, as its full ref, or ``None``."""
         ...

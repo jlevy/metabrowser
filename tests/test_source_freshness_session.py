@@ -783,6 +783,10 @@ def test_the_session_runs_on_the_recording() -> None:
     assert "POST /api/source/refresh {}" not in polls
     history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
+    # A page whose revision another tab switched keeps its rows: the walk would be refused
+    # again, and the freshness row offers the reload.
+    assert history["another tab switched the revision"] == "failed"
+    assert history["the session expired"] == "recover"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
     assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload page]")
     guard = transcript["guard"]

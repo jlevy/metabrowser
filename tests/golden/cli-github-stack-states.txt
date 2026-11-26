@@ -113,7 +113,8 @@ status: 200
     "number": 10,
     "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
     "every_s": 5.0
-  }
+  },
+  "moved": null
 }
 --- stderr ---
 --- gh ---
@@ -166,7 +167,8 @@ status: 200
   "files": [],
   "guide": null,
   "github_url": null,
-  "probe": null
+  "probe": null,
+  "moved": null
 }
 --- stderr ---
 --- gh ---
@@ -221,7 +223,8 @@ status: 200
   "files": [],
   "guide": null,
   "github_url": "https://github.com/octo/demo/pull/9",
-  "probe": null
+  "probe": null,
+  "moved": null
 }
 --- stderr ---
 --- gh ---
@@ -521,7 +524,8 @@ status: 200
     "number": 9,
     "held": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
     "every_s": 5.0
-  }
+  },
+  "moved": null
 }
 --- stderr ---
 --- gh ---
@@ -547,7 +551,8 @@ status: 200
   "files": [],
   "guide": null,
   "github_url": null,
-  "probe": null
+  "probe": null,
+  "moved": null
 }
 --- stderr ---
 --- gh ---
@@ -557,13 +562,13 @@ exit: 1
 api: /api/plugin/github/stack?number=70&left=main
 status: 400
 {
-  "error": "a stack names itself by \"number\" alone",
+  "error": "a stack names itself by \"number\", and \"since\" alone besides",
   "code": "invalid_request"
 }
 --- stderr ---
 Error: /api/plugin/github/stack?number=70&left=main returned HTTP 400
 --- gh ---
-## The stack moves: 70 is now 10 alone. A page still draws the comparison it was given, so that comparison keeps answering and its rendered documents keep being admitted, while an address the route never gave is still refused.
+## The stack moves: 70 is now 10 alone. A page still draws the comparison it was given, so that comparison keeps answering and its rendered documents keep being admitted, while an address the route never gave is still refused. Asked `since` that comparison, the answer's `moved` names no member: 8's going is in the two answers' members, and 10, which stayed, did not move.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -789,10 +794,10 @@ gh stack --version
 gh api user
 gh api repos/octo/demo/stacks?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=70'
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=70&since=ebfe45cd812c6d00f8d4a921576b31d7'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/stack?number=70
+api: /api/plugin/github/stack?number=70&since=ebfe45cd812c6d00f8d4a921576b31d7
 status: 200
 {
   "state": "current",
@@ -854,6 +859,10 @@ status: 200
     "number": 10,
     "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
     "every_s": 5.0
+  },
+  "moved": {
+    "since": "ebfe45cd812c6d00f8d4a921576b31d7",
+    "members": []
   }
 }
 --- stderr ---
@@ -1101,4 +1110,426 @@ status: 410
 }
 --- stderr ---
 Error: /api/plugin/github/stack-comparison?number=70&left=<base>&right=<draft_head>&base_policy=direct&key=00000000000000000000000000000000&build=<BUILD>&store=<STORE> returned HTTP 410
+--- gh ---
+## 74 is 7 alone, drawn at 7's head.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=74'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack?number=74
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 74,
+  "base_ref": "topic",
+  "head_ref": "count-to-two",
+  "open": true,
+  "members": [
+    {
+      "number": 7,
+      "place": 1,
+      "title": "Count to two in the app",
+      "state": "open",
+      "author": "forker",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<fork_head>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    }
+  ],
+  "pending": [],
+  "lacking": [],
+  "comparison": {
+    "left": "<base>",
+    "right": "<fork_head>",
+    "key": "8a0199690873e1666b6e4c3dc484f79c",
+    "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_head>&base_policy=direct&key=8a0199690873e1666b6e4c3dc484f79c&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_head>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_head>&store=<STORE>"
+  },
+  "totals": {
+    "files": 2,
+    "additions": 2,
+    "deletions": 0,
+    "exact": true
+  },
+  "truncated": false,
+  "files": [
+    {
+      "path": "docs/new.md",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "docs/new.md"
+        }
+      ]
+    },
+    {
+      "path": "src/app.txt",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "src/app.txt"
+        }
+      ]
+    }
+  ],
+  "guide": {
+    "number": 7,
+    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+  },
+  "github_url": "https://github.com/octo/demo/pull/7",
+  "probe": {
+    "number": 7,
+    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "every_s": 5.0
+  },
+  "moved": null
+}
+--- stderr ---
+--- gh ---
+## 7's branch is rewritten to its earlier commit, which lacks the head the page drew: asked `since` the comparison the page drew, 7 moved, and no count says what is new.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=74&since=8a0199690873e1666b6e4c3dc484f79c'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack?number=74&since=8a0199690873e1666b6e4c3dc484f79c
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 74,
+  "base_ref": "topic",
+  "head_ref": "count-to-two",
+  "open": true,
+  "members": [
+    {
+      "number": 7,
+      "place": 1,
+      "title": "Count to two in the app",
+      "state": "open",
+      "author": "forker",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<fork_earlier>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    }
+  ],
+  "pending": [],
+  "lacking": [],
+  "comparison": {
+    "left": "<base>",
+    "right": "<fork_earlier>",
+    "key": "73c1f9a36a46947990971c95114eac2a",
+    "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_earlier>&base_policy=direct&key=73c1f9a36a46947990971c95114eac2a&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_earlier>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_earlier>&store=<STORE>"
+  },
+  "totals": {
+    "files": 1,
+    "additions": 1,
+    "deletions": 0,
+    "exact": true
+  },
+  "truncated": false,
+  "files": [
+    {
+      "path": "src/app.txt",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "src/app.txt"
+        }
+      ]
+    }
+  ],
+  "guide": {
+    "number": 7,
+    "revision": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c"
+  },
+  "github_url": "https://github.com/octo/demo/pull/7",
+  "probe": {
+    "number": 7,
+    "held": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c",
+    "every_s": 5.0
+  },
+  "moved": {
+    "since": "8a0199690873e1666b6e4c3dc484f79c",
+    "members": [
+      {
+        "number": 7,
+        "commits": null
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+## 7 gains a commit on top of the earlier one, so asked `since` the comparison a page drew there, 7 has one new commit.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=74&since=73c1f9a36a46947990971c95114eac2a'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack?number=74&since=73c1f9a36a46947990971c95114eac2a
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 74,
+  "base_ref": "topic",
+  "head_ref": "count-to-two",
+  "open": true,
+  "members": [
+    {
+      "number": 7,
+      "place": 1,
+      "title": "Count to two in the app",
+      "state": "open",
+      "author": "forker",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<fork_head>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    }
+  ],
+  "pending": [],
+  "lacking": [],
+  "comparison": {
+    "left": "<base>",
+    "right": "<fork_head>",
+    "key": "8a0199690873e1666b6e4c3dc484f79c",
+    "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_head>&base_policy=direct&key=8a0199690873e1666b6e4c3dc484f79c&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_head>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_head>&store=<STORE>"
+  },
+  "totals": {
+    "files": 2,
+    "additions": 2,
+    "deletions": 0,
+    "exact": true
+  },
+  "truncated": false,
+  "files": [
+    {
+      "path": "docs/new.md",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "docs/new.md"
+        }
+      ]
+    },
+    {
+      "path": "src/app.txt",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "src/app.txt"
+        }
+      ]
+    }
+  ],
+  "guide": {
+    "number": 7,
+    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+  },
+  "github_url": "https://github.com/octo/demo/pull/7",
+  "probe": {
+    "number": 7,
+    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "every_s": 5.0
+  },
+  "moved": {
+    "since": "73c1f9a36a46947990971c95114eac2a",
+    "members": [
+      {
+        "number": 7,
+        "commits": 1
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+## `since` the comparison it answers names no move, and nor does a key the route never gave; one that is not a key is refused.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=74&since=8a0199690873e1666b6e4c3dc484f79c'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack?number=74&since=8a0199690873e1666b6e4c3dc484f79c
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 74,
+  "base_ref": "topic",
+  "head_ref": "count-to-two",
+  "open": true,
+  "members": [
+    {
+      "number": 7,
+      "place": 1,
+      "title": "Count to two in the app",
+      "state": "open",
+      "author": "forker",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<fork_head>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    }
+  ],
+  "pending": [],
+  "lacking": [],
+  "comparison": {
+    "left": "<base>",
+    "right": "<fork_head>",
+    "key": "8a0199690873e1666b6e4c3dc484f79c",
+    "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_head>&base_policy=direct&key=8a0199690873e1666b6e4c3dc484f79c&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_head>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_head>&store=<STORE>"
+  },
+  "totals": {
+    "files": 2,
+    "additions": 2,
+    "deletions": 0,
+    "exact": true
+  },
+  "truncated": false,
+  "files": [
+    {
+      "path": "docs/new.md",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "docs/new.md"
+        }
+      ]
+    },
+    {
+      "path": "src/app.txt",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "src/app.txt"
+        }
+      ]
+    }
+  ],
+  "guide": {
+    "number": 7,
+    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+  },
+  "github_url": "https://github.com/octo/demo/pull/7",
+  "probe": {
+    "number": 7,
+    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "every_s": 5.0
+  },
+  "moved": null
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=74&since=00000000000000000000000000000000'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack?number=74&since=00000000000000000000000000000000
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 74,
+  "base_ref": "topic",
+  "head_ref": "count-to-two",
+  "open": true,
+  "members": [
+    {
+      "number": 7,
+      "place": 1,
+      "title": "Count to two in the app",
+      "state": "open",
+      "author": "forker",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<fork_head>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    }
+  ],
+  "pending": [],
+  "lacking": [],
+  "comparison": {
+    "left": "<base>",
+    "right": "<fork_head>",
+    "key": "8a0199690873e1666b6e4c3dc484f79c",
+    "route": "/api/plugin/github/stack-comparison?number=74&left=<base>&right=<fork_head>&base_policy=direct&key=8a0199690873e1666b6e4c3dc484f79c&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=74&left=<base>&right=<fork_head>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=74&left=<base>&right=<fork_head>&store=<STORE>"
+  },
+  "totals": {
+    "files": 2,
+    "additions": 2,
+    "deletions": 0,
+    "exact": true
+  },
+  "truncated": false,
+  "files": [
+    {
+      "path": "docs/new.md",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "docs/new.md"
+        }
+      ]
+    },
+    {
+      "path": "src/app.txt",
+      "layers": [
+        {
+          "number": 7,
+          "place": 1,
+          "path": "src/app.txt"
+        }
+      ]
+    }
+  ],
+  "guide": {
+    "number": 7,
+    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+  },
+  "github_url": "https://github.com/octo/demo/pull/7",
+  "probe": {
+    "number": 7,
+    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "every_s": 5.0
+  },
+  "moved": null
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=74&since=main'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/stack?number=74&since=main
+status: 400
+{
+  "error": "\"since\" is a stack comparison's key",
+  "code": "invalid_request"
+}
+--- stderr ---
+Error: /api/plugin/github/stack?number=74&since=main returned HTTP 400
 --- gh ---

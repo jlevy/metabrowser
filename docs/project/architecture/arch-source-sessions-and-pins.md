@@ -383,19 +383,20 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   Nothing is fetched for a selection the checkout lacks.
   The folder’s inventory and watcher are not closed, so they are current when the
   working tree is served again.
-- **The Commits tab is the checkout’s.** The chooser is the Files tab’s, so while a
-  revision is served, the history routes, `/api/git/repo`, `/api/git/refs`,
-  `/api/git/summary`, and `/api/git/log`, read the folder as its working tree’s page
-  does (`history_git_location` in `git/routes.py`): `HEAD`, its upstream, and the trunk
-  refs, or every ref with `scope=all`. Those commands diff nothing, so no driver can
-  run, and each sets `log.showSignature=false`. A commit’s page and its diffs stay at
-  the revision’s store target (`session_git_location`), under the policies below.
-  Since none of these answers depends on the revision served, the guard answers a
-  checkout’s `/api/git/` routes whatever revision a page names, so a switch made in
-  another tab never stops a Commits tab.
-  A mirror’s Commits tab is independent of its pin in the same way: it walks the
-  origin’s default branch as the mirror holds it (`ServedMirror.default_tip`), and the
-  pin only when the mirror has recorded no default branch or no longer holds it.
+- **The Commits tab shows the revision.** The chooser heads the Files and Commits tabs
+  alike, and the history routes, `/api/git/repo`, `/api/git/refs`, `/api/git/summary`,
+  and `/api/git/log`, read the revision’s store target as a commit’s page and its diffs
+  do (`session_git_location` in `git/routes.py`), under the policies below: its commit’s
+  ancestry, or with `scope=all` every ref of the Git directory the revision is read
+  from, and a detached `HEAD` at the commit.
+  That directory is the checkout’s, except for an origin branch or tag read from the
+  origin’s store (`read_from` `origin`, set in `CheckoutRevisions.switch_pin`, as
+  [Open Modes](arch-open-modes.md) says when one is), whose `scope=all` lists only the
+  store’s refs: the origin’s branches and tags, without the checkout’s own branches.
+  A mirror’s Commits tab walks its pin the same way.
+  Since every one of these answers depends on the revision served, the guard refuses a
+  page’s `/api/git/` requests that name a revision no longer served, as it refuses its
+  tree’s, and the page offers to reload.
 - **Returning.** `{"working_tree": true}` on the same route calls
   `restore_filesystem_subject`, which attaches the folder under a new generation and
   then closes the revision’s batch readers.

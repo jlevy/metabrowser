@@ -1964,8 +1964,14 @@ try {
     }))`;
     const oneStack = await evaluate(CHIPS);
     await click('a.github-pulls-row[data-number="10"]');
+    // #10's page, committed, with both its chips (mb-66qu). Until the shell commits it, the
+    // page is built in a hidden stage beside #9's (createFilePreviewStage in app.js), and
+    // its header holds a strut, a hidden chip of the same class, until its stacks arrive:
+    // #9's chip and #10's strut made two chips while #9's page was still the one shown.
     await waitFor(
-      `document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger").length === 2`,
+      `document.querySelector(".preview-file-stage") === null &&
+        document.querySelectorAll(".github-pull-stacks").length === 1 &&
+        document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger:not(.github-pull-stack-strut)").length === 2`,
     );
     await frames();
     const twoStacks = await evaluate(CHIPS);

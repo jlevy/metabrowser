@@ -954,6 +954,7 @@ let groupHeadings = 0;
  *   loadDrawDocument: () => Promise<DrawDocument>,
  *   loadDrawProse: () => Promise<DrawProse>,
  *   refusalNote: RefusalNote,
+ *   moved?: () => void,
  * }} deps *open* goes to a file's Changes address, and *openPull* to another pull
  *   request's page, or to a file in its Changes. *age* and *shortCommit* say when a commit
  *   was made and name it, as the Commits tab does; *identity* draws a pull request's
@@ -967,6 +968,9 @@ let groupHeadings = 0;
  *   never loads it.
  *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through, and
  *   *refusalNote* says why a note's render was refused, in a description's words.
+ *   *moved*, a stack's page's, hears each read the route answers `stack_moved`, which says
+ *   the comparison the guide is read at has moved, so the page can read the stack at once
+ *   rather than at its next poll, and offer the comparison the refusal names.
  */
 export function mountGuidedReview(host, introduction, subject, deps) {
   const { loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse, refusalNote } = deps;
@@ -1191,6 +1195,9 @@ export function mountGuidedReview(host, introduction, subject, deps) {
         throw new Error("Could not read the guide");
       }
       const result = await response.json();
+      if (result.state === "stack_moved") {
+        deps.moved?.();
+      }
       if ("step" in result) {
         // A failed stylesheet leaves the text readable in the page's own type.
         if (result.assets !== undefined) {

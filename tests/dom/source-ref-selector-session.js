@@ -372,6 +372,26 @@ async function runCheckout() {
   steps.push(page.observe("the page goes to the same file in the folder"));
   selector.dispose();
 
+  // The same chooser heads the Commits tab, which shows the history of the revision
+  // chosen. A switch made there names no address, and the page reloads on Commits at
+  // the tab's own landing, the newest commit of the history the server now serves.
+  const onCommit = { view: `/commit/${recording.switch_checked_out.body.status.pin}`, tab: "git" };
+  page = createPage(onCommit);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const fromCommits = selector.choose("refs/heads/feature");
+  steps.push(page.observe("a switch on the Commits tab names no address"));
+  await page.answer(recording.switch_from_commits);
+  await fromCommits;
+  steps.push(page.observe("the page reloads on the Commits tab's own landing"));
+  selector.dispose();
+  page = createPage({ view: "/view/", tab: "git" });
+  selector = selectorRuntime.createSelector(
+    page.deps,
+    options(shownOf(recording.switch_from_commits)),
+  );
+  steps.push(page.observe("the reloaded Commits tab's row names the revision chosen there"));
+  selector.dispose();
+
   // The way back failed, with the list closed: the server is gone, since one that answers
   // serves its working tree. The row says so under its button, and opening the list, or
   // the next try, clears it.

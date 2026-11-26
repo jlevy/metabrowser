@@ -205,6 +205,9 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
         Listener("the files pane's scroll keeper, which only notes a key", None),
     ),
+    "builtin_plugins/github/stack-page.js": (
+        Listener("a stack's page noting the reader's first key, which only notes it", None),
+    ),
 }
 
 

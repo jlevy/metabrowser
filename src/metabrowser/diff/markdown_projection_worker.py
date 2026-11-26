@@ -1054,7 +1054,12 @@ class ProjectionWorker:
     async def aclose(self) -> None:
         """End this loop's renders, stop the child, and wait at most :data:`_REAP_S` for
         every child this loop stopped to exit, so none is reaped after the loop closes and
-        none starts after it. A server's lifespan ends with this."""
+        none starts after it. A server's lifespan ends with this, and so must any other loop
+        that used the worker: a loop that ends without it leaves ``asyncio.run`` to cancel a
+        start still spawning (a render's :meth:`_replace` begins one as it answers) together
+        with the task connecting its pipes, and on CPython 3.12 and 3.13 that start then
+        waits for ever for pipes that were never connected (mb-4g7f). Cancelled here, alone,
+        it finishes."""
 
         loop = _running_loop()
         if self._loop is loop:
