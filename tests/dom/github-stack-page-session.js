@@ -860,6 +860,8 @@ async function main() {
   // A member's author is the answer's once it names one, its record's, and before that the
   // stacks route's: that route read 8's author with its title and holds none for 10, so at
   // first paint 8's row ends in its author and 10's in its number, and the answer names 10's.
+  // Its labels are the stacks route's too: it read 8's and none of 10's, so the labels row is
+  // held until the answer says them all.
   const known = {
     number: 70,
     base_ref: current.base_ref,
@@ -868,11 +870,23 @@ async function main() {
     titles: current.members.map((member) => member.title),
     authors: current.members.map((member) => (member.number === 8 ? "maintainer" : null)),
     avatars: current.members.map(() => null),
+    labels: current.members.map((member) => (member.number === 8 ? ["bugfix"] : null)),
   };
+  // The stacks route read both members' labels: the row is decided at first paint, by name
+  // alone, and colored once the answer says them. A stack whose members carry none has no
+  // labels row from first paint, and the answer that says none moves nothing.
+  const knownLabelled = {
+    ...known,
+    labels: current.members.map((member) =>
+      member.number === 8 ? ["bugfix", "shared design"] : ["earnings analysis", "bugfix"],
+    ),
+  };
+  const knownBare = { ...known, labels: current.members.map(() => []) };
+  const bare = { ...current, labels: [] };
   // The Pulls tab's lists read 8, merged.
   const listed = (number) => (number === 8 ? { state: "merged", title: null } : null);
   const unlisted = () => null;
-  const headerAt = (envelope, from, drawn, failedNow = []) => {
+  const headerAt = (envelope, from, drawn, failedNow = [], offline = false) => {
     const model = page.stackHeader(
       envelope,
       from,
@@ -887,6 +901,7 @@ async function main() {
       drawn,
       // Five minutes after the members' records were fetched.
       Date.parse("2026-09-17T12:05:00Z"),
+      offline,
     );
     return {
       cold: model.cold,
@@ -923,12 +938,22 @@ async function main() {
     ...current,
     authors: [...current.authors, { login: "forker", avatar: null }],
   };
+  // Every member merged and no merger known, as list rows alone leave it: the action alone,
+  // crediting no one, as a pull request's record that names no merger says it.
+  const mergedByNoOne = { ...allMerged, mergers: [] };
   const sentences = {
     all_merged: page.stackSentence(allMerged),
+    all_merged_no_merger: page.stackSentence(mergedByNoOne),
     two_authors: page.stackSentence(twoAuthors),
     no_commits_counted: page.stackSentence({ ...current, commits: null }),
     no_members: page.stackSentence({ ...current, members: [] }),
+    no_authors: page.stackSentence({ ...current, authors: [] }),
   };
+  // The tally counts the states in the order a stack's members run from its top: drafts,
+  // open ones, merged ones, and closed ones.
+  const tallyOrder = page
+    .stateTally({ ...current, states: { open: 2, draft: 5, merged: 2, closed: 1 } })
+    .map((badge) => badge.label);
   // The size line's counts for the comparison drawn: the answer's commits and sizes, each
   // left out while not known, and the files the Diff summary counts.
   const sizeInputs = {
@@ -944,6 +969,14 @@ async function main() {
     lacking: headerAt(lacking, known, true),
     unknown_first_paint: headerAt(null, null, false),
     unknown_not_linear: headerAt(notLinear, null, false),
+    labelled_first_paint: headerAt(null, knownLabelled, false),
+    bare_first_paint: headerAt(null, knownBare, false),
+    bare_current: headerAt(bare, knownBare, true),
+    held_labels_answered_bare: headerAt(bare, known, true),
+    // Offline, a member's record behind and no refresh can run: the note says so, as a pull
+    // request's does; with none behind it is the plain age.
+    offline_behind: headerAt({ ...current, pending: [10] }, known, true, [], true),
+    offline_current: headerAt(current, known, true, [], true),
   };
 
   // What the page passes the diff view for Docs and Changes: a pull request's drawings
@@ -1021,6 +1054,7 @@ async function main() {
         reader_keys,
         header,
         sentences,
+        tally_order: tallyOrder,
         size_inputs: sizeInputs,
         drawing,
         said,

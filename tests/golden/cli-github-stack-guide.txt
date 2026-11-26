@@ -1378,6 +1378,12 @@ status: 202
         ],
         "avatars": [
           null
+        ],
+        "labels": [
+          [
+            "bugfix",
+            "shared design"
+          ]
         ]
       },
       {
@@ -1403,6 +1409,19 @@ status: 202
           null,
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "enhancement"
+          ],
+          [
+            "bugfix",
+            "shared design"
+          ]
         ]
       },
       {
@@ -1424,6 +1443,16 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "bugfix",
+            "shared design"
+          ],
+          [
+            "shared design",
+            "earnings analysis"
+          ]
         ]
       },
       {
@@ -1445,6 +1474,15 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "invalid"
+          ]
         ]
       }
     ]
@@ -1484,6 +1522,12 @@ status: 200
       ],
       "avatars": [
         null
+      ],
+      "labels": [
+        [
+          "bugfix",
+          "shared design"
+        ]
       ]
     },
     {
@@ -1509,6 +1553,19 @@ status: 200
         null,
         null,
         null
+      ],
+      "labels": [
+        [
+          "shared design",
+          "earnings analysis"
+        ],
+        [
+          "enhancement"
+        ],
+        [
+          "bugfix",
+          "shared design"
+        ]
       ]
     },
     {
@@ -1530,6 +1587,16 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [
+          "bugfix",
+          "shared design"
+        ],
+        [
+          "shared design",
+          "earnings analysis"
+        ]
       ]
     },
     {
@@ -1551,6 +1618,15 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [
+          "shared design",
+          "earnings analysis"
+        ],
+        [
+          "invalid"
+        ]
       ]
     },
     {
@@ -1568,6 +1644,11 @@ status: 200
       ],
       "avatars": [
         null
+      ],
+      "labels": [
+        [
+          "enhancement"
+        ]
       ]
     }
   ]

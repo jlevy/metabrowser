@@ -1400,6 +1400,25 @@ export function actionWords(verb, commits) {
 }
 
 /**
+ * The header sentence's actors and action, a pull request's and a stack's alike: once merged,
+ * its mergers, "merged 6 commits", and none where no merger is known, so the action is said
+ * alone rather than crediting anyone; otherwise its authors, "wants to merge 1 commit", or
+ * "want to merge" after two or more.
+ *
+ * @template T
+ * @param {boolean} merged
+ * @param {T[]} authors
+ * @param {T[]} mergers
+ * @param {number | null} commits
+ * @returns {{actors: T[], action: string}}
+ */
+export function headerSentence(merged, authors, mergers, commits) {
+  const actors = merged ? mergers : authors;
+  const verb = merged ? "merged" : actors.length > 1 ? "want to merge" : "wants to merge";
+  return { actors, action: actionWords(verb, commits) };
+}
+
+/**
  * The freshness note's words for a fetch *age* ago (`relativeAge`): "Fetched just now via
  * GitHub CLI", or, *offline* with nothing to refresh it, "Offline · fetched 3 h ago via GitHub
  * CLI". One time, never two (mb-ne91). A pull request's page says it of its record, and a
@@ -1423,6 +1442,18 @@ function describeCore(pull, known = new Map()) {
   const state = displayState(pull);
   const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
   const commits = typeof pull.commits === "number" ? pull.commits : null;
+  // "<merger> merged 6 commits", and for an open, draft, or closed pull request
+  // "<author> wants to merge 1 commit", with "<head> → <base>" on the branch line under it.
+  // The verbs are github.com's; the branches read source → target, never github.com's
+  // "into <base> from <head>" (docs/design-system.md, "Merge Direction"). An account GitHub
+  // deleted is its "ghost"; a record that names no merger at all says only "merged 6
+  // commits", rather than crediting anyone (`headerSentence`, which a stack's says too).
+  const sentence = headerSentence(
+    state === "merged",
+    [who(pull.author)],
+    typeof pull.merged_by === "string" && pull.merged_by ? [pull.merged_by] : [],
+    commits,
+  );
   return {
     title: text(pull.title),
     number: pull.number,
@@ -1436,19 +1467,8 @@ function describeCore(pull, known = new Map()) {
     baseRepository: text(pull.base?.repository) || null,
     headRepository: text(pull.head?.repository) || null,
     headSha: text(pull.head?.sha),
-    // "<merger> merged 6 commits", and for an open, draft, or closed pull request
-    // "<author> wants to merge 1 commit", with "<head> → <base>" on the branch line under
-    // it. The verbs are github.com's; the branches read source → target, never
-    // github.com's "into <base> from <head>" (docs/design-system.md, "Merge Direction").
-    // An account GitHub deleted is its "ghost"; a record that names no merger at all says
-    // only "merged 6 commits", rather than crediting anyone.
-    actor:
-      state !== "merged"
-        ? who(pull.author)
-        : typeof pull.merged_by === "string" && pull.merged_by
-          ? pull.merged_by
-          : null,
-    action: actionWords(state === "merged" ? "merged" : "wants to merge", commits),
+    actor: sentence.actors[0] ?? null,
+    action: sentence.action,
     base: sideName(pull.base, crossRepository),
     head: sideName(pull.head, crossRepository),
     htmlUrl: text(pull.html_url),
@@ -4488,6 +4508,25 @@ export function rowStrut() {
     { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
     [h("span", { class: "github-pull-stack-icon" }), " "],
   );
+}
+
+/**
+ * Write the size line's *counts* into *row* (`mb.changeSizeLine`), only when what it says
+ * changes: its text and its bytes, since rounded sizes can share text across the file size
+ * style's threshold. A pull request's page and a stack's write theirs alike.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {HTMLElement} row
+ * @param {{commits?: number, files: number | null, pushedBytes: number | null,
+ *   diffBytes: number | null}} counts
+ */
+export function paintSizeLine(mb, row, counts) {
+  const line = mb.changeSizeLine(counts);
+  const key = JSON.stringify([line.text, counts.pushedBytes, counts.diffBytes]);
+  if (row.dataset.sizeKey !== key) {
+    row.dataset.sizeKey = key;
+    row.replaceChildren(...mb.changeSizeLineNodes(line));
+  }
 }
 
 /**
@@ -7790,18 +7829,12 @@ export function mountPullPage(container, ctx, mb) {
     const size =
       route === undefined || (drawn && summaryShown.key !== key) ? null : pullSize(route, model);
     const commits = model?.pull?.commits ?? null;
-    const line = mb.changeSizeLine({
+    paintSizeLine(mb, sizeRow, {
       ...(commits === null ? {} : { commits }),
       files,
       pushedBytes: size?.pushed_bytes ?? null,
       diffBytes: size?.diff_bytes ?? null,
     });
-    // Rounded sizes can share text across the file size style's threshold.
-    const sizeKey = JSON.stringify([line.text, size?.pushed_bytes, size?.diff_bytes]);
-    if (sizeRow.dataset.sizeKey !== sizeKey) {
-      sizeRow.dataset.sizeKey = sizeKey;
-      sizeRow.replaceChildren(...mb.changeSizeLineNodes(line));
-    }
   }
 
   /**

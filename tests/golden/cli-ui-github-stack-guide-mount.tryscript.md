@@ -94,6 +94,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
       {
         "members": {
           "toggle": "2 Pulls",
+          "held": false,
           "expanded": "false",
           "rows": [
             "WIP: draft the next page 2/2 · #10 · maintainer",
@@ -112,7 +113,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched <age> via GitHub CLIFetched <age> via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
       },
       {
         "merge": "wip → topic"
@@ -130,6 +131,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
       {
         "members": {
           "toggle": "2 Pulls",
+          "held": false,
           "expanded": "false",
           "rows": [
             "WIP: draft the next page 2/2 · #10 · maintainer",
@@ -261,6 +263,137 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "metabrowser github: the stack's diff could not load",
       "metabrowser github: the stack's diff could not load",
       "metabrowser github: the stack's diff could not load"
+    ]
+  },
+  "cold_without_labels": {
+    "first_paint": [
+      "title",
+      "corner",
+      {
+        "opened": "  "
+      },
+      {
+        "meta": "·"
+      },
+      {
+        "merge": ""
+      },
+      {
+        "size": "(pending)"
+      },
+      {
+        "members": {
+          "toggle": "2 Pulls",
+          "held": false,
+          "expanded": "false",
+          "rows": [
+            "WIP: draft the next page 2/2 · #10 · maintainer",
+            "Say more in the guide 1/2 · #8 · maintainer"
+          ]
+        }
+      },
+      {
+        "summary": "(pending)"
+      }
+    ],
+    "settled": [
+      "title",
+      "corner",
+      {
+        "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
+      },
+      {
+        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+      },
+      {
+        "merge": "wip → topic"
+      },
+      {
+        "size": "1 file changed"
+      },
+      {
+        "members": {
+          "toggle": "2 Pulls",
+          "held": false,
+          "expanded": "false",
+          "rows": [
+            "WIP: draft the next page 2/2 · #10 · maintainer",
+            "Say more in the guide 1/2 · #8 · maintainer"
+          ]
+        }
+      },
+      {
+        "summary": ""
+      }
+    ]
+  },
+  "unknown_stack": {
+    "first_paint": [
+      "title",
+      "corner",
+      {
+        "opened": "  "
+      },
+      {
+        "meta": "·"
+      },
+      {
+        "merge": ""
+      },
+      {
+        "labels": []
+      },
+      {
+        "size": "(pending)"
+      },
+      {
+        "members": {
+          "toggle": "",
+          "held": true,
+          "expanded": "false",
+          "rows": []
+        }
+      },
+      {
+        "summary": "(pending)"
+      }
+    ],
+    "settled": [
+      "title",
+      "corner",
+      {
+        "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
+      },
+      {
+        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+      },
+      {
+        "merge": "wip → topic"
+      },
+      {
+        "labels": [
+          "bugfix",
+          "shared design",
+          "earnings analysis"
+        ]
+      },
+      {
+        "size": "1 file changed"
+      },
+      {
+        "members": {
+          "toggle": "2 Pulls",
+          "held": false,
+          "expanded": "false",
+          "rows": [
+            "WIP: draft the next page 2/2 · #10 · maintainer",
+            "Say more in the guide 1/2 · #8 · maintainer"
+          ]
+        }
+      },
+      {
+        "summary": ""
+      }
     ]
   }
 }

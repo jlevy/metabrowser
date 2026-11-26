@@ -27,11 +27,14 @@ STACKS_ROUTE = "/api/plugin/github/stacks"
 
 
 class MemberIdentity(NamedTuple):
-    """A stack member's title, author, and the author's avatar, as a member row draws them."""
+    """A stack member's title, author, and the author's avatar, as a member row draws them,
+    and its labels' names, which a stack's page decides its labels row by before its answer
+    lands (`knownLabels` in stack-page.js): None where they are not known."""
 
     title: str | None
     author: str | None
     avatar: str | None
+    labels: tuple[str, ...] | None
 
 
 def member_identity(record: PullRecord | None, row: PullListRow | None) -> MemberIdentity:
@@ -41,10 +44,15 @@ def member_identity(record: PullRecord | None, row: PullListRow | None) -> Membe
     it alike (docs/design-system.md, "Stacks")."""
 
     if record is not None:
-        return MemberIdentity(record.pull.title, record.pull.author, record.pull.author_avatar_url)
+        return MemberIdentity(
+            record.pull.title,
+            record.pull.author,
+            record.pull.author_avatar_url,
+            tuple(label.name for label in record.pull.labels),
+        )
     if row is not None:
-        return MemberIdentity(row.title, row.author, row.author_avatar_url)
-    return MemberIdentity(None, None, None)
+        return MemberIdentity(row.title, row.author, row.author_avatar_url, row.labels)
+    return MemberIdentity(None, None, None, None)
 
 
 def _member_record(repository: ListedRepository, reader: str, number: int) -> PullRecord | None:
@@ -133,8 +141,10 @@ def stack_envelope(view: StackView) -> StackEnvelope:
     # Native stack members contain no titles or authors. Project the repository's existing
     # metadata caches instead, without provider calls or duplicate storage: each member's
     # title, its author, and the author's avatar, which the page's stack menu draws after
-    # the member's number as a Pulls row does (docs/design-system.md, "Stacks"), by the rule
-    # a stack's page names it by (`member_identity`). The catalog's rows are read in indexed
+    # the member's number as a Pulls row does (docs/design-system.md, "Stacks"), and its
+    # labels' names, from which a stack's page decides at first paint whether it has a
+    # labels row (docs/design-system.md, "The Stack Page"), by the rule a stack's page names
+    # it by (`member_identity`). The catalog's rows are read in indexed
     # batches. A member the catalog does not hold, as a merged member the list no longer
     # holds, is named by its cached record, read through the pull route's parse cache, for
     # at most as many such members as that cache keeps, so the records an answer reads stay
@@ -156,6 +166,9 @@ def stack_envelope(view: StackView) -> StackEnvelope:
         stack["titles"] = [member.title for member in members]
         stack["authors"] = [member.author for member in members]
         stack["avatars"] = [member.avatar for member in members]
+        stack["labels"] = [
+            None if member.labels is None else list(member.labels) for member in members
+        ]
     fresh = result["fresh_for_s"] > 0 and stamp is not None and stamp.outcome == "succeeded"
     result.update(
         state="current" if fresh else "stale",

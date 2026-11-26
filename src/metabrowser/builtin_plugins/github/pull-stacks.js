@@ -14,7 +14,7 @@
 // is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[]}} NativeStack */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[]}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,

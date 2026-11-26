@@ -459,6 +459,23 @@ try {
       })(),
     };
   })()`);
+  // The size line the shell's builder writes for the stack's answer: its commits, its files,
+  // and its comparison's size, with nothing restated here.
+  const sizeLine = await evaluate(`(async () => {
+    const answer = await (await fetch("/api/plugin/github/stack?number=70", {cache: "no-store"})).json();
+    return {
+      commits: answer.commits,
+      files: answer.totals?.files ?? null,
+      size: answer.size,
+      text: window.metabrowser.changeSizeLine({
+        commits: answer.commits,
+        files: answer.totals.files,
+        pushedBytes: answer.size?.pushed_bytes ?? null,
+        diffBytes: answer.size?.diff_bytes ?? null,
+      }).text.replace(/\\s+/g, " ").trim(),
+    };
+  })()`);
+  measured.sizeLine = sizeLine;
   measured.page = page;
   // Each member row is the stack menu's (`stackMemberRow`), so its layout is the menu's by
   // construction. What the running app adds is its data: every member's author, its
@@ -486,13 +503,12 @@ try {
     JSON.stringify(page.tabs) === JSON.stringify(["Docs", "Changes"]),
     JSON.stringify(page.tabs),
   );
-  // The size line says the commits and the files, and the size once each member's is kept.
+  // The size line says the answer's commits and files, and its comparison's size where it is
+  // kept, as the shell's builder writes them.
   check(
-    "the size line says the commits and the files",
-    /^2 commits · 1 file changed( · \S+ \S+ compressed \(\S+ \S+ raw diff\))?$/.test(
-      page.size ?? "",
-    ),
-    String(page.size),
+    "the size line is the shell's for the stack's commits, files, and size",
+    sizeLine.commits === 2 && sizeLine.files === 1 && page.size === sizeLine.text,
+    JSON.stringify({ shown: page.size, built: sizeLine }),
   );
   await click(".github-pull-stack-members-toggle");
   await travelled();
@@ -507,6 +523,137 @@ try {
   await shot(`stack-70-dark`);
   await theme("light");
   await shot(`stack-70-light`);
+
+  // In a narrow pane, 560 px, and at a phone's width, 375 px, the stack's answer as a larger
+  // stack's: four states with two-digit counts, and six authors. The page reads it as it
+  // reads any answer, here when it comes back into sight. The tally gives way after the
+  // ages, each badge cut short and keeping its count, and stays inside its row. The author's
+  // row gives way in its names and its action together, so neither is cut to nothing while
+  // the other is whole: at 560 px both keep some of their words, and at 375 px six names at
+  // their floors fill the row, the action given way first since the size line under it
+  // says its commits too.
+  await evaluate(`(async () => {
+    const original = window.fetch;
+    const answer = await (await original("/api/plugin/github/stack?number=70", {cache: "no-store"})).json();
+    const larger = {
+      ...answer,
+      states: { open: 12, draft: 12, merged: 12, closed: 12 },
+      authors: ["maintainer", "a-long-contributor-name", "reviewer-two", "octocat", "someone-else", "sixth-author"]
+        .map((login) => ({ login, avatar: null })),
+      commits: 48,
+    };
+    window.fetch = async (route, init) => {
+      const url = typeof route === "string" ? route : route.url;
+      if (url.startsWith("/api/plugin/github/stack?")) {
+        return new Response(JSON.stringify(larger), {
+          status: 200,
+          headers: { "content-type": "application/json", etag: '"phone"' },
+        });
+      }
+      return original(route, init);
+    };
+    document.dispatchEvent(new Event("visibilitychange"));
+  })()`);
+  await waitFor(
+    `document.querySelectorAll(".github-pull-stack-page .github-pull-stack-tally .github-pull-badge").length === 4 && document.querySelectorAll(".github-pull-stack-page .github-pull-meta-details .github-pull-identity").length === 6`,
+  );
+  const NARROW = `(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    const r = (n) => Math.round(n * 100) / 100;
+    const box = (el) => el.getBoundingClientRect();
+    // An element's own width, laid out whole.
+    const natural = (el) => {
+      const copy = el.cloneNode(true);
+      copy.style.cssText = "position:absolute;visibility:hidden;width:max-content;max-width:none;min-width:0;flex:none";
+      el.parentElement.append(copy);
+      const width = box(copy).width;
+      copy.remove();
+      return r(width);
+    };
+    const row = page.querySelector(".github-pull-opened");
+    const tally = row.querySelector(".github-pull-stack-tally");
+    const badges = [...tally.querySelectorAll(".github-pull-badge")].map((badge) => {
+      const style = getComputedStyle(badge);
+      const count = badge.textContent.split(" ")[0];
+      const range = document.createRange();
+      range.setStart(badge.firstChild, 0);
+      range.setEnd(badge.firstChild, count.length);
+      const probe = document.createElement("span");
+      probe.textContent = "\u2026";
+      badge.append(probe);
+      const ellipsis = box(probe).width;
+      probe.remove();
+      return {
+        text: badge.textContent,
+        width: r(box(badge).width),
+        natural: natural(badge),
+        floor: r(parseFloat(style.minWidth)),
+        // Where the count ends, and where an ellipsis after it would: inside the content box.
+        countEnd: r(range.getBoundingClientRect().right + ellipsis),
+        contentEnd: r(box(badge).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth)),
+      };
+    });
+    const meta = page.querySelector(".github-pull-meta-details");
+    const floor = (identity) => parseFloat(getComputedStyle(identity).minWidth);
+    const names = [...meta.querySelectorAll(":scope > .github-pull-identity")].map((identity) => ({
+      width: r(box(identity).width),
+      natural: natural(identity),
+      floor: r(floor(identity)),
+    }));
+    const action = meta.querySelector(".github-pull-action");
+    return {
+      row: { left: r(box(row).left), right: r(box(row).right), width: r(box(row).width) },
+      tally: { right: r(box(tally).right), width: r(box(tally).width), natural: natural(tally) },
+      badges,
+      sentence: {
+        lead: r(box(page.querySelector(".github-pull-meta-lead")).width),
+        right: r(box(meta).right),
+        rowRight: r(box(page.querySelector(".github-pull-meta")).right),
+        names,
+        action: { width: r(box(action).width), natural: natural(action), text: action.textContent },
+      },
+    };
+  })()`;
+  measured.narrow = {};
+  for (const width of [560, 375]) {
+    await evaluate(`(() => {
+      const pane = document.getElementById("preview-pane");
+      pane.style.flex = "none";
+      pane.style.width = "${width}px";
+    })()`);
+    await frames();
+    await shot(`stack-70-larger-${width}`);
+    const narrow = await evaluate(NARROW);
+    measured.narrow[width] = narrow;
+    check(
+      `at ${width} px the tally gives way inside its row, each badge keeping its count`,
+      narrow.tally.right <= narrow.row.right + 0.5 &&
+        narrow.badges.length === 4 &&
+        narrow.badges.every((badge) => badge.width >= badge.floor - 0.5) &&
+        narrow.badges.every((badge) => badge.countEnd <= badge.contentEnd + 0.5),
+      JSON.stringify({ row: narrow.row, tally: narrow.tally, badges: narrow.badges }),
+    );
+    const { sentence } = narrow;
+    const cutNames = sentence.names.filter((name) => name.width < name.natural - 0.5);
+    const actionCut = sentence.action.width < sentence.action.natural - 0.5;
+    check(
+      `at ${width} px the author's row gives way in its names and its action together`,
+      sentence.right <= sentence.rowRight + 0.5 &&
+        (!actionCut || cutNames.length > 0) &&
+        (cutNames.length === 0 || actionCut) &&
+        sentence.names.every((name) => name.width >= name.floor - 0.5) &&
+        // Both keep some of their words while a name is above its floor.
+        (sentence.action.width >= 1 ||
+          sentence.names.every((name) => name.width <= name.floor + 0.5)),
+      JSON.stringify(sentence),
+    );
+  }
+  // Where both give way short of the names' floors, the action keeps some of its words.
+  check(
+    "at 560 px the action keeps some of its words beside six cut names",
+    measured.narrow[560].sentence.action.width >= 1,
+    JSON.stringify(measured.narrow[560].sentence),
+  );
 
   // A pull request's own Docs and Changes, for comparison.
   await send("Page.navigate", { url: `${base}/pull/10` });

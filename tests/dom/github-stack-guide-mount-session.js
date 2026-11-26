@@ -12,9 +12,12 @@
 // not swapped in, until the reader takes it, whether a member below moved or the carrier
 // moved with it and was pinned again, which no step is read as, and the route's own refusal
 // of a step at a comparison it has moved past reads the stack at once; and leaving the tab
-// disposes the view and aborts its read. Last, Docs and Changes that could not load: each says so in a
+// disposes the view and aborts its read. Then Docs and Changes that could not load: each says so in a
 // pull request's error notice with Retry, whose press disposes what the failed draw left and
 // draws again, and a Retry left behind by a tab switch or the page's disposal draws nothing.
+// Last, two more stacks' headers from first paint to their answers: one whose members the
+// Pulls tab knows carry no labels, which has no labels row from first paint, and one the
+// Pulls tab does not know, whose members row is held from first paint.
 // The navigation itself is github-guided-review-session.js's, and the stack's own
 // state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
 // Chrome's.
@@ -44,6 +47,10 @@ for (const name of ["navigation.js", "git-path.js"]) {
 }
 
 const timers = new Map();
+// The clock, fixed five minutes after the members' records were fetched, so a fetch's age is
+// said as a reader would see it, as the page's own session says it.
+const NOW_MS = Date.parse("2026-09-17T12:05:00Z");
+Date.now = () => NOW_MS;
 /** The base each note's HTML was sanitized against. */
 const bases = [];
 /** The address of each link the page marked as an outside link. */
@@ -94,6 +101,8 @@ globalThis.DOMParser = class {
 
 /** The stack route's answers in order, each with its validator. */
 let stackAnswer = null;
+/** The answers of the stacks other than 70, by number. */
+const otherAnswers = new Map();
 /** How many times the page has read the stack route. */
 let stackReads = 0;
 /** The repository's stacks, as the Pulls tab reads them: 70 of 8 and then 10, titled as the
@@ -121,6 +130,20 @@ const stacksAnswer = {
         member.number === 10 ? "maintainer" : null,
       ),
       avatars: recorded.current.members.map(() => null),
+      // And 10's labels, and none of 8's, so the labels row is held until the answer.
+      labels: recorded.current.members.map((member) => (member.number === 10 ? ["bugfix"] : null)),
+    },
+    // 75, the same members, which the stacks route read with no labels: no labels row from
+    // first paint. 76, which it does not know, is not here.
+    {
+      number: 75,
+      base_ref: recorded.current.base_ref,
+      open: true,
+      pulls: recorded.current.members.map((member) => member.number),
+      titles: recorded.current.members.map((member) => member.title),
+      authors: recorded.current.members.map(() => "maintainer"),
+      avatars: recorded.current.members.map(() => null),
+      labels: recorded.current.members.map(() => []),
     },
   ],
 };
@@ -135,7 +158,9 @@ const response = (body, status = 200, etag = null) => ({
 globalThis.fetch = async (route, init = {}) => {
   if (route.startsWith(`${STACK_ROUTE}?`)) {
     stackReads += 1;
-    return response(stackAnswer, 200, `"${JSON.stringify(stackAnswer).length}"`);
+    const number = Number(new URL(route, "http://localhost").searchParams.get("number"));
+    const answer = otherAnswers.get(number) ?? stackAnswer;
+    return response(answer, 200, `"${number}-${JSON.stringify(answer).length}"`);
   }
   if (route === STACKS_ROUTE && (init.method ?? "GET") === "GET") {
     return response(stacksAnswer, 200, '"stacks-1"');
@@ -470,14 +495,10 @@ async function run() {
                       : node.classes.has("github-pull-summary")
                         ? "summary"
                         : node.tag;
-  // A fetch's age is said as of the clock, so it is printed as its place; the page's own
-  // session says it at a fixed time (github-stack-page-session.js, `header`).
   const holds = (node) =>
-    node.querySelector(".tally-pending") !== null
-      ? "(pending)"
-      : node.textContent.replace(/just now|\d+ (?:min|h|d) ago/g, "<age>");
-  const rows = () =>
-    header.children
+    node.querySelector(".tally-pending") !== null ? "(pending)" : node.textContent;
+  const rowsOf = (shown) =>
+    shown.children
       .filter((node) => !node.hidden)
       .map((node) => {
         const name = rowName(node);
@@ -486,6 +507,7 @@ async function run() {
           return {
             members: {
               toggle: toggle.textContent,
+              held: toggle.classes.has("github-pull-stack-members-held"),
               expanded: toggle.getAttribute("aria-expanded"),
               rows: node
                 .querySelectorAll(".github-pull-stack-member")
@@ -500,6 +522,7 @@ async function run() {
         }
         return name === "title" || name === "corner" ? name : { [name]: holds(node) };
       });
+  const rows = () => rowsOf(header);
   const firstPaint = rows();
   const cold = header.classes.has("github-pull-cold");
   await settle();
@@ -806,6 +829,41 @@ async function run() {
   assert.equal(logged.length, 4, "each failure is logged once");
   failed.logged = logged;
   report.failed = failed;
+
+  // Two more stacks' headers, from first paint to the answer, the Pulls tab having read the
+  // repository's stacks again: 75, whose members the Pulls tab knows carry no labels, has no
+  // labels row from first paint, and its answer, which says none, moves nothing; and 76,
+  // which the Pulls tab does not know, holds its members row from first paint, its toggle out
+  // of sight and empty, and its answer fills it.
+  const pullsAgain = stacks.watchStacks(() => {});
+  await settle();
+  otherAnswers.set(75, { ...stack(revision(1)), number: 75, labels: [], guide: null });
+  otherAnswers.set(76, { ...stack(revision(1)), number: 76, guide: null });
+  const others = {};
+  for (const number of [75, 76]) {
+    const shown = new Element("main");
+    const mounted = page.mountStackPage(
+      shown,
+      { number, tab: "changes", open: () => Promise.resolve() },
+      mb,
+    );
+    const otherHeader = shown.querySelector(".github-pull-header");
+    const first = rowsOf(otherHeader);
+    await settle();
+    const answered = rowsOf(otherHeader);
+    assert.deepEqual(
+      names(first),
+      names(answered),
+      `${number}: the answer lands in the rows drawn`,
+    );
+    others[number] = { first_paint: first, settled: answered };
+    mounted.dispose?.();
+  }
+  pullsAgain.dispose();
+  assert.ok(!names(others[75].first_paint).includes("labels"), "75 has no labels row");
+  assert.ok(names(others[76].first_paint).includes("members"), "76 holds its members row");
+  report.cold_without_labels = others[75];
+  report.unknown_stack = others[76];
   console.log(JSON.stringify(report, null, 2));
 }
 

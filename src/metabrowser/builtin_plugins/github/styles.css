@@ -179,10 +179,13 @@
   overflow: hidden;
 }
 .github-pull-meta-details {
+  /* The sentence's one gap, between its names and before its action, which the comma after
+     a name takes back on its near side (`.github-pull-actor-sep`). */
+  --github-pull-sentence-gap: 0.3em;
   display: flex;
   flex: 0 1 auto;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--github-pull-sentence-gap);
   min-width: 0;
   overflow: hidden;
 }
@@ -318,11 +321,11 @@
    (`summary-wait`, "brief") holds the words' place and the row's height. */
 .github-pull-header .github-pull-summary > .github-pull-summary-brief {
   min-height: var(--ui-row-height);
-  margin-left: calc(-1 * var(--diff-summary-toggle-pull));
+  margin-left: calc(-1 * var(--summary-toggle-pull));
   /* As the header's toggle's box: its padding, its words where it is placed and its right
      padding where a line cut short ends, and a button's line, the browser's `normal`
-     (diff/styles.css, `.diff-summary-toggle`). */
-  padding: 0 6px 0 var(--diff-summary-toggle-pull);
+     (static/styles.css, `.summary-toggle`). */
+  padding: 0 6px 0 var(--summary-toggle-pull);
   line-height: normal;
 }
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
@@ -1972,6 +1975,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A sentence of several names, a stack's (`actorSentence`), gives way in its names and its
+   action together, each in proportion to its width and each name down to its floor, so
+   neither the action nor the names are cut to nothing while the other is whole: at the
+   action's factor, six authors lost "want to merge 48 commits" before any name gave way.
+   Measured in Chrome 152 with six authors (tests/dom/github-stack-page-chrome.mjs): at
+   560 px the action keeps 87 of its 155 px and each name 47 to 99 px of its own; at
+   375 px the six names' floors fill the 316 px row, and the action, whose commits the
+   size line under it says too, has none. */
+.github-pull-meta-details:has(> .github-pull-actor-sep)
+> :is(.github-pull-identity, .github-pull-action) {
+  flex-shrink: 1;
+}
 
 /* The author ends a Pulls row's run, after the number (mb-rb3n): the avatar and the name, one
    box that goes whole to the next line where the line has no room for it, and whose name ends
@@ -2287,28 +2302,43 @@
   padding-inline: var(--github-pull-text-inset);
 }
 /* The tally: a state's badge for each state some member is in (`stateBadge`), each in its
-   state's ink, set apart as a cluster of chips is. It keeps its width, and the ages after
-   it give way first, as they do after a pull request's badge. */
+   state's ink, set apart as a cluster of chips is. The ages after it give way first, as they
+   do after a pull request's badge (their basis is nothing), and then the tally, its badges
+   together, each cut short at its end down to its floor, which keeps its count. Kept whole,
+   four two-digit badges, "12 Pulls Merged" among them, 388 px, ran 72 px past the 316 px
+   row of a 375 px pane; given way, each is 68 to 77 px there (Chrome 152,
+   tests/dom/github-stack-page-chrome.mjs, at 560 and 375 px). */
 .github-pull-stack-tally {
+  /* A badge's floor, 48 px at its size: a two-digit count and its ellipsis take 24.4 px,
+     with the pads and borders 42.4 px (measured as above), and a third digit about 6.5 px
+     more. */
+  --github-pull-tally-badge-floor: 4em;
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
   gap: var(--chip-cluster-gap);
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pull-stack-tally > .github-pull-badge {
+  flex: 0 1 auto;
+  min-width: var(--github-pull-tally-badge-floor);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* The comma after each author but the last, against the name it follows: the sentence's
    gap is before it as well as after, and is taken back on its near side. */
 .github-pull-actor-sep {
   flex: none;
-  margin-inline-start: -0.3em;
+  margin-inline-start: calc(-1 * var(--github-pull-sentence-gap));
 }
-/* The members' row: the toggle, "12 Pulls", and under it the card. The toggle is drawn as
-   the Diff summary's header just under it is (diff/styles.css, `.diff-summary-toggle`), its
-   words and then the registry's chevron in the tree's icon slot, its hover and focus the
-   tree rows', pulled left and padded back in by as much, so the two toggles' words start at
-   one edge and their hover grounds at another; the diff's stylesheet arrives with the
-   summary, so the pull is the row's own. tests/dom/github-stack-page-chrome.mjs holds the
-   two edges level. */
+/* The members' row: the toggle, "12 Pulls", and under it the card. The toggle is the
+   shell's summary toggle, as the Diff summary's header just under it is (static/styles.css,
+   `.summary-toggle`): its words and then the registry's chevron in the tree's icon slot, its
+   hover and focus the tree rows', so the two toggles' words start at one edge and their
+   hover grounds at another. tests/dom/github-stack-page-chrome.mjs holds the two edges
+   level. While no member is named the toggle holds its row, out of sight
+   (`.github-pull-stack-members-held`). */
 .github-pull-stack-members-row {
-  --github-pull-stack-members-pull: 4px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -2318,32 +2348,11 @@
   display: flex;
   align-items: center;
   column-gap: 6px;
-  min-height: var(--ui-row-height);
-  margin: 0 0 0 calc(-1 * var(--github-pull-stack-members-pull));
-  padding: 0 6px 0 var(--github-pull-stack-members-pull);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
   color: var(--text);
-  font-family: var(--font-sans);
   font-size: var(--body-font-size);
-  text-align: left;
-  cursor: pointer;
 }
-.github-pull-stack-members-toggle:hover {
-  background: var(--hover-bg);
-}
-.github-pull-stack-members-toggle:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  background: var(--hover-bg);
-}
-.github-pull-stack-members-chevron {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--tree-icon-slot);
+.github-pull-stack-members-toggle.github-pull-stack-members-held {
+  visibility: hidden;
 }
 /* The card opens and closes as every disclosure does (docs/design-system.md, "Disclosure
    Motion"), the header's width wide. */

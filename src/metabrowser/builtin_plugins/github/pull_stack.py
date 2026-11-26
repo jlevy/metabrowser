@@ -42,6 +42,13 @@ and the combined listing runs once a comparison, kept in memory
 stacks of this repository, the base-to-top listing took 0.3 to 2.1 s at load averages near
 330 and 440, so a page's first read after a member moves waits that long, and no read after.
 
+**Its size** is measured where the listing runs, once a comparison, and kept beside the
+store (:func:`metabrowser.git.change_size.change_size`), so a read says it with no Git
+(:func:`_size`). Only a comparison that is the plain diff of its two commits, every file of
+which a layer changes, is measured, so the size and the file count describe one diff; one
+restricted to its layers' files has no size, since no pair of commits pushes just those
+files, and neither has one of more than :data:`MAX_SIZED_STACK_FILES` files.
+
 A member with no usable record (none cached, another account's, or one with no
 comparison) leaves the stack ``pending``, with no comparison: the page asks ``pull-refresh``
 for it. A member whose catalog row names a newer head than its record is named in
@@ -60,6 +67,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import stat
 import threading
@@ -93,6 +101,8 @@ if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.diff.format import ChangeSetManifest, FileChange, ResolvedComparison
 
+log = logging.getLogger(__name__)
+
 STACK_ROUTE: Final = "/api/plugin/github/stack"
 STACK_COMPARISON_ROUTE: Final = "/api/plugin/github/stack-comparison"
 
@@ -107,6 +117,13 @@ _RESTRICTION: Final = "stack-files-v1"
 # most about 9 MB; eight at the listing's own bound of 2,000 files, 66 MB. A page asks for
 # its stack's comparison on every poll, so the open stacks of a session stay kept.
 MAX_KEPT_STACK_COMPARISONS: Final = 8
+# The most files a stack's comparison is measured for (`combined`), so its first read waits
+# at most about as long again as its listing. Measured 2026-11-25 on ranges of this
+# repository's main branch (Git 2.43, load averages 54 to 96, each measured twice): 0.13 to
+# 0.15 s for 43 files and 5 commits, 0.27 to 0.43 s for 63 files and 19, 0.78 to 1.16 s for
+# 147 files and 52, 2.4 to 3.5 s for 326 files and 180, and 3.5 to 4.0 s for 477 files and
+# 261. A larger comparison is not measured, and the stack's size line leaves its bytes out.
+MAX_SIZED_STACK_FILES: Final = 150
 # Ancestry answers kept for the process, least recently used out first: one per member a
 # stack's top head is asked about, and they never change, since both ends are commit IDs.
 # Measured 2026-11-24 with tracemalloc on Python 3.14.7 (Apple M1 Pro, macOS 26.5.2): 4,096
@@ -186,8 +203,8 @@ class StackStatesWire(TypedDict):
 
 
 class StackSizeWire(TypedDict):
-    """The layers' sizes summed: what each member's head pushes over its merge base, and its
-    patch's size, as each member's own page's size line says them."""
+    """The combined comparison's size: what the top head pushes over the bottom member's
+    merge base, and its patch's size, as a pull request's size line says its own."""
 
     pushed_bytes: int
     diff_bytes: int
@@ -297,10 +314,12 @@ class StackEnvelope(TypedDict):
     # - every label a member carries, top first, each once by its name, or None while a
     #   member has neither a record nor a cached row, whose labels are not known;
     labels: list[StackLabelWire] | None
-    # - and the commits and the size of the members the top contains, whose files the
-    #   comparison holds: the commits summed while every one's record counts them, and the
-    #   sizes summed while every one's is kept (``kept_change_size``: no Git runs for it), on
-    #   a current stack alone; None otherwise.
+    # - and the commits of the members the top contains, whose files the comparison holds,
+    #   summed while every one's record counts them, and the size of the combined comparison
+    #   while it is kept (``kept_change_size``: no Git runs for it), measured where the
+    #   comparison was built and only where it is the plain diff of its two commits, so the
+    #   size and the file count describe one diff (`_size`); on a current stack alone, and
+    #   None otherwise.
     commits: int | None
     size: StackSizeWire | None
     comparison: StackComparisonWire | None
@@ -788,6 +807,32 @@ def _restricted(
     return manifest.model_copy(update={"files": tuple(kept), "totals": listed_totals(kept)})
 
 
+def _sized(plain: ChangeSetManifest, restricted: ChangeSetManifest) -> bool:
+    """Whether the stack's comparison is measured (:func:`combined`): it is the whole of the
+    plain diff of its two commits, which the measurement measures, so the size and the file
+    count describe one diff, and it is at most :data:`MAX_SIZED_STACK_FILES` files."""
+
+    return (
+        not plain.truncated
+        and len(restricted.files) == len(plain.files)
+        and len(plain.files) <= MAX_SIZED_STACK_FILES
+    )
+
+
+async def _measure(location: GitLocation, pair: StackPair) -> None:
+    """Measure and keep the size of *pair*'s two commits; a size Git cannot measure leaves
+    the stack without one, as a pull request's row is left (``_measure_size`` in
+    :mod:`.pull_files_refresh`)."""
+
+    from metabrowser.git.change_size import change_size
+    from metabrowser.git.process import GitError
+
+    try:
+        await change_size(location, pair.base, pair.head)
+    except GitError as exc:
+        log.debug("a stack's size could not be measured: %r", exc)
+
+
 def _layers(
     manifest: ChangeSetManifest, members: tuple[tuple[int, int, dict[str, str]], ...]
 ) -> tuple[FileLayersWire, ...]:
@@ -836,7 +881,11 @@ async def combined(published: PublishedSource, pair: StackPair) -> Combined:
         source = GitDiffSource(location)
 
         async def compute(resolved: ResolvedComparison) -> ChangeSetManifest:
-            return _restricted(await source.manifest(resolved), members)
+            plain = await source.manifest(resolved)
+            restricted = _restricted(plain, members)
+            if _sized(plain, restricted):
+                await _measure(location, pair)
+            return restricted
 
         manifest = await load_stack_manifest(
             published, pair.number, source, _intent(pair), key, compute
@@ -944,26 +993,20 @@ def _commits(members: tuple[_Member, ...], pair: StackPair | None) -> int | None
 
 
 async def _size(published: PublishedSource, pair: StackPair) -> StackSizeWire | None:
-    """The sizes of the members the top contains, summed, while each is kept
-    (``kept_change_size``, which runs no Git); None where any is not, or is unknown."""
+    """The combined comparison's size, kept where it was built (:func:`combined`) and read
+    with ``kept_change_size``, which runs no Git; None where none is kept, as for a
+    comparison restricted to its layers' files or too large to measure, or where it is
+    unknown."""
 
     from metabrowser.git.change_size import kept_change_size
 
-    target = RepositoryStoreTarget(published.git_dir, published.object_format)
-
-    def read() -> StackSizeWire | None:
-        pushed = diff = 0
-        for (_number, base, head), held in zip(pair.members, pair.in_top, strict=True):
-            if not held:
-                continue
-            size = kept_change_size(GitLocation.revision(target, head), base, head)
-            if size is None or size["pushed_bytes"] is None or size["diff_bytes"] is None:
-                return None
-            pushed += size["pushed_bytes"]
-            diff += size["diff_bytes"]
-        return StackSizeWire(pushed_bytes=pushed, diff_bytes=diff)
-
-    return await asyncio.to_thread(read)
+    location = GitLocation.revision(
+        RepositoryStoreTarget(published.git_dir, published.object_format), pair.head
+    )
+    size = await asyncio.to_thread(kept_change_size, location, pair.base, pair.head)
+    if size is None or size["pushed_bytes"] is None or size["diff_bytes"] is None:
+        return None
+    return StackSizeWire(pushed_bytes=size["pushed_bytes"], diff_bytes=size["diff_bytes"])
 
 
 def absent(number: int, reason: StackAbsence, read: StackRead | None = None) -> StackEnvelope:

@@ -1002,9 +1002,13 @@ measurements that set them:
   request’s says it of one pull request: `states`, `opened_at`, `updated_at`, `authors`,
   `mergers`, `fetched_at`, `labels`, `commits`, and `size`, each from what the cache
   holds of each member, its record’s or else its cached list row’s, as its title is.
-  The commits and the size count the members the top contains, and the size only where
-  every one’s is kept (`kept_change_size`), so the answer runs no Git for it; `labels`
-  is null while a member has neither a record nor a row.
+  The commits count the members the top contains.
+  The size is the combined comparison’s own, measured where the comparison is built
+  (`combined`), once a pair and kept beside the store, and only where that comparison is
+  the plain diff of its two commits and at most `MAX_SIZED_STACK_FILES` files, so the
+  size and the file count describe one diff; the answer reads it with `kept_change_size`
+  and runs no Git for it.
+  `labels` is null while a member has neither a record nor a row.
 - **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
   `number` and admit the stack’s current pair, and `stack-comparison` lists it
   (`_stack_admission` in `pull_snapshot.py`). Each keeps answering a pair the `stack`
@@ -1020,10 +1024,12 @@ measurements that set them:
   (`stack-member-row.js`), under a toggle above its last line, the Diff summary, both
   closed; then Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING`
   (`diff-drawing.js`, which `pull-page.js` shares), with no layer marks.
-  Every header row but the status line and the labels is decided at first paint from the
-  stack snapshot (`stackHeader`), the page held cold until the stack’s answer fills the
-  rows the snapshot cannot, and Docs and Changes are laid out out of sight until their
-  first screen is ready, as a pull request’s are.
+  Every header row but the status line is decided at first paint from the stack snapshot
+  (`stackHeader`), the labels row by the members’ labels the stacks route projects
+  (`labels`, `knownLabels`) and held where it does not know them all, and the members
+  row held even for a stack the snapshot lacks; the page is held cold until the stack’s
+  answer fills the rows the snapshot cannot, and Docs and Changes are laid out out of
+  sight until their first screen is ready, as a pull request’s are.
   Its View on GitHub is the counterpart route’s, GitHub’s `stack/<n>`. It polls `stack`,
   asks `pull-refresh` for each pending member at its head, a member with no record as
   the reader’s own open of it (`retry`), since an automatic ask refreshes only a record

@@ -640,7 +640,10 @@ status: 200
     }
   ],
   "commits": 1,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 130
+  },
   "comparison": {
     "left": "<base>",
     "right": "<closed_head>",
@@ -778,6 +781,16 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "bugfix",
+            "shared design"
+          ]
         ]
       },
       {
@@ -803,6 +816,19 @@ status: 202
           null,
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "enhancement"
+          ],
+          [
+            "bugfix",
+            "shared design"
+          ]
         ]
       },
       {
@@ -824,6 +850,16 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "bugfix",
+            "shared design"
+          ],
+          [
+            "shared design",
+            "earnings analysis"
+          ]
         ]
       },
       {
@@ -845,6 +881,15 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [
+            "shared design",
+            "earnings analysis"
+          ],
+          [
+            "invalid"
+          ]
         ]
       }
     ]
@@ -884,6 +929,12 @@ status: 200
       ],
       "avatars": [
         null
+      ],
+      "labels": [
+        [
+          "bugfix",
+          "shared design"
+        ]
       ]
     },
     {
@@ -909,6 +960,19 @@ status: 200
         null,
         null,
         null
+      ],
+      "labels": [
+        [
+          "shared design",
+          "earnings analysis"
+        ],
+        [
+          "enhancement"
+        ],
+        [
+          "bugfix",
+          "shared design"
+        ]
       ]
     },
     {
@@ -930,6 +994,16 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [
+          "bugfix",
+          "shared design"
+        ],
+        [
+          "shared design",
+          "earnings analysis"
+        ]
       ]
     },
     {
@@ -951,6 +1025,15 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [
+          "shared design",
+          "earnings analysis"
+        ],
+        [
+          "invalid"
+        ]
       ]
     }
   ]
@@ -1019,7 +1102,10 @@ status: 200
     }
   ],
   "commits": 1,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 144
+  },
   "comparison": {
     "left": "<topic>",
     "right": "<draft_head>",
@@ -1362,7 +1448,10 @@ status: 200
     }
   ],
   "commits": 2,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",
@@ -1468,7 +1557,10 @@ status: 200
     }
   ],
   "commits": 2,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 131
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_earlier>",
@@ -1572,7 +1664,10 @@ status: 200
     }
   ],
   "commits": 2,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",
@@ -1686,7 +1781,10 @@ status: 200
     }
   ],
   "commits": 2,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",
@@ -1791,7 +1889,10 @@ status: 200
     }
   ],
   "commits": 2,
-  "size": null,
+  "size": {
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  },
   "comparison": {
     "left": "<base>",
     "right": "<fork_head>",

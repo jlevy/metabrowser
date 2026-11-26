@@ -1757,8 +1757,9 @@ bars) and the section-disclosure mask after heading-like titles, both in `--mute
 pointing right when closed and rotating to point down when open.
 A toggle that expands a diff summary is the one row-like target whose chevron comes
 after its words: the Diff summary’s header, and a Pulls row’s lines
-([Diff Summary](#diff-summary)); the stack page’s members toggle, “**2** Pulls”, is
-drawn as the Diff summary’s header it sits above ([The Stack Page](#the-stack-page)). A
+([Diff Summary](#diff-summary)); the stack page’s members toggle, “**2** Pulls”, is the
+shell’s summary toggle, `.summary-toggle`, as the Diff summary’s header it sits above
+is, one rule for both ([The Stack Page](#the-stack-page)). A
 [fold expander](#fold-expanders) takes no chevron: it sets withheld content back in
 place rather than opening a row’s children, so it draws its own pair of glyphs.
 Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agreements
@@ -2724,9 +2725,9 @@ step more, as a folder’s rows start one step in from the folder in the Files t
 the Pulls tab’s, wherever the summary is: in a diff’s toolbar, under a commit’s
 identity, and in a pull request’s header.
 The rows give back where the header starts, `--diff-summary-header-inset`, the toolbar’s
-padding in a diff and nothing at a page’s top; the header pulls left by
-`--diff-summary-toggle-pull` and pads back in, so its words start where it is placed and
-its hover ground reaches a little past them.
+padding in a diff and nothing at a page’s top; the header, the shell’s summary toggle
+(`.summary-toggle`), pulls left by `--summary-toggle-pull` and pads back in, so its
+words start where it is placed and its hover ground reaches a little past them.
 Opened, the tree sits under its header, below the toolbar in a diff, as tall as its
 rows, in the page’s flow, with no scroll bar of its own: the page scrolls past it.
 It has no bound on its length beyond the comparison’s (`MAX_MANIFEST_FILES`), and the
@@ -4061,14 +4062,17 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   top member’s pull request.
 - **Row of ages, with the state badge:** adapted.
   In the state badge’s place, a tally of the members’ states (`stateTally`): a pull
-  request’s state badge (`stateBadge`) for each state some member is in, in the states’
-  order (`PULL_STATES`), each saying how many, “2 Pulls Open”, in that state’s ink, and
-  none for a state no member is in.
-  After them and a dot, when a member was last opened and when one was last updated, the
-  latest of each, “Last opened 3d ago · Last update 1h ago”, in a pull request’s ages’
-  freshness ink and told again as time passes (`pullAge`, `retellAges`). The answer’s
-  `states`, `opened_at`, and `updated_at` say them, each member counted from its record
-  or else its cached list row.
+  request’s state badge (`stateBadge`) for each state some member is in, in the order a
+  stack’s members run from its top, drafts, open ones, merged ones, then closed ones
+  (`STACK_STATE_ORDER` in `pull-state.js`), each saying how many, “5 Pulls Draft”, in
+  that state’s ink, and none for a state no member is in.
+  In a narrow pane the ages give way first, and then the tally, its badges together,
+  each cut short at its end down to a floor that keeps its count
+  (`--github-pull-tally-badge-floor`). After them and a dot, when a member was last
+  opened and when one was last updated, the latest of each, “Last opened 3d ago · Last
+  update 1h ago”, in a pull request’s ages’ freshness ink and told again as time passes
+  (`pullAge`, `retellAges`). The answer’s `states`, `opened_at`, and `updated_at` say
+  them, each member counted from its record or else its cached list row.
 - **Browse code, Refresh, and the stack chip:** dropped.
   No one branch holds a stack, the page reads the stack on its own poll, and the page is
   the stack the chip would open; the row ends in the chip’s hidden strut (`rowStrut`),
@@ -4078,12 +4082,19 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   every member’s author, top first, each once and a comma between, then “wants to merge”
   or, for several, “want to merge” the commits the top contains, “maintainer, forker
   want to merge 12 commits”; once every member is merged, each one’s merger and
-  “merged”. The answer’s `authors`, `mergers`, and `commits` say them; with no author
-  known the row has the note alone, and with any member’s commits uncounted the sentence
-  names no commits (`actionWords`). The freshness note says the oldest of the members’
-  records’ fetches, “Fetched 3d ago via GitHub CLI” (`fetched_at`), so the stack is said
-  to be no fresher than its stalest record, its slot as wide as its widest age’s words,
-  as a pull request’s is (`showNote`).
+  “merged”, and with no merger known, as list rows alone leave it, “merged 12 commits”
+  alone, crediting no one, as a pull request’s record that names no merger says it
+  (`headerSentence`). The answer’s `authors`, `mergers`, and `commits` say them; with no
+  author known the row has the note alone, and with any member’s commits uncounted the
+  sentence names no commits (`actionWords`). In a narrow pane a sentence of several
+  names gives way in its names and its action together, each name down to a pull
+  request’s author’s floor, so neither is cut to nothing while the other is whole.
+  The freshness note says the oldest of the members’ records’ fetches, “Fetched 3d ago
+  via GitHub CLI” (`fetched_at`), so the stack is said to be no fresher than its stalest
+  record, its slot as wide as its widest age’s words, as a pull request’s is
+  (`showNote`). Offline, while a member’s record is behind and no refresh can run, it
+  says so, “Offline · fetched 3d ago via GitHub CLI”, as a pull request’s does
+  (`fetchedNote`).
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.
@@ -4091,14 +4102,13 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   Every label a member carries, top first, each once by its name, in a pull request’s
   chips (`labelChip`); a label read from a cached list row alone has no color or
   description, and is the neutral chip until a record gives it one (`labels`). The
-  answer says `null` while any member has neither a record nor a list row, and the row
-  is held a line tall, empty, as a pull request’s is while its record is on its way.
-  A held row the reader has seen stays for the page’s life, empty where the stack turns
-  out to have no labels, so the answer moves nothing under it; a pull request’s page
-  takes its empty row away in the paint that lands its record, but a stack’s answer
-  lands on its own, after the quiet period on a cold cache, with no body redrawn beside
-  it. A stack whose labels are known before the quiet period ends has the row only for
-  labels.
+  answer says `null` while any member has neither a record nor a list row.
+  The row is decided at first paint from the labels the Pulls tab’s snapshot of the
+  stack names (`knownLabels`: the stacks route’s `labels`, each member’s record’s or
+  list row’s, by name), so a stack whose members carry none has no labels row from first
+  paint. Where the snapshot does not know every member’s labels the row is held a line
+  tall, empty, as a pull request’s is while its record is on its way, and an answer that
+  says the stack has none takes it away, as a pull request’s record does.
 - **Status line:** kept.
   The pull request’s status line and text actions: a failed read, a new comparison
   offered, members the top does not contain, and members being fetched or that could not
@@ -4111,17 +4121,22 @@ Each part of a pull request’s page, and what the stack’s page does with it:
 - **Size line:** adapted.
   The pull request’s [change size line](#change-size-line), said of the comparison drawn
   (`stackSizeInput`): the commits the sentence counts, the comparison’s files, and the
-  sizes of the members the top contains, summed, “12 commits · 3 files changed · 6.5 KB
-  compressed (30.4 KB raw diff)”. The sizes are each member’s own page’s, read where the
-  cache keeps them and summed only when every one is kept (`size`, `kept_change_size`:
-  no Git runs for it), so a stack whose members’ pages have not been read leaves them
-  out, as it does the commits it cannot count.
+  comparison’s own size, “12 commits · 3 files changed · 6.5 KB compressed (30.4 KB raw
+  diff)”, so the size and the file count describe one diff.
+  The size is measured where the comparison is built and read where the cache keeps it
+  (`size`, `kept_change_size`: no Git runs for it), and only for a comparison that is
+  the plain diff of its two commits: one restricted to its layers’ files, or larger than
+  `MAX_SIZED_STACK_FILES` in `pull_stack.py`, leaves the bytes out, as it does the
+  commits it cannot count.
 - **Members:** the one part a pull request’s page lacks, built from existing components.
   A toggle, “**2** Pulls”, a [count summary](#count-summaries-bold-their-numbers) with
-  its number bold, after the size line and directly above the Diff summary, drawn as the
-  Diff summary’s header is: its words, then the registry’s chevron after them
+  its number bold, after the size line and directly above the Diff summary, the shell’s
+  summary toggle (`.summary-toggle`) as the Diff summary’s header is: its words, then
+  the registry’s chevron after them
   ([One Chevron, One Row Contract](#one-chevron-one-row-contract)), the tree rows’ hover
   and focus, and its words and hover ground at the summary’s edges.
+  The row is there from first paint, the toggle held out of sight and empty where the
+  Pulls tab does not know the stack, until the answer names its members.
   It is closed at first paint, as the Diff summary is, and opens and closes with
   [Disclosure Motion](#disclosure-motion), the stack menu’s contents one press away.
   Under it, the stack menu’s member rows, top first, in a page card, each row inset as a
@@ -4246,7 +4261,7 @@ stylesheet’s stack page section.
 | Part | Spacing, as on a pull request’s page |
 | --- | --- |
 | Header | `.page-header` in the reading column, `.page-reading-column`, at the pane’s gutter, `--content-padding-x`, with the header’s own top and bottom padding |
-| Members | Under their toggle, which is pulled left and padded back in as the Diff summary’s header is (`--github-pull-stack-members-pull`), so the two toggles’ words start at one edge and their hover grounds at another; a page card, `.page-card`, as Guided Review’s step list and a step’s card are; each row the stack menu’s, at the menu’s height and size, inset by `--github-pull-text-inset` where the menu insets it by `--menu-row-inset`, so a member’s state icon starts where Guided Review’s badge and a step’s text start below it |
+| Members | Under their toggle, the shell’s summary toggle, pulled left and padded back in as the Diff summary’s header is (`--summary-toggle-pull`), so the two toggles’ words start at one edge and their hover grounds at another; a page card, `.page-card`, as Guided Review’s step list and a step’s card are; each row the stack menu’s, at the menu’s height and size, inset by `--github-pull-text-inset` where the menu insets it by `--menu-row-inset`, so a member’s state icon starts where Guided Review’s badge and a step’s text start below it |
 | Tab bar | In the reading column, its first tab on the header’s content edge |
 | Body | `.github-pull-body`’s padding and gap; in the reading column on Guided Review, for a notice, and before anything is drawn, and across the pane on Docs and Changes, so a diff has room for Split (`bodyInColumn` in `stack-page.js`, as `diffTab` decides it in `pull-page.js`) |
 | Guided Review | `guided-review.js`’s step list and step card ([Guided Review](#guided-review)), their heads, a step’s note, and its references inset by `--github-pull-text-inset` |

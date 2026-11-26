@@ -7,7 +7,9 @@
   summary, closed at first as the Diff summary is
   ([The Stack Page](docs/design-system.md#the-stack-page)).
   `GET /api/plugin/github/stack` answers `states`, `opened_at`, `updated_at`, `authors`,
-  `mergers`, `fetched_at`, `labels`, `commits`, and `size` for them.
+  `mergers`, `fetched_at`, `labels`, `commits`, and `size` for them, the size its
+  combined comparison’s own; `GET /api/plugin/github/stacks` answers each member’s
+  `labels`, from which the page decides its labels row at first paint.
 
 - In the Pulls tab a stack’s row no longer has a stack icon: its label starts where its
   pull requests’ icons do, and its **Whole stack** row, in the Pulls tab and the stack

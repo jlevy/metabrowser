@@ -499,6 +499,10 @@
      Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
      pull request's title 4px wider. It is --icon-glyph, so the two cannot part. */
   --tree-icon-slot: var(--icon-glyph);
+  /* How far a summary toggle pulls left of where it is placed, and pads back in, so its
+     words start where it is placed and its hover ground reaches a little past them
+     (`.summary-toggle`). */
+  --summary-toggle-pull: 4px;
   /* A tree row's gap from its icon slot to its name (.tree-item), which the paging row's
      inset and a category heading's icon (--category-icon-gap) also take, so a heading's
      name and its rows' names stay on one column. */
@@ -2036,6 +2040,40 @@ body {
   .metabrowser-kpress-host .kpress details > summary::after {
     background-color: CanvasText;
   }
+}
+/* ── Summary toggles — a summary's header that opens it ──────────
+   Its words, a count summary's, then the registry's chevron in the tree's icon slot: the
+   Diff summary's header (diff-view.js) and the stack page's members toggle, "12 Pulls"
+   (stack-page.js), one rule, so the two cannot drift and their words and hover grounds
+   start at one edge (docs/design-system.md, "One Chevron, One Row Contract"). Its hover
+   and focus ring are the tree rows' under it (`.changed-file-row`): square, the ring drawn
+   inside the box, so the header and its rows hover and focus as one tree. Each surface
+   sets its own line: its display, gap, ink, and size. */
+.summary-toggle {
+  min-height: var(--ui-row-height);
+  margin: 0 0 0 calc(-1 * var(--summary-toggle-pull));
+  padding: 0 6px 0 var(--summary-toggle-pull);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.summary-toggle:hover {
+  background: var(--hover-bg);
+}
+.summary-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  background: var(--hover-bg);
+}
+.summary-toggle-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
 }
 /* ── Disclosure toggles — a toggle never selects text ────────────
    Every control that shows or hides content carries .disclosure-toggle: a tree row

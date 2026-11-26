@@ -80,6 +80,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        null,
+        null
       ]
     },
     {
@@ -96,6 +100,9 @@ status: 200
         null
       ],
       "avatars": [
+        null
+      ],
+      "labels": [
         null
       ]
     }
@@ -150,6 +157,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        null,
+        null
       ]
     },
     {
@@ -166,6 +177,9 @@ status: 200
         null
       ],
       "avatars": [
+        null
+      ],
+      "labels": [
         null
       ]
     }
@@ -214,6 +228,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [],
+        []
       ]
     },
     {
@@ -230,6 +248,9 @@ status: 200
         null
       ],
       "avatars": [
+        null
+      ],
+      "labels": [
         null
       ]
     }
@@ -279,6 +300,10 @@ status: 200
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [],
+          []
         ]
       },
       {
@@ -295,6 +320,9 @@ status: 200
           null
         ],
         "avatars": [
+          null
+        ],
+        "labels": [
           null
         ]
       }
@@ -349,6 +377,10 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [],
+          []
         ]
       },
       {
@@ -365,6 +397,9 @@ status: 202
           null
         ],
         "avatars": [
+          null
+        ],
+        "labels": [
           null
         ]
       }
@@ -409,6 +444,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [],
+        []
       ]
     },
     {
@@ -425,6 +464,9 @@ status: 200
         null
       ],
       "avatars": [
+        null
+      ],
+      "labels": [
         null
       ]
     }
@@ -482,6 +524,10 @@ status: 202
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [],
+          []
         ]
       },
       {
@@ -498,6 +544,9 @@ status: 202
           null
         ],
         "avatars": [
+          null
+        ],
+        "labels": [
           null
         ]
       }
@@ -542,6 +591,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [],
+        []
       ]
     },
     {
@@ -558,6 +611,9 @@ status: 200
         null
       ],
       "avatars": [
+        null
+      ],
+      "labels": [
         null
       ]
     }
@@ -611,6 +667,10 @@ status: 200
         "avatars": [
           null,
           null
+        ],
+        "labels": [
+          [],
+          []
         ]
       },
       {
@@ -627,6 +687,9 @@ status: 200
           null
         ],
         "avatars": [
+          null
+        ],
+        "labels": [
           null
         ]
       }
@@ -678,6 +741,10 @@ status: 200
       "avatars": [
         null,
         null
+      ],
+      "labels": [
+        [],
+        []
       ]
     },
     {
@@ -694,6 +761,9 @@ status: 200
         null
       ],
       "avatars": [
+        null
+      ],
+      "labels": [
         null
       ]
     }

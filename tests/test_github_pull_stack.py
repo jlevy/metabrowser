@@ -140,6 +140,29 @@ def test_a_member_the_top_lacks_adds_no_file() -> None:
     assert [change.id for change in kept.files] == ["f1"]
 
 
+def test_only_a_comparison_that_is_its_plain_diff_is_measured() -> None:
+    # The size measures the two commits' plain diff, so it is said only where the stack's
+    # comparison is that diff whole, and the size and the file count describe one diff.
+    plain = _manifest(_change("f1", "a.txt", "a.txt"), _change("f2", "b.txt", "b.txt"))
+    every = ((30, 1, {"a.txt": "a.txt", "b.txt": "b.txt"}),)
+    some = ((30, 1, {"a.txt": "a.txt"}),)
+    assert pull_stack._sized(plain, pull_stack._restricted(plain, every))
+    assert not pull_stack._sized(plain, pull_stack._restricted(plain, some))
+    cut = plain.model_copy(update={"truncated": True})
+    assert not pull_stack._sized(cut, pull_stack._restricted(cut, every))
+    # Past its bound, measured to cost more than the listing it follows, none is measured.
+    many = _manifest(
+        *(
+            _change(f"f{at}", f"f{at}.txt", f"f{at}.txt")
+            for at in range(pull_stack.MAX_SIZED_STACK_FILES + 1)
+        )
+    )
+    named = {f"f{at}.txt": f"f{at}.txt" for at in range(pull_stack.MAX_SIZED_STACK_FILES + 1)}
+    assert not pull_stack._sized(many, pull_stack._restricted(many, ((30, 1, named),)))
+    fewer = _manifest(*many.files[:-1])
+    assert pull_stack._sized(fewer, pull_stack._restricted(fewer, ((30, 1, named),)))
+
+
 @pytest.mark.parametrize(
     ("raw", "route"),
     [

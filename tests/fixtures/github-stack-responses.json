@@ -457,7 +457,10 @@
       }
     ],
     "commits": 1,
-    "size": null,
+    "size": {
+      "pushed_bytes": 4096,
+      "diff_bytes": 144
+    },
     "comparison": {
       "left": "<topic>",
       "right": "<draft_head>",
@@ -548,7 +551,10 @@
       }
     ],
     "commits": 2,
-    "size": null,
+    "size": {
+      "pushed_bytes": 4096,
+      "diff_bytes": 131
+    },
     "comparison": {
       "left": "<base>",
       "right": "<fork_earlier>",
@@ -644,7 +650,10 @@
       }
     ],
     "commits": 2,
-    "size": null,
+    "size": {
+      "pushed_bytes": 4096,
+      "diff_bytes": 265
+    },
     "comparison": {
       "left": "<base>",
       "right": "<fork_head>",

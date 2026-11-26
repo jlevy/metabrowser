@@ -2162,7 +2162,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-fold.js": ('"fold-expander diff-fold-control disclosure-toggle"',),
     "diff/diff-view.js": (
         '"diff-file-bar disclosure-toggle"',
-        '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
+        '"diff-summary diff-summary-toggle summary-toggle disclosure-toggle collapsed"',
     ),
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
@@ -2177,7 +2177,9 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '"btn github-pull-stack-trigger disclosure-toggle"',
         '{ class: "fold-expander disclosure-toggle" }',
     ),
-    "github/stack-page.js": ('"github-pull-stack-members-toggle disclosure-toggle collapsed"',),
+    "github/stack-page.js": (
+        '"summary-toggle github-pull-stack-members-toggle disclosure-toggle collapsed"',
+    ),
 }
 # Sources with a marker that build no toggle of their own, and why.
 _NOT_TOGGLES: dict[str, str] = {
@@ -2221,7 +2223,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "diff/diff-view.js": (
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
-        ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
+        (
+            'shellIcon("toggle")',
+            '"diff-summary diff-summary-toggle summary-toggle disclosure-toggle collapsed"',
+        ),
     ),
     "diff/diff-summary.js": (
         (
@@ -2244,7 +2249,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
     ),
     "github/stack-page.js": (
-        ("[chevron()]", '"github-pull-stack-members-toggle disclosure-toggle collapsed"'),
+        (
+            "[chevron()]",
+            '"summary-toggle github-pull-stack-members-toggle disclosure-toggle collapsed"',
+        ),
     ),
 }
 # A glyph built far from its builder: a folder row's parts are made by one function and
@@ -2285,6 +2293,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "btn",
         "github-pull-stack-trigger",
         "github-pull-stack-members-toggle",
+        "summary-toggle",
     }
 )
 # One compound selector that names a toggle: its marker class, a component class, or a
@@ -3470,11 +3479,30 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
             named = any(re.search(rf"\.{name}(?![\w-])", subject) for name in classes)
             if named and "::" not in subject:
                 assert set(body) <= owned, (sheet, selector, body)
-    # The Diff summary's header hovers and rings as its rows do: square, the ring inside.
-    diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
-    toggle = ".metabrowser-diff-host .diff-summary-toggle"
-    assert diff[toggle]["border-radius"] == "0"
-    assert diff[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
+    # The Diff summary's header hovers and rings as its rows do: square, the ring inside. It
+    # is the shell's summary toggle, which the stack page's members toggle is too, and no
+    # plugin restates its box, hover, ring, or chevron slot (A5 of review A on #861).
+    toggle = ".summary-toggle"
+    assert shell[toggle]["border-radius"] == "0"
+    assert shell[toggle]["padding"] == "0 6px 0 var(--summary-toggle-pull)"
+    assert shell[toggle + ":hover"] == {"background": "var(--hover-bg)"}
+    assert shell[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
+    assert shell[".summary-toggle-chevron"]["width"] == "var(--tree-icon-slot)"
+    for sheet, source, classes in (
+        ("diff/styles.css", "diff/diff-view.js", ("diff-summary-toggle", "diff-summary-chevron")),
+        (
+            "github/styles.css",
+            "github/stack-page.js",
+            ("github-pull-stack-members-toggle", "summary-toggle-chevron"),
+        ),
+    ):
+        text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
+        assert re.search(r'"(?:[\w-]+ )*summary-toggle(?: [\w-]+)*"', text), source
+        assert re.search(r'"(?:[\w-]+ )*summary-toggle-chevron(?: [\w-]+)*"', text), source
+        for selector, body in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / sheet):
+            if any(re.search(rf"\.{name}(?![\w-])", selector) for name in classes):
+                restated = {"padding", "margin", "border-radius", "outline", "cursor"} & set(body)
+                assert not restated, (sheet, selector, restated)
     # A folder's tooltip gives what its sums leave out, the counts alone.
     for source in sources:
         text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")

@@ -459,7 +459,9 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
           ? { [child.className]: child.children.map(item) }
           : child.className;
     const groups = header.children
-      .filter((child) => typeof child === "object" && child.className !== "diff-summary-chevron")
+      .filter(
+        (child) => typeof child === "object" && !child.classList.contains("diff-summary-chevron"),
+      )
       .map(item);
     const commas = header
       .find("change-line-statuses")[0]
@@ -504,7 +506,9 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       "the header is a disclosure toggle with the registry's chevron box, after its words",
       header.classList.contains("disclosure-toggle") &&
         header.find("diff-summary-chevron").length === 1 &&
-        lastPart?.className === "diff-summary-chevron",
+        lastPart?.classList.contains("diff-summary-chevron") === true &&
+        lastPart.classList.contains("summary-toggle-chevron") &&
+        header.classList.contains("summary-toggle"),
       lastPart?.className ?? "",
     );
     check(

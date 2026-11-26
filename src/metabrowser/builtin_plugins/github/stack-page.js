@@ -72,7 +72,6 @@
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
 import {
   actionText,
-  actionWords,
   actorSentence,
   agesLine,
   attachTabKeys,
@@ -83,6 +82,7 @@ import {
   FAST_POLL_MS,
   fetchedNote,
   h,
+  headerSentence,
   holdDiff,
   isPlainClick,
   labelChip,
@@ -90,6 +90,7 @@ import {
   noFiles,
   numberHeaderControls,
   pageHeaderParts,
+  paintSizeLine,
   pullAge,
   relativeAge,
   retellAges,
@@ -105,7 +106,7 @@ import {
   titleHeading,
 } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
-import { listedState, PULL_STATES } from "./pull-state.js";
+import { listedState, PULL_STATES, STACK_STATE_ORDER } from "./pull-state.js";
 import { stackMemberRow } from "./stack-member-row.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
@@ -1195,8 +1196,9 @@ export function memberLines(envelope, known, listed) {
 /**
  * The tally that leads the row of ages, where a pull request's state badge is
  * (docs/design-system.md, "The Stack Page"): a badge for each state some member is in, in
- * its state's ink, in the order the states are (`PULL_STATES`), "2 Pulls Open", and none for
- * a state no member is in, nor while the answer is on its way.
+ * its state's ink, in the order a stack's members run from its top (`STACK_STATE_ORDER`),
+ * "5 Pulls Draft", "2 Pulls Open", and none for a state no member is in, nor while the
+ * answer is on its way.
  *
  * @param {StackEnvelope | null} envelope
  * @returns {Array<{state: import("./pull-state.js").PullState, label: string}>}
@@ -1205,9 +1207,7 @@ export function stateTally(envelope) {
   if (envelope === null) {
     return [];
   }
-  return /** @type {Array<import("./pull-state.js").PullState>} */ (
-    Object.keys(PULL_STATES)
-  ).flatMap((state) => {
+  return STACK_STATE_ORDER.flatMap((state) => {
     const count = envelope.states[state];
     return count === 0
       ? []
@@ -1221,12 +1221,13 @@ export function stateTally(envelope) {
 }
 
 /**
- * The author's row's sentence, a pull request's said of the stack: every member's author,
- * each once, top first, or, once every member is merged, every merger, as a merged pull
- * request's names its merger; then the action with the commits of the members the top
- * contains (`actionWords`), "wants to merge 12 commits", "want to merge" after two or more,
- * or "merged 12 commits". Null while the answer is on its way, and while it names no
- * actor, before any member's record or list row is read.
+ * The author's row's sentence, a pull request's said of the stack (`headerSentence`): every
+ * member's author, each once, top first, and the commits of the members the top contains,
+ * "wants to merge 12 commits", "want to merge" after two or more; once every member is
+ * merged, every merger, "merged 12 commits", and none where no merger is known, so the
+ * action is said alone rather than crediting the authors, as a pull request's is. Null while
+ * the answer is on its way, and for a stack not merged whose authors are not known yet,
+ * before any member's record or list row is read.
  *
  * @param {StackEnvelope | null} envelope
  * @returns {{actors: StackPerson[], action: string} | null}
@@ -1236,12 +1237,36 @@ export function stackSentence(envelope) {
     return null;
   }
   const merged = envelope.states.merged === envelope.members.length;
-  const actors = merged && envelope.mergers.length > 0 ? envelope.mergers : envelope.authors;
-  if (actors.length === 0) {
+  if (!merged && envelope.authors.length === 0) {
     return null;
   }
-  const verb = merged ? "merged" : actors.length > 1 ? "want to merge" : "wants to merge";
-  return { actors, action: actionWords(verb, envelope.commits) };
+  return headerSentence(merged, envelope.authors, envelope.mergers, envelope.commits);
+}
+
+/**
+ * The labels the Pulls tab's snapshot of the stack names (`labels` of the stacks route), the
+ * members' each once, top first, before the stack's answer says them: by name alone, as a
+ * cached list row gives them. Null where it does not know them all, as for a member with
+ * neither a record nor a list row, so the labels row is held until the answer says.
+ *
+ * @param {NativeStack | null} known
+ * @returns {Array<{name: string, color: null, description: null}> | null}
+ */
+export function knownLabels(known) {
+  if (known === null || !Array.isArray(known.labels)) {
+    return null;
+  }
+  const names = new Set();
+  for (const number of stackMenuOrder(known)) {
+    const each = known.labels[known.pulls.indexOf(number)];
+    if (!Array.isArray(each)) {
+      return null;
+    }
+    for (const name of each) {
+      names.add(name);
+    }
+  }
+  return [...names].map((name) => ({ name, color: null, description: null }));
 }
 
 /**
@@ -1277,13 +1302,19 @@ export function stackSizeInput(answer, files) {
  * placeholder (`pending`), their lines (`drawn`), or are not there (`none`), for a stack that
  * cannot be shown as one comparison and has none drawn.
  *
- * Every row but the status line and the labels is decided at first paint, as a pull
- * request's are: the members from what the Pulls tab knows of the stack, and the rest held a
- * line tall until the answer fills them. The labels row is held while the labels are not
- * known (`labels` null), and is there for a stack whose members carry labels, as a pull
- * request's is. Until the answer the page is `cold`, held out of sight for the quiet period
- * as a pull request's page with no record in hand is (`.github-pull-cold`), so an answer
- * that lands within it is the first header the reader sees.
+ * Every row but the status line is decided at first paint, as a pull request's are: the
+ * members and the labels from what the Pulls tab knows of the stack (`knownLabels`), and the
+ * rest held a line tall until the answer fills them. The members' toggle is held, its words
+ * empty, while neither the Pulls tab nor the answer names a member. The labels row is there
+ * for a stack whose members carry labels, as a pull request's is, and held while they are not
+ * known (`labels` null): an answer that says the stack has none then takes it away, as a
+ * pull request's record does. Until the answer the page is `cold`, held out of sight for the
+ * quiet period as a pull request's page with no record in hand is (`.github-pull-cold`), so
+ * an answer that lands within it is the first header the reader sees.
+ *
+ * The freshness note says "Offline" as a pull request's does (`fetchedNote`) when the
+ * browser reports no network (*offline*) and a member's record is behind (`pending`), since
+ * no refresh can run.
  *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
@@ -1291,8 +1322,9 @@ export function stackSizeInput(answer, files) {
  * @param {StackNotice[]} status
  * @param {boolean} drawn Whether a comparison is drawn.
  * @param {number} nowMs The time the note's age is said at.
+ * @param {boolean} [offline] Whether the browser reports no network.
  */
-export function stackHeader(envelope, known, listed, status, drawn, nowMs) {
+export function stackHeader(envelope, known, listed, status, drawn, nowMs, offline = false) {
   const members = memberLines(envelope, known, listed);
   const base = envelope?.base_ref ?? known?.base_ref ?? null;
   const head = envelope?.head_ref ?? null;
@@ -1302,7 +1334,8 @@ export function stackHeader(envelope, known, listed, status, drawn, nowMs) {
     : envelope === null || envelope.state !== "absent"
       ? "pending"
       : "none";
-  const labels = envelope?.labels?.map((label) => describeLabel(label)) ?? null;
+  const labels =
+    (envelope?.labels ?? knownLabels(known))?.map((label) => describeLabel(label)) ?? null;
   const sized = comparison === "none" ? [] : ["size"];
   return {
     cold: envelope === null,
@@ -1315,7 +1348,7 @@ export function stackHeader(envelope, known, listed, status, drawn, nowMs) {
       ...(labels === null || labels.length > 0 ? ["labels"] : []),
       ...(status.length === 0 ? [] : ["status"]),
       ...sized,
-      ...(members === null ? [] : ["members"]),
+      ...(members === null && envelope !== null ? [] : ["members"]),
       ...(comparison === "none" ? [] : ["summary"]),
     ],
     tally: stateTally(envelope),
@@ -1324,7 +1357,10 @@ export function stackHeader(envelope, known, listed, status, drawn, nowMs) {
     note:
       envelope === null || envelope.fetched_at === null
         ? null
-        : fetchedNote(relativeAge(envelope.fetched_at, nowMs)),
+        : fetchedNote(
+            relativeAge(envelope.fetched_at, nowMs),
+            offline && envelope.pending.length > 0,
+          ),
     labels,
     members,
     merge: head === null || base === null ? null : { head, base },
@@ -1509,13 +1545,13 @@ export function mountStackPage(container, ctx, mb) {
     "button",
     {
       type: "button",
-      class: "github-pull-stack-members-toggle disclosure-toggle collapsed",
+      class: "summary-toggle github-pull-stack-members-toggle disclosure-toggle collapsed",
       "aria-expanded": "false",
       "aria-controls": membersId,
     },
     [
       membersWords,
-      h("span", { class: "github-pull-stack-members-chevron", "aria-hidden": "true" }, [chevron()]),
+      h("span", { class: "summary-toggle-chevron", "aria-hidden": "true" }, [chevron()]),
     ],
   );
   const membersRow = h("div", { class: "github-pull-stack-members-row page-header-line" }, [
@@ -1599,8 +1635,6 @@ export function mountStackPage(container, ctx, mb) {
    * image. @type {Map<string, HTMLElement>} */
   let actorNodes = new Map();
   let labelsKey = "";
-  /** Whether the labels row stays whatever the labels, once seen held (`paintHeader`). */
-  let labelsKept = false;
   let countKey = "";
   let statusKey = "";
   /** The comparison read once for the Diff summary and Changes, by its key.
@@ -1799,9 +1833,10 @@ export function mountStackPage(container, ctx, mb) {
 
   /**
    * The members toggle's words, a count summary's (docs/design-system.md, "Count Summaries
-   * Bold Their Numbers"): "**12** Pulls".
+   * Bold Their Numbers"): "**12** Pulls". While no member is named the toggle holds its row,
+   * out of sight and out of reach.
    *
-   * @param {number} count
+   * @param {number | null} count
    */
   function paintMembersCount(count) {
     const key = String(count);
@@ -1809,11 +1844,14 @@ export function mountStackPage(container, ctx, mb) {
       return;
     }
     countKey = key;
+    membersToggle.classList.toggle("github-pull-stack-members-held", count === null);
     membersWords.replaceChildren(
-      ...mb.countPartsNodes([
-        { number: mb.formatInteger(count) },
-        count === 1 ? " Pull" : " Pulls",
-      ]),
+      ...(count === null
+        ? []
+        : mb.countPartsNodes([
+            { number: mb.formatInteger(count) },
+            count === 1 ? " Pull" : " Pulls",
+          ])),
     );
   }
 
@@ -1880,41 +1918,22 @@ export function mountStackPage(container, ctx, mb) {
     }
   }
 
-  /**
-   * Whether the header has been in sight: it is not held cold, or the quiet period it is
-   * held for is over. Without the animation API, in a document no browser lays out, it has
-   * not.
-   */
-  function headerSeen() {
-    return (
-      typeof header.getAnimations === "function" &&
-      !header
-        .getAnimations()
-        .some(
-          (animation) =>
-            typeof CSSAnimation === "function" &&
-            animation instanceof CSSAnimation &&
-            animation.animationName === "github-pull-cold-hold",
-        )
-    );
-  }
-
   function paintHeader() {
     const notices = statusNotices(envelope, shown, error, failed, interacted);
-    const model = stackHeader(envelope, known, listed, notices, shown.drawn !== null, Date.now());
-    // A labels row the reader has seen, held while the labels were not known, stays for the
-    // page's life, empty where the stack turns out to have none, so the answer moves nothing
-    // under it; one the answer decides within the quiet period was never seen, and is there
-    // only for labels, as a pull request's cold title keeps the lines it was seen with
-    // (`holdColdPage` in pull-page.js).
-    if (!labelsKept && headerSeen() && labelsRow.parentNode === header) {
-      labelsKept = true;
-    }
+    const model = stackHeader(
+      envelope,
+      known,
+      listed,
+      notices,
+      shown.drawn !== null,
+      Date.now(),
+      globalThis.navigator?.onLine === false,
+    );
     holdCold(model.cold);
     paintOpened(model);
     paintMeta(model);
     paintMembers(model.members);
-    paintMembersCount(model.members?.length ?? 0);
+    paintMembersCount(model.members?.length ?? null);
     paintMerge(model.merge);
     paintLabels(model);
     paintStatus(model.status);
@@ -1933,16 +1952,12 @@ export function mountStackPage(container, ctx, mb) {
       members: membersRow,
       summary: summaryRow,
     };
-    const named =
-      labelsKept && !model.rows.includes("labels")
-        ? model.rows.flatMap((name) => (name === "merge" ? [name, "labels"] : [name]))
-        : model.rows;
     // The status line stays in the header while hidden, as a pull request's does, where it
     // would be: after the labels, or the merge for a stack with none.
-    const after = named.indexOf(named.includes("labels") ? "labels" : "merge") + 1;
-    const names = named.includes("status")
-      ? named
-      : [...named.slice(0, after), "status", ...named.slice(after)];
+    const after = model.rows.indexOf(model.rows.includes("labels") ? "labels" : "merge") + 1;
+    const names = model.rows.includes("status")
+      ? model.rows
+      : [...model.rows.slice(0, after), "status", ...model.rows.slice(after)];
     place(
       header,
       names.map((name) => rows[name]),
@@ -1979,7 +1994,7 @@ export function mountStackPage(container, ctx, mb) {
   /**
    * The size line once the summary is drawn, a pull request's said of the comparison drawn
    * (`stackSizeInput`): "12 commits · 3 files changed · 6.5 KB compressed (30.4 KB raw
-   * diff)", written only when it changes.
+   * diff)", written only when it changes (`paintSizeLine`).
    */
   function paintSize() {
     if (
@@ -1989,13 +2004,7 @@ export function mountStackPage(container, ctx, mb) {
     ) {
       return;
     }
-    const line = mb.changeSizeLine(stackSizeInput(shown.answer, summary.files));
-    // Rounded sizes can share text across the file size style's threshold.
-    const key = JSON.stringify([line.text, shown.answer?.size ?? null]);
-    if (sizeRow.dataset.sizeKey !== key) {
-      sizeRow.dataset.sizeKey = key;
-      sizeRow.replaceChildren(...mb.changeSizeLineNodes(line));
-    }
+    paintSizeLine(mb, sizeRow, stackSizeInput(shown.answer, summary.files));
   }
 
   /**
@@ -2625,6 +2634,20 @@ export function mountStackPage(container, ctx, mb) {
     }
   };
   document.addEventListener("visibilitychange", onVisible, { signal: listening.signal });
+  // The browser's network came or went: the freshness note says "Offline" while a member's
+  // record is behind and none can be refreshed, as a pull request's page does. The
+  // browserless sessions' window has no event target; a browser's always does.
+  for (const type of ["online", "offline"]) {
+    window.addEventListener?.(
+      type,
+      () => {
+        if (!listening.signal.aborted) {
+          paintHeader();
+        }
+      },
+      { signal: listening.signal },
+    );
+  }
 
   /** @param {string} next */
   function setTab(next) {

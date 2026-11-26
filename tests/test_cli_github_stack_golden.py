@@ -32,6 +32,12 @@ answers, each under the step of the stack's story it is read at, are
 ``cli-github-stack.txt``; 71, 72, 73, a number no stack has, and 70's move are
 ``cli-github-stack-states.txt``. So each transcript stays inside the review budget.
 
+A stack's size is its comparison's, measured where the comparison is built, and only where
+it is the plain diff of its two commits, so the size and the file count describe one diff:
+70's and 71's comparisons leave ``README.md`` out, so they have none, and 74's, 7's own diff,
+has one. A pushed size is zlib's output, masked in the transcripts and a stand-in in the
+recording (``mask_pushed_bytes``).
+
 A page that drew a comparison asks with ``since``, its key, and the stack route says how
 each member's head moved from it (``moved``), which the page's notice of a new comparison
 says (docs/reviewing-pull-requests.md, "A Stack's Guide"). The states transcript holds it
@@ -75,6 +81,7 @@ from tests.golden_harness import (
     check_recording,
     isolate_cli,
     label_home,
+    mask_pushed_bytes,
     quoted,
     run_metab,
 )
@@ -673,7 +680,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         rendered_text = re.sub(
             r"user-content-[0-9a-f]{24}-", "user-content-<ANCHORS>-", rendered_text
         )
-        rendered_text = label_home(labels.apply(rendered_text), home)
+        rendered_text = mask_pushed_bytes(label_home(labels.apply(rendered_text), home))
         assert str(tmp_path) not in rendered_text and "file://" not in rendered_text
         check_golden(name, rendered_text)
     # The answers tests/dom/github-stack-page-session.js replays, as the route gave them.
@@ -686,22 +693,34 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         "rewritten": rewritten,
         "grown": grown,
     }
+    # A pushed size is zlib's output, so the recording holds a stand-in for it, which the
+    # session replays as it would any size.
     check_recording(
         "github-stack-responses.json",
-        json.loads(labels.apply(_scoped(json.dumps(answers)))),
+        json.loads(
+            re.sub(
+                r'"pushed_bytes": \d+',
+                '"pushed_bytes": 4096',
+                labels.apply(_scoped(json.dumps(answers))),
+            )
+        ),
         transcript="cli-ui-github-stack-page.tryscript.md",
     )
     assert json.loads(json.dumps(current)) == current
 
-    # The stack's size is the sizes of the members its top contains, summed, once each
-    # member's page has measured its own (`pull-size`), which the stack's answer reads as
-    # kept, with no Git of its own; it says none while any is not measured (mb-68uk). 71's
-    # top lacks 7, whose size is never measured, and 7's commits are left out as its size is.
-    # Last, so no recorded answer depends on which sizes a run measured, and asserted rather
-    # than written, since a pushed size is zlib's output (`mask_pushed_bytes`).
-    assert lacking["size"] is None
+    # The stack's size is its comparison's, measured where the comparison was built, and only
+    # where that is the plain diff of its two commits, so the size and the file count
+    # describe one diff (mb-68uk). 70's and 71's leave README.md out, which the plain diff
+    # holds, so no pair of commits pushes their files alone and they have no size; a member
+    # page's measuring its own adds none. 74's is 7's whole diff: its patch's size is the
+    # pinned patch of its two commits, counted here from Git itself.
+    from metabrowser.git.change_size import DIFF_ARGS
+
+    assert current["size"] is None and lacking["size"] is None
     store = parse_qs(urlsplit(lacking["comparison"]["route"]).query)["store"][0]
-    sizes = [
+    for member in lacking["members"]:
+        if not member["in_top"]:
+            continue
         run_metab(
             (
                 CANONICAL,
@@ -709,14 +728,15 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
                 f"/api/plugin/github/pull-size?number={member['number']}"
                 f"&left={member['base']}&right={member['head']}&store={store}",
             )
-        ).payload()["size"]
-        for member in lacking["members"]
-        if member["in_top"]
-    ]
-    assert len(sizes) == 2 and all(size["state"] == "measured" for size in sizes), sizes
-    sized = run_metab((CANONICAL, "--api", f"{ROUTE}?number=71")).payload()
-    assert sized["size"] == {
-        "pushed_bytes": sum(size["pushed_bytes"] for size in sizes),
-        "diff_bytes": sum(size["diff_bytes"] for size in sizes),
-    }
-    assert sized["commits"] == lacking["commits"] == current["commits"] == 2
+        )
+    assert run_metab((CANONICAL, "--api", f"{ROUTE}?number=71")).payload()["size"] is None
+    pair = grown["comparison"]
+    patch = subprocess.run(
+        ["git", "--git-dir", str(pull_origin.path), *DIFF_ARGS, pair["left"], pair["right"], "--"],
+        check=True,
+        capture_output=True,
+        env=git_env(tmp_path),
+    ).stdout
+    assert grown["size"] is not None and grown["size"]["diff_bytes"] == len(patch), grown["size"]
+    assert grown["size"]["pushed_bytes"] > 0
+    assert lacking["commits"] == current["commits"] == 2
