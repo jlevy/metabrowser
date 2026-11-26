@@ -621,9 +621,11 @@
   /**
    * Make every link of *root*, an inert text already reduced to the allowlist, open what
    * `localize` says. An in-app link loses `target` and `rel`, since it does not leave the
-   * page, and a plain click on a `/view/` target opens it through
-   * `metabrowser.navigation.open`, as a Markdown file's links do; a modified click, a new
-   * tab, and a copied address use the same `href`. Returns how many links it changed.
+   * page, and a plain click opens it in place, as a Markdown file's links do: a `/view/`
+   * target through `metabrowser.navigation.open`, and any other in-app page, a pull
+   * request's, the list's, or a commit's, through `metabrowser.navigation.openRoute`. A
+   * modified click, a new tab, and a copied address use the same `href`, and so does a
+   * plain click the shell cannot open in place. Returns how many links it changed.
    *
    * It may run again over the same text with more context, and then reads each link as the
    * text wrote it and moves its one click handler to the new answer.
@@ -636,8 +638,9 @@
    *   views?: boolean,
    * }} [options]
    *   `text` as `localize` takes it. `open` may open an in-app route other than `/view/`
-   *   in place, as a pull request's page opens another's, answering whether it did;
-   *   otherwise the browser follows the link. `views: false` leaves every `/view/` target
+   *   in place itself, as a pull request's page opens another's, answering whether it did;
+   *   otherwise the shell opens it (`navigation.openRoute`), so no text's route link is a
+   *   page load while the shell can show it. `views: false` leaves every `/view/` target
    *   as written, for a text whose page keeps it while the served pin can change under it,
    *   as a rendered diff does away from its head: a route names no revision, a `/view/`
    *   address the served one. A later pass with `views: false` restores each `/view/`
@@ -736,8 +739,9 @@
   }
 
   /**
-   * Open what `enhance` last made of *anchor* on a plain primary click; any other click is
-   * the browser's, which follows the same `href`.
+   * Open what `enhance` last made of *anchor* on a plain primary click: a route by the
+   * page's own `open` first, then by the shell's. Any other click is the browser's, which
+   * follows the same `href`, as it does a route neither opened.
    *
    * @param {Element} anchor
    * @param {Event} event
@@ -762,7 +766,10 @@
       void mb.navigation.open(resolved.target).catch((error) => {
         console.warn("Could not open the link", error);
       });
-    } else if (resolved.kind === "route" && open?.(resolved) === true) {
+    } else if (
+      resolved.kind === "route" &&
+      (open?.(resolved) === true || mb.navigation.openRoute(resolved.href))
+    ) {
       mouse.preventDefault();
     }
   }

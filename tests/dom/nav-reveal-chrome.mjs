@@ -818,6 +818,52 @@ try {
   );
   await shot("commit");
 
+  // 16. A document's links to a commit, a pull request, and the list open each in place
+  // (mb-0uzt): its tab comes to the front and its panel reveals it, and the page is not
+  // loaded again, so a mark set on its window before the click is still there after.
+  const routeLink = async (label, href, tab, row) => {
+    await load(`${base}/view/docs/links.md`);
+    const link = `document.querySelector('#preview-pane a[href=${JSON.stringify(href)}]')`;
+    // Its click is the tab controller's once the shell tools and the Pulls tab's routes
+    // have loaded; until then the browser follows it, as a link it is.
+    await waitFor(
+      `${link} !== null && document.documentElement.dataset.shellToolsReady === "true" && window.MetabrowserPullRoute !== undefined`,
+      `${label}: the link`,
+    );
+    await evaluate(`(() => { window.metabrowserStayed = true; ${link}.click(); })()`);
+    phase(label);
+    if (row !== null) {
+      await revealed(label, row, tab);
+    }
+    await waitFor(
+      `location.pathname === ${JSON.stringify(href)} && document.querySelector(".nav-tab-bar .tab-btn.active")?.dataset.tab === ${JSON.stringify(tab)}`,
+      `${label}: the address and its tab`,
+    );
+    check(
+      `${label}: opened in place`,
+      (await evaluate("window.metabrowserStayed === true")) === true,
+    );
+  };
+  const headLink = await (async () => {
+    await load(`${base}/view/docs/links.md`);
+    await waitFor(
+      `document.querySelector('#preview-pane a[href^="/commit/"]') !== null`,
+      "a document's commit link",
+    );
+    return evaluate(
+      `document.querySelector('#preview-pane a[href^="/commit/"]').getAttribute("href")`,
+    );
+  })();
+  await routeLink(
+    "a document's link to a commit",
+    headLink,
+    "git",
+    `#tab-git .git-graph-row[data-revision="${headLink.slice("/commit/".length)}"]`,
+  );
+  await routeLink("a document's link to a pull request", "/pull/8", "pulls", pullRow(8));
+  await routeLink("a document's link to the list", "/pulls", "pulls", null);
+  await shot("route-links");
+
   check("no script error on the page", pageErrors.length === 0, pageErrors.join("\n"));
 } finally {
   await chrome.close();

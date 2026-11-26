@@ -888,6 +888,7 @@ async function headLinkChecks(mountDiffView, byName) {
         {
           "button[data-chip-value]": (node) =>
             node.tagName === "BUTTON" && node.dataset.chipValue !== undefined,
+          "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
           "a[href], img[src]": (node) =>
             (node.tagName === "A" && node.getAttribute("href") !== null) ||
             (node.tagName === "IMG" && node.getAttribute("src") !== null),
@@ -901,6 +902,139 @@ async function headLinkChecks(mountDiffView, byName) {
       return [...this.walk()].filter((node) => node !== this && wanted(node));
     }
   }
+  // A rendered file's links into the served repository open its pages in place, as every
+  // text's do: the view hands static/repository-links.js, run whole, the SDK's navigation, so
+  // a plain click on a commit's page, the list, or another pull request's opens it through
+  // `navigation.openRoute`, and a modified or middle click is the browser's.
+  async function routeLinkChecks() {
+    const sandbox = { Object, URL, TextEncoder, TextDecoder, btoa, atob, console };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    for (const name of ["git-path.js", "repository-links.js"]) {
+      const file = path.join(repoRoot, "src/metabrowser/static", name);
+      vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
+    }
+    const commit = "c".repeat(40);
+    const targets = [
+      [`https://github.com/octo/demo/commit/${commit}`, "a commit"],
+      ["https://github.com/octo/demo/pulls", "the pull requests"],
+      ["https://github.com/octo/demo/pull/8", "another pull request"],
+    ];
+    // One block that links them, with its parse, as the recording holds each block's.
+    const html = `<p>${targets.map(([href, text]) => `<a href="${href}">${text}</a>`).join(", ")}</p>`;
+    recording.trees[html] = [
+      {
+        tag: "p",
+        attrs: [],
+        children: targets.flatMap(([href, text], index) => [
+          ...(index > 0 ? [", "] : []),
+          { tag: "a", attrs: [["href", href]], children: [text] },
+        ]),
+      },
+    ];
+    const answer = structuredClone(recording.answers.f1["view=concise"]);
+    const added = answer.blocks.findIndex((block) => block.kind === "added");
+    answer.blocks[added] = { ...answer.blocks[added], html };
+    const routed = [];
+    const host = new MarkupElement("div");
+    const handle = mountDiffView(
+      host,
+      byName.get("added-text-file"),
+      {
+        filterControls: { groupHtml: () => "", bind: () => () => {} },
+        ensureAsset: async () => {},
+        // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
+        loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
+        repository: {
+          host: "github.com",
+          owner: "octo",
+          name: "demo",
+          branch: null,
+          revision: "b".repeat(40),
+          served_prefix: "",
+        },
+        sourceKind: () => "git_revision",
+        navigation: {
+          href: (target) => `/view/${target.path}`,
+          open: async () => {},
+          openRoute: (href) => routed.push(href) > 0,
+        },
+        decorateExternalLink: (link) => link,
+      },
+      {
+        markdownViews,
+        renderMarkdown: async () => answer,
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const drawn = host
+      .querySelectorAll("a")
+      .filter((link) => link.closest(".diff-markdown") !== null);
+    const clicked = (link, overrides = {}) => {
+      const event = {
+        altKey: false,
+        button: 0,
+        ctrlKey: false,
+        defaultPrevented: false,
+        metaKey: false,
+        shiftKey: false,
+        ...overrides,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+      };
+      for (const listener of link.listeners.get("click") ?? []) {
+        listener(event);
+      }
+      return event.defaultPrevented;
+    };
+    const textOf = (node) =>
+      node.tagName === "#TEXT" ? node.textContent : node.children.map(textOf).join("");
+    const opened = targets.map(([, text]) => {
+      const link = drawn.find((anchor) => textOf(anchor) === text);
+      if (link === undefined) {
+        throw new Error(`no drawn link says ${text}: ${drawn.map(textOf).join(", ")}`);
+      }
+      const plain = clicked(link);
+      const asked = routed.splice(0);
+      const modified = clicked(link, { metaKey: true }) || clicked(link, { button: 1 });
+      return {
+        text,
+        href: link.getAttribute("href"),
+        plain,
+        asked,
+        modified,
+        leaves: link.getAttribute("target") !== null,
+      };
+    });
+    check(
+      "a rendered file's link to a commit's page, the list, or another pull request opens it in place",
+      JSON.stringify(opened) ===
+        JSON.stringify(
+          [`/commit/${commit}`, "/pulls", "/pull/8"].map((href, index) => ({
+            text: targets[index][1],
+            href,
+            plain: true,
+            asked: [href],
+            modified: false,
+            leaves: false,
+          })),
+        ) && routed.length === 0,
+      JSON.stringify({ opened, routed }),
+    );
+    handle.dispose();
+  }
+
   // A rendered file's Source is drawn only while it shows and once it is reached: on a pull
   // request's Docs, a 17,177-line document's Source, drawn at load behind its rendered view,
   // was 72,000 nodes and 4 s of main-thread work (mb-qzgs). Here a 2,000-line Markdown file
@@ -1422,6 +1556,7 @@ async function headLinkChecks(mountDiffView, byName) {
     unreadHandle.dispose();
 
     await heldSourceChecks();
+    await routeLinkChecks();
   } finally {
     global.document = saved.document;
     global.window = saved.window;

@@ -894,6 +894,9 @@ async function run() {
  * The step's note is drawn before the comparison is read: its links open github.com at the
  * head of the comparison drawn, and once the read says what it changes, a changed file's
  * link opens it in the stack's Changes, in place, and an unchanged one stays on github.com.
+ * A member's page opens in place through the page's own `open` too, and a commit's page and
+ * the list through the shell's (`navigation.openRoute`), which is asked only for what the
+ * page declined; a modified click on any of them is the browser's.
  *
  * @param {Record<string, any>} page
  * @param {Record<string, any>} mb The session's SDK, with what this story adds.
@@ -954,6 +957,8 @@ async function noteLinks(page, mb) {
     render: async () => ({ dispose() {} }),
   };
   const opened = [];
+  // What the shell was asked to open in place: a route the page's own `open` declined.
+  const shell = [];
   const container = new Element("main");
   const handle = page.mountStackPage(
     container,
@@ -978,15 +983,29 @@ async function noteLinks(page, mb) {
         revision: "a".repeat(40),
         served_prefix: "",
       },
-      navigation: { href: (target) => `/view/${target.path}`, open: async () => {} },
+      navigation: {
+        href: (target) => `/view/${target.path}`,
+        open: async () => {},
+        openRoute(href) {
+          shell.push(`the shell opens ${href}`);
+          return true;
+        },
+      },
       sourceKind: () => "git_revision",
     },
   );
   await settle();
   reads.at(-1).answer({
     ...step(revision(4), 1, pinsOf(drawn)),
-    note_html:
-      '<p><a href="https://github.com/octo/demo/pull/docs/draft.md" data-metabrowser-path-relative="">the draft</a><a href="https://github.com/octo/demo/pull/src/same.txt" data-metabrowser-path-relative="">an unchanged file</a></p>',
+    note_html: [
+      "<p>",
+      '<a href="https://github.com/octo/demo/pull/docs/draft.md" data-metabrowser-path-relative="">the draft</a>',
+      '<a href="https://github.com/octo/demo/pull/src/same.txt" data-metabrowser-path-relative="">an unchanged file</a>',
+      `<a href="https://github.com/octo/demo/commit/${"e".repeat(40)}">a commit</a>`,
+      '<a href="https://github.com/octo/demo/pulls">the pull requests</a>',
+      '<a href="https://github.com/octo/demo/pull/72">a member</a>',
+      "</p>",
+    ].join(""),
   });
   await settle();
   const note = () => container.querySelector(".kpress-prose");
@@ -1001,15 +1020,24 @@ async function noteLinks(page, mb) {
   assert.equal(note(), drawnFirstNote, "the note drawn is read again, not drawn again");
   said.once_read = told();
   const clicks = [];
-  for (const link of note().querySelectorAll("a[href]")) {
-    const event = { button: 0, defaultPrevented: false };
+  const click = (link, modifiers = {}) => {
+    const event = { button: 0, defaultPrevented: false, ...modifiers };
     event.preventDefault = () => {
       event.defaultPrevented = true;
     };
     link.events.get("click")?.(event);
-    clicks.push(
-      `${link.textContent}: ${event.defaultPrevented ? opened.splice(0).join(", ") : "the browser follows it"}`,
-    );
+    const inPlace = [...opened.splice(0), ...shell.splice(0)];
+    assert.ok(inPlace.length <= 1, "one click opens one thing");
+    assert.equal(inPlace.length > 0, event.defaultPrevented, "opened in place");
+    return event.defaultPrevented ? inPlace.join(", ") : "the browser follows it";
+  };
+  for (const link of note().querySelectorAll("a[href]")) {
+    clicks.push(`${link.textContent}: ${click(link)}`);
+  }
+  for (const link of note().querySelectorAll("a[href]")) {
+    if (link.getAttribute("href").startsWith("/")) {
+      clicks.push(`Command-click ${link.textContent}: ${click(link, { metaKey: true })}`);
+    }
   }
   said.clicks = clicks;
   handle.dispose?.();

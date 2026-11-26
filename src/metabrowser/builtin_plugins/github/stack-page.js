@@ -2116,8 +2116,10 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   /**
-   * Make a note's links open what *text* says they open, in place for a pull request's or
-   * this stack's page, and mark each outside link as a description's is.
+   * Make a note's links open what *text* says they open, and mark each outside link as a
+   * description's is. A pull request's or this stack's page opens in place through the
+   * page's own `open`, which switches this page's tab without mounting it again; a commit's
+   * or the list's through the shell's, which `enhance` falls back to.
    *
    * @param {Element} prose
    * @param {MetabrowserRepositoryTextContext} text

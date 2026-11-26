@@ -41,10 +41,16 @@ TEXT_HEADS = {
 
 
 @functools.cache
-def _session() -> dict[str, Any]:
+def _session(part: str | None = None) -> dict[str, Any]:
+    """The session's transcript: with *part* ``localized``, the table ``localize`` reads."""
+
     require_node()
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=30, check=False
+        ["node", str(SESSION_JS), *([] if part is None else [part])],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     return json.loads(result.stdout)
@@ -53,7 +59,7 @@ def _session() -> dict[str, Any]:
 def _rows(kind: str) -> list[tuple[str, dict[str, Any]]]:
     return [
         (context, row)
-        for context, rows in _session()["localized"].items()
+        for context, rows in _session("localized")["localized"].items()
         for row in rows
         if row["result"] is not None and row["result"]["kind"] == kind
     ]
@@ -92,7 +98,7 @@ def test_an_in_app_page_is_the_one_the_server_opens_the_link_at() -> None:
 
 
 def test_pr_and_diff_links_preserve_authored_destinations() -> None:
-    localized = _session()["localized"]
+    localized = _session("localized")["localized"]
     checkout = {row["label"]: row["result"] for row in localized["checkout"]}
     away = {row["label"]: row["result"] for row in localized["text away from its head"]}
     assert checkout["its Changes, at one file and line"] is None
@@ -185,10 +191,12 @@ def test_a_rendered_diffs_head_link_on_github_is_the_file_its_wire_names() -> No
 
 
 def test_an_in_app_link_opens_what_its_address_says() -> None:
-    """A plain click on a ``/view/`` link opens its target; any other click is the browser's.
+    """A plain click on an in-app link opens it in place; any other click is the browser's.
 
-    So a new tab or a copied address opens what the click opens, and a route the page does
-    not open itself is followed as the link it is.
+    So a new tab or a copied address opens what the click opens. A ``/view/`` link opens
+    its target, and a route opens by the page's own opener when it takes it and otherwise
+    by the shell's, which is asked only for what the page declined; a route neither opens,
+    as before the shell's tabs have loaded, is followed as the link it is.
     """
 
     for name, run in _session()["enhanced"].items():
@@ -205,9 +213,21 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
             if run["clicks"][link]["plain"] and attributes["href"].startswith("/view/")
         ]
         assert opened == followed, name
+        routes = [
+            attributes["href"]
+            for attributes in run["anchors"].values()
+            if "data-metabrowser-github-localization" in attributes
+            and not attributes["href"].startswith("/view/")
+        ]
         routed = [
             attributes["href"]
             for link, attributes in run["anchors"].items()
             if run["clicks"][link]["plain"] and not attributes["href"].startswith("/view/")
         ]
-        assert [entry.split(" ", 1)[0] for entry in run["routed"]] == routed, name
+        page = [entry.split(" ", 1)[0] for entry in run["routed"]]
+        shell = run["shell"]["asked"]
+        # Each route's plain click asks the page, then the shell for what the page declined.
+        assert sorted(page + shell) == sorted(routes), name
+        assert not set(page) & set(shell), name
+        opened_in_place = page + (shell if run["shell"]["opens"] else [])
+        assert sorted(opened_in_place) == sorted(routed), name

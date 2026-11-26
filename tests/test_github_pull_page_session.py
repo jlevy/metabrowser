@@ -637,8 +637,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     result = run_session("github-pull-page-mount-behavior.js")
     # What a text's links open (`textLinks`) is the golden's, and the session asserts that a
     # click opens each in-app link's own address. Read here: no link it lists is the missing
-    # page github.com resolves a path-relative reference to under the pull request, and one
-    # that leaves for github.com names a file at the head the record's comparison names.
+    # page github.com resolves a path-relative reference to under the pull request, an in-app
+    # link names a file, a pull request's page, a commit's, or the list, and one that leaves
+    # for github.com names a file at the head the record's comparison names.
     head = json.loads(
         (Path(__file__).parent / "fixtures/github-pull-page-responses.json").read_text("utf-8")
     )["current"]["body"]["record"]["comparison"]["head"]
@@ -646,8 +647,10 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     assert hrefs, "the steps list their links"
     for href in hrefs:
         assert "/pull/docs/" not in href, href
-        assert href.startswith(("/view/", "/pull/7/")) or href.startswith(
-            f"https://github.com/octo/demo/blob/{head}/"
+        assert (
+            href.startswith(("/view/", "/pull/", "/commit/"))
+            or href == "/pulls"
+            or href.startswith(f"https://github.com/octo/demo/blob/{head}/")
         ), href
     assert result == {
         "titleStateAndTextBadge": True,

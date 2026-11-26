@@ -103,8 +103,9 @@ class HTMLElement extends StandInNode {
     this.listeners ??= [];
     this.listeners.push({ type, listener });
   }
-  // A plain primary click: whether a listener kept the browser from following the link.
-  click() {
+  // A primary click, plain or with *modifiers*: whether a listener kept the browser from
+  // following the link.
+  click(modifiers = {}) {
     const event = {
       altKey: false,
       button: 0,
@@ -112,6 +113,7 @@ class HTMLElement extends StandInNode {
       defaultPrevented: false,
       metaKey: false,
       shiftKey: false,
+      ...modifiers,
       preventDefault() {
         this.defaultPrevented = true;
       },
@@ -431,13 +433,15 @@ answers.set(route(DEADLINE), {
 });
 answers.set(route(OFFLINE), new TypeError("Failed to fetch"));
 // A body with links into the served repository, `acme/widgets`, as the route sends them: a
-// pull request's page, a file on the served branch, a relative reference, which the route's
-// `about:blank` base leaves with no address, and another site.
+// pull request's page, a commit's, the list of pull requests, a file on the served branch,
+// a relative reference, which the route's `about:blank` base leaves with no address, and
+// another site.
+const LINKED_COMMIT = "9".repeat(40);
 answers.set(
   route(LINKED),
   rendered(
     LINKED,
-    '\n<div><div><p>See <a href="https://github.com/acme/widgets/pull/12" target="_blank" rel="noopener noreferrer">the pull request</a>, <a href="https://github.com/acme/widgets/blob/main/docs/guide.md" target="_blank" rel="noopener noreferrer">the guide</a>, <a>a relative one</a>, and <a href="https://example.com/doc" target="_blank" rel="noopener noreferrer">another site</a>.</p></div></div>',
+    `\n<div><div><p>See <a href="https://github.com/acme/widgets/pull/12" target="_blank" rel="noopener noreferrer">the pull request</a>, <a href="https://github.com/acme/widgets/commit/${LINKED_COMMIT}" target="_blank" rel="noopener noreferrer">a commit</a>, <a href="https://github.com/acme/widgets/pulls" target="_blank" rel="noopener noreferrer">the pull requests</a>, <a href="https://github.com/acme/widgets/blob/main/docs/guide.md" target="_blank" rel="noopener noreferrer">the guide</a>, <a>a relative one</a>, and <a href="https://example.com/doc" target="_blank" rel="noopener noreferrer">another site</a>.</p></div></div>`,
     "",
   ),
 );
@@ -693,11 +697,12 @@ async function step(label, revision, body, before = null) {
   options.inertFails = false;
 
   // On a page with the served repository's identity, a body's links into it open its pages
-  // here (static/repository-links.js, run whole): a same-repository pull request's page is
-  // its route, which the browser follows, and a file on the served branch its `/view/`
-  // address, which a plain click opens through the navigation; a relative reference stays
-  // text, as on github.com, where a commit's message is not Markdown, and another site
-  // stays an outside link.
+  // here (static/repository-links.js, run whole): a same-repository pull request's page, a
+  // commit's, and the list are their routes, which a plain click has the shell open in
+  // place (`navigation.openRoute`), and a file on the served branch its `/view/` address,
+  // which a plain click opens through the navigation; a modified click on any of them is
+  // the browser's. A relative reference stays text, as on github.com, where a commit's
+  // message is not Markdown, and another site stays an outside link.
   const navigated = [];
   sandbox.metabrowser.repository = {
     host: "github.com",
@@ -719,6 +724,10 @@ async function step(label, revision, body, before = null) {
     open: async (target) => {
       navigated.push(`/view/${target.path}`);
     },
+    openRoute(href) {
+      navigated.push(`the shell opens ${href}`);
+      return true;
+    },
   };
   Object.assign(
     transcript,
@@ -739,22 +748,38 @@ async function step(label, revision, body, before = null) {
       ),
       "another site stays an outside link",
     );
-    // What a plain click on each link does: the page opens a `/view/` address itself, and
-    // the browser follows any other, the pull request's route included.
+    // What a plain click on each link does: the page opens a `/view/` address itself, the
+    // shell a route, and the browser follows another site, as it follows every modified
+    // click.
     const placed = summary(LINKED, "linked");
     await internals.placeCommitBody(placed, detail(LINKED, "linked"));
-    linked.clicks = placed.querySelectorAll("a[href]").map((anchor) => {
-      const opened = anchor.click();
-      return `${anchor.textContent}: ${opened ? navigated.splice(0).join(", ") : "the browser follows it"}`;
-    });
+    const clicked = (anchor, modifiers) => {
+      const opened = anchor.click(modifiers);
+      const said = navigated.splice(0);
+      assert(opened === said.length > 0, "a click opens in place exactly when it says so");
+      return `${anchor.textContent}: ${opened ? said.join(", ") : "the browser follows it"}`;
+    };
+    linked.clicks = [
+      ...placed.querySelectorAll("a[href]").map((anchor) => clicked(anchor)),
+      ...placed
+        .querySelectorAll("a[href]")
+        .map((anchor) => `Command-click ${clicked(anchor, { metaKey: true })}`),
+    ];
     assert(
       JSON.stringify(linked.clicks) ===
         JSON.stringify([
-          "the pull request: the browser follows it",
+          "the pull request: the shell opens /pull/12",
+          `a commit: the shell opens /commit/${LINKED_COMMIT}`,
+          "the pull requests: the shell opens /pulls",
           "the guide: /view/docs/guide.md",
           "another site: the browser follows it",
+          "Command-click the pull request: the browser follows it",
+          "Command-click a commit: the browser follows it",
+          "Command-click the pull requests: the browser follows it",
+          "Command-click the guide: the browser follows it",
+          "Command-click another site: the browser follows it",
         ]),
-      "only a /view/ address opens in place",
+      "a plain click opens an in-app page in place, and a modified click is the browser's",
     );
   }
   sandbox.MetabrowserSourcePinGuard = { hasChanged: () => true };

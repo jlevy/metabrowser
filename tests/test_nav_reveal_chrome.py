@@ -37,7 +37,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.github_pull_fixture import Origin, clone_checkout, git_env, install_fake_gh
+from tests.github_pull_fixture import (
+    CANONICAL,
+    Origin,
+    clone_checkout,
+    git_env,
+    install_fake_gh,
+)
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 from tests.test_github_pulls_stacks_chrome import stacks_scenario
@@ -74,13 +80,28 @@ HISTORY_COMMITS = 300
 
 
 def add_reveal_files(checkout: Path) -> None:
-    """A deep folder, a document that links into it, and a long folder."""
+    """A deep folder, a document that links into it, and a long folder.
+
+    The document also links the repository's pages on github.com that open in the app: the
+    checkout's head commit, pull request 8, and the list of pull requests.
+    """
 
     deeper = checkout / "docs" / "deep" / "deeper"
     deeper.mkdir(parents=True)
     (deeper / "leaf.md").write_text("# Leaf\n\nA file three folders down.\n", encoding="utf-8")
+    head = subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=git_env(checkout.parent),
+    ).stdout.strip()
     (checkout / "docs" / "links.md").write_text(
-        "# Links\n\n- [The leaf](deep/deeper/leaf.md)\n", encoding="utf-8"
+        "# Links\n\n- [The leaf](deep/deeper/leaf.md)\n"
+        f"- [The head commit]({CANONICAL}/commit/{head})\n"
+        f"- [Pull request 8]({CANONICAL}/pull/8)\n"
+        f"- [The pull requests]({CANONICAL}/pulls)\n",
+        encoding="utf-8",
     )
     long = checkout / "long"
     long.mkdir()
