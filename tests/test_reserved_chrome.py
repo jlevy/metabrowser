@@ -573,7 +573,17 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
         _rule(css, ".github-pulls-row.github-pulls-stack-row"),
     )
     assert stack_columns is not None
-    assert " ".join(stack_columns.group(1).split()) == "var(--tree-icon-slot) minmax(0, 1fr) 5ch"
+    # Both rows' age columns read the one width, declared once on the row, so no grid keeps
+    # a copy of it.
+    age_column = "var(--github-pulls-age-column)"
+    assert css.count("--github-pulls-age-column:") == 1
+    assert "--github-pulls-age-column:" in _rule(css, ".github-pulls-row")
+    assert stack_columns.group(1).split()[-1] == age_column
+    tail_columns = re.search(
+        r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row > .github-pulls-tail")
+    )
+    assert tail_columns is not None
+    assert tail_columns.group(1).split()[-1] == age_column
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
     # on #506).
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")

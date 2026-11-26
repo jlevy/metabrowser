@@ -1876,6 +1876,32 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
+   * Open both levels over pull request *number*'s row where the list groups it: its stack, if
+   * the reader closed it, and the stack's pull requests, if the reader hid them under its
+   * Whole stack row. The one place a reveal unfolds, so a row reveals the same whether the
+   * list held it when its address was named or it arrived later (`revealRow`). Whether
+   * anything opened, and so the rows were drawn again.
+   *
+   * @param {number | null} number
+   */
+  function unfoldOver(number) {
+    const over =
+      number === null
+        ? undefined
+        : grouping().rows?.find((row) => row.kind === "stack" && row.members.includes(number));
+    if (over?.kind !== "stack") {
+      return false;
+    }
+    const opened = closedStacks.delete(over.stack.number);
+    const unfolded = closedWholes.delete(over.stack.number);
+    if (opened || unfolded) {
+      groupingInputs += 1;
+      render();
+    }
+    return opened || unfolded;
+  }
+
+  /**
    * Show the current pull request's row: a closed stack that holds it opens, and its pull
    * requests are shown under its Whole stack row if the reader hid them, both levels, as a
    * file the address names opens its folders, and the row scrolls into view; one the filter leaves
@@ -1885,18 +1911,7 @@ export function createPullsController(deps, options = {}) {
    * @param {number | null} number
    */
   function showCurrent(number) {
-    const over =
-      number === null
-        ? undefined
-        : grouping().rows?.find((row) => row.kind === "stack" && row.members.includes(number));
-    if (over?.kind === "stack") {
-      const opened = closedStacks.delete(over.stack.number);
-      const unfolded = closedWholes.delete(over.stack.number);
-      if (opened || unfolded) {
-        groupingInputs += 1;
-        render();
-      }
-    }
+    unfoldOver(number);
     settleAnchor(true);
     if (placeSought(true)) {
       return;
@@ -1990,6 +2005,12 @@ export function createPullsController(deps, options = {}) {
    * @param {number} number
    */
   function revealRow(number) {
+    // The row may have arrived under a stack the reader closed, or whose pull requests the
+    // reader hid, after its address was named: the list moved to a filter that holds it, or
+    // read the window it is in (`placeSought`, `chaseCurrent`).
+    if (unfoldOver(number)) {
+      settleAnchor(true);
+    }
     if (revealCurrent) {
       deps.reveal(number);
     }

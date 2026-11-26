@@ -1237,6 +1237,14 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-height: var(--ui-row-height);
+  /* The one width of the column every row's age has, a pull request's on its last line
+     (`.github-pulls-tail`) and a stack's on its row (`.github-pulls-stack-row`), so the ages
+     of a list are one column and an age that grows a digit moves nothing. The longest
+     compact age is four characters ("12mo", 345 to 364 days), and its m is wider than a
+     digit; 5ch of the row's type holds it at the row's own size: measured in Chrome 152 at
+     13 px, "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds
+     it whole). WebKit was not measured. */
+  --github-pulls-age-column: 5ch;
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
@@ -1380,18 +1388,15 @@
    whether the lines are shown, waited for, or cannot be had, so they arrive and move no line
    of the row, only the chevron, which follows them; where there are no lines it is the
    chevron alone (pulls-panel.js, `paintChange`), as the prefetch lane lists its files. The
-   age has a column of one width, so an age that grows a digit moves nothing. The longest
-   compact age is four characters ("12mo", 345 to 364 days), and its m is wider than a digit;
-   5ch of the row's type holds it at the row's own size: measured in Chrome 152 at 13 px,
-   "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds it whole).
-   WebKit was not measured. The rest of the line is the item's link's, as the run is: a press
+   age has a column of one width, `--github-pulls-age-column`, measured on `.github-pulls-row`,
+   so an age that grows a digit moves nothing. The rest of the line is the item's link's, as the run is: a press
    there, the age's too, opens the pull request. Before, the lines and the chevron ended the
    run, and the author and the age were this line (mb-pw8t); in between, the age ended the
    run after the author, where its place moved with the title's length, and the ages read
    as no column. */
 .github-pulls-row > .github-pulls-tail {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 5ch;
+  grid-template-columns: minmax(0, 1fr) var(--github-pulls-age-column);
   align-items: center;
   height: var(--github-pulls-change-line);
   padding: 0 0 2px var(--github-pull-row-text-column);
@@ -1802,12 +1807,12 @@
   --github-pulls-indent: calc(2 * var(--github-pull-row-text-column));
 }
 /* A stack's row is one line: its chevron's slot, its heading, and its age in the column a
-   pull request's row has for its own (`.github-pulls-tail`), 5ch at the row's end, there
+   pull request's row has for its own (`--github-pulls-age-column`), at the row's end, there
    whether or not the stack has a time, so an age that grows a digit moves nothing
    (docs/design-system.md, "Ages End the Row"). It is a row of the tree, and hovers,
    focuses, and takes the pointer as a pull request's row does (`.github-pulls-row`). */
 .github-pulls-row.github-pulls-stack-row {
-  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) 5ch;
+  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) var(--github-pulls-age-column);
 }
 .github-pulls-stack-row > .github-pulls-age {
   justify-self: end;

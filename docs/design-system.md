@@ -168,9 +168,9 @@ or opened age, and add the exact updated time to the tooltip of the age it repea
 
 In a list row with an age and no size, a timestamp or an age ends the row, right-aligned
 at its end, so the ages of a list read as one column a reader scans down for what
-changed last. A Pulls row’s age ends its last line, in a 5ch column after its lines and
-its chevron ([The Pulls Tab](#the-pulls-tab)), and a stack’s row there ends with its
-stack’s age in the same column, after its size
+changed last. A Pulls row’s age ends its last line, in a column of one width after its
+lines and its chevron ([The Pulls Tab](#the-pulls-tab)), and a stack’s row there ends
+with its stack’s age in the same column, after its size
 ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)); a Commits row’s ends
 its line after the author (`.git-graph-age`), a ref selector row’s after its commit
 (`.source-ref-selector-age`), an agents session row’s after its title
@@ -3601,10 +3601,11 @@ A row in no stack is flush on the list’s inset; only a stack’s members are i
 two levels in, under their stack’s Whole stack row, so the indent itself says which rows
 are a stack’s. The changed files hang one tree level under the state icon.
 The author’s name ends in an ellipsis only where the author is wider than a line.
-The age never gives way: its column at the last line’s end is 5ch of the row’s type, the
-room of the longest compact age, “12mo”, and where the line has no room for the lines as
-well, at the narrowest pane, the lines give way whole to an ellipsis, and the chevron
-and the age stay. The author’s avatar in a row is a tenth smaller than the shell’s
+The age never gives way: its column at the last line’s end is one width
+(`--github-pulls-age-column` in the GitHub plugin’s `styles.css`), the room of the
+longest compact age, “12mo”, and where the line has no room for the lines as well, at
+the narrowest pane, the lines give way whole to an ellipsis, and the chevron and the age
+stay. The author’s avatar in a row is a tenth smaller than the shell’s
 `--actor-avatar-size`, `--github-pull-row-avatar-size` in
 `builtin_plugins/github/styles.css`, which a stack menu’s member and a guide’s pull
 request row take too, since the author is secondary to the title it follows.
@@ -3845,7 +3846,7 @@ holds the one helper and the one rule in source.
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, in the run’s start padding, centered on its first line, so every line of the run starts in the text column past it | [One Glyph Size](#one-glyph-size) |
 | Lines and chevron | The row’s last line, `.github-pulls-change` in `.github-pulls-tail`, from the text column, before the age, and one line tall whatever it holds: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on; with no lines, the chevron alone; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
-| Updated time | `metabrowser.ageLabel`, in its freshness ink, at the row’s end on its last line, in a 5ch column of the row’s type after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
+| Updated time | `metabrowser.ageLabel`, in its freshness ink, at the row’s end on its last line, in a column of one width, `--github-pulls-age-column`, after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), in the run after the title and the place, after a muted dot, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--nav-font-size`; `.actor-name`, in the run after the number and a muted dot, ending it, never breaking. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and a row’s username ellipsizes only where it is wider than a line ([Authors Follow Pull Requests](#authors-follow-pull-requests)) |
 | Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
@@ -4281,7 +4282,7 @@ when Refresh stood in that toolbar.
   the heading tells its own age from: the heading’s age is the freshest of its rows’,
   never older than one of them, and a closed stack still says how fresh it is.
   The stacks’ snapshot holds no times, and a stack’s own endpoint would be one more read
-  to wait on. The age is the shell’s [age](#age), with its freshness ink, in the 5ch
+  to wait on. The age is the shell’s [age](#age), with its freshness ink, in the one
   column every Pulls row’s age has ([Ages End the Row](#ages-end-the-row)). The count
   comes with the stacks’ snapshot and the age with the list’s rows, which are what draws
   the row, so the heading is whole in its first paint, has no pending state, and nothing
@@ -4340,8 +4341,10 @@ when Refresh stood in that toolbar.
   Left on a pull request in a stack, its files closed, goes to its Whole stack row.
   An address that names a pull request reveals it by opening both levels over it: its
   stack, if the reader closed it, and the stack’s pull requests, if the reader hid them.
-  A pull request that is current while the reader hides it is held by its Whole stack
-  row, which takes the Tab stop.
+  The same holds for a row that arrives after its address was named, when the list moved
+  to a filter that holds it or read the window it is in: every reveal unfolds in one
+  place (`unfoldOver`). A pull request that is current while the reader hides it is held
+  by its Whole stack row, which takes the Tab stop.
   A grouped list’s Tab stop, until the reader moves it, is its first row.
 - **Scroll.** A grouping that arrives at the top of the list keeps the top, so its first
   stack’s row shows; elsewhere the row the reader is reading keeps its place, and a

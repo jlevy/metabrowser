@@ -41,8 +41,9 @@ opens its changed files, and Left closes them before it goes up.
 What the reader hid stays hidden while the stack is closed and opened again, as
 `pull requests hidden` beside `closed` shows.
 An address that names a pull request opens both levels over it, the stack and its pull
-requests; one that names the stack’s page opens the stack and leaves its pull requests
-as the reader left them.
+requests, and does so too when the list must first move to a filter that holds the pull
+request, as from Open to All for a closed one; one that names the stack’s page opens the
+stack and leaves its pull requests as the reader left them.
 Home, the folder’s name or `0`, puts the list back as a fresh load draws it, from the
 rows it holds and with no request: every stack open with its pull requests shown, no
 pull request’s changed files open, and the Tab stop on the first row.
@@ -539,6 +540,52 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "…",
         "#5 [99/99]"
       ]
+    },
+    {
+      "step": "on Open the reader hides Stack #286's pull requests; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
+        "    ▾ Whole stack [1/1]",
+        "        #8 3/3 [1/3]",
+        "        #7 2/3 [2/3]",
+        "        #6 1/3 [3/3]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "filter": "open → all",
+      "closed": "[] → []",
+      "pull requests hidden": "[286] → []",
+      "revealed": [
+        "#8"
+      ],
+      "current": "#8",
+      "tabStop": "#8"
+    },
+    {
+      "step": "on Open the reader closes Stack #286; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
+        "    ▾ Whole stack [1/1]",
+        "        #8 3/3 [1/3]",
+        "        #7 2/3 [2/3]",
+        "        #6 1/3 [3/3]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "filter": "open → all",
+      "closed": "[286] → []",
+      "pull requests hidden": "[] → []",
+      "revealed": [
+        "#8"
+      ],
+      "current": "#8",
+      "tabStop": "#8"
     },
     {
       "step": "#8 in two stacks: once, under the first listed, its badge naming the other",

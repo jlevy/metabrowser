@@ -499,7 +499,7 @@ async function mountStory() {
   const index = (name) => createStackIndex(stacks[name].body);
 
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
-  function mount({ filter = "all", list = "current" } = {}) {
+  function mount({ filter = "all", list = "current", byState = false } = {}) {
     // `requests` counts every request, which Home's reset makes none of.
     const log = { opened: [], marks: [], prefetch: [], revealed: [], requests: 0 };
     let model = null;
@@ -515,6 +515,23 @@ async function mountStory() {
           if (route === "/api/plugin/github/pulls-prefetch") {
             // What an open asks to read ahead: its neighbours as drawn, and the top.
             log.prefetch.push(options.body);
+          }
+          if (byState && method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
+            // Each filter's own list, for a story in which the list moves from Open to All:
+            // Open's recorded list, and All's, of which the one-row probes that place a
+            // pull request the filter leaves out answer the top row and #8.
+            const all = lists.current;
+            const rows = route.includes("state=open")
+              ? lists.open_current.body.rows
+              : route.includes("limit=1&after=9")
+                ? all.body.rows.filter((row) => row.number === 8)
+                : /limit=1$/.test(route)
+                  ? all.body.rows.slice(0, 1)
+                  : route.includes("&after=")
+                    ? lists.more_window.body.rows
+                    : all.body.rows;
+            const body = route.includes("state=open") ? lists.open_current.body : all.body;
+            return Promise.resolve({ status: 200, etag: null, body: { ...body, rows } });
           }
           if (method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
             const answer = route.includes("&after=") ? lists.more_window : lists[list];
@@ -916,6 +933,47 @@ async function mountStory() {
   await open.controller.start({ shown: true });
   await settle();
   record("Open: #8 is closed, so Stack #286 holds 2 of its 3", open, current);
+  // ── A reveal that must move the list first. #8 is closed, so Open leaves it out: an address
+  // that names it moves the list to All, and the row arrives after the address was named. It
+  // is revealed there as a row the list already held is, both levels opened over it, whether
+  // the reader hid the stack's pull requests or closed the stack (review of #862).
+  for (const [how, hide] of [
+    ["hides Stack #286's pull requests", (panel) => panel.setWholeOpen(286, false)],
+    ["closes Stack #286", (panel) => panel.setStackOpen(286, false)],
+  ]) {
+    const moved = mount({ filter: "open", list: "open_current", byState: true });
+    moved.controller.setStacks(current);
+    await moved.controller.start({ shown: true });
+    await settle();
+    hide(moved.controller);
+    await settle();
+    const before = moved.controller.snapshot();
+    moved.log.revealed.length = 0;
+    moved.controller.setCurrent(8);
+    await settle();
+    await settle();
+    const after = moved.controller.snapshot();
+    record(
+      `on Open the reader ${how}; an address that names #8, which Open leaves out, moves the list to All and reveals it there`,
+      moved,
+      current,
+      {
+        filter: `${before.filter} → ${after.filter}`,
+        closed: `${JSON.stringify(before.closedStacks)} → ${JSON.stringify(after.closedStacks)}`,
+        "pull requests hidden": `${JSON.stringify(before.closedWholes)} → ${JSON.stringify(after.closedWholes)}`,
+        revealed: moved.log.revealed.splice(0).map(rowName),
+        current: rowName(moved.marked()),
+        tabStop: rowName(moved.anchor()),
+      },
+    );
+    assert.equal(after.filter, "all");
+    assert.ok(
+      moved.model().stacks.rows.some((row) => row.kind === "pull" && row.number === 8),
+      "#8's row is drawn once the list holds it",
+    );
+    assert.equal(moved.anchor(), 8, "and takes the Tab stop");
+    moved.controller.dispose?.();
+  }
   const shared = index("shared");
   story.controller.setStacks(shared);
   record(
