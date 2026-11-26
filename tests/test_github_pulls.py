@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import copy
+import itertools
 import json
 import os
 import signal
@@ -6966,8 +6967,13 @@ def test_a_status_read_asks_the_status_alone_and_leaves_the_record(
         raise AssertionError("a status read fetched into the store")
 
     monkeypatch.setattr(pulls, "fetch_pull_head", no_fetch)
+    moments = itertools.count(1)
 
     def status_read() -> PullStatus | None:
+        # Each read observes a moment after the last: two of one moment are kept by what
+        # they observed, not by which was written last (:func:`.pull_status.observation_key`).
+        later = FETCHED_AT + timedelta(seconds=next(moments))
+        monkeypatch.setattr(pulls, "utc_now", lambda: later)
         return asyncio.run(pulls.refresh_pull_status(stand.published, 7))
 
     # No CI registered when it was read; now it has.
@@ -6996,12 +7002,14 @@ def test_a_status_read_asks_the_status_alone_and_leaves_the_record(
     assert conflict is not None and conflict.conflicts == "conflicting"
     assert _api_paths(stand) == [_STATUS_QUERY]
     assert stand.record(7) == first
+    held = read_pull_status(home, slug, 7)
+    assert held is not None and held.observed_at == conflict.observed_at
     # An account check that fails fails the status alone, and is kept as how it ended.
     stand.answer({**answers, "auth": {"stdout": '{"hosts":{}}\n', "exit": 0}})
     assert status_read() is None
     outcome = read_status_outcome(home, slug, 7)
     assert outcome is not None and outcome.outcome != "succeeded"
-    assert read_pull_status(home, slug, 7) == conflict
+    assert read_pull_status(home, slug, 7) == held
 
 
 ISSUE_PATH = "repos/octo/demo/issues/7"
@@ -7227,6 +7235,8 @@ def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
     assert _probe(stand, record, checks=False, seen=seen, mergeability=True).outcome == (
         "checks_changed"
     )
+    # The read that follows observes a later moment than the one that left it unknown.
+    stand.monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=1))
     resolved = asyncio.run(pulls.refresh_pull_status(stand.published, 7))
     assert resolved is not None and resolved.conflicts == "mergeable"
     # A status that holds an answer, or a closed pull request, never has the pull asked.

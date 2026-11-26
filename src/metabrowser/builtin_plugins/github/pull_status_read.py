@@ -552,7 +552,12 @@ _STATUS: Final = "the status of the pull request"
 
 
 def _keep(repository: ListedRepository, read: StatusRead) -> bool:
-    """Keep *read*'s status and then its checks, each under the alias lock. Blocking."""
+    """Keep *read*'s status and then its checks, each under the alias lock. Blocking.
+
+    The checks are kept only when the status kept then counts them
+    (:func:`~.pull_status_store.write_pull_checks`), so the order two reads end in never
+    leaves a status naming a list the file no longer holds.
+    """
 
     kept = write_pull_status(repository, read.status)
     write_pull_checks(repository.home, repository.slug, read.checks)

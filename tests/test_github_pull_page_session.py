@@ -31,12 +31,13 @@ checks beside it, and the story reads each many times, so the recording holds ea
 distinct one once: an answer whose record, or status, verdict, or checks, an earlier
 answer carried names that answer, ``{"same_as": "current"}``, and the session reads it
 back as that answer's. A status, verdict, or checks that differs from an earlier one only
-in what it describes and when, its number, head, and time, and the time its checks were
-listed, names that answer and keeps those beside the name,
+in what it describes and when, its number, head, and time, and the times its checks were
+listed and last seen otherwise, names that answer and keeps those beside the name,
 ``{"same_as": "current", "observed_at": "...", "checks.listed_at": "..."}``, a dotted
 name for a part of a part. A read lists its checks as it observes them, so a status whose
 checks were listed when it was observed has no ``listed_at`` written, in full or beside a
-name, and reads back with its own ``observed_at`` there.
+name, and reads back with its own ``observed_at`` there; a status written in full whose
+checks were never seen otherwise has no ``moved_at`` written, and reads back with none.
 ``make golden-update`` rewrites the recording and then the transcript.
 """
 
@@ -183,7 +184,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
 STORED_ONCE: Final = ("record", "status", "readiness", "checks")
 # What says which pull request, head, and moment an operational value describes, kept
 # beside the name of the answer that holds the rest of it; a dotted name is a part's part.
-_IDENTITY: Final = ("number", "head", "observed_at", "checks.listed_at")
+_IDENTITY: Final = ("number", "head", "observed_at", "checks.listed_at", "checks.moved_at")
 
 
 def _part(value: dict[str, Any], name: str) -> tuple[bool, Any]:
@@ -281,13 +282,19 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
 
 
 def _unlisted_when_observed(status: dict[str, Any]) -> dict[str, Any]:
-    """*status* without its checks' ``listed_at`` when that is its own ``observed_at``."""
+    """*status* without its checks' ``listed_at`` when that is its own ``observed_at``, and
+    without a ``moved_at`` its checks never had."""
 
     checks = status.get("checks")
-    if not isinstance(checks, dict) or checks.get("listed_at") != status.get("observed_at"):
+    if not isinstance(checks, dict):
         return status
-    listed = {key: value for key, value in checks.items() if key != "listed_at"}  # pyright: ignore[reportUnknownVariableType]
-    return {**status, "checks": listed}
+    implied: set[str] = set()
+    if checks.get("listed_at") == status.get("observed_at"):
+        implied.add("listed_at")
+    if "moved_at" in checks and checks["moved_at"] is None:
+        implied.add("moved_at")
+    kept = {key: value for key, value in checks.items() if key not in implied}  # pyright: ignore[reportUnknownVariableType]
+    return {**status, "checks": kept}
 
 
 def _until_refreshed(client: TestClient, number: int) -> None:

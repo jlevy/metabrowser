@@ -30,7 +30,7 @@ comparison relies on.
 Whatever the verdict, ``status_missing`` says no kept status of the record's head counts a
 list of its checks (:func:`listing_missing`), so a visible page reads its own
 (:meth:`.served_pull.ServedPull.is_stale`): none is kept, or the one kept is the Pulls tab's
-scan's, of a new head or of checks that moved since the page last listed them.
+scan's, of a new head or base or of checks that moved since the page last listed them.
 ``unlisted_at`` is then that status's ``observed_at``, when it has one, and a status newer
 than the page's last read is a change the page reads at once. ``checks_pending`` says the
 status's checks or mergeability are still settling, which the probes watch
@@ -112,8 +112,8 @@ def listing_missing(record: PullRecord, status: PullStatus | None) -> tuple[bool
     The page's read lists its head's checks with the status; the Pulls tab's scan reads the
     status alone. A scan's status of the record's head that finds the checks as the page's
     read left them keeps that read's list (:func:`~.pull_status.kept_observation`); one of a
-    new head, or of checks that moved, counts none, and the page then reads its own while
-    the readiness is the scan's. ``(True, None)`` with no status of the record's head;
+    new head or base, or of checks that moved, counts none, and the page then reads its own
+    while the readiness is the scan's. ``(True, None)`` with no status of the record's head;
     ``(True, observed_at)`` with one that counts no list.
     """
 

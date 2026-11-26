@@ -133,7 +133,8 @@ status: 200
           },
           "required_failing": null,
           "required_pending": null,
-          "listed_at": null
+          "listed_at": null,
+          "moved_at": null
         },
         "auto_merge": null,
         "queue": null
@@ -239,6 +240,29 @@ status: 200
 scanning=false scan={"outcome": "gh_failed", "message": "GitHub could not complete the metadata query", "reset_at": null, "at": "2026-09-17T12:02:51Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 0, "rows": 0, "cost": 0, "unknown": 0, "settle_at": null}
 #101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
 #112 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
+--- stderr ---
+--- gh ---
+## The clock moves on 61 s, to 2026-09-17T12:03:52Z.
+## GitHub no longer lists #111 among the open pull requests. The next periodic walk does not read it, so the status an older scan kept of it is not_scanned, with no verdict, while its catalog row is still open.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+refresh=started status_scan=started
+--- stderr ---
+--- gh ---
+gh api user
+gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-statuses?numbers=111,101'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-statuses?numbers=111,101
+status: 200
+scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:03:52Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 12, "cost": 1, "unknown": 0, "settle_at": null}
+#111 absent reason=not_scanned lifecycle=open observed_by=- verdict=-
+#101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
 --- stderr ---
 --- gh ---
 ## A request that names anything but the pull requests' numbers is refused.

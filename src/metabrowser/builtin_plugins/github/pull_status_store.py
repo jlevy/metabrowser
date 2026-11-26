@@ -11,10 +11,12 @@ All four are under the source's ``pulls`` directory, so clearing the cache clear
 (:func:`~.pull_record.clear_pulls`), and a checkout without a store has them as it has a
 catalog.
 
-A write keeps the newer observation: a status or a list of checks observed before the
-one kept is dropped, so two reads that end out of order leave the later one. Every file
-is written atomically by the home's private writer under the source-alias lock, and read
-lock-free with a size bound.
+A write keeps the newer observation: a status observed before the one kept is dropped, so
+two reads that end out of order leave the later one (:func:`~.pull_status.kept_observation`),
+and a list of checks is kept exactly when the status kept then names it, so the checks
+file is always the list a status's ``listed_at`` names, whatever order reads end in. Every
+file is written atomically by the home's private writer under the source-alias lock, and
+read lock-free with a size bound.
 """
 
 from __future__ import annotations
@@ -90,7 +92,13 @@ def read_pull_checks(home: Path, slug: str, number: int) -> PullChecks | None:
 
 
 def write_pull_checks(home: Path, slug: str, checks: PullChecks) -> bool:
-    """Keep *checks* unless newer ones are kept; whether it did. Blocking.
+    """Keep *checks* when the status kept names them; whether it did. Blocking.
+
+    Write the status first (:func:`~.pull_catalog.write_pull_status`). The status names
+    the list its summary counts (``listed_at`` of its head), which is never an older list
+    than one it named before, so keeping only that list keeps the file and the status
+    agreeing whatever order reads end in, and a read whose list the status does not count,
+    one that ended after a newer list or after its checks moved, leaves the file as it is.
 
     Under the source's alias lock, as every writer of the ``pulls`` directory; call it
     through ``run_lock_section``. Raises the home's ``PrivateStorageError`` or an
@@ -99,10 +107,13 @@ def write_pull_checks(home: Path, slug: str, checks: PullChecks) -> bool:
 
     data = _fitted(checks)
     with source_alias_lock(home, slug):
-        ensure_pulls_directory(home, slug)
-        kept = read_pull_checks(home, slug, checks.number)
-        if kept is not None and kept.observed_at > checks.observed_at:
+        status = read_pull_status(home, slug, checks.number)
+        if status is None or (status.head, status.checks.listed_at) != (
+            checks.head,
+            checks.observed_at,
+        ):
             return False
+        ensure_pulls_directory(home, slug)
         write_private_file_atomic(home, source_pull_checks(slug, checks.number), data)
         return True
 

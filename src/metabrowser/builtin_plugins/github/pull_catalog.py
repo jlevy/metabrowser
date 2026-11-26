@@ -47,7 +47,11 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_PULL_REFRESH_BYTES,
     ensure_pulls_directory,
 )
-from metabrowser.builtin_plugins.github.pull_status import PullStatus, kept_observation
+from metabrowser.builtin_plugins.github.pull_status import (
+    PullStatus,
+    kept_observation,
+    observation_key,
+)
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
@@ -1176,10 +1180,10 @@ def write_pull_statuses(repository: ListedRepository, statuses: Sequence[PullSta
     One row per pull request number, in a table of its own: a status changes with every
     check, and a catalog row's change would move its fingerprint, its core, and its
     window's generation. Each row becomes what :func:`~.pull_status.kept_observation`
-    keeps of the row held and the one written: the newer ``observed_at``, whatever its
-    head, so two reads that end out of order leave the later, and the same moment
-    replaces, as the later write is; with the older's list of checks when it still
-    describes the newer's. The checkpoint is not touched, so no window or revision moves.
+    keeps of the row held and the one written: the newer observation, whatever its head,
+    so two reads that end out of order leave the later, with the latest list of checks
+    that still describes it; the same whatever order they are written in. The checkpoint
+    is not touched, so no window or revision moves.
     At most :data:`PAGE_SIZE` statuses, the most one page of GitHub's answers holds.
 
     The caller uses ``run_lock_section``: the rows commit in one short transaction under
@@ -1249,8 +1253,7 @@ def _put_statuses(repository: ListedRepository, statuses: Sequence[PullStatus]) 
             for status in statuses:
                 held = _held_status(db, status.number)
                 kept = kept_observation(held, status)
-                # The later moment is kept, and the incoming at the same moment.
-                newest += kept.observed_at == status.observed_at
+                newest += observation_key(kept) == observation_key(status)
                 if kept == held:
                     continue
                 db.execute(

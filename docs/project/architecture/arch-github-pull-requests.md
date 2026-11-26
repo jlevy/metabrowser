@@ -291,10 +291,16 @@ has the rules.
   network and under the lock.
   `POST pulls-refresh` starts it as a job of its own, after the list’s refresh is
   started and its answer read, when a probe found a change, when a fetch moved a base
-  branch the scanned pull requests target, every `FULL_REFRESH_S` otherwise, and once
-  `MERGEABLE_SETTLE_S` after a scan that left `unknown` answers, of only their pages.
+  branch the last walk’s pull requests target since that walk started, every
+  `FULL_REFRESH_S` otherwise, and once `MERGEABLE_SETTLE_S` after a scan that left
+  `unknown` answers, of only their pages.
+  A walk keeps the mirror’s tip of each base as it started, since GitHub’s `baseRefOid`
+  is each pull request’s own as of its last sync, and the ask never waits on Git: only
+  when a moved base alone could start a scan does it look at the mirror, in a job of its
+  own after its answer, and a mirror Git cannot read moves nothing.
   Each page it reads spaces the next scan by `SCAN_POINT_GAP_S`, which bounds what the
-  scans of any repository spend an hour.
+  scans of any repository spend an hour; the process keeps the stamp its last scan left
+  as well as the file, so the spacing holds when the cache cannot keep the file.
   It reads as the catalog’s reader, with no account check of its own, and waits for the
   catalog’s first rows.
   The periodic scan waits below the GraphQL floor, and the rest go below it, as the
@@ -315,18 +321,21 @@ has the rules.
   clock-driven full reads wait (`ServedPull.below_floor`); a status read alone spends
   GraphQL, and waits below that floor alone (`ServedPull.status_below_floor`).
 - **Keeping.** The status is a row of the catalog’s `pull_status` table, one for each
-  pull request number, which keeps the newer `observed_at` whatever its head
-  (`kept_observation` in `pull_status.py`). The page’s read lists the checks and the
-  scan does not, so a status’s checks summary names the read that listed them
-  (`listed_at`, with the required counts that only a list gives): a newer observation
-  with no list of its own keeps the older’s when the two summarize the same checks, one
-  head and the same rollup state and counts, and no other.
-  A scan that finds a read’s checks as it left them takes nothing away from it.
+  pull request number, which keeps the newest observation whatever its head
+  (`kept_observation` and `observation_key` in `pull_status.py`). The page’s read lists
+  the checks and the scan does not, so a status’s checks summary names the read that
+  listed them (`listed_at`, with the required counts that only a list gives): the newest
+  keeps the latest list of an observation that summarizes the same checks, one head
+  against one base and the same rollup state and counts, as long as none kept beside
+  them summarized them otherwise since (`moved_at`). A scan that finds a read’s checks
+  as it left them takes nothing away from it, and the status kept is the same whatever
+  order the observations are written in.
   It is a table of its own, so a check that finishes moves no catalog row, fingerprint,
   core, or window generation; a catalog whose rows start over for another account keeps
   it, as the records beside it are kept.
   The checks are `<n>.checks.json` beside the record, within `MAX_PULL_CHECKS_BYTES`
-  (`pull_status_store.py`), cut from the end to fit.
+  (`pull_status_store.py`), cut from the end to fit, and kept exactly when the status
+  kept then counts them, so the file is always the list a status’s `listed_at` names.
   What the probes of a head’s checks last saw, each page’s ETag and a digest of what a
   status keeps of it, is `<n>.checks.probe.json` (`CheckProbes`), since the GraphQL read
   has no ETag to probe with.
@@ -350,7 +359,9 @@ has the rules.
   `GET pull-statuses` answers the kept status and verdict of up to `MAX_STATUS_NUMBERS`
   named pull requests from the cache alone, judged on the lifecycle and head of each
   one’s catalog row, or `absent` with why, and how the last scan ended
-  (`pull_statuses_route.py`).
+  (`pull_statuses_route.py`). A scan’s status from before the last whole walk, of a pull
+  request that walk did not read, is `not_scanned`: one past the newest the scan reads,
+  or no longer open, whose verdict nothing keeps current.
 
 ## Serving Pull Requests
 

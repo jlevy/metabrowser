@@ -36,15 +36,23 @@ const kpressTree = JSON.parse(
 // whose record an earlier pull-route answer carried names that answer, and reads here as
 // that answer's, and so for each of the others.
 // A status whose checks were listed when it was observed is recorded without the time they
-// were listed, which is its own `observed_at`; any other value is as recorded.
+// were listed, which is its own `observed_at`, and one whose checks were never seen
+// otherwise without `moved_at`, which is none; any other value is as recorded.
 function listedWhenObserved(field, value) {
   if (field !== "status" || value === null || typeof value !== "object" || !value.checks) {
     return value;
   }
-  if ("listed_at" in value.checks || value.same_as !== undefined) {
+  if (value.same_as !== undefined) {
     return value;
   }
-  return { ...value, checks: { ...value.checks, listed_at: value.observed_at } };
+  const checks = { ...value.checks };
+  if (!("listed_at" in checks)) {
+    checks.listed_at = value.observed_at;
+  }
+  if (!("moved_at" in checks)) {
+    checks.moved_at = null;
+  }
+  return { ...value, checks };
 }
 for (const answer of Object.values(recorded)) {
   for (const envelope of [answer.body, answer.body?.pull]) {

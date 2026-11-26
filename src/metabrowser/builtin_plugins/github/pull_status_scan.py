@@ -9,22 +9,29 @@ with its counts by state and no check (``contexts(first: 0)``). It builds each s
 page's read does (:func:`~.pull_status_read.operational_status`), ``observed_by`` ``scan``,
 and writes each page's in one catalog transaction, under the lock and after the network
 (:func:`~.pull_catalog.write_pull_statuses`). A scan lists no check, so its statuses carry no
-``listed_at`` and no required counts, unless the read kept before them found the same checks
-(:func:`~.pull_status.kept_observation`).
+``listed_at`` and no required counts, unless a read kept beside them listed the same checks
+and none moved since (:func:`~.pull_status.kept_observation`).
 
 **When it runs.** The Pulls tab's ask, ``POST pulls-refresh``, starts it when it is due
 (:func:`ask_status_scan`), after the list's own refresh is started and answered for, and
 never instead of it:
 
 - when the list's probe found a change (``changed``);
-- when a fetch moved a base branch the scanned pull requests target: the mirror's tip of it
-  is neither the ``base`` the last scan kept nor what the last look at the mirror saw
-  (``base_moved``, :meth:`StatusScan.base_moved`), once this process has looked at it;
+- when a fetch moved a base branch the last walk's pull requests target: the mirror's tip
+  of it is not the one that walk saw as it started (``base_moved``,
+  :meth:`StatusScan.base_moved`);
 - otherwise every ``FULL_REFRESH_S`` while the tab asks (``periodic``);
 - and once, ``MERGEABLE_SETTLE_S`` after a scan that left answers ``unknown``, of only the
   pages that held them (``settle``): GitHub computes ``mergeable`` after the read that
   first asks, as :data:`SCAN_ROWS` records;
-- a reader's own Refresh (``retry``), which only a rate hold stops.
+- a reader's own Refresh (``retry``), which only a rate hold stops: this process's, or the
+  one the last scan's stamp records (``reset_at``), which outlives a restart.
+
+The ask never waits on Git. A reader's Refresh, a settle re-read, a change, and the clock
+are decided from the stamp alone; only when none is due and a moved base would be does
+the ask look at the mirror, in a job of its own after its answer (:func:`ask_status_scan`),
+which starts the scan once it finds a base moved. A mirror Git cannot read has moved
+nothing, and says so in the server log once until it can be read again.
 
 Until the catalog holds a page of rows nothing is scanned, so a first visit's list comes
 first. The scan reads as the catalog's reader, the account that read the list, with no
@@ -34,7 +41,9 @@ switch the scan fails ``account_changed`` until the list's next scan reads as th
 Each scan spaces the next by :data:`SCAN_POINT_GAP_S` for each page it read, so the scans
 the clock, a change, or a moved base asks for spend at most :data:`SCANS_POINTS_PER_HOUR`
 for any repository. A reader's own Refresh and the settle re-read do not wait for that
-spacing, but add their pages to it, so the next scan waits the longer.
+spacing, but add their pages to it, so the next scan waits the longer. The process keeps
+the stamp its last scan left as well as the file (:attr:`StatusScan.last`) and decides
+from the later of the two, so the spacing holds when the cache cannot keep the file.
 
 It is reader work, held as the catalog's scan is (:mod:`.gh_budget`): a rate hold stops
 every scan; the periodic one waits below ``BACKGROUND_FLOOR`` of GraphQL and slows past
@@ -47,8 +56,9 @@ Speculative work never starts one.
 list's refresh. A failed scan keeps every status kept before it, and how it ended is kept
 in ``pulls/statuses.scan.json`` (:class:`ScanStamp`), which ``GET pull-statuses`` answers
 (:mod:`.pull_statuses_route`); the next scan then waits a freshness window, or until a rate
-limit lifts. The stamp is also what the next scan needs: when the last whole walk started,
-the spacing, the pages to read once more, and the base each scanned pull request targets.
+limit lifts. The stamp is also what the next scan needs: when the last whole walk started
+and which pull requests it read, the spacing, the pages to read once more, and the
+mirror's tip of each base branch the walk's pull requests target, as the walk started.
 """
 
 from __future__ import annotations
@@ -58,7 +68,7 @@ import contextlib
 import logging
 import os
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import partial
@@ -129,8 +139,11 @@ SCAN_ROWS: Final = 25
 # The pages one scan reads: the newest 100 open pull requests, a Pulls tab's first five
 # screens at 20 rows each, and the 100 rows the plan priced. At most four points and, on
 # nixpkgs, about 22 s of pages, each in its own network slot. Rows past them show no
-# readiness until their own page is read.
+# readiness until their own page is read: a status the scan kept of one that has fallen
+# past them is ``not_scanned`` once a walk has started after it (:mod:`.pull_statuses_route`).
 MAX_SCAN_PAGES: Final = 4
+# The most statuses one scan reads, and so the most pull requests a walk's stamp names.
+MAX_SCAN_STATUSES: Final = SCAN_ROWS * MAX_SCAN_PAGES
 # The spacing a scan leaves for each page it read before the next may start, whatever asks:
 # a point a minute, so the scans of one repository spend at most 60 points an hour, a fifth
 # of ``AUTOMATIC_CORE_PER_HOUR``, beside the catalog's own 40 scans an hour. A repository of
@@ -141,9 +154,10 @@ SCAN_POINT_GAP_S: Final = 60.0
 SCANS_POINTS_PER_HOUR: Final = round(3600 / SCAN_POINT_GAP_S)
 # The most bases one stamp keeps: one for each pull request a scan reads, so every base the
 # scanned pull requests target fits, however many stacks they make.
-MAX_SCAN_BASES: Final = SCAN_ROWS * MAX_SCAN_PAGES
-# The most a stamp may be, written or read: 100 bases of at most 1 KB names and their
-# commits, four cursors of at most 1,024 characters, and a message, come to under 112 KB.
+MAX_SCAN_BASES: Final = MAX_SCAN_STATUSES
+# The most a stamp may be, written or read: 100 bases of 1 KB names and SHA-256 commits,
+# 100 seven-digit numbers, four cursors of 1,024 characters, and a whole message came to
+# 115,755 bytes serialized (2026-11-26), every other field at its largest too.
 MAX_SCAN_STAMP_BYTES: Final = 128 * 1024
 _MAX_CURSOR_CHARS: Final = 1024
 
@@ -187,11 +201,14 @@ class ScanStamp(BaseModel):
     unknown).
 
     ``walked_at`` is when the last whole walk from the newest pull request started, which
-    the periodic scan counts from; ``next_at`` the earliest a scan the spacing holds may
-    start (:data:`SCAN_POINT_GAP_S`); ``settle_at`` and ``settle_cursors`` when the pages
-    that held unknown answers are read once more, by the cursors they were read with, ``None``
-    for the first. ``bases`` is the base commit GitHub reported for each base branch the
-    scanned pull requests target, which a fetch that moves one is compared with.
+    the periodic scan counts from, and ``walked_numbers`` the pull requests it read, which
+    the route answers a status kept before it of any other by (``not_scanned``);
+    ``next_at`` the earliest a scan the spacing holds may start (:data:`SCAN_POINT_GAP_S`);
+    ``settle_at`` and ``settle_cursors`` when the pages that held unknown answers are read
+    once more, by the cursors they were read with, ``None`` for the first. ``bases`` is the
+    mirror's tip of each base branch that walk's pull requests target, as the walk started
+    (one first seen in it, as it ended), which a fetch that moves one is compared with; a
+    branch the mirror does not hold is left out.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -204,10 +221,13 @@ class ScanStamp(BaseModel):
     reader: Reader | None = None
     trigger: ScanTrigger
     pages: int = Field(ge=0, le=MAX_SCAN_PAGES)
-    rows: int = Field(ge=0, le=MAX_SCAN_BASES)
+    rows: int = Field(ge=0, le=MAX_SCAN_STATUSES)
     cost: int = Field(ge=0)
-    unknown: int = Field(ge=0, le=MAX_SCAN_BASES)
+    unknown: int = Field(ge=0, le=MAX_SCAN_STATUSES)
     walked_at: Timestamp | None = None
+    walked_numbers: tuple[Annotated[int, Field(ge=1)], ...] = Field(
+        default=(), max_length=MAX_SCAN_STATUSES
+    )
     next_at: Timestamp
     settle_at: Timestamp | None = None
     settle_cursors: tuple[Cursor | None, ...] = Field(default=(), max_length=MAX_SCAN_PAGES)
@@ -352,7 +372,8 @@ class _Progress:
     cost: int = 0
     unknown: int = 0
     settle: list[str | None] = field(default_factory=list[str | None])
-    bases: dict[str, str] = field(default_factory=dict[str, str])
+    base_refs: set[str] = field(default_factory=set[str])
+    numbers: set[int] = field(default_factory=set[int])
 
 
 _STATUSES: Final = "the statuses of the open pull requests"
@@ -410,11 +431,9 @@ async def scan_statuses(
         progress.unknown += unknown
         if unknown:
             progress.settle.append(cursor)
-        for status in page.statuses:
-            if status.base is not None and (
-                status.base_ref in progress.bases or len(progress.bases) < MAX_SCAN_BASES
-            ):
-                progress.bases[status.base_ref] = status.base
+        # At most MAX_SCAN_STATUSES of each: a page holds at most SCAN_ROWS statuses.
+        progress.base_refs.update(status.base_ref for status in page.statuses)
+        progress.numbers.update(status.number for status in page.statuses)
         await _keep(repository, page.statuses)
         if walk and page.cursor is not None:
             pending.append(page.cursor)
@@ -438,22 +457,27 @@ def _stamp(
     *,
     reader: str | None,
     failure: PullDataError | None,
+    bases: Mapping[str, str],
 ) -> ScanStamp:
-    """The stamp a scan leaves, from what it read and how it ended."""
+    """The stamp a scan leaves, from what it read and how it ended.
+
+    *bases* are the mirror's tips of the walk's base branches. Only a whole walk replaces
+    what the last one kept, its clock, the pull requests it read, and those tips: a settle
+    re-read or a failed walk read only some of the pull requests a moved base would ask for.
+    """
 
     now = pull_list.utc_now()
     ended = utc_stamp(now)
-    walk = trigger != "settle"
-    bases = dict(previous.bases) if previous is not None else {}
-    if walk and failure is None:
-        bases = {}
-    for name, base in progress.bases.items():
-        if name in bases or len(bases) < MAX_SCAN_BASES:
-            bases[name] = base
-    walked_at = previous.walked_at if previous is not None else None
-    if walk and failure is None:
-        walked_at = utc_stamp(started)
-    settle = walk and failure is None and bool(progress.settle)
+    whole = trigger != "settle" and failure is None
+    if whole:
+        walked_at: str | None = utc_stamp(started)
+        walked_numbers = tuple(sorted(progress.numbers))
+        kept_bases = dict(bases)
+    else:
+        walked_at = None if previous is None else previous.walked_at
+        walked_numbers = () if previous is None else previous.walked_numbers
+        kept_bases = {} if previous is None else dict(previous.bases)
+    settle = whole and bool(progress.settle)
     return ScanStamp(
         outcome="succeeded" if failure is None else failure.state,
         message=None if failure is None else str(failure)[:MAX_REFRESH_MESSAGE_CHARS],
@@ -467,14 +491,19 @@ def _stamp(
         cost=progress.cost,
         unknown=progress.unknown,
         walked_at=walked_at,
+        walked_numbers=walked_numbers,
         next_at=_spaced(previous, started, progress.pages),
         settle_at=utc_stamp(now + timedelta(seconds=MERGEABLE_SETTLE_S)) if settle else None,
         settle_cursors=tuple(progress.settle) if settle else (),
-        bases=bases,
+        bases=kept_bases,
     )
 
 
 _JOB_STOPPED: Final = "the scan stopped on an unexpected error, which the server log names"
+
+type MirrorTips = Callable[[Sequence[str]], Awaitable[dict[str, str] | None]]
+"""The mirror's tip of each of some base branches it holds, by name, or ``None`` when Git
+cannot read it (:meth:`StatusScan.mirror_tips`)."""
 
 
 async def run_scan(
@@ -484,19 +513,27 @@ async def run_scan(
     reader: str,
     previous: ScanStamp | None,
     slot: asyncio.Semaphore | None = None,
+    tips: MirrorTips | None = None,
+    remember: Callable[[ScanStamp], None] | None = None,
 ) -> ScanStamp:
     """Scan as *trigger* asks, after *previous*, and keep how it ended; the stamp it kept.
 
-    Every page's ``viewer`` must be *reader*, the catalog's. A failure keeps every status
-    kept before it, and is the stamp's outcome; an unexpected error is kept as
-    ``gh_failed`` and raised, for the coordinator to log. A stamp that cannot be kept is
-    lost, and the next ask decides as if this scan had not run.
+    Every page's ``viewer`` must be *reader*, the catalog's. A walk asks *tips* for the
+    mirror's tip of each base the last walk's pull requests target before its first page,
+    and of any base first seen in it after its last; with no *tips* it keeps none. A
+    failure keeps every status kept before it, and is the stamp's outcome; an unexpected
+    error is kept as ``gh_failed`` and raised, for the coordinator to log. Every stamp it
+    leaves is handed to *remember* before it is written, so a stamp the cache cannot keep
+    still spaces the next scan in this process.
     """
 
     started = pull_list.utc_now()
     progress = _Progress()
     failure: PullDataError | None = None
-    cursors = previous.settle_cursors if trigger == "settle" and previous is not None else None
+    walk = trigger != "settle"
+    cursors = previous.settle_cursors if not walk and previous is not None else None
+    known = sorted(previous.bases) if walk and previous is not None else []
+    at_start = (await tips(known) or {}) if tips is not None and known else {}
     try:
         await scan_statuses(
             repository, reader=reader, cursors=cursors, slot=slot, progress=progress
@@ -506,20 +543,37 @@ async def run_scan(
         failure = exc
     except Exception:
         stopped = PullDataError("gh_failed", _JOB_STOPPED)
-        await _keep_stamp(
-            repository, _stamp(previous, trigger, started, progress, reader=reader, failure=stopped)
+        await _leave(
+            repository,
+            _stamp(previous, trigger, started, progress, reader=reader, failure=stopped, bases={}),
+            remember,
         )
         raise
-    stamp = _stamp(previous, trigger, started, progress, reader=reader, failure=failure)
-    await _keep_stamp(repository, stamp)
+    bases: dict[str, str] = {}
+    if walk and failure is None:
+        first_seen = sorted(progress.base_refs.difference(known))
+        at_end = (await tips(first_seen) or {}) if tips is not None and first_seen else {}
+        seen = at_start | at_end
+        bases = {name: seen[name] for name in sorted(progress.base_refs) if name in seen}
+    stamp = _stamp(
+        previous, trigger, started, progress, reader=reader, failure=failure, bases=bases
+    )
+    await _leave(repository, stamp, remember)
     return stamp
 
 
-async def _keep_stamp(repository: ListedRepository, stamp: ScanStamp) -> None:
+async def _leave(
+    repository: ListedRepository,
+    stamp: ScanStamp,
+    remember: Callable[[ScanStamp], None] | None,
+) -> None:
+    if remember is not None:
+        remember(stamp)
     try:
         await run_lock_section(partial(write_scan_stamp, repository.home, repository.slug, stamp))
     except (PrivateStorageError, OSError, ValueError) as exc:
-        # Only the report of the scan is lost; the statuses it read are kept.
+        # Only the file is lost: the statuses the scan read are kept, and this process
+        # spaces the next scan by the stamp it remembers.
         log.warning(
             "how the status scan of %s ended could not be kept: %s",
             repository.source,
@@ -560,11 +614,13 @@ def scan_due(
 
     if gh_budget.held_until(now) is not None or gh_budget.speculating():
         return None
+    # The last scan's rate limit holds a reader's Refresh too, as the list's own stamp holds
+    # its refresh: this process's hold is gone after a restart, and the stamp's is not.
+    if stamp is not None and stamp.reset_at is not None and now < _parse(stamp.reset_at):
+        return None
     if retry:
         return "retry"
     if stamp is not None:
-        if stamp.reset_at is not None and now < _parse(stamp.reset_at):
-            return None
         if stamp.outcome != "succeeded" and now - _parse(stamp.at) <= timedelta(
             seconds=FRESHNESS_WINDOW_S
         ):
@@ -603,52 +659,120 @@ def _refs_stat(git_dir: Path, refs: Sequence[str]) -> _RefStat:
 
 @dataclass(eq=False)
 class StatusScan:
-    """One repository's scan in this process: its job key, and what waits for its next walk.
+    """One repository's scan in this process: what waits for its next walk, the last stamp
+    it left, and its last look at the mirror.
 
     ``pending`` holds the triggers a walk has not yet answered, a change the list's probe
-    found or a base a fetch moved, which the spacing may hold for a while. ``_tips`` is the
-    mirror's tip of each scanned base as last looked at, with what was on disk then, so a
-    base that GitHub moved before the mirror fetched it asks once, not on every ask.
+    found or a base a fetch moved, which the spacing may hold for a while. ``last`` is the
+    stamp the last scan here left, whether or not its file took it, and the ask decides
+    from the later of it and the file (:meth:`latest`). ``_looked`` is what the last look at
+    the mirror's base branches found on disk, and the tips it compared them with, so a look
+    asks Git only once one of them has changed (:meth:`base_moved`); ``_unreadable`` says
+    the last read of the mirror failed, which is logged once until one succeeds.
     """
 
-    key: str
+    source: str
     pending: set[Literal["changed", "base_moved"]] = field(
         default_factory=set[Literal["changed", "base_moved"]]
     )
-    _tips: dict[str, str] | None = field(default=None, repr=False)
-    _seen: _RefStat | None = field(default=None, repr=False)
+    last: ScanStamp | None = None
+    _looked: tuple[_RefStat, dict[str, str]] | None = field(default=None, repr=False)
+    _unreadable: bool = field(default=False, repr=False)
+
+    @property
+    def key(self) -> str:
+        """The scan's coordinator job key, which ``GET pull-statuses`` asks about."""
+
+        return _scan_key(self.source)
+
+    @property
+    def look_key(self) -> str:
+        """The job key of a look at the mirror's base branches (:func:`ask_status_scan`)."""
+
+        return f"{self.source}:pull-statuses-bases"
+
+    def remember(self, stamp: ScanStamp) -> None:
+        """Keep *stamp*, the one a scan here just left, beside the file."""
+
+        self.last = stamp
+
+    def latest(self, kept: ScanStamp | None) -> ScanStamp | None:
+        """The later of *kept*, the stamp on disk, and the one the last scan here left.
+
+        The file is another process's when it is the later, and this process's own when it
+        took it; when the cache could not keep the file, the one remembered is the later,
+        so the spacing, the walk's clock, and the settle re-read hold all the same.
+        """
+
+        stamps = [stamp for stamp in (self.last, kept) if stamp is not None]
+        return max(stamps, key=lambda stamp: (stamp.at, stamp.started_at), default=None)
+
+    async def mirror_tips(self, git_dir: Path, names: Sequence[str]) -> dict[str, str] | None:
+        """The mirror's tip of each base branch of *names* it holds, by name, in one
+        ``for-each-ref``; ``None`` when Git cannot read the mirror."""
+
+        from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
+        from metabrowser.cache.resolve import ref_tips
+        from metabrowser.git.process import GitError, repository_store_target
+
+        refs = _mirror_refs(names)
+        try:
+            tips = await ref_tips(repository_store_target(git_dir=git_dir), sorted(refs))
+        except (GitError, OSError) as exc:
+            if not self._unreadable:
+                log.warning(
+                    "the status scan of %s could not read the mirror's base branches, so "
+                    "no fetch moves one until it can: %s",
+                    self.source,
+                    failure_line(exc),
+                )
+            self._unreadable = True
+            return None
+        self._unreadable = False
+        return {
+            ref.removeprefix(BRANCH_MIRROR_PREFIX): tip for ref, tip in tips.items() if ref in refs
+        }
 
     async def base_moved(self, stamp: ScanStamp | None, git_dir: Path | None) -> bool:
-        """Whether a fetch moved a base the last scan's pull requests target, since the last look.
+        """Whether a fetch moved a base the last walk's pull requests target since it started.
 
-        A base whose mirror tip moved since the last look and is not the commit GitHub
-        reported to that scan. The first look in a process is the baseline, since a mirror
-        behind GitHub differs from the scan's bases without anything having moved; the
-        periodic scan answers a base moved before it. Asks Git, one ``for-each-ref``, only
-        when a ref's file or ``packed-refs`` changed on disk since the last look; a server
-        with no store has no mirror to look at.
+        That is a base whose tip in the mirror is not the one the walk saw
+        (:attr:`ScanStamp.bases`), one the mirror no longer holds among them. Asks Git, one
+        ``for-each-ref``, only when a ref's file or ``packed-refs`` changed on disk, or the
+        stamp's tips did, since the last look; a mirror Git cannot read has moved nothing,
+        and a server with no store has no mirror to look at.
         """
 
         if git_dir is None or stamp is None or not stamp.bases:
             return False
-        from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
-        from metabrowser.cache.resolve import ref_tips
-        from metabrowser.git.process import repository_store_target
-        from metabrowser.git.ref_names import is_valid_ref_name
-
-        refs = {
-            BRANCH_MIRROR_PREFIX + name: base
-            for name, base in stamp.bases.items()
-            if is_valid_ref_name(BRANCH_MIRROR_PREFIX + name)
-        }
+        refs = _mirror_refs(stamp.bases)
         seen = await asyncio.to_thread(_refs_stat, git_dir, sorted(refs))
-        if seen == self._seen:
+        looked = (seen, dict(stamp.bases))
+        if looked == self._looked:
             return False
-        tips = await ref_tips(repository_store_target(git_dir=git_dir), sorted(refs))
-        before, self._tips, self._seen = self._tips, tips, seen
-        if before is None:
-            return False
-        return any(tip != refs[ref] and before.get(ref) != tip for ref, tip in tips.items())
+        self._looked = looked
+        tips = await self.mirror_tips(git_dir, sorted(stamp.bases))
+        return tips is not None and any(
+            tips.get(name) != tip for name, tip in stamp.bases.items() if _mirror_ref(name) in refs
+        )
+
+
+def _scan_key(source: str) -> str:
+    return f"{source}:pull-statuses"
+
+
+def _mirror_ref(name: str) -> str:
+    from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
+
+    return BRANCH_MIRROR_PREFIX + name
+
+
+def _mirror_refs(names: Iterable[str]) -> set[str]:
+    """The mirror refs of the base branches *names*, those that are valid ref names."""
+
+    from metabrowser.git.ref_names import is_valid_ref_name
+
+    return {ref for ref in map(_mirror_ref, names) if is_valid_ref_name(ref)}
 
 
 _SCANS: WeakKeyDictionary[RefreshCoordinator, dict[str, StatusScan]] = WeakKeyDictionary()
@@ -665,7 +789,7 @@ def status_scan(coordinator: RefreshCoordinator, source: str) -> StatusScan:
     if scan is None:
         while len(scans) >= _MAX_SCANNED_SOURCES:
             del scans[next(iter(scans))]
-        scan = scans[source] = StatusScan(key=f"{source}:pull-statuses")
+        scan = scans[source] = StatusScan(source)
     return scan
 
 
@@ -674,7 +798,7 @@ def scanning(coordinator: RefreshCoordinator | None, source: str) -> bool:
 
     if coordinator is None:
         return False
-    return coordinator.running(f"{source}:pull-statuses")
+    return coordinator.running(_scan_key(source))
 
 
 def _scan_inputs(repository: ListedRepository) -> ScanStamp | None:
@@ -696,9 +820,13 @@ async def ask_status_scan(
 
     The list's ask, after its own refresh has started: *reader* is the catalog's, as the
     ask read it before that start, ``None`` with no catalog of this repository's rows yet;
-    *changed* says its probe found a change, and *retry* is a reader's own Refresh. Never
-    raises: whatever goes wrong here is logged and answered ``not_due``, so the list's
-    answer stands.
+    *changed* says its probe found a change, and *retry* is a reader's own Refresh. It
+    decides from the later of the stamp on disk and the one this process remembers
+    (:meth:`StatusScan.latest`), and never waits on Git: when nothing else is due and a
+    moved base would be, it starts a look at the mirror in *git_dir* as a job of its own
+    and answers ``not_due``, and the look starts the scan once it finds a base moved.
+    Never raises: whatever goes wrong here is logged and answered ``not_due``, so the
+    list's answer stands.
     """
 
     if repository is None or coordinator is None or coordinator.closed or reader is None:
@@ -709,48 +837,107 @@ async def ask_status_scan(
     try:
         if coordinator.running(scan.key):
             return "joined"
-        stamp = await asyncio.to_thread(_scan_inputs, repository)
-        if await scan.base_moved(stamp, git_dir):
-            scan.pending.add("base_moved")
-        now = pull_list.utc_now()
-        trigger = scan_due(
-            stamp,
-            now=now,
-            retry=retry,
-            changed="changed" in scan.pending,
-            base_moved="base_moved" in scan.pending,
-        )
-        if trigger is None:
-            return "not_due"
+        stamp = scan.latest(await asyncio.to_thread(_scan_inputs, repository))
         if coordinator.running(scan.key):
             return "joined"
-        if trigger != "settle":
-            scan.pending.clear()
-        work = partial(_scan_job, repository, coordinator, trigger, reader, stamp)
-        with gh_budget.readers_own() if retry else contextlib.nullcontext():
-            return coordinator.start(scan.key, work, network=False)
+        started = _start_due(
+            repository, coordinator, scan, stamp, reader=reader, git_dir=git_dir, retry=retry
+        )
+        if started is not None:
+            return started
+        if _look_due(scan, stamp, git_dir):
+            look = partial(_look_job, repository, coordinator, scan, reader, git_dir)
+            coordinator.start(scan.look_key, look, network=False)
+        return "not_due"
     except Exception:
         log.exception("starting the status scan of %s failed", repository.source)
         return "not_due"
 
 
+def _start_due(
+    repository: ListedRepository,
+    coordinator: RefreshCoordinator,
+    scan: StatusScan,
+    stamp: ScanStamp | None,
+    *,
+    reader: str,
+    git_dir: Path | None,
+    retry: bool,
+) -> ScanStart | None:
+    """Start the scan when it is due after *stamp*; ``None`` when it is not. On the loop."""
+
+    trigger = scan_due(
+        stamp,
+        now=pull_list.utc_now(),
+        retry=retry,
+        changed="changed" in scan.pending,
+        base_moved="base_moved" in scan.pending,
+    )
+    if trigger is None:
+        return None
+    if trigger != "settle":
+        scan.pending.clear()
+    work = partial(_scan_job, repository, coordinator, scan, trigger, reader, stamp, git_dir)
+    with gh_budget.readers_own() if retry else contextlib.nullcontext():
+        return coordinator.start(scan.key, work, network=False)
+
+
+def _look_due(scan: StatusScan, stamp: ScanStamp | None, git_dir: Path | None) -> bool:
+    """Whether only a moved base could start a scan now, so the mirror is worth a look."""
+
+    if git_dir is None or stamp is None or not stamp.bases or "base_moved" in scan.pending:
+        return False
+    return scan_due(stamp, now=pull_list.utc_now(), base_moved=True) == "base_moved"
+
+
+async def _look_job(
+    repository: ListedRepository,
+    coordinator: RefreshCoordinator,
+    scan: StatusScan,
+    reader: str,
+    git_dir: Path | None,
+) -> None:
+    """Look at the mirror's base branches, and start the scan if a fetch moved one."""
+
+    stamp = scan.latest(await asyncio.to_thread(_scan_inputs, repository))
+    if not await scan.base_moved(stamp, git_dir):
+        return
+    scan.pending.add("base_moved")
+    if coordinator.closed or coordinator.running(scan.key):
+        return
+    _start_due(repository, coordinator, scan, stamp, reader=reader, git_dir=git_dir, retry=False)
+
+
 async def _scan_job(
     repository: ListedRepository,
     coordinator: RefreshCoordinator,
+    scan: StatusScan,
     trigger: ScanTrigger,
     reader: str,
     previous: ScanStamp | None,
+    git_dir: Path | None,
 ) -> None:
-    await run_scan(repository, trigger, reader=reader, previous=previous, slot=coordinator.slot())
+    tips = None if git_dir is None else partial(scan.mirror_tips, git_dir)
+    await run_scan(
+        repository,
+        trigger,
+        reader=reader,
+        previous=previous,
+        slot=coordinator.slot(),
+        tips=tips,
+        remember=scan.remember,
+    )
 
 
 __all__ = [
     "MAX_SCAN_BASES",
     "MAX_SCAN_PAGES",
     "MAX_SCAN_STAMP_BYTES",
+    "MAX_SCAN_STATUSES",
     "SCANS_POINTS_PER_HOUR",
     "SCAN_POINT_GAP_S",
     "SCAN_ROWS",
+    "MirrorTips",
     "ScanPage",
     "ScanStamp",
     "ScanStart",

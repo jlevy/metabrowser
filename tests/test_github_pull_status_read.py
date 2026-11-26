@@ -448,7 +448,11 @@ def repository(tmp_path: Path) -> ListedRepository:
     return ListedRepository(home, SOURCE.slug, "octo", "demo")
 
 
-def _status(observed_at: str, *, head: str = HEAD, number: int = 5) -> PullStatus:
+def _status(
+    observed_at: str, *, head: str = HEAD, number: int = 5, listed: bool = False
+) -> PullStatus:
+    """A read's status, which counts the list it kept beside it when *listed*."""
+
     return PullStatus.model_validate(
         {
             "number": number,
@@ -461,9 +465,18 @@ def _status(observed_at: str, *, head: str = HEAD, number: int = 5) -> PullStatu
             "checks": {
                 "state": "none",
                 "counts": {"pass": 0, "fail": 0, "pending": 0, "skipping": 0, "cancel": 0},
+                "listed_at": observed_at if listed else None,
             },
         }
     )
+
+
+def _observed(status: PullStatus | None) -> PullStatus | None:
+    """*status* as observed, without the move keeping it beside another noted."""
+
+    if status is None:
+        return None
+    return status.model_copy(update={"checks": status.checks.model_copy(update={"moved_at": None})})
 
 
 def _checks(observed_at: str, count: int = 1, *, name: str = "check") -> PullChecks:
@@ -482,12 +495,17 @@ def test_a_status_keeps_the_newer_observation_whatever_its_head(
     assert write_pull_status(repository, _status("2026-11-26T12:00:05Z"))
     # A read that ended later but asked earlier, for the head before a push, is dropped.
     assert not write_pull_status(repository, _status("2026-11-26T12:00:01Z", head=OTHER_HEAD))
-    assert read_pull_status(home, slug, 5) == _status("2026-11-26T12:00:05Z")
-    # The same moment replaces: it is the later write.
-    assert write_pull_status(repository, _status("2026-11-26T12:00:05Z", head=OTHER_HEAD))
-    assert write_pull_status(repository, _status("2026-11-26T12:00:09Z", number=6))
-    assert read_pull_status(home, slug, 5) == _status("2026-11-26T12:00:05Z", head=OTHER_HEAD)
-    assert read_pull_status(home, slug, 6) == _status("2026-11-26T12:00:09Z", number=6)
+    assert _observed(read_pull_status(home, slug, 5)) == _status("2026-11-26T12:00:05Z")
+    # Two of one moment are kept as one, whichever is written first.
+    one, other = (
+        _status("2026-11-26T12:00:09Z", head=head, number=6) for head in (HEAD, OTHER_HEAD)
+    )
+    for number, order in ((6, (one, other)), (7, (other, one))):
+        for each in order:
+            write_pull_status(repository, each.model_copy(update={"number": number}))
+    six, seven = read_pull_status(home, slug, 6), read_pull_status(home, slug, 7)
+    assert six is not None and seven is not None
+    assert six == seven.model_copy(update={"number": 6})
 
 
 def test_a_status_moves_no_catalog_row_revision_or_generation(
@@ -524,18 +542,23 @@ def test_a_row_whose_columns_disagree_with_its_status_is_none(
     assert read_pull_status(repository.home, repository.slug, 5) is None
 
 
-def test_checks_keep_the_newer_list_and_always_fit_their_bound(
+def test_checks_are_kept_as_the_list_their_status_counts_and_always_fit_their_bound(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home, slug = repository.home, repository.slug
     assert read_pull_checks(home, slug, 5) is None
+    # With no status to count them, a list is not kept.
+    assert not write_pull_checks(home, slug, _checks("2026-11-26T12:00:05Z", name="new"))
+    assert write_pull_status(repository, _status("2026-11-26T12:00:05Z", listed=True))
     assert write_pull_checks(home, slug, _checks("2026-11-26T12:00:05Z", name="new"))
+    # A list the status does not count, one that ended after a newer one, is dropped.
     assert not write_pull_checks(home, slug, _checks("2026-11-26T12:00:01Z", name="old"))
     kept = read_pull_checks(home, slug, 5)
     assert kept is not None and kept.items[0].name == "new 0"
     monkeypatch.setattr(pull_status_store, "MAX_PULL_CHECKS_BYTES", 4096)
     many = _checks("2026-11-26T12:00:09Z", 100)
     assert len(many.model_dump_json()) > 4096
+    assert write_pull_status(repository, _status("2026-11-26T12:00:09Z", listed=True))
     assert write_pull_checks(home, slug, many)
     cut = read_pull_checks(home, slug, 5)
     assert cut is not None and cut.truncated and 0 < len(cut.items) < 100
@@ -547,7 +570,7 @@ def test_clearing_the_cache_clears_the_status_and_its_checks(
 ) -> None:
     home, slug = repository.home, repository.slug
     seed_catalog(repository, [generated_item(5)])
-    assert write_pull_status(repository, _status("2026-11-26T12:00:00Z"))
+    assert write_pull_status(repository, _status("2026-11-26T12:00:00Z", listed=True))
     assert write_pull_checks(home, slug, _checks("2026-11-26T12:00:00Z"))
     clear_pulls(home, slug)
     assert kept_status(home, slug, 5) == pull_status_store.KeptStatus(None, None, None)

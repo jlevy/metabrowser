@@ -518,7 +518,8 @@ status: 200
       },
       "required_failing": 0,
       "required_pending": 1,
-      "listed_at": "2026-09-17T12:00:00Z"
+      "listed_at": "2026-09-17T12:00:00Z",
+      "moved_at": null
     },
     "auto_merge": {
       "method": "squash",

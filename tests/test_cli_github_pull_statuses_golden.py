@@ -13,7 +13,9 @@ The fixture's open pull requests are one for each verdict the derivation gives
 (:func:`~metabrowser.builtin_plugins.github.pull_readiness.readiness`), each kept by the
 scan's own writer from GitHub's answer, and one whose head the catalog has not seen. The
 first scan finds GitHub still computing one answer; the ask after ``MERGEABLE_SETTLE_S``
-reads that page once more. A scan GitHub refuses keeps every status, and says so.
+reads that page once more. A scan GitHub refuses keeps every status, and says so, and a pull
+request GitHub no longer lists among the open ones has no verdict from an older scan once
+a walk has not read it.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from metabrowser.builtin_plugins.github import gh_budget, pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_status_scan import SCAN_POINT_GAP_S
 from metabrowser.builtin_plugins.github.served_pull import MERGEABLE_SETTLE_S
 from metabrowser.cache.urls import GitSource
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
@@ -125,6 +128,8 @@ VERDICTS: dict[int, tuple[str, dict[str, Any], dict[str, Any] | None]] = {
 DRAFT = 102
 # A push the catalog has not read: the scan reports a head its row does not name.
 PUSHED = 113
+# Closed on GitHub after the scans read it, before the catalog's next scan.
+GONE = 111
 CLOSED = 114
 NOT_LISTED = 999
 PUSHED_HEAD = "f" * 40
@@ -357,6 +362,21 @@ def test_golden_pull_statuses_scan_settle_and_refuse(
     after = statuses((101, 112)).payload()
     assert after["scan"]["outcome"] == "gh_failed"
     assert [row["state"] for row in after["rows"]] == ["status", "status"]
+
+    advance(FRESHNESS_WINDOW_S + 1)
+    listed = [node for node in _nodes(items, settled=True) if node["number"] != GONE]
+    answer({**answers, "api": {**answers["api"], **statuses_entries(listed)}})
+    say(
+        f"GitHub no longer lists #{GONE} among the open pull requests. The next periodic walk "
+        "does not read it, so the status an older scan kept of it is not_scanned, with no "
+        "verdict, while its catalog row is still open."
+    )
+    ask({"background": True})
+    walked = statuses((GONE, 101)).payload()
+    assert [(row["reason"], row["lifecycle"]) for row in walked["rows"]] == [
+        ("not_scanned", "open"),
+        (None, "open"),
+    ]
 
     say("A request that names anything but the pull requests' numbers is refused.")
     bad = run(CANONICAL, "--api", f"{ROUTE}?numbers=101&extra=1")

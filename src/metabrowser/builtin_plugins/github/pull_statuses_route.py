@@ -14,6 +14,11 @@ answer. Anything else is ``absent``, with a ``reason``:
 
 - ``not_cached``: the catalog has no row of that number, so no lifecycle to judge;
 - ``no_status``: no status is kept for it yet;
+- ``not_scanned``: the status kept is a scan's from before the last whole walk, which did
+  not read it: a pull request that has fallen past the newest the scan reads
+  (:data:`~.pull_status_scan.MAX_SCAN_PAGES`), or one GitHub no longer lists open, whose
+  last verdict nothing keeps current. A status the page's own read kept is answered as it
+  is;
 - ``other_head``: the status kept describes another head than the row's, a push the scan
   or the page has not read since, or a row that names no head.
 
@@ -33,7 +38,11 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 from metabrowser.builtin_plugins.github.pull_catalog import MAX_STATUS_NUMBERS, catalog_statuses
 from metabrowser.builtin_plugins.github.pull_files_summary import named_numbers
 from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, lifecycle, readiness
-from metabrowser.builtin_plugins.github.pull_status_scan import ScanTrigger, read_scan_stamp
+from metabrowser.builtin_plugins.github.pull_status_scan import (
+    ScanStamp,
+    ScanTrigger,
+    read_scan_stamp,
+)
 from metabrowser.http_caching import build_scoped_etag
 
 if TYPE_CHECKING:
@@ -45,7 +54,7 @@ if TYPE_CHECKING:
 PULL_STATUSES_ROUTE: Final = "/api/plugin/github/pull-statuses"
 
 type StatusesState = Literal["status", "absent"]
-type StatusAbsence = Literal["not_cached", "no_status", "other_head"]
+type StatusAbsence = Literal["not_cached", "no_status", "not_scanned", "other_head"]
 
 
 class PullStatusWire(TypedDict):
@@ -100,8 +109,30 @@ def _row_lifecycle(row: PullListRow) -> DisplayState:
     return lifecycle(closed=row.state == "closed", draft=row.draft, merged=row.merged)
 
 
+def unscanned(status: PullStatus, stamp: ScanStamp | None) -> bool:
+    """Whether *status* is a scan's that the last whole walk neither read nor came after.
+
+    That walk read the newest open pull requests and kept which (``walked_numbers``); a
+    status a scan kept before it started, of any other, is one nothing has read since. A
+    page's read, and a scan's status from after the walk started, a settle re-read's or
+    the next walk's, are current as kept.
+    """
+
+    return (
+        status.observed_by == "scan"
+        and stamp is not None
+        and stamp.walked_at is not None
+        and status.observed_at < stamp.walked_at
+        and status.number not in stamp.walked_numbers
+    )
+
+
 def _wire(
-    number: int, row: PullListRow | None, status: PullStatus | None, source: str
+    number: int,
+    row: PullListRow | None,
+    status: PullStatus | None,
+    source: str,
+    stamp: ScanStamp | None,
 ) -> PullStatusWire:
     def absent(reason: StatusAbsence) -> PullStatusWire:
         return PullStatusWire(
@@ -118,6 +149,8 @@ def _wire(
         return absent("not_cached")
     if status is None:
         return absent("no_status")
+    if unscanned(status, stamp):
+        return absent("not_scanned")
     if row.head_oid is None or status.head != row.head_oid:
         return absent("other_head")
     shown = _row_lifecycle(row)
@@ -135,8 +168,7 @@ def _wire(
     )
 
 
-def _scan(repository: ListedRepository) -> ScanWire | None:
-    stamp = read_scan_stamp(repository.home, repository.slug)
+def _scan(stamp: ScanStamp | None) -> ScanWire | None:
     if stamp is None:
         return None
     return ScanWire(
@@ -165,12 +197,13 @@ def pull_statuses(
     found = catalog_statuses(repository.home, repository.slug, numbers)
     usable = found.state is not None and found.state.source == repository.source
     rows = found.rows if usable else {}
+    stamp = read_scan_stamp(repository.home, repository.slug)
     return PullStatusesEnvelope(
         source=repository.source,
         scanning=scanning,
-        scan=_scan(repository),
+        scan=_scan(stamp),
         rows=[
-            _wire(number, rows.get(number), found.statuses.get(number), repository.source)
+            _wire(number, rows.get(number), found.statuses.get(number), repository.source, stamp)
             for number in numbers
         ],
     )
@@ -190,4 +223,5 @@ __all__ = [
     "envelope_etag",
     "pull_statuses",
     "status_numbers",
+    "unscanned",
 ]

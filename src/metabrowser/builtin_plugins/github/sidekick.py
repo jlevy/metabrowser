@@ -825,7 +825,10 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     Once the list's answer is read, the ask starts the scan of every open pull request's
     status when it is due (:func:`.pull_status_scan.ask_status_scan`), and ``status_scan``
     says whether it ``started``, ``joined``, or was ``not_due``. The scan is a job of its
-    own, so it never holds the list's refresh, and ``GET pull-statuses`` answers it.
+    own, so it never holds the list's refresh, and ``GET pull-statuses`` answers it. The
+    ask reads only the scan's stamp for it, never Git: a look at the mirror's base
+    branches, when only a moved one could start a scan, runs as a job of its own after the
+    answer, and starts the scan itself.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (

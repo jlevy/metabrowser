@@ -185,6 +185,12 @@ class ChecksSummary(_Model):
     it, as for a status the scan read. ``required_failing`` and ``required_pending`` come
     from that list, so they are known only with it, and only when the list was whole and
     every check said whether it is required; ``None`` otherwise.
+
+    ``moved_at`` is the newest moment an observation kept beside this one summarized the
+    pull request's checks otherwise (:func:`same_checks`): another head or base, another
+    rollup state, or other counts. A list from then or before may describe checks that
+    have moved since, so a summary counts only a list read after it, and ``None`` says no
+    observation kept beside it differed (:func:`kept_observation`).
     """
 
     state: RollupState
@@ -192,6 +198,7 @@ class ChecksSummary(_Model):
     required_failing: Annotated[int, Field(ge=0)] | None = None
     required_pending: Annotated[int, Field(ge=0)] | None = None
     listed_at: Timestamp | None = None
+    moved_at: Timestamp | None = None
 
     @model_validator(mode="after")
     def _every_bucket_and_none_empty(self) -> ChecksSummary:
@@ -203,6 +210,9 @@ class ChecksSummary(_Model):
             self.required_failing is not None or self.required_pending is not None
         ):
             raise ValueError("only a list of the checks says which are required")
+        listed, moved = self.listed_at, self.moved_at
+        if listed is not None and moved is not None and listed <= moved:
+            raise ValueError("a list from before the checks moved does not count them")
         return self
 
     @property
@@ -252,57 +262,125 @@ class PullStatus(_Model):
     auto_merge: AutoMerge | None = None
     queue: QueueEntry | None = None
 
+    @model_validator(mode="after")
+    def _nothing_after_it(self) -> PullStatus:
+        # A status knows only of what was observed by then, so keeping several observations
+        # never needs a list or a move from after the newest (:func:`kept_observation`).
+        for moment in (self.checks.listed_at, self.checks.moved_at):
+            if moment is not None and moment > self.observed_at:
+                raise ValueError("a status names nothing observed after it")
+        return self
+
 
 def same_checks(one: PullStatus, other: PullStatus) -> bool:
-    """Whether two observations summarize the same checks: one head, GitHub's same rollup
-    state, and the same number of checks in every bucket."""
+    """Whether two observations summarize the same checks: one head against one base
+    branch, GitHub's same rollup state, and the same number of checks in every bucket.
+
+    The base is part of it because which checks are required is the base branch's rules'
+    call (``isRequired``), so a pull request retargeted at another base with the same head
+    and checks no longer has the required counts its list gave.
+    """
 
     return (
         one.head == other.head
+        and one.base_ref == other.base_ref
         and one.checks.state == other.checks.state
         and one.checks.counts == other.checks.counts
+    )
+
+
+def observation_key(status: PullStatus) -> tuple[str, bool, str]:
+    """The order observations of one pull request are kept in, newest last.
+
+    The later ``observed_at``; at one moment, a read before a scan, since a read lists the
+    checks too; and then the observation itself, without what keeping it beside others
+    gave it (its summary's ``listed_at``, required counts, and ``moved_at``), so two
+    observations of one moment are ordered the same whichever is written first, and two
+    that differ in nothing else are one.
+    """
+
+    bare = status.checks.model_copy(
+        update={
+            "listed_at": None,
+            "required_failing": None,
+            "required_pending": None,
+            "moved_at": None,
+        }
+    )
+    identity = status.model_copy(update={"checks": bare}).model_dump_json()
+    return status.observed_at, status.observed_by == "read", identity
+
+
+def _later(one: str | None, other: str | None) -> str | None:
+    return other if one is None else one if other is None else max(one, other)
+
+
+def _listing_key(checks: ChecksSummary) -> tuple[str, int, int]:
+    """The order of two lists: the later ``listed_at``, then their required counts, so two
+    reads of one moment are kept the same way whichever is written first."""
+
+    return (
+        checks.listed_at or "",
+        -1 if checks.required_failing is None else checks.required_failing,
+        -1 if checks.required_pending is None else checks.required_pending,
     )
 
 
 def kept_observation(kept: PullStatus | None, incoming: PullStatus) -> PullStatus:
     """The status to keep for one pull request when *incoming* is observed and *kept* is held.
 
-    The newer ``observed_at`` is kept, whatever its head, so two reads that end out of
-    order leave the later; *incoming* is the newer at the same moment, as the later write.
+    The newest observation is kept, by :func:`observation_key`, whatever its head, so two
+    reads that end out of order leave the later.
 
     What only an older observation can still add is the list behind its checks. The pull
     request page's read lists every check and says which are required; the Pulls tab's
-    scan of every open pull request reads the rollup alone (:class:`ChecksSummary`). So
-    the newer keeps the older's ``listed_at`` and required counts exactly when it has no
-    list of its own and the two summarize the same checks (:func:`same_checks`): a scan
-    that finds a read's checks as the read left them takes nothing away from it. Any other
-    newer observation, a new head or a check that moved, keeps none, since the older list
-    no longer describes it, and the page reads its own again.
+    scan of every open pull request reads the rollup alone (:class:`ChecksSummary`). So the
+    status kept counts the latest list (``listed_at``, with its required counts) of an
+    observation that summarizes the same checks as the newest (:func:`same_checks`), as
+    long as no observation kept beside them summarized them otherwise since: ``moved_at``
+    is the newest that did, and a list from then or before counts nothing. A scan that
+    finds a read's checks as the read left them takes nothing away from it, and a list is
+    never carried to another head or base, to checks that moved, or past checks that moved
+    and came back. The page then reads its own again.
 
-    Equal counts are all a scan can see. They hide a change only when one check moves out
-    of a bucket while another moves in between two observations: a check run never moves
-    back once completed, and a re-run is a context of its own, which raises the total, so
-    only a commit status posted back to pending as another check finishes can. The page's
-    own read, on every change its probes find, corrects that.
-
-    The rule depends only on the two observations, not on which was written first.
+    The status kept is the same whatever order the observations are written in: the newest
+    and the latest list are each the greatest of their kind, and a move is evidence
+    whenever it arrives, since a list is never newer than the observation it came with.
+    Equal counts are all a scan can see, so a check that moves out of a bucket while
+    another moves in between two observations is not seen: a check run never moves back
+    once completed, and a re-run is a context of its own, which raises the total, so only
+    a commit status posted back to pending as another check finishes can. The page's own
+    read, on every change its probes find, corrects that.
     """
 
     if kept is None:
         return incoming
     newer, older = (
-        (incoming, kept) if incoming.observed_at >= kept.observed_at else (kept, incoming)
+        (incoming, kept) if observation_key(incoming) >= observation_key(kept) else (kept, incoming)
     )
-    if newer.checks.listed_at is not None or older.checks.listed_at is None:
-        return newer
-    if not same_checks(newer, older):
-        return newer
-    listing = {
-        "listed_at": older.checks.listed_at,
-        "required_failing": older.checks.required_failing,
-        "required_pending": older.checks.required_pending,
-    }
-    return newer.model_copy(update={"checks": newer.checks.model_copy(update=listing)})
+    if same_checks(newer, older):
+        moved = _later(newer.checks.moved_at, older.checks.moved_at)
+        lists = (newer.checks, older.checks)
+    else:
+        # The older observation, and every one kept with it, summarized them otherwise.
+        moved = _later(newer.checks.moved_at, older.observed_at)
+        lists = (newer.checks,)
+    counted = [
+        each
+        for each in lists
+        if each.listed_at is not None and (moved is None or each.listed_at > moved)
+    ]
+    listing = max(counted, key=_listing_key, default=None)
+    checks = ChecksSummary(
+        state=newer.checks.state,
+        counts=newer.checks.counts,
+        required_failing=None if listing is None else listing.required_failing,
+        required_pending=None if listing is None else listing.required_pending,
+        listed_at=None if listing is None else listing.listed_at,
+        moved_at=moved,
+    )
+    # Validated whole, so a status the rule could not keep is never written.
+    return PullStatus.model_validate({**newer.model_dump(), "checks": checks.model_dump()})
 
 
 class CheckItem(_Model):
@@ -371,6 +449,7 @@ __all__ = [
     "kept_observation",
     "merge_method",
     "merge_state",
+    "observation_key",
     "queue_state",
     "review_decision",
     "rollup_state",
