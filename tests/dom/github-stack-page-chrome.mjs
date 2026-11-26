@@ -38,8 +38,9 @@ const check = (label, ok, detail = "") => {
 // In the page: a recorder of what the main view shows from a reader's press until it settles,
 // started before the press. Each animation frame it reads the page's parts, the header's
 // lines, the tab bar, the body's first element, and the body's first files' bars, and keeps a
-// frame wherever any of their boxes or kinds changed; a PerformanceObserver keeps every layout
-// shift, its sources' boxes before and after. `ROOT` names the page's element.
+// frame wherever any of their boxes or kinds changed, marked `held` while the header is out of
+// sight for the cold page's quiet period (`.github-pull-cold`); a PerformanceObserver keeps
+// every layout shift, its sources' boxes before and after. `ROOT` names the page's element.
 const RECORDER = (root) => `(() => {
   const ROOT = ${JSON.stringify(root)};
   const t0 = performance.now();
@@ -75,6 +76,7 @@ const RECORDER = (root) => `(() => {
     const parts = page === null ? null : [...page.children].map((child) => [describe(child), box(child)]);
     const header = page?.querySelector(".page-header") ?? null;
     const lines = header === null ? null : [...header.children].map((child) => [describe(child), box(child), child.textContent.slice(0, 60)]);
+    const held = header !== null && getComputedStyle(header).opacity === "0";
     const body = page?.querySelector(".github-pull-body") ?? null;
     const first = body?.firstElementChild ?? null;
     const loading = body?.querySelector(".github-pull-diff-loading") ?? null;
@@ -83,7 +85,7 @@ const RECORDER = (root) => `(() => {
       box(file),
       describe(file.querySelector(".diff-file-body")?.firstElementChild ?? null),
     ]);
-    const shown = { parts, lines, first: [describe(first), box(first)], loading: box(loading), files };
+    const shown = { parts, lines, held, first: [describe(first), box(first)], loading: box(loading), files };
     const signature = JSON.stringify(shown);
     if (signature !== last) {
       last = signature;
@@ -159,13 +161,18 @@ try {
   })()`;
 
   /**
-   * What moved in a recording from the page's first paint to its settled layout: a header
-   * row or the tab column whose box changed, a header row the settled header lacks, and a
-   * diff file or the body's first element that moved once shown. Boxes are [top, height],
-   * with "hidden" while held out of sight.
+   * What moved in a recording from the page's first paint the reader sees to its settled
+   * layout: a header row or the tab column whose box changed, a header row the settled header
+   * lacks, and a diff file or the body's first element that moved once shown. Boxes are
+   * [top, height], with "hidden" while held out of sight. A frame whose header is held out of
+   * sight for the cold page's quiet period is not seen, so it is not measured: a stack's
+   * answer that lands within it is the first header the reader sees, as a pull request's
+   * record is.
    */
   const moves = (result) => {
-    const shown = result.frames.filter((frame) => frame.parts !== null && frame.lines !== null);
+    const shown = result.frames.filter(
+      (frame) => frame.parts !== null && frame.lines !== null && !frame.held,
+    );
     const settled = shown.at(-1);
     if (settled === undefined) {
       return ["the page never painted"];
@@ -342,6 +349,93 @@ try {
       moved.slice(0, 6).join("; "),
     );
   }
+  // The members' toggle, closed as the Diff summary is: a press opens its card and another
+  // closes it, each travelling as every disclosure does, and its words start where the Diff
+  // summary's do, the two toggles' hover grounds at one edge.
+  const MEMBERS = `(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    const toggle = page.querySelector(".github-pull-stack-members-toggle");
+    const body = page.querySelector(".github-pull-stack-members-body");
+    const summary = page.querySelector(".github-pull-summary .diff-summary-toggle");
+    const left = (el) => el === null ? null : Math.round(el.getBoundingClientRect().left * 100) / 100;
+    // Where a toggle's words start: the first box its contents draw.
+    const firstText = (el) => {
+      if (el === null) return null;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rect = [...range.getClientRects()].find((r) => r.width > 0);
+      return rect === undefined ? null : Math.round(rect.left * 100) / 100;
+    };
+    return {
+      text: toggle?.textContent ?? null,
+      expanded: toggle?.getAttribute("aria-expanded") ?? null,
+      controls: toggle?.getAttribute("aria-controls") === body?.id,
+      height: body === null ? null : Math.round(body.getBoundingClientRect().height),
+      card: Math.round(page.querySelector(".github-pull-stack-members")?.getBoundingClientRect().height ?? -1),
+      visibility: body === null ? null : getComputedStyle(body).visibility,
+      toggleLeft: left(toggle),
+      summaryLeft: left(summary),
+      wordsLeft: firstText(toggle),
+      summaryWordsLeft: firstText(summary),
+      bodyBelowToggle: body !== null && toggle !== null && body.getBoundingClientRect().top >= toggle.getBoundingClientRect().bottom - 0.5,
+      summaryBelow: summary !== null && toggle !== null && summary.getBoundingClientRect().top >= toggle.getBoundingClientRect().bottom - 0.5,
+    };
+  })()`;
+  // Wait out a disclosure's travel: its transitions end.
+  const travelled = () =>
+    evaluate(`(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await Promise.all(document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished.catch(() => null)));
+    })()`);
+  const closedFirst = await evaluate(MEMBERS);
+  await click(".github-pull-stack-members-toggle");
+  await travelled();
+  const openedMembers = await evaluate(MEMBERS);
+  await shot(`stack-70-members-open`);
+  measured.members = { closed: closedFirst, opened: openedMembers };
+  check(
+    "the members' toggle says how many, is closed at first, and opens its card under it",
+    closedFirst.text === "2 Pulls" &&
+      closedFirst.expanded === "false" &&
+      closedFirst.controls &&
+      closedFirst.height === 0 &&
+      closedFirst.visibility === "hidden" &&
+      openedMembers.expanded === "true" &&
+      openedMembers.visibility === "visible" &&
+      openedMembers.height > 0 &&
+      openedMembers.height >= openedMembers.card &&
+      openedMembers.bodyBelowToggle &&
+      openedMembers.summaryBelow,
+    JSON.stringify(measured.members),
+  );
+  check(
+    "the members' toggle and the Diff summary's start their grounds and their words at one edge",
+    closedFirst.toggleLeft === closedFirst.summaryLeft &&
+      closedFirst.wordsLeft === closedFirst.summaryWordsLeft,
+    JSON.stringify(closedFirst),
+  );
+  // The header's tally: a badge for each state some member is in, each in the ink a pull
+  // request's badge of that state has.
+  const tally = await evaluate(`(() => {
+    const page = document.querySelector(".github-pull-stack-page");
+    return [...page.querySelectorAll(".github-pull-stack-tally .github-pull-badge")].map((badge) => {
+      const probe = document.createElement("span");
+      probe.className = "file-header-badge github-pull-badge github-pull-state";
+      probe.dataset.state = badge.dataset.state;
+      page.querySelector(".github-pull-opened").append(probe);
+      const ink = getComputedStyle(probe).color;
+      probe.remove();
+      return { state: badge.dataset.state, text: badge.textContent, ink: getComputedStyle(badge).color, pullInk: ink };
+    });
+  })()`);
+  measured.tally = tally;
+  check(
+    "the tally's badges are a pull request's state badges, one per state a member is in",
+    tally.length > 0 &&
+      new Set(tally.map((badge) => badge.state)).size === tally.length &&
+      tally.every((badge) => badge.ink === badge.pullInk),
+    JSON.stringify(tally),
+  );
   const page = await evaluate(`(() => {
     const page = document.querySelector(".github-pull-stack-page");
     const members = [...page.querySelectorAll(".github-pull-stack-members .github-pull-stack-member")];
@@ -356,7 +450,13 @@ try {
       summary_open: summary?.getAttribute("aria-expanded") ?? null,
       counterpart: counterpart?.getAttribute("href") ?? null,
       tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
-      size: page.querySelector(".github-pull-size")?.innerText ?? null,
+      // The size line as it reads on screen: its words, with the commas said in place of its
+      // dots left out.
+      size: (() => {
+        const line = page.querySelector(".github-pull-size")?.cloneNode(true) ?? null;
+        line?.querySelectorAll(".visually-hidden").forEach((node) => node.remove());
+        return line === null ? null : line.textContent.replace(/\\s+/g, " ").trim();
+      })(),
     };
   })()`);
   measured.page = page;
@@ -386,7 +486,23 @@ try {
     JSON.stringify(page.tabs) === JSON.stringify(["Docs", "Changes"]),
     JSON.stringify(page.tabs),
   );
-  check("the size line says the files", page.size === "1 file changed", String(page.size));
+  // The size line says the commits and the files, and the size once each member's is kept.
+  check(
+    "the size line says the commits and the files",
+    /^2 commits · 1 file changed( · \S+ \S+ compressed \(\S+ \S+ raw diff\))?$/.test(
+      page.size ?? "",
+    ),
+    String(page.size),
+  );
+  await click(".github-pull-stack-members-toggle");
+  await travelled();
+  const closed = await evaluate(MEMBERS);
+  measured.members.closed_again = closed;
+  check(
+    "a second press closes the members' card",
+    closed.expanded === "false" && closed.height === 0 && closed.visibility === "hidden",
+    JSON.stringify(closed),
+  );
   await theme("dark");
   await shot(`stack-70-dark`);
   await theme("light");

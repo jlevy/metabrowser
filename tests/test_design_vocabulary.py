@@ -457,11 +457,15 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     overview_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
         encoding="utf-8"
     )
+    github_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/github/styles.css").read_text(
+        encoding="utf-8"
+    )
     for css, selector in (
         (styles, ".tree-children"),
         (diff_css, ".metabrowser-diff-host .diff-file-body"),
         (diff_css, ".metabrowser-diff-host .diff-fold-group"),
         (overview_css, ".folder-overview-panel-body"),
+        (github_css, ".github-pull-stack-members-body"),
     ):
         rule = _rule(css, selector)
         assert "height var(--transition-fast)" in rule, f"{selector} lost the travel"
@@ -471,6 +475,7 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
         (diff_css, ".metabrowser-diff-host .diff-file-body-collapsed"),
         (diff_css, ".metabrowser-diff-host .diff-fold-collapsed"),
         (overview_css, ".folder-overview-panel-body-collapsed"),
+        (github_css, ".github-pull-stack-members-body-collapsed"),
     ):
         rule = _rule(css, selector)
         assert "height: 0" in rule and "visibility: hidden" in rule, f"{selector} state drifted"
@@ -2172,6 +2177,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '"btn github-pull-stack-trigger disclosure-toggle"',
         '{ class: "fold-expander disclosure-toggle" }',
     ),
+    "github/stack-page.js": ('"github-pull-stack-members-toggle disclosure-toggle collapsed"',),
 }
 # Sources with a marker that build no toggle of their own, and why.
 _NOT_TOGGLES: dict[str, str] = {
@@ -2237,6 +2243,9 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
         ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
     ),
+    "github/stack-page.js": (
+        ("[chevron()]", '"github-pull-stack-members-toggle disclosure-toggle collapsed"'),
+    ),
 }
 # A glyph built far from its builder: a folder row's parts are made by one function and
 # put in the row by another.
@@ -2275,6 +2284,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "changed-file-row",
         "btn",
         "github-pull-stack-trigger",
+        "github-pull-stack-members-toggle",
     }
 )
 # One compound selector that names a toggle: its marker class, a component class, or a
@@ -3141,8 +3151,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert '"loading mb-delayed-loading github-pull-diff-loading"' in page
     assert '"loading mb-delayed-loading github-pull-changes-pending"' in page
     assert 'h("span", { class: "github-pull-freshness mb-refreshing-muted" })' in page
-    assert 'freshnessLine.classList.toggle("mb-refreshing", busy);' in page
-    assert 'freshnessLine.setAttribute("aria-busy", "true");' in page
+    assert 'meta.line.classList.toggle("mb-refreshing", busy);' in page
+    assert 'meta.line.setAttribute("aria-busy", "true");' in page
     assert 'status.setAttribute("aria-busy"' not in page, "the status line's controls stay usable"
     assert '"recent-loading github-pull-loading github-pull-section-loading"' in page
     assert github[".github-pull-section-loading"] == {"height": "calc(var(--ui-row-height) * 3)"}

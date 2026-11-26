@@ -114,6 +114,11 @@ def _scoped(text: str) -> str:
     )
 
 
+def _label(name: str, color: str) -> dict[str, Any]:
+    """A label as GitHub's pull request answer gives it."""
+    return {"name": name, "color": color, "description": None}
+
+
 def _stack_guide(merge_base: str, head: str, items: str) -> str:
     """A `stack-review` block pinned to *merge_base* and *head*, whose `items` are the YAML
     lines *items*."""
@@ -188,6 +193,10 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     )
     lower = pulls["repos/octo/demo/pulls/8"]["body"]
     lower["body"] = _stack_guide(pull_origin["base"], pull_origin["merged_head"], _LOWER_GUIDE)
+    # Labels on both members of 70, one of them shared, so its answer gathers them top first,
+    # each once (mb-68uk): bugfix, shared design, then earnings analysis.
+    top["labels"] = [_label("bugfix", "d73a4a"), _label("shared design", "0e8a16")]
+    lower["labels"] = [_label("shared design", "0e8a16"), _label("earnings analysis", "5319e7")]
     twice = _stack_guide(pull_origin["base"], pull_origin["fork_head"], _LOWER_GUIDE)
     pulls["repos/octo/demo/pulls/7"]["body"]["body"] = f"{twice}\n{twice}"
     for key, value in install_fake_gh(tmp_path, answers).items():
@@ -683,3 +692,31 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         transcript="cli-ui-github-stack-page.tryscript.md",
     )
     assert json.loads(json.dumps(current)) == current
+
+    # The stack's size is the sizes of the members its top contains, summed, once each
+    # member's page has measured its own (`pull-size`), which the stack's answer reads as
+    # kept, with no Git of its own; it says none while any is not measured (mb-68uk). 71's
+    # top lacks 7, whose size is never measured, and 7's commits are left out as its size is.
+    # Last, so no recorded answer depends on which sizes a run measured, and asserted rather
+    # than written, since a pushed size is zlib's output (`mask_pushed_bytes`).
+    assert lacking["size"] is None
+    store = parse_qs(urlsplit(lacking["comparison"]["route"]).query)["store"][0]
+    sizes = [
+        run_metab(
+            (
+                CANONICAL,
+                "--api",
+                f"/api/plugin/github/pull-size?number={member['number']}"
+                f"&left={member['base']}&right={member['head']}&store={store}",
+            )
+        ).payload()["size"]
+        for member in lacking["members"]
+        if member["in_top"]
+    ]
+    assert len(sizes) == 2 and all(size["state"] == "measured" for size in sizes), sizes
+    sized = run_metab((CANONICAL, "--api", f"{ROUTE}?number=71")).payload()
+    assert sized["size"] == {
+        "pushed_bytes": sum(size["pushed_bytes"] for size in sizes),
+        "diff_bytes": sum(size["diff_bytes"] for size in sizes),
+    }
+    assert sized["commits"] == lacking["commits"] == current["commits"] == 2

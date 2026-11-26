@@ -422,6 +422,7 @@ def test_a_fetch_that_ends_while_the_records_are_read_is_answered_as_fetching(
                 author=None,
                 avatar=None,
                 moved=False,
+                details=pull_stack._Details(),  # pyright: ignore[reportPrivateUsage]
             )
             for number in found.pulls
         )

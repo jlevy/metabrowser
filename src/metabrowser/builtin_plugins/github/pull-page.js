@@ -790,7 +790,7 @@ function labelsMissing(envelope) {
  * @param {ReadonlyMap<string, RepositoryLabel>} [known]
  * @returns {PullLabel}
  */
-function describeLabel(value, known = new Map()) {
+export function describeLabel(value, known = new Map()) {
   const label =
     value !== null && typeof value === "object"
       ? /** @type {Record<string, unknown>} */ (value)
@@ -1387,6 +1387,31 @@ export function comparisonQueued(envelope, page) {
   );
 }
 
+/**
+ * The header sentence's action, a verb and the commits it moves: "wants to merge 1 commit",
+ * "merged 6 commits", or the verb alone where the count is not known. A pull request's page
+ * and a stack's say it alike (docs/design-system.md, "The Stack Page").
+ *
+ * @param {string} verb
+ * @param {number | null} commits
+ */
+export function actionWords(verb, commits) {
+  return commits === null ? verb : `${verb} ${commits} commit${commits === 1 ? "" : "s"}`;
+}
+
+/**
+ * The freshness note's words for a fetch *age* ago (`relativeAge`): "Fetched just now via
+ * GitHub CLI", or, *offline* with nothing to refresh it, "Offline · fetched 3 h ago via GitHub
+ * CLI". One time, never two (mb-ne91). A pull request's page says it of its record, and a
+ * stack's of the oldest of its members' records.
+ *
+ * @param {string} age
+ * @param {boolean} [offline]
+ */
+export function fetchedNote(age, offline = false) {
+  return offline ? `Offline · fetched ${age} via GitHub CLI` : `Fetched ${age} via GitHub CLI`;
+}
+
 /** Header and description fields shared by a full record and a validated core preview.
  * @param {Record<string, any>} pull
  * @param {ReadonlyMap<string, RepositoryLabel>} [known] the repository's labels, by name,
@@ -1398,7 +1423,6 @@ function describeCore(pull, known = new Map()) {
   const state = displayState(pull);
   const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
   const commits = typeof pull.commits === "number" ? pull.commits : null;
-  const count = commits === null ? "" : ` ${commits} commit${commits === 1 ? "" : "s"}`;
   return {
     title: text(pull.title),
     number: pull.number,
@@ -1424,7 +1448,7 @@ function describeCore(pull, known = new Map()) {
         : typeof pull.merged_by === "string" && pull.merged_by
           ? pull.merged_by
           : null,
-    action: `${state === "merged" ? "merged" : "wants to merge"}${count}`,
+    action: actionWords(state === "merged" ? "merged" : "wants to merge", commits),
     base: sideName(pull.base, crossRepository),
     head: sideName(pull.head, crossRepository),
     htmlUrl: text(pull.html_url),
@@ -1675,10 +1699,7 @@ export function describePull(envelope, page) {
   // One time, never two (mb-ne91): the record's own fetch, the earliest that says how fresh
   // what is shown is. A later check of the repository's list that found nothing changed
   // (`verified_at`) makes the record no newer, so the line does not say it.
-  model.freshness =
-    offline && envelope.state === "stale" && !model.revalidating
-      ? `Offline · fetched ${age} via GitHub CLI`
-      : `Fetched ${age} via GitHub CLI`;
+  model.freshness = fetchedNote(age, offline && envelope.state === "stale" && !model.revalidating);
   if (envelope.head_moved === true) {
     // The diff on screen stays until the reader takes the newer one, which a refresh offers.
     model.newCommits = model.revalidating
@@ -4239,7 +4260,7 @@ function tellAge(mb, element, at) {
  * @param {MetabrowserPublicSdk} mb
  * @param {Element} node
  */
-function retellAges(mb, node) {
+export function retellAges(mb, node) {
   for (const element of node.querySelectorAll(".github-pull-age")) {
     const at = Number(element.getAttribute("data-age-at"));
     if (Number.isFinite(at)) {
@@ -4348,18 +4369,157 @@ export function titleHeading(icon, words, number) {
 
 /**
  * The header of a pull request's page or a stack's, and the lines both have, empty
- * (docs/design-system.md, "Page Headers"): the head and base branches, the status line, the
- * change set's size line, and its Diff summary, whose class carries the diff plugin's styles
- * for a summary. Each page fills them and puts them in its header in its order.
+ * (docs/design-system.md, "Page Headers"), in the order both put them under the title:
+ *
+ * - `opened`, the row of ages, which a state's badge leads: a pull request's one badge, a
+ *   stack's tally of its members' states (`stateBadge`), then the ages (`agesLine`), and at
+ *   its end a stack chip's slot, whose strut (`rowStrut`) holds it at a chip's height.
+ * - `meta`, the author's row: its lead (`meta.lead`) holds the sentence (`meta.details`), the
+ *   actor and the action, then the freshness note (`meta.note`), a muted dot (`meta.sep`) and
+ *   the note's words (`meta.line`) in a slot as wide as its widest age (`meta.sizer`), so the
+ *   age ticking from "just now" to "12 min ago" changes its width not at all (mb-ne91). The
+ *   sentence and the note share the lead, which the note leaves whole, dot and all, where it
+ *   cannot be whole beside the sentence, so the sentence never gives up width to it; alone on
+ *   the row it is cut short with its text as a tooltip. The row is its lead alone, a line
+ *   tall. `showNote` writes the note.
+ * - `branches`, the head and base branches, on a line of their own, a line tall while there
+ *   are none to show.
+ * - `labels`, the row of labels (`labels.list`, `labelChip`), there only while there are
+ *   labels or they are not known yet.
+ * - `status`, the status line (`statusLine`), there only while it has something to say.
+ * - `size`, the change set's size line, and `summary`, its Diff summary, whose class carries
+ *   the diff plugin's styles for a summary.
+ *
+ * Each page fills them and puts them in its header.
  */
 export function pageHeaderParts() {
+  const line = tipWhenCut(h("span", { class: "github-pull-freshness mb-refreshing-muted" }));
+  const sizer = h("span", { class: "github-pull-freshness-sizer", "aria-hidden": "true" });
+  const sep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
+  const note = h("span", { class: "github-pull-note" }, [
+    sep,
+    h("span", { class: "github-pull-freshness-slot" }, [line, sizer]),
+  ]);
+  const details = h("span", { class: "github-pull-meta-details" });
+  const lead = h("span", { class: "github-pull-meta-lead" }, [details, note]);
+  const list = h("div", { class: "github-pull-label-list" });
   return {
     header: h("div", { class: "github-pull-header page-header page-reading-column" }),
+    opened: h("div", { class: "github-pull-opened page-header-line" }),
+    meta: {
+      row: h("div", { class: "github-pull-meta page-header-line" }, [lead]),
+      lead,
+      details,
+      note,
+      sep,
+      line,
+      sizer,
+    },
     branches: h("div", { class: "github-pull-branches page-header-line" }),
+    labels: { row: h("div", { class: "github-pull-labels" }, [list]), list },
     status: h("div", { class: "github-pull-status page-header-line" }),
     size: h("div", { class: "github-pull-size page-header-line page-header-size" }),
     summary: h("div", { class: "github-pull-summary metabrowser-diff-host page-header-line" }),
   };
+}
+
+/**
+ * Write *text* in an author's row's freshness note (`pageHeaderParts`'s `meta`), or take the
+ * note away with null; *sized* holds its slot as wide as its widest age (`widestNote`), for
+ * a note that says an age. The dot is there only after a sentence (*after*). Writes only
+ * what changed, so the age's breathing while a refresh runs is one animation.
+ *
+ * @param {ReturnType<typeof pageHeaderParts>["meta"]} meta
+ * @param {string | null} text
+ * @param {{sized: boolean, after: boolean}} how
+ */
+export function showNote(meta, text, { sized, after }) {
+  meta.note.hidden = text === null;
+  meta.sep.hidden = !after;
+  if (meta.line.textContent !== (text ?? "")) {
+    meta.line.textContent = text ?? "";
+  }
+  const width = text !== null && sized ? widestNote(text) : "";
+  if (meta.sizer.textContent !== width) {
+    meta.sizer.textContent = width;
+  }
+}
+
+/**
+ * A state's badge, as a pull request's header leads its row of ages with it: *label* in the
+ * state's ink and edge (`data-state`, github/styles.css), its first letter a capital. A
+ * pull request's says its state, "Merged", and a stack's tally one state's members, "2 Pulls
+ * Merged". *kind* is another badge's, a review's or a check's.
+ *
+ * @param {string} state
+ * @param {string} label
+ * @param {string} [kind]
+ */
+export function stateBadge(state, label, kind = "state") {
+  return h(
+    "span",
+    { class: `file-header-badge github-pull-badge github-pull-${kind}`, "data-state": state },
+    [`${label.charAt(0).toUpperCase()}${label.slice(1)}`],
+  );
+}
+
+/**
+ * The row of ages' words (`pageHeaderParts`'s `opened`): the ages, muted, given way first,
+ * cut short at their end, and the links after them whole (`.github-pull-ages-links`).
+ *
+ * @param {Array<Node | string>} ages
+ * @param {Array<Node | string>} [links]
+ */
+export function agesLine(ages, links = []) {
+  return h("div", { class: "github-pull-quiet" }, [
+    h("span", { class: "github-pull-ages" }, ages),
+    ...(links.length === 0 ? [] : [h("span", { class: "github-pull-ages-links" }, links)]),
+  ]);
+}
+
+/**
+ * A hidden chip of no width, which gives a row a chip's height whatever else it holds: the
+ * row of ages ends in one where it has no stack chip, on a pull request's page and a stack's
+ * alike, so the two rows are one height.
+ */
+export function rowStrut() {
+  return h(
+    "span",
+    { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
+    [h("span", { class: "github-pull-stack-icon" }), " "],
+  );
+}
+
+/**
+ * The author's row's sentence (`pageHeaderParts`'s `meta.details`): each actor, the shell's
+ * actor identity (`authorLabel`), then the action (`actionText`), "wants to merge 1 commit";
+ * with no actor, the action alone. A stack's names each of its authors once, a comma after
+ * each but the last. `identity` draws one actor and *action* is the action's node, so a page
+ * may keep both across paints.
+ *
+ * @param {Array<{login: string, avatar: string | null}>} actors
+ * @param {(actor: {login: string, avatar: string | null}) => HTMLElement} identity
+ * @param {HTMLElement} action
+ * @returns {HTMLElement[]}
+ */
+export function actorSentence(actors, identity, action) {
+  return [
+    ...actors.flatMap((actor, at) => [
+      identity(actor),
+      ...(at < actors.length - 1 ? [h("span", { class: "github-pull-actor-sep" }, [","])] : []),
+    ]),
+    action,
+  ];
+}
+
+/**
+ * The sentence's action, after its actor with a space.
+ *
+ * @param {string} action
+ * @param {boolean} afterActor
+ */
+export function actionText(action, afterActor) {
+  return h("span", { class: "github-pull-action" }, [`${afterActor ? " " : ""}${action}`]);
 }
 
 /**
@@ -5085,11 +5245,15 @@ export function mountPullPage(container, ctx, mb) {
   // has too are `pageHeaderParts`'s.
   const {
     header,
+    opened: openedRow,
+    meta,
     branches: branchesRow,
+    labels: { row: labelsRow, list: labelList },
     status,
     size: sizeRow,
     summary: summaryRow,
   } = pageHeaderParts();
+  const { row: stateRow, details: stateDetails } = meta;
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
   // line each, so nothing that arrives later, a stack, a label's color, a Refresh, the age
@@ -5098,13 +5262,6 @@ export function mountPullPage(container, ctx, mb) {
   // there for a pull request with none (mb-2u08). The status line is there only for a
   // failure, a message, or an offer, so those, and only those, move the tab bar as they come
   // and go (mb-ne91). docs/design-system.md, "The Pull Request Page".
-  // A hidden chip of no width, which gives a row a chip's height whatever else it holds.
-  const strut = () =>
-    h(
-      "span",
-      { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
-      [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
-    );
   // A stack's chip arrives from its own /stacks answer, so it has a slot at the right end of
   // the row of ages, ending under the end of the title's number (mb-646g, mb-dwha), with
   // nothing after it: arriving, it lands in the row's empty end and moves nothing, and where
@@ -5112,16 +5269,13 @@ export function mountPullPage(container, ctx, mb) {
   // with Browse code after them, and the row never takes a second line. The page's Refresh
   // once held a slot after Browse code and kept the chip a Refresh's width short of the
   // number; the page has none now (mb-ablv). With no stack the slot holds a strut, which
-  // gives the row a chip's height. At the end of the author's row (mb-cf0l)
+  // gives the row a chip's height (`rowStrut`). At the end of the author's row (mb-cf0l)
   // it was a row below the state and ages it belongs with; at the end of the row that also
   // held the branches, a chip took its width from the sentence and the merge, which slid up
   // to 35 px.
-  const stackStrut = strut();
+  const stackStrut = rowStrut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
-  const labelList = h("div", { class: "github-pull-label-list" });
-  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
-  const stateBadge = h("span", { class: "github-pull-state-slot" });
-  const stateDetails = h("span", { class: "github-pull-meta-details" });
+  const stateSlot = h("span", { class: "github-pull-state-slot" });
   // The author's sentence ends in a muted note of how fresh what is shown is, one time
   // (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via GitHub CLI". A rate
   // limit's hold is said in its place, since it begins and lifts by itself and asks nothing of
@@ -5129,32 +5283,14 @@ export function mountPullPage(container, ctx, mb) {
   // request…", so the sentence landing changes no line. The note and its age are kept across
   // paints, so the age's breathing while a refresh runs is one animation from start to end
   // rather than one restarted at each paint. The note's slot is as wide as its widest age
-  // (`freshnessSizer`), so the age ticking from "just now" to "12 min ago" changes its width
-  // not at all. The sentence and the note share the row's lead (`stateLead`), which the note
-  // leaves whole, dot and all, where it cannot be whole beside the sentence, so the sentence
-  // never gives up width to it; alone on the row, before a record, it is cut short with its
-  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages,
-  // with the stack's chip just before it. The author's row is its lead alone, a line tall.
-  const freshnessLine = tipWhenCut(
-    h("span", { class: "github-pull-freshness mb-refreshing-muted" }),
-  );
-  const freshnessSizer = h("span", {
-    class: "github-pull-freshness-sizer",
-    "aria-hidden": "true",
-  });
-  const freshnessSlot = h("span", { class: "github-pull-freshness-slot" }, [
-    freshnessLine,
-    freshnessSizer,
-  ]);
-  const freshnessSep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
-  const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
-  const stateLead = h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);
-  const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [stateLead]);
+  // (`meta.sizer`, `showNote`), so the age ticking from "just now" to "12 min ago" changes
+  // its width not at all; `pageHeaderParts` says how the sentence and the note share the
+  // row. Refresh is not in the note, which can leave: it ends the row of ages, with the
+  // stack's chip just before it.
   // The head and base branches (`branchesRow`) are on a line of their own under the author's
   // sentence: a line tall, the merge's arrow's, while no record is shown too.
-  // The pull request's state leads the row of its ages: its badge, then when it was
-  // opened, updated, merged, or closed, then Refresh's slot and, at its end, the stack's.
-  const openedRow = h("div", { class: "github-pull-opened page-header-line" });
+  // The pull request's state leads the row of its ages (`openedRow`): its badge, then when
+  // it was opened, updated, merged, or closed, and at its end the stack's chip.
   // The pull request's Diff summary, the header's last row, above the tabs and on every one
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
   // changed files. Its row is held from first paint, so the summary arriving with the
@@ -5982,14 +6118,6 @@ export function mountPullPage(container, ctx, mb) {
     return link;
   }
 
-  /** @param {string} state @param {string} label @param {string} [kind] */
-  const badge = (state, label, kind = "state") =>
-    h(
-      "span",
-      { class: `file-header-badge github-pull-badge github-pull-${kind}`, "data-state": state },
-      [`${label.charAt(0).toUpperCase()}${label.slice(1)}`],
-    );
-
   /**
    * A box about the content, on the shell's primitive; its severity is its border.
    *
@@ -6200,26 +6328,29 @@ export function mountPullPage(container, ctx, mb) {
    */
   function paintStateRow(pull) {
     stateRow.hidden = false;
-    placeChildren(stateBadge, [
-      headerPart("badge", [pull.state, pull.stateLabel], () => badge(pull.state, pull.stateLabel)),
+    placeChildren(stateSlot, [
+      headerPart("badge", [pull.state, pull.stateLabel], () =>
+        stateBadge(pull.state, pull.stateLabel),
+      ),
       ...badgeSizers,
     ]);
     // A narrow row gives way in its sentence first: the action is cut short before the
     // author is (styles.css, "One line"). The branches have the line below to themselves.
     const actor = pull.actor;
     stateDetails.hidden = false;
-    placeChildren(stateDetails, [
-      ...(actor === null
-        ? []
-        : [
-            headerPart("identity", [actor, pull.actorAvatar], () =>
-              authorLabel(mb, actor, pull.actorAvatar, "", { loading: "eager" }),
-            ),
-          ]),
-      headerPart("action", [actor === null, pull.action], () =>
-        h("span", { class: "github-pull-action" }, [`${actor === null ? "" : " "}${pull.action}`]),
+    placeChildren(
+      stateDetails,
+      actorSentence(
+        actor === null ? [] : [{ login: actor, avatar: pull.actorAvatar }],
+        (one) =>
+          headerPart("identity", [one.login, one.avatar], () =>
+            authorLabel(mb, one.login, one.avatar, "", { loading: "eager" }),
+          ),
+        headerPart("action", [actor === null, pull.action], () =>
+          actionText(pull.action, actor !== null),
+        ),
       ),
-    ]);
+    );
     placeChildren(branchesRow, [
       headerPart(
         "branches",
@@ -6279,12 +6410,12 @@ export function mountPullPage(container, ctx, mb) {
       model.freshness !== null &&
       model.failureHold !== true &&
       (model.revalidating || (timelineBusy && model.tab === ""));
-    freshnessLine.classList.toggle("mb-refreshing", busy);
+    meta.line.classList.toggle("mb-refreshing", busy);
     // Busy is said of the age being updated, never of the status line's buttons and links.
     if (busy) {
-      freshnessLine.setAttribute("aria-busy", "true");
+      meta.line.setAttribute("aria-busy", "true");
     } else {
-      freshnessLine.removeAttribute("aria-busy");
+      meta.line.removeAttribute("aria-busy");
     }
   }
 
@@ -6445,19 +6576,17 @@ export function mountPullPage(container, ctx, mb) {
           // The ages give way first, cut short at their end, and the links after them stay
           // whole: cut at the row's end, the row lost Browse code before any age (B4 of
           // review B on #506).
-          const row = h("div", { class: "github-pull-quiet" }, [
-            h("span", { class: "github-pull-ages" }, [
+          const row = agesLine(
+            [
               "Opened ",
               age(pull.created, repeatsOpened ? also : null),
               ...(repeatsClosed || repeatsOpened ? [] : [" · updated ", age(pull.updated)]),
               ...(closedAt === null
                 ? []
                 : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
-            ]),
-            ...(browse === null
-              ? []
-              : [h("span", { class: "github-pull-ages-links" }, [" · ", browse])]),
-          ]);
+            ],
+            browse === null ? [] : [" · ", browse],
+          );
           return { row, browse };
         },
       );
@@ -6471,7 +6600,7 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateBadge, opened.row, stackColumn]);
+      placeChildren(openedRow, [stateSlot, opened.row, stackColumn]);
       children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
       // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
@@ -6507,13 +6636,13 @@ export function mountPullPage(container, ctx, mb) {
       // nothing; one with none takes the row and its gap away in the paint that lands it,
       // the one paint that changes the header and the body together (mb-2u08).
       if (model.status !== "unavailable") {
-        placeChildren(stateBadge, []);
+        placeChildren(stateSlot, []);
         // No sentence yet, so the note, the page's word on the record, leads the row alone.
         placeChildren(stateDetails, []);
         stateDetails.hidden = true;
         placeChildren(branchesRow, []);
         placeChildren(openedRow, [
-          stateBadge,
+          stateSlot,
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
@@ -6547,22 +6676,15 @@ export function mountPullPage(container, ctx, mb) {
           : null;
     const message = noteRow && pull === null && noteText !== null ? null : model.message;
     const failure = hold !== null && noteText === hold ? null : model.failure;
-    freshnessNote.hidden = noteText === null;
     // A hold is cut short with its text as a tooltip where it cannot be whole, rather than
     // leave the line as an age does, so the page always says why nothing refreshes (B3 of
     // review B on #506).
     const holdShown = hold !== null && noteText === hold;
-    freshnessLine.classList.toggle("github-pull-freshness-held", holdShown);
-    stateLead.classList.toggle("github-pull-meta-lead-held", holdShown);
-    // The dot joins the note to the author's sentence, so it is there only after one.
-    freshnessSep.hidden = pull === null;
-    if (freshnessLine.textContent !== (noteText ?? "")) {
-      freshnessLine.textContent = noteText ?? "";
-    }
-    const sizer = noteText !== null && noteText === model.freshness ? widestNote(noteText) : "";
-    if (freshnessSizer.textContent !== sizer) {
-      freshnessSizer.textContent = sizer;
-    }
+    meta.line.classList.toggle("github-pull-freshness-held", holdShown);
+    meta.lead.classList.toggle("github-pull-meta-lead-held", holdShown);
+    // The dot joins the note to the author's sentence, so it is there only after one; the
+    // note's slot is as wide as its widest age only while it says the age.
+    showNote(meta, noteText, { sized: noteText === model.freshness, after: pull !== null });
     paintRefreshing(model);
     const failureHelp = model.failureHelp;
     // Offers end the status line, so a message or failure changing its width moves nothing
@@ -6957,7 +7079,7 @@ export function mountPullPage(container, ctx, mb) {
           item.at === null ? "(pending)" : age(item.at),
         );
         if (item.review !== null && item.review.label !== null) {
-          head.append(" ", badge(item.review.state, item.review.label, "review"));
+          head.append(" ", stateBadge(item.review.state, item.review.label, "review"));
         }
         const built = h(
           "section",
@@ -7065,7 +7187,7 @@ export function mountPullPage(container, ctx, mb) {
       const head = h("div", { class: "github-pull-card-head" }, [
         fileLink(comment.path, comment.line, model.browse),
         comment.outdated ? " " : "",
-        comment.outdated ? badge("outdated", "outdated", "review") : null,
+        comment.outdated ? stateBadge("outdated", "outdated", "review") : null,
         " ",
         authorLabel(mb, comment.author, comment.avatar),
         ` ${comment.reply ? "replied" : "commented"} `,
@@ -7137,7 +7259,7 @@ export function mountPullPage(container, ctx, mb) {
       for (const item of summary.items) {
         rows.append(
           h("li", {}, [
-            badge(item.tone, item.label, "check"),
+            stateBadge(item.tone, item.label, "check"),
             " ",
             h("span", {}, [item.name]),
             item.action === null ? null : checkLink(item.action),

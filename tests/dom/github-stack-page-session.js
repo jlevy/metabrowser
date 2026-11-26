@@ -885,10 +885,23 @@ async function main() {
         true,
       ),
       drawn,
+      // Five minutes after the members' records were fetched.
+      Date.parse("2026-09-17T12:05:00Z"),
     );
     return {
       cold: model.cold,
       rows: model.rows.join(", "),
+      tally: model.tally.map((badge) => `${badge.state}: ${badge.label}`),
+      ages: model.ages,
+      sentence:
+        model.sentence === null
+          ? null
+          : `${model.sentence.actors.map((actor) => actor.login).join(", ")} ${model.sentence.action}`.trim(),
+      note: model.note,
+      labels:
+        model.labels?.map(
+          (label) => `${label.name}${label.color === null ? "" : ` #${label.color}`}`,
+        ) ?? null,
       members:
         model.members?.map(
           (member) =>
@@ -898,6 +911,31 @@ async function main() {
       status: model.status.map((notice) => notice.text),
       comparison: model.comparison,
     };
+  };
+  // A stack whose members are all merged names who merged them, each once, as a merged pull
+  // request's sentence names its merger; one with two authors names both, each once.
+  const allMerged = {
+    ...current,
+    states: { open: 0, draft: 0, merged: 2, closed: 0 },
+    mergers: [{ login: "octo", avatar: null }],
+  };
+  const twoAuthors = {
+    ...current,
+    authors: [...current.authors, { login: "forker", avatar: null }],
+  };
+  const sentences = {
+    all_merged: page.stackSentence(allMerged),
+    two_authors: page.stackSentence(twoAuthors),
+    no_commits_counted: page.stackSentence({ ...current, commits: null }),
+    no_members: page.stackSentence({ ...current, members: [] }),
+  };
+  // The size line's counts for the comparison drawn: the answer's commits and sizes, each
+  // left out while not known, and the files the Diff summary counts.
+  const sizeInputs = {
+    current: page.stackSizeInput(current, 1),
+    sized: page.stackSizeInput({ ...current, size: { pushed_bytes: 380, diff_bytes: 741 } }, 1),
+    pending: page.stackSizeInput(pending, null),
+    none: page.stackSizeInput(null, null),
   };
   const header = {
     first_paint: headerAt(null, known, false),
@@ -982,6 +1020,8 @@ async function main() {
         caught_up,
         reader_keys,
         header,
+        sentences,
+        size_inputs: sizeInputs,
         drawing,
         said,
         delays,

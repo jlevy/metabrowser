@@ -374,6 +374,12 @@ async function run() {
       className: "age",
     })),
     formatTimestamp: () => "now",
+    formatInteger: (value) => String(value),
+    // A count summary's parts as its text: each number, word, and separator.
+    countPartsNodes: (parts) =>
+      parts.map((part) =>
+        typeof part === "string" ? part : (part.number ?? part.separator ?? ""),
+      ),
     shortCommit: (sha) => sha.slice(0, 7),
     ensureAsset: async () => {},
     loadKpressAssets: async () => {},
@@ -447,29 +453,49 @@ async function run() {
       ? "title"
       : node.classes.has("view-header-end")
         ? "corner"
-        : node.classes.has("github-pull-stack-members")
+        : node.classes.has("github-pull-stack-members-row")
           ? "members"
-          : node.classes.has("github-pull-branches")
-            ? "merge"
-            : node.classes.has("github-pull-status")
-              ? "status"
-              : node.classes.has("github-pull-size")
-                ? "size"
-                : node.classes.has("github-pull-summary")
-                  ? "summary"
-                  : node.tag;
+          : node.classes.has("github-pull-opened")
+            ? "opened"
+            : node.classes.has("github-pull-meta")
+              ? "meta"
+              : node.classes.has("github-pull-branches")
+                ? "merge"
+                : node.classes.has("github-pull-labels")
+                  ? "labels"
+                  : node.classes.has("github-pull-status")
+                    ? "status"
+                    : node.classes.has("github-pull-size")
+                      ? "size"
+                      : node.classes.has("github-pull-summary")
+                        ? "summary"
+                        : node.tag;
+  // A fetch's age is said as of the clock, so it is printed as its place; the page's own
+  // session says it at a fixed time (github-stack-page-session.js, `header`).
   const holds = (node) =>
-    node.querySelector(".tally-pending") !== null ? "(pending)" : node.textContent;
+    node.querySelector(".tally-pending") !== null
+      ? "(pending)"
+      : node.textContent.replace(/just now|\d+ (?:min|h|d) ago/g, "<age>");
   const rows = () =>
     header.children
       .filter((node) => !node.hidden)
       .map((node) => {
         const name = rowName(node);
         if (name === "members") {
+          const toggle = node.querySelector(".github-pull-stack-members-toggle");
           return {
-            members: node
-              .querySelectorAll(".github-pull-stack-member")
-              .map((row) => row.textContent.replace(/\s+/g, " ").trim()),
+            members: {
+              toggle: toggle.textContent,
+              expanded: toggle.getAttribute("aria-expanded"),
+              rows: node
+                .querySelectorAll(".github-pull-stack-member")
+                .map((row) => row.textContent.replace(/\s+/g, " ").trim()),
+            },
+          };
+        }
+        if (name === "labels") {
+          return {
+            labels: node.querySelectorAll(".github-pull-label").map((chip) => chip.textContent),
           };
         }
         return name === "title" || name === "corner" ? name : { [name]: holds(node) };
@@ -480,12 +506,36 @@ async function run() {
   const settled = rows();
   const names = (list) => list.map((row) => (typeof row === "string" ? row : Object.keys(row)[0]));
   assert.deepEqual(names(firstPaint), names(settled), "the answer lands in the rows drawn");
-  assert.equal(cold, false, "a stack the Pulls tab knows is not held as cold");
+  // Until the stack's answer the page is held out of sight for the quiet period, as a pull
+  // request's page is until its record, and the answer shows it.
+  assert.equal(cold, true, "the page is held until the stack's answer");
+  assert.equal(header.classes.has("github-pull-cold"), false, "the answer shows the page");
+  // The members' toggle, closed at first as the Diff summary is, opens and closes the card it
+  // controls, and stays as the reader left it while the stack's answers are read again.
+  const membersToggle = header.querySelector(".github-pull-stack-members-toggle");
+  const membersBody = header.querySelector(".github-pull-stack-members-body");
+  const disclosure = () => ({
+    expanded: membersToggle.getAttribute("aria-expanded"),
+    collapsed: membersBody.classes.has("github-pull-stack-members-body-collapsed"),
+    controls: membersToggle.getAttribute("aria-controls") === membersBody.getAttribute("id"),
+  });
+  const toggled = { first: disclosure() };
+  membersToggle.events.get("click")();
+  toggled.opened = disclosure();
+  await poll();
+  toggled.after_a_poll = disclosure();
+  membersToggle.events.get("click")();
+  toggled.closed = disclosure();
+  assert.deepEqual(toggled.first, { expanded: "false", collapsed: true, controls: true });
+  assert.deepEqual(toggled.opened, { expanded: "true", collapsed: false, controls: true });
+  assert.deepEqual(toggled.after_a_poll, toggled.opened, "an answer keeps the reader's choice");
+  assert.deepEqual(toggled.closed, toggled.first);
   const summaryDrawn = drawings.find((drawing) => drawing.summary)?.summary;
   assert.deepEqual(Object.keys(summaryDrawn).sort(), ["openFile"], "where a file opens alone");
   report.header = {
     first_paint: firstPaint,
     settled,
+    members_toggle: toggled,
     summary_drawing: summaryDrawn,
   };
   pullsTab.dispose();

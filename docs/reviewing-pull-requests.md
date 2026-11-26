@@ -114,11 +114,14 @@ Without the extension, or when GitHub cannot answer, pull requests read as usual
 list stays flat, unless stacks are cached.
 
 **Whole stack**, the first row in the menu and under each open stack in the Pulls tab,
-opens the stack’s own page, laid out as a pull request’s page for the whole stack: its
-members under the title, top first, each as the menu lists it; the top member’s head
-branch → the stack’s base; the files changed and the Diff summary of the stack’s
-combined change; and **Docs** and **Changes** of that change, with **Guided Review**
-first when the stack has a guide.
+opens the stack’s own page, laid out as a pull request’s page for the whole stack, each
+line saying of all its pull requests what a pull request’s says of one: how many are in
+each state, such as **2 Pulls Open**, and when one was last opened and last updated;
+their authors and commits; the top member’s head branch → the stack’s base; their
+labels; the commits, files, and size of the stack’s combined change; the pull requests
+themselves under **N Pulls**, top first, each as the menu lists it, closed at first as
+the Diff summary is; then the Diff summary of that change, and **Docs** and **Changes**
+of it, with **Guided Review** first when the stack has a guide.
 **View on GitHub** there opens the stack on github.com.
 While that page is open, the stack’s **Whole stack** row in the Pulls tab is marked as
 the current row, as a pull request’s row is on its page; J and K stop on it and open the

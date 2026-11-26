@@ -20,11 +20,16 @@ page’s glue between them.
   once its answer has landed, with the Pulls tab having read the repository’s stacks, as
   it has when a stack button opens the page.
   The first paint lists the members top first, each the stack menu’s member row, ending
-  in the author the stacks route names, 10’s, and holds the merge’s row and the pending
-  size line and summary; the answer lands in the same rows, naming 8’s author from its
-  record too, so nothing under the title moves.
-  The Diff summary is drawn with what a pull request’s page passes, so it starts
-  collapsed, as every Diff summary does.
+  in the author the stacks route names, 10’s, under their toggle, “2 Pulls”, closed; it
+  holds the row of ages, the author’s row, the merge’s row, and the labels row a line
+  tall, and the size line and summary pending.
+  The answer lands in the same rows, naming 8’s author from its record too, so nothing
+  under the title moves; the page is held out of sight until it does.
+  A fetch’s age is said as of the clock, so it is printed as `<age>`. The Diff summary
+  is drawn with what a pull request’s page passes, so it starts collapsed, as every Diff
+  summary does.
+- `members_toggle`: the members’ toggle starts closed, as the Diff summary does, and
+  opens and closes the card it controls; an answer read while it is open leaves it open.
 - `front`: the front page of 70, whose guide 10 carries, shows Guided Review and reads
   step 1 at the comparison the page draws, by its two commits and its key.
 - `list`: its step list, which has no overview row, and whose steps are in no group, so
@@ -72,16 +77,29 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "title",
       "corner",
       {
-        "members": [
-          "WIP: draft the next page 2/2 · #10 · maintainer",
-          "Say more in the guide 1/2 · #8"
-        ]
+        "opened": "  "
+      },
+      {
+        "meta": "·"
       },
       {
         "merge": ""
       },
       {
+        "labels": []
+      },
+      {
         "size": "(pending)"
+      },
+      {
+        "members": {
+          "toggle": "2 Pulls",
+          "expanded": "false",
+          "rows": [
+            "WIP: draft the next page 2/2 · #10 · maintainer",
+            "Say more in the guide 1/2 · #8"
+          ]
+        }
       },
       {
         "summary": "(pending)"
@@ -91,21 +109,60 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "title",
       "corner",
       {
-        "members": [
-          "WIP: draft the next page 2/2 · #10 · maintainer",
-          "Say more in the guide 1/2 · #8 · maintainer"
-        ]
+        "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
+      },
+      {
+        "meta": "maintainer wants to merge 2 commits·Fetched <age> via GitHub CLIFetched <age> via GitHub CLI"
       },
       {
         "merge": "wip → topic"
       },
       {
+        "labels": [
+          "bugfix",
+          "shared design",
+          "earnings analysis"
+        ]
+      },
+      {
         "size": "1 file changed"
+      },
+      {
+        "members": {
+          "toggle": "2 Pulls",
+          "expanded": "false",
+          "rows": [
+            "WIP: draft the next page 2/2 · #10 · maintainer",
+            "Say more in the guide 1/2 · #8 · maintainer"
+          ]
+        }
       },
       {
         "summary": ""
       }
     ],
+    "members_toggle": {
+      "first": {
+        "expanded": "false",
+        "collapsed": true,
+        "controls": true
+      },
+      "opened": {
+        "expanded": "true",
+        "collapsed": false,
+        "controls": true
+      },
+      "after_a_poll": {
+        "expanded": "true",
+        "collapsed": false,
+        "controls": true
+      },
+      "closed": {
+        "expanded": "false",
+        "collapsed": true,
+        "controls": true
+      }
+    },
     "summary_drawing": {
       "openFile": "function"
     }

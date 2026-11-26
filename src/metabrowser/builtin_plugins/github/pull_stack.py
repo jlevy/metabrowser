@@ -63,8 +63,8 @@ import json
 import os
 import stat
 import threading
-from collections import OrderedDict
-from collections.abc import Callable
+from collections import Counter, OrderedDict
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
@@ -89,7 +89,7 @@ from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
-    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository, PullListRow
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.diff.format import ChangeSetManifest, FileChange, ResolvedComparison
 
@@ -157,6 +157,40 @@ class StackMemberWire(TypedDict):
     # read, so that the page tells a fetch under way from one that ended without a usable
     # record; false for any other.
     fetching: bool
+
+
+class StackPersonWire(TypedDict):
+    """An author or a merger, as a pull request's header names one: the login and the
+    avatar, or None where the cache holds none."""
+
+    login: str
+    avatar: str | None
+
+
+class StackLabelWire(TypedDict):
+    """A label a member carries: its name, and the color and description its record gives it,
+    or None from a cached list row, which names its labels alone."""
+
+    name: str
+    color: str | None
+    description: str | None
+
+
+class StackStatesWire(TypedDict):
+    """How many members are in each state, every state named, 0 where none is."""
+
+    open: int
+    draft: int
+    merged: int
+    closed: int
+
+
+class StackSizeWire(TypedDict):
+    """The layers' sizes summed: what each member's head pushes over its merge base, and its
+    patch's size, as each member's own page's size line says them."""
+
+    pushed_bytes: int
+    diff_bytes: int
 
 
 class StackComparisonWire(TypedDict):
@@ -244,6 +278,31 @@ class StackEnvelope(TypedDict):
     members: list[StackMemberWire]
     pending: list[int]
     lacking: list[int]
+    # What the page's header says of the stack where a pull request's says it of one pull
+    # request (docs/design-system.md, "The Stack Page"), each from what the cache holds of
+    # every member, its record's, or with none its cached list row's, as its title is:
+    # - how many members are in each state, where a pull request's header has its state;
+    states: StackStatesWire
+    # - when a member was last opened and last updated, the latest of each, where a pull
+    #   request's says when it was opened and updated;
+    opened_at: str | None
+    updated_at: str | None
+    # - every member's author, top first, each once, and every merged member's merger, which
+    #   the sentence names once every member is merged, as a pull request's names its merger;
+    authors: list[StackPersonWire]
+    mergers: list[StackPersonWire]
+    # - the oldest of the members' records' fetches, so the stack is said to be no fresher
+    #   than its stalest record; None with no record;
+    fetched_at: str | None
+    # - every label a member carries, top first, each once by its name, or None while a
+    #   member has neither a record nor a cached row, whose labels are not known;
+    labels: list[StackLabelWire] | None
+    # - and the commits and the size of the members the top contains, whose files the
+    #   comparison holds: the commits summed while every one's record counts them, and the
+    #   sizes summed while every one's is kept (``kept_change_size``: no Git runs for it), on
+    #   a current stack alone; None otherwise.
+    commits: int | None
+    size: StackSizeWire | None
     comparison: StackComparisonWire | None
     totals: StackTotals | None
     truncated: bool
@@ -276,6 +335,50 @@ class _Member:
     author: str | None
     avatar: str | None
     moved: bool
+    details: _Details
+
+
+@dataclass(frozen=True, slots=True)
+class _Details:
+    """What the header sums or gathers of a member (``StackEnvelope``): its record's, or with
+    none its catalog row's, whose labels are names alone; the commits and the merger are the
+    record's alone, which a row lacks. *known* is whether it has either, so its labels are
+    known, even as none."""
+
+    known: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+    labels: tuple[StackLabelWire, ...] = ()
+    commits: int | None = None
+    merger: StackPersonWire | None = None
+
+
+def _details(record: PullRecord | None, row: PullListRow | None) -> _Details:
+    if record is not None:
+        pull = record.pull
+        return _Details(
+            known=True,
+            created_at=pull.created_at,
+            updated_at=pull.updated_at,
+            labels=tuple(
+                StackLabelWire(name=label.name, color=label.color, description=label.description)
+                for label in pull.labels
+            ),
+            commits=pull.commits,
+            merger=StackPersonWire(login=pull.merged_by, avatar=pull.merged_by_avatar_url)
+            if pull.merged and pull.merged_by
+            else None,
+        )
+    if row is not None:
+        return _Details(
+            known=True,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            labels=tuple(
+                StackLabelWire(name=name, color=None, description=None) for name in row.labels
+            ),
+        )
+    return _Details()
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,6 +534,7 @@ def _read_members(
                     row.merged if row is not None else False,
                 ),
                 moved=moved,
+                details=_details(record, row),
             )
         )
     return tuple(members)
@@ -786,6 +890,82 @@ def comparison_wire(published: PublishedSource, pair: StackPair) -> StackCompari
     )
 
 
+def _states(members: tuple[_Member, ...]) -> StackStatesWire:
+    """How many of *members* are in each state; a member in none known is in no count."""
+
+    counted = Counter(member.state for member in members)
+    return StackStatesWire(
+        open=counted["open"],
+        draft=counted["draft"],
+        merged=counted["merged"],
+        closed=counted["closed"],
+    )
+
+
+def _people(found: Iterable[StackPersonWire | None]) -> list[StackPersonWire]:
+    """Each person *found* names, once, in the order found, with the first avatar given."""
+
+    people: dict[str, StackPersonWire] = {}
+    for person in found:
+        if person is not None and person["login"] not in people:
+            people[person["login"]] = person
+    return list(people.values())
+
+
+def _labels(members: tuple[_Member, ...]) -> list[StackLabelWire] | None:
+    """Every label of *members*, top first, each once by its name: the first member that
+    names it, top first, gives its color and description, or a later one where it gives
+    none. None while any member's labels are not known, as a pull request's page holds its
+    labels row until its record says them."""
+
+    if not all(member.details.known for member in members):
+        return None
+    labels: dict[str, StackLabelWire] = {}
+    for member in reversed(members):
+        for label in member.details.labels:
+            held = labels.get(label["name"])
+            if held is None or (held["color"] is None and label["color"] is not None):
+                labels[label["name"]] = label
+    return list(labels.values())
+
+
+def _commits(members: tuple[_Member, ...], pair: StackPair | None) -> int | None:
+    """The commits of the members the top contains, every member while that is not known,
+    summed, or None where any of them has no count."""
+
+    counted = [
+        member.details.commits
+        for at, member in enumerate(members)
+        if pair is None or pair.in_top[at]
+    ]
+    if not counted or any(count is None for count in counted):
+        return None
+    return sum(count for count in counted if count is not None)
+
+
+async def _size(published: PublishedSource, pair: StackPair) -> StackSizeWire | None:
+    """The sizes of the members the top contains, summed, while each is kept
+    (``kept_change_size``, which runs no Git); None where any is not, or is unknown."""
+
+    from metabrowser.git.change_size import kept_change_size
+
+    target = RepositoryStoreTarget(published.git_dir, published.object_format)
+
+    def read() -> StackSizeWire | None:
+        pushed = diff = 0
+        for (_number, base, head), held in zip(pair.members, pair.in_top, strict=True):
+            if not held:
+                continue
+            size = kept_change_size(GitLocation.revision(target, head), base, head)
+            if size is None or size["pushed_bytes"] is None or size["diff_bytes"] is None:
+                return None
+            pushed += size["pushed_bytes"]
+            diff += size["diff_bytes"]
+        return StackSizeWire(pushed_bytes=pushed, diff_bytes=diff)
+
+    return await asyncio.to_thread(read)
+
+
 def absent(number: int, reason: StackAbsence, read: StackRead | None = None) -> StackEnvelope:
     envelope = _envelope(number, read, "absent")
     envelope["reason"] = reason
@@ -834,6 +1014,25 @@ def _envelope(
         members=wires,
         pending=[wire["number"] for wire in wires if wire["pending"]],
         lacking=[wire["number"] for wire in wires if wire["in_top"] is False],
+        states=_states(members),
+        opened_at=max(
+            (m.details.created_at for m in members if m.details.created_at), default=None
+        ),
+        updated_at=max(
+            (m.details.updated_at for m in members if m.details.updated_at), default=None
+        ),
+        authors=_people(
+            StackPersonWire(login=member.author, avatar=member.avatar) if member.author else None
+            for member in reversed(members)
+        ),
+        mergers=_people(member.details.merger for member in reversed(members)),
+        fetched_at=min(
+            (member.record.fetched_at for member in members if member.record is not None),
+            default=None,
+        ),
+        labels=_labels(members),
+        commits=_commits(members, pair),
+        size=None,
         comparison=None,
         totals=None,
         truncated=False,
@@ -907,6 +1106,7 @@ async def stack_envelope(
         )
         envelope["truncated"] = manifest.truncated
         envelope["files"] = list(found.files)
+        envelope["size"] = await _size(published, read.pair)
         envelope["guide"] = await _guide(published, read)
     if repository is not None and read.stack is not None:
         envelope["github_url"] = f"{repository.source}/pull/{read.stack.pulls[-1]}"
