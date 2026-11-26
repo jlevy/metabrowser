@@ -23,6 +23,7 @@
  *   q: string,
  *   filters: ReadonlyArray<TableFilter>,
  *   ref: string | null,
+ *   via?: string,
  *   cols: ReadonlyArray<string> | null,
  *   record: string | null,
  *   other: ReadonlyArray<readonly [string, string]>,
@@ -96,7 +97,7 @@ export const FILTER_OP_LABELS = Object.freeze({
   notnull: "is not null",
 });
 /** The view's own parameters, in the order the address writes them. */
-const OWNED = new Set(["sort", "order", "q", "ref", "cols", "record"]);
+const OWNED = new Set(["sort", "order", "q", "ref", "via", "cols", "record"]);
 
 /** The state of a table with nothing chosen: the source's order, every default column. */
 export const EMPTY_STATE = Object.freeze(
@@ -167,6 +168,7 @@ export function parseState(query) {
     q: owned.q ?? "",
     filters: Object.freeze([...filters.values()]),
     ref: owned.ref || null,
+    ...(owned.ref && owned.via ? { via: owned.via } : {}),
     cols: cols.length ? Object.freeze(cols) : null,
     record: owned.record || null,
     other: Object.freeze(other),
@@ -196,6 +198,9 @@ export function stateQuery(state) {
   }
   if (state.ref) {
     params.set("ref", state.ref);
+    if (state.via !== undefined) {
+      params.set("via", state.via);
+    }
   }
   for (const name of state.cols ?? []) {
     params.append("cols", name);
@@ -242,6 +247,9 @@ export function rowsParams(state, page) {
   }
   if (state.ref) {
     params.ref = state.ref;
+    if (state.via !== undefined) {
+      params.via = state.via;
+    }
   }
   if (state.cols) {
     params.cols = [...state.cols];
@@ -369,10 +377,11 @@ export function withRecord(state, key) {
  *
  * @param {TableState} state
  * @param {string | null} ref
+ * @param {string} [via] The two field lists of a declared relationship, as JSON.
  * @returns {TableState}
  */
-export function withRef(state, ref) {
-  return Object.freeze({ ...state, ref });
+export function withRef(state, ref, via) {
+  return Object.freeze({ ...state, ref, via: ref ? via : undefined });
 }
 
 /**

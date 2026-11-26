@@ -7646,6 +7646,12 @@ Every filter is a removable chip in the filter pill, `--radius-pill`; a header�
 sorts its column either way, filters it by an operator and a value, and hides it.
 Search is one field, which asks the server once the typing pauses.
 
+**Relationship links retain their context.** A back-reference count opens rows for the
+field pair it counted.
+Its filter chip links to the original record and uses the card’s name when available.
+The record heading uses the source’s label when it provides one.
+The key fields or position remain visible in the record.
+
 **One Tab stop.** The grid is a row collection under
 [Navigational Row Collections](#navigational-row-collections): one element of the grid
 is in the Tab order, a row, a cell’s link, or a header’s button.

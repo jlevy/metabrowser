@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -487,6 +488,7 @@ def test_record_and_card(client: TestClient) -> None:
     user = _get(client, "rows", path="app.db/users", limit=1)["rows"][0]["key"]
     record = _get(client, "record", path="app.db/users", key=user)
     assert record["cells"]["name"] == "Ada"
+    assert record["label"] == "Ada"
     assert record["referenced_by"] == [
         {"table": "orders", "fields": ["user_id"], "to": ["id"], "count": 2, "count_complete": True}
     ]
@@ -498,6 +500,43 @@ def test_record_and_card(client: TestClient) -> None:
     order = _get(client, "rows", path="app.db/orders", limit=1)["rows"][0]
     assert decode_key(order["key"]) == [1]
     assert _get(client, "record", path="app.db/orders", key=order["key"])["cells"]["rowid"] == 1
+
+
+def test_back_reference_drilldown_counts_the_declared_relationship(
+    client: TestClient, root: Path
+) -> None:
+    build(
+        root / "relationships.sqlite",
+        """
+        CREATE TABLE person (id INTEGER PRIMARY KEY);
+        CREATE TABLE sale (
+            id INTEGER PRIMARY KEY,
+            buyer INTEGER REFERENCES person(id),
+            seller INTEGER REFERENCES person(id)
+        );
+        INSERT INTO person VALUES (1), (2);
+        INSERT INTO sale VALUES (10, 1, 2), (20, 2, 1), (30, 1, 2);
+        """,
+    )
+    person_path = "relationships.sqlite/person"
+    key = _get(client, "rows", path=person_path)["rows"][0]["key"]
+    record = _get(client, "record", path=person_path, key=key)
+    sale_path = "relationships.sqlite/sale"
+    observed: dict[str, list[int]] = {}
+    for relationship in record["referenced_by"]:
+        page = _get(
+            client,
+            "rows",
+            path=sale_path,
+            ref=f"person:{key}",
+            via=json.dumps([relationship["fields"], relationship["to"]]),
+        )
+        observed[relationship["fields"][0]] = [row["cells"]["id"] for row in page["rows"]]
+        assert len(page["rows"]) == relationship["count"]
+    assert observed == {"buyer": [10, 30], "seller": [20]}
+    assert _get(client, "rows", path=sale_path, ref=f"person:{key}")["count"] == 3
+    invalid = _get(client, "rows", path=sale_path, ref=f"person:{key}", via='[["id"],["id"]]')
+    assert (invalid["_status"], invalid["param"]) == (400, "via")
 
 
 @pytest.mark.parametrize("replace", [False, True], ids=["commit", "replace-file"])
