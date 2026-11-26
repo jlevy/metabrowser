@@ -937,7 +937,9 @@ change it, bottom up, so an Areas step can cite the `{pull}` of the layer that m
 change it is about. It holds all of them only when `.truncated` is false and `.lacking`
 is empty: `.lacking` names the layers whose heads the top layer does not contain yet,
 whose files are left out until a restack brings them in, and a reference to one of those
-files answers `path_not_changed`. Write the guide once `.lacking` is empty:
+files answers `path_not_changed`. Write the guide once `.lacking` is empty; for a stack
+that will not be restacked, such as one whose layers have all merged, write it anyway
+and cite a lacking layer by its `{pull}`, or a file of it by `{pull, path}`:
 
 ```shell
 jq -r '.files[] | "\(.path) → \([.layers[].number] | map(tostring) | join(" "))"' <tmp>/stack.json
