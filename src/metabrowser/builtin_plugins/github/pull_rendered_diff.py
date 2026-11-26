@@ -95,9 +95,11 @@ from metabrowser.git.tree_source import (
     blob_logical_ext,
     held_store_readers,
     read_store_blob,
+    read_store_blob_sizes,
 )
 from metabrowser.git.wire import is_full_revision
 from metabrowser.loading_cache import LoadingCache
+from metabrowser.server_timing import phase
 
 if TYPE_CHECKING:
     from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
@@ -336,7 +338,9 @@ class _Slot:
             raise _Busy
         self._waiting += 1
         try:
-            await self._lock.acquire()
+            # The wait for the slot, in the request log and Server-Timing (mb-1jp0).
+            with phase("queue"):
+                await self._lock.acquire()
         finally:
             self._waiting -= 1
         try:
@@ -471,7 +475,8 @@ async def _project(
 
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     source = GitDiffSource(GitLocation.revision(target, snapshot.head))
-    comparison = await listed()
+    with phase("read"):
+        comparison = await listed()
     resolved, manifest = comparison.resolved, comparison.manifest
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
@@ -495,15 +500,29 @@ async def _project(
         # none held, the two reads took p50 5.6-6.5 ms a file, most of a JSON file's
         # time, and 0.5-0.7 ms held (mb-8274 review C5).
         async with held_store_readers(target):
+            # The sizes first: a pair over its budget is refused before either side is read.
+            # A 566 KB document beside its 566 KB old side was read whole and then refused,
+            # 260 to 380 ms holding the one projection slot at a load average near 120
+            # (mb-1jp0).
+            oids = tuple(
+                side.content.oid
+                for side in (change.old, change.new)
+                if side is not None and side.content.oid is not None
+            )
+            # The reads below still check each side, so an object read twice is bounded too.
+            sizes = await read_store_blob_sizes(target, oids)
+            if sum(size or 0 for size in sizes.values()) > budget:
+                return _fallback("too_large", rendered)
             old = await blob(change.old, budget)
             new = await blob(change.new, budget - len(old or b""))
     except GitBlobTooLargeError:
         return _fallback("too_large", rendered)
     if rendered != "markdown":
         # The tree compares parsed values, so it reads no patch, and shows no images.
-        tree = dict(
-            await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
-        )
+        with phase("render"):
+            tree = dict(
+                await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
+            )
         if tree.get("reason") == "deadline":
             raise _Unkept(_encoded(tree), stopped=True)
         return tree
@@ -527,9 +546,10 @@ async def _project(
 
         rewrite = head_reference
 
-    prepared = await projection_worker(state).prepare(
-        old=old, new=new, patch=patch, namespace=namespace
-    )
+    with phase("render"):
+        prepared = await projection_worker(state).prepare(
+            old=old, new=new, patch=patch, namespace=namespace
+        )
     answered = prepared.projection
     if answered["status"] == "too_large" and answered.get("reason") in (None, "deadline"):
         # Not the pair's own answer: the child has no input budget, so this is a thread's
@@ -594,7 +614,8 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         worker.start()
         # No reader waits on a prefetch, so it waits for the child, where a projection
         # runs under its deadline (mb-8274 review C2); a reader's own request does not.
-        await worker.settle()
+        with phase("start"):
+            await worker.settle()
     cache = getattr(state, "pull_rendered_diff_cache", None)
     if cache is None:
         cache = state.pull_rendered_diff_cache = LoadingCache[tuple[str, ...], _Kept](

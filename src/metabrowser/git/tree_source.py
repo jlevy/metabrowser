@@ -967,6 +967,24 @@ async def read_store_blob(
         await _release_pool(pool)
 
 
+async def read_store_blob_sizes(
+    target: RepositoryStoreTarget, oids: tuple[str, ...]
+) -> dict[str, int | None]:
+    """Each object's size through the shared per-store cat-file pool, reading no content.
+
+    A missing object is ``None``. A caller with a budget for several blobs together checks
+    it here first, so a pair over it is refused without reading a byte of either.
+    """
+
+    pool = _retain_pool(target)
+    try:
+        async with pool.checkout() as reader:
+            found = await reader.info_many(tuple(require_full_oid(oid) for oid in oids))
+    finally:
+        await _release_pool(pool)
+    return {oid: None if info is None else info.size for oid, info in found.items()}
+
+
 async def verify_store_object(
     target: RepositoryStoreTarget, oid: str, *, max_bytes: int = TEXT_PREVIEW_REQUEST_MAX_BYTES
 ) -> bool:
@@ -1791,6 +1809,7 @@ __all__ = [
     "follow_git_symlinks",
     "git_revision_subject",
     "read_store_blob",
+    "read_store_blob_sizes",
     "recycle_store_readers",
     "verify_store_object",
     "verify_store_blobs",
