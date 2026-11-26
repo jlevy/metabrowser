@@ -247,7 +247,7 @@ function pagePin() {
 // Whether this page has heard that the server serves another pin than the one it shows
 // (static/source-pin-guard.js announces it), after which a `/view/` address it holds
 // opens that other pin. The plugin loads once per page, so one listener serves every diff.
-let pinChanged = false;
+let pinChanged = window.MetabrowserSourcePinGuard?.hasChanged() ?? false;
 /** @type {Set<() => void>} */
 const pinChangeListeners = new Set();
 window.addEventListener?.("metabrowser:pin-changed", () => {
@@ -801,6 +801,7 @@ const diffView = {
         ? {}
         : {
             markdownViews,
+            onPinChanged,
             renderMarkdown: (fileId, signal, ask) => markdown.load(fileId, signal, ask),
             markdownTargets: markdownViews.markdownTargets(
               ctx.comparison?.image_route,
