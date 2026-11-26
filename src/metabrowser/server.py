@@ -5534,7 +5534,9 @@ def _table_source_declarations() -> list[TableSourceDeclaration]:
             )
             continue
         out.extend(
-            TableSourceDeclaration(plugin=plugin.name, kind=spec.kind, adapter=spec.adapter)
+            TableSourceDeclaration(
+                plugin=plugin.name, kind=spec.kind, adapter=spec.adapter, offer=spec.offer
+            )
             for spec in plugin.manifest.table_source
         )
     return out

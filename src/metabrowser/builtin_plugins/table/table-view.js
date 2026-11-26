@@ -252,6 +252,9 @@ const CELL_PAD_PX = 20;
  *
  * @typedef {{
  *   path: string,
+ *   table?: string,
+ *   collectionRoot?: string,
+ *   openCollectionAddress?: (target: {path: string, query: string}) => void,
  *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose?: () => void} | void),
  * }} TableContext
  */
@@ -438,6 +441,17 @@ export function mountTable(container, ctx, host = {}) {
     return parseState(current.query ?? "");
   }
 
+  /** @param {TableState} next */
+  function scopedStateQuery(next) {
+    const query = stateQuery(next);
+    if (ctx.table === undefined) {
+      return query;
+    }
+    const scoped = new URLSearchParams(query);
+    scoped.set("table", ctx.table);
+    return scoped.toString();
+  }
+
   /**
    * Put *next* in the address and show it. A step the reader takes (a sort, a filter, a
    * record) is an entry Back returns from; typing in Search replaces the entry.
@@ -453,7 +467,7 @@ export function mountTable(container, ctx, host = {}) {
     } else {
       flushPlace();
     }
-    const query = stateQuery(next);
+    const query = scopedStateQuery(next);
     void sdk.navigation
       .open(query ? { path, query } : { path }, { replace: Boolean(how.replace) })
       .catch((/** @type {unknown} */ error) => {
@@ -464,7 +478,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {TableState} next */
   function href(next) {
-    const query = stateQuery(next);
+    const query = scopedStateQuery(next);
     let made = hrefs.get(query);
     if (made === undefined) {
       made = sdk.navigation.href(query ? { path, query } : { path });
@@ -496,7 +510,11 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     const current = sdk.navigation.current();
-    if (current && normalPath(current.path) === normalPath(path)) {
+    if (
+      current &&
+      normalPath(current.path) === normalPath(path) &&
+      (ctx.table === undefined || new URLSearchParams(current.query).get("table") === ctx.table)
+    ) {
       cancelPlace();
       apply(parseState(current.query ?? ""));
     }
@@ -535,7 +553,8 @@ export function mountTable(container, ctx, host = {}) {
    * @param {AbortSignal} signal
    */
   function ask(route, params, signal) {
-    return sdk.fetchPluginData("table", route, { path, ...params }, { signal });
+    const scope = ctx.table === undefined ? { path } : { path, table: ctx.table };
+    return sdk.fetchPluginData("table", route, { ...scope, ...params }, { signal });
   }
 
   async function loadSchema() {
@@ -556,7 +575,7 @@ export function mountTable(container, ctx, host = {}) {
         `This table has no ${reconciled.dropped.map((name) => `“${name}”`).join(", ")} now, so the view no longer uses it.`,
       );
       notes.append(stateNotice);
-      const query = stateQuery(state);
+      const query = scopedStateQuery(state);
       void sdk.navigation
         .open(query ? { path, query } : { path }, { replace: true })
         .catch(() => {});
@@ -1546,6 +1565,10 @@ export function mountTable(container, ctx, host = {}) {
    * @returns {{path: string, query: string}}
    */
   function referenceTarget(ref) {
+    if (ctx.table !== undefined) {
+      const query = new URLSearchParams({ table: ref.table, record: ref.key }).toString();
+      return { path: ctx.collectionRoot ?? path, query };
+    }
     const address = referenceAddress(path, tableOf(), ref.table);
     return { path: address, query: stateQuery(withRecord(EMPTY_STATE, ref.key)) };
   }
@@ -1716,7 +1739,7 @@ export function mountTable(container, ctx, host = {}) {
     const label = /** @type {HTMLElement} */ (pill.firstChild);
     const remove = /** @type {HTMLElement} */ (pill.lastChild);
     label.replaceChildren("Referencing ", link);
-    void getCard(target.path, ref.key).then(
+    void getCard(ref).then(
       (answer) => {
         if (!pill.isConnected) {
           return;
@@ -2032,6 +2055,14 @@ export function mountTable(container, ctx, host = {}) {
    * @param {{path: string, query: string}} target
    */
   function openAddress(target) {
+    if (
+      ctx.openCollectionAddress &&
+      (normalPath(target.path) !== normalPath(path) ||
+        new URLSearchParams(target.query).get("table") !== ctx.table)
+    ) {
+      ctx.openCollectionAddress(target);
+      return;
+    }
     if (normalPath(target.path) === normalPath(path)) {
       go(parseState(target.query));
       return;
@@ -2287,7 +2318,7 @@ export function mountTable(container, ctx, host = {}) {
     const next = withRecord(state, key);
     // go writes the place to the table's entry before it pushes the record's.
     go(next);
-    pushedRecord = stateQuery(next);
+    pushedRecord = stateQuery(parseState(scopedStateQuery(next)));
   }
 
   /**
@@ -2395,6 +2426,8 @@ export function mountTable(container, ctx, host = {}) {
    *   key: string,
    *   positional: boolean,
    *   label?: string,
+   *   source_path?: string,
+   *   diagnostics?: string[],
    *   generation_moved?: boolean | null,
    *   cells: Record<string, unknown>,
    *   referenced_by: Array<{table: string, fields: string[], to: string[], count: number, count_complete: boolean}>,
@@ -2433,6 +2466,18 @@ export function mountTable(container, ctx, host = {}) {
     recordControls.set("live", recordPill);
     const head = el("div", { class: "table-record-head" }, back, heading, recordPill);
     const parts = [head];
+    if (record.source_path) {
+      const source = el(
+        "a",
+        { href: sdk.navigation.href({ path: record.source_path, query: "" }) },
+        record.source_path,
+      );
+      recordControls.set("source", source);
+      parts.push(el("p", { class: "table-record-note" }, source));
+    }
+    for (const diagnostic of record.diagnostics ?? []) {
+      parts.push(noticeBox("warning", diagnostic));
+    }
     if (record.positional) {
       parts.push(
         el(
@@ -2550,16 +2595,20 @@ export function mountTable(container, ctx, host = {}) {
       );
       for (const ref of record.referenced_by) {
         const count = `${ref.count_complete ? "" : "at least "}${formatCount(ref.count)}`;
-        const target = {
-          path: referenceAddress(path, tableOf(), ref.table),
-          query: stateQuery(
+        const target = referenceTarget({ table: ref.table, key: "" });
+        const query = new URLSearchParams(
+          stateQuery(
             withRef(
               EMPTY_STATE,
               `${tableOf()}:${record.key}`,
               JSON.stringify([ref.fields, ref.to]),
             ),
           ),
-        };
+        );
+        if (ctx.table !== undefined) {
+          query.set("table", ref.table);
+        }
+        target.query = query.toString();
         const open = el(
           "a",
           {
@@ -2657,10 +2706,9 @@ export function mountTable(container, ctx, host = {}) {
   /** @param {HTMLElement} anchor */
   async function showCard(anchor) {
     const ref = { table: anchor.dataset.refTable ?? "", key: anchor.dataset.refKey ?? "" };
-    const address = referenceAddress(path, tableOf(), ref.table);
     let answer;
     try {
-      answer = await getCard(address, ref.key);
+      answer = await getCard(ref);
     } catch {
       return;
     }
@@ -2670,15 +2718,20 @@ export function mountTable(container, ctx, host = {}) {
     sdk.tooltip?.show(cardHtml(answer), anchor);
   }
 
-  /** @param {string} address @param {string} key */
-  async function getCard(address, key) {
-    const cacheKey = `${address}\n${key}`;
+  /** @param {{table: string, key: string}} ref */
+  async function getCard(ref) {
+    const target = referenceTarget(ref);
+    const cacheKey = `${target.path}\n${ref.table}\n${ref.key}`;
     let card = cards.get(cacheKey);
     if (!card) {
       const asked = sdk.fetchPluginData(
         "table",
         "card",
-        { path: address, key },
+        {
+          path: target.path,
+          key: ref.key,
+          ...(ctx.table === undefined ? {} : { table: ref.table }),
+        },
         { signal: abort.signal },
       );
       asked.catch(() => cards.delete(cacheKey));

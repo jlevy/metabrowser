@@ -100,6 +100,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/cache-clear` | covered | `--api --data` | `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/github/status` | covered | `--api --data` | `cli-github-status.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/softschema/collection` | covered | `--api` | `cli-api-softschema-collection.tryscript.md` |
 | `/api/plugin/table/tables` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
 | `/api/plugin/table/schema` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
 | `/api/plugin/table/rows` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |

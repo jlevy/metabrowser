@@ -507,6 +507,14 @@ What Metabrowser needs from it:
 The table works end to end over any folder of records, with every state visible, and
 browses as Paraverse’s does.
 
+The folder preview uses the collection API from
+[SoftSchema PR #78](https://github.com/jlevy/softschema/pull/78). It opens the Patch the
+Conference corpus as nine contract tables covering all 132 records, with a reusable
+index and the shared table grid.
+The preview tests pin cross-folder links, exact inbound relationship filters, source
+links, and stable generations.
+The full rollout requires a released SoftSchema dependency.
+
 - [ ] Fixture collection `tests/fixtures/softschema-collection/`: a small knowledge base
   with schemas in `_schemas/`, records nested in subfolders, Markdown and YAML and JSON
   records, references between tables, two versions of one contract, and one record of

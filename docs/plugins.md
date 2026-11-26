@@ -500,8 +500,12 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
 other views: it reads the plugin’s own parse of a JSON or YAML file and refuses, with
 `SourceUnreadableError` and its reason, any document that holds no table.
 
-- A `[[table_source]]` names one of its own plugin’s kinds, once, and its plugin must
-  require `table`; an operator-directory plugin’s are ignored, since it runs no Python.
+- A `[[table_source]]` names one of its plugin’s kinds or `folder`, and its plugin must
+  require `table`. Operator-directory plugins run without Python adapters.
+- A folder table source declares an `offer` callable that receives a directory and
+  returns whether the source can serve it.
+  Its adapter takes a `FolderTableHandle`. The shared table routes accept the folder as
+  `path` and the contract or table ID as a separate `table` parameter.
 - Read through `handle.read_window(max_bytes=...)`, which answers on a folder and on a
   Git pin alike; `handle.local_path` is the real path on a served folder, or None.
 - `generation()` only stats files and reads bounded headers.

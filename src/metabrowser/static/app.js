@@ -9191,12 +9191,16 @@ window.addEventListener("popstate", applyPullHistoryLanding);
  *
  * @param {{path: string, query?: string, fragment?: string}} target
  * @param {ReturnType<typeof beginViewCompositionLoad>} loading
- * @returns {Promise<"source" | null>}
+ * @returns {Promise<"source" | "table" | null>}
  */
 async function addressedView(target, loading) {
-  return (await loading).status === "ready"
-    ? (window.MetabrowserSourceLineAnchors?.preferredView(target) ?? null)
-    : null;
+  if ((await loading).status !== "ready") {
+    return null;
+  }
+  return (
+    window.MetabrowserSourceLineAnchors?.preferredView(target) ??
+    (new URLSearchParams(target.query).has("table") ? "table" : null)
+  );
 }
 
 async function applyNavigationTarget(target, context) {
