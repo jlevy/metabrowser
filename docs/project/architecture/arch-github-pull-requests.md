@@ -157,6 +157,43 @@ that names the variable, since `gh auth login` refuses to run while it is set.
 A token whose scopes `gh` does not report, such as a fine-grained one from `GH_TOKEN`,
 is `ok`, since only a repository’s own read can tell what it reaches.
 
+### The Request Report
+
+Every `gh` process is a span in the [event log](../../realtime-debugging.md#event-log),
+and its record says what the report needs to measure browsing:
+
+- `budget`, the count `gh_budget.current_budget` charges the call to (`reader`,
+  `automatic`, `speculative`, or `walk`), the same rule `gh_budget.spent` counts by;
+- `fingerprint` (`gh.fingerprint`), a digest of the command without the ETag header a
+  conditional read sends, equal for two calls that ask GitHub the same thing, so a
+  GraphQL read, whose variables the log drops, can be told from another;
+- for a read of GitHub’s answer, `http_status` and `cost`, what GitHub charged as
+  `gh_budget` counts it, read inside the span by `gh._read_answer`, the one place the
+  cost rule lives; and
+- a duration that is gh’s alone: the span stops its clock when gh exits
+  (`event_log.Span.stop`), before its answer is read.
+
+A job, or a request, that waits for one of the refresh coordinator’s network slots
+records the wait as `queued_ms`, summed over every slot it takes
+(`mirror_refresh.NetworkSlots`), so a scan that takes a slot for each page says how long
+it queued in all. A wait for the store’s turn is not recorded.
+
+`GET gh-requests` reads those records over a window, `since` an hour ago by default, as
+`/api/event-log/failures` reads its window (`event_log_route.window_segments`), and adds
+them up for every call, for each budget, and for each job: the calls by command, the
+statuses GitHub answered, the calls with no status and why, `core` and GraphQL points
+spent, the share answered `304`, the conditional reads GitHub answered `304`, gh’s
+median and 95th percentile time, the calls that repeat an identical one still in flight
+or answered within `DUPLICATE_WINDOW_S`, the most in flight together, and how long the
+spans the calls ran in queued; and, for every call together, how many ran at once over
+the window. `gh_requests.py` names each field.
+`unrecorded` lists what such a report would want that the log does not hold: when a page
+first showed GitHub’s answer, since a page reports a wait only once it is late; which of
+the attended pull request, a visible list, the prefetch, or other background work a call
+served, since a call records its budget and job; reads the server answered from its own
+store, which make no `gh` call; and waits for the store’s turn.
+`cli-github-gh-requests.tryscript.md` pins it over a synthetic event log.
+
 ## Files Beside a Source
 
 Every file is disposable and carries its own schema version.
@@ -1132,12 +1169,12 @@ command to paste (`cache_clear_command` in `gh_lists.py`).
 ## Routes
 
 Every route is under `/api/plugin/github/`, a `[[data_hook]]` of the plugin’s
-`manifest.toml`. A `GET` answers from the cache and memory alone and runs no `gh`; a
-`POST` takes a JSON body, which keeps a link in untrusted content from reaching it, and
-one that starts a refresh job returns `202` at once and names a `status_route`. Each
-handler’s docstring in `sidekick.py`, or the module it names, holds its contract.
-`tests/test_github_route_table.py` checks this table against the manifest, and the
-[Parity Registry](arch-parity-registry.md) names each route’s golden.
+`manifest.toml`. A `GET` answers from the cache, memory, or the event log alone and runs
+no `gh`; a `POST` takes a JSON body, which keeps a link in untrusted content from
+reaching it, and one that starts a refresh job returns `202` at once and names a
+`status_route`. Each handler’s docstring in `sidekick.py`, or the module it names, holds
+its contract. `tests/test_github_route_table.py` checks this table against the manifest,
+and the [Parity Registry](arch-parity-registry.md) names each route’s golden.
 
 | Route | Methods | Answers or starts |
 | --- | --- | --- |
@@ -1167,6 +1204,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
 | `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
+| `gh-requests` | `GET` | [What was asked of GitHub](#the-request-report), from the event log: the calls by budget and job, their cost, latency, and concurrency, and how long their jobs queued |
 
 The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`

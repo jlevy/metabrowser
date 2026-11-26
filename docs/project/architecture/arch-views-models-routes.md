@@ -261,8 +261,8 @@ by [Markdown Views](arch-diff-pipeline.md#markdown-views)), `github/pull-size`,
 `github/pull-files-refresh`, `github/pull-files-summary`, `github/pull-statuses`,
 `github/stacks`, `github/stacks-refresh`, `github/stack-change`, `github/stack`,
 `github/stack-comparison`, `github/labels`, `github/labels-refresh`,
-`github/cache-clear`, and `github/status`
-([GitHub Pull Requests](arch-github-pull-requests.md)).
+`github/cache-clear`, `github/status`, and `github/gh-requests`, what the event log says
+the servers asked of GitHub ([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Agent Catalog
 

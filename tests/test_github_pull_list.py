@@ -1923,7 +1923,7 @@ def test_catalog_server_outage_keeps_cached_rows_without_an_early_reconnect(
     _provider(monkeypatch, items)
     monkeypatch.setattr(pull_list_refresh, "gh_graphql", gh.gh_graphql)
 
-    async def run(args: Any, **kwargs: Any) -> Any:
+    async def run(_exe: Any, args: Any, **kwargs: Any) -> Any:
         return subprocess.CompletedProcess(
             args,
             1,
@@ -1931,7 +1931,7 @@ def test_catalog_server_outage_keeps_cached_rows_without_an_early_reconnect(
             b"",
         )
 
-    monkeypatch.setattr(gh, "_run", run)
+    monkeypatch.setattr(gh, "_run_in", run)
     with pytest.raises(PullDataError) as failure:
         asyncio.run(refresh_pull_list(repository, "open", retry=True))
     assert failure.value.state == "github_unavailable"
@@ -2009,13 +2009,13 @@ def test_graphql_200_errors_never_publish_partial_data(
     state: str,
     error_type: type[GhError],
 ) -> None:
-    async def run(args: Any, **kwargs: Any) -> Any:
+    async def run(_exe: Any, args: Any, **kwargs: Any) -> Any:
         payload = json.dumps({"data": {"must_not_escape": True}, "errors": errors}).encode()
         return subprocess.CompletedProcess(
             args, 0, b"HTTP/2.0 200 OK\r\nx-ratelimit-reset: 1789646400\r\n\r\n" + payload, b""
         )
 
-    monkeypatch.setattr(gh, "_run", run)
+    monkeypatch.setattr(gh, "_run_in", run)
     with pytest.raises(GhError) as caught:
         asyncio.run(gh.gh_graphql("query Fixed { viewer { login } }", {}, now=FETCHED_AT))
     assert type(caught.value) is error_type
@@ -2026,13 +2026,13 @@ def test_graphql_200_errors_never_publish_partial_data(
 def test_graphql_variables_are_separate_literal_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 
-    async def run(args: list[str], **kwargs: Any) -> Any:
+    async def run(_exe: str, args: list[str], **kwargs: Any) -> Any:
         calls.append(args)
         return subprocess.CompletedProcess(
             args, 0, b'HTTP/2.0 200 OK\r\n\r\n{"data":{"ok":true}}', b""
         )
 
-    monkeypatch.setattr(gh, "_run", run)
+    monkeypatch.setattr(gh, "_run_in", run)
     assert asyncio.run(
         gh.gh_graphql(
             "query Fixed { viewer { login } }",

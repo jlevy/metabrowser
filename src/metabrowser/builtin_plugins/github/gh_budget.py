@@ -140,6 +140,11 @@ _COUNT: Final = re.compile(r"[0-9]{1,9}")
 _EPOCH: Final = re.compile(r"[0-9]{1,12}")
 
 type AdmissionReason = Literal["below_floor", "rate_hold", "self_ceiling"]
+# Which of this process's counts work is charged to (:func:`current_budget`): a reader's
+# own action, which none counts; automatic work, counted toward the ceiling; speculative
+# work, toward its share as well; and the cores walk's, counted as the walk's besides.
+type Budget = Literal["reader", "automatic", "speculative", "walk"]
+BUDGETS: Final[tuple[Budget, ...]] = ("reader", "automatic", "speculative", "walk")
 
 
 def _stamp(moment: datetime) -> str:
@@ -306,6 +311,21 @@ def speculating() -> bool:
     return _SPECULATIVE.get()
 
 
+def current_budget() -> Budget:
+    """Which count what the work running in this context spends is charged to.
+
+    :func:`spent` counts by it, and every ``gh`` span in the event log records it as
+    ``budget``, so the request report (:mod:`.gh_requests`) groups what was spent as the
+    ceiling and the share counted it.
+    """
+
+    if _READERS_OWN.get():
+        return "reader"
+    if _SPECULATIVE.get():
+        return "walk" if _WALK.get() else "speculative"
+    return "automatic"
+
+
 def _minute(now: datetime) -> int:
     return int(now.timestamp()) // _SPEND_BUCKET_S
 
@@ -324,12 +344,15 @@ def spent(cost: int, *, now: datetime) -> None:
     walk's (:func:`speculative`).
     """
 
-    if cost <= 0 or _READERS_OWN.get():
+    budget = current_budget()
+    if cost <= 0 or budget == "reader":
         return
     minute = _minute(now)
-    counts: tuple[dict[int, int], ...] = (_SPENT,)
-    if _SPECULATIVE.get():
-        counts = (_SPENT, _SPECULATIVE_SPENT, *((_WALK_SPENT,) if _WALK.get() else ()))
+    counts: tuple[dict[int, int], ...] = {
+        "automatic": (_SPENT,),
+        "speculative": (_SPENT, _SPECULATIVE_SPENT),
+        "walk": (_SPENT, _SPECULATIVE_SPENT, _WALK_SPENT),
+    }[budget]
     with _SPENT_LOCK:
         for count in counts:
             for old in [each for each in count if each <= minute - _SPEND_BUCKETS]:
@@ -423,15 +446,18 @@ def forget() -> None:
 __all__ = [
     "AUTOMATIC_CORE_PER_HOUR",
     "BACKGROUND_FLOOR",
+    "BUDGETS",
     "CEILING_FULL_READ_S",
     "SPECULATIVE_CORE_PER_HOUR",
     "UNKNOWN_RESET_HOLD_S",
     "Admission",
     "AdmissionReason",
+    "Budget",
     "ObservationWire",
     "RateObservation",
     "admission",
     "automatic_spent",
+    "current_budget",
     "forget",
     "full_read_interval",
     "held_until",

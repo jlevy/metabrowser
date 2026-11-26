@@ -919,6 +919,28 @@ class StoreTurn:
         chosen.turn.set_result(None)
 
 
+class NetworkSlots(asyncio.Semaphore):
+    """The coordinator's network slots, each wait for one recorded by the span that waited.
+
+    A job started with ``network=True`` waits for a slot before its work starts, and one
+    that takes a slot itself (:meth:`RefreshCoordinator.slot`) waits before each page it
+    reads; either wait is time queued, not slow work. Each is added to the waiting span's
+    ``queued_ms`` in the event log, so a job's record says how long it queued however it
+    took its slots, and the request report (``builtin_plugins/github/gh_requests.py``)
+    reads it. A slot taken at once adds nothing but says one was taken.
+    """
+
+    async def acquire(self) -> Literal[True]:
+        asked = time.perf_counter()
+        await super().acquire()
+        waiting = event_log.current()
+        waited_ms = (time.perf_counter() - asked) * 1000
+        before = waiting.attrs.get("queued_ms")
+        total = (before if isinstance(before, int | float) else 0.0) + waited_ms
+        waiting.set(queued_ms=round(total, 1))
+        return True
+
+
 class RefreshCoordinator:
     """Background jobs keyed by what they refresh, run at most *limit* at a time.
 
@@ -929,7 +951,7 @@ class RefreshCoordinator:
     """
 
     def __init__(self, *, limit: int = MAX_CONCURRENT_REFRESHES) -> None:
-        self._semaphore = asyncio.Semaphore(limit)
+        self._semaphore = NetworkSlots(limit)
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._closed = False
         # The keys of jobs a request joined after they were told to stop, each to be
@@ -990,11 +1012,8 @@ class RefreshCoordinator:
         return "started"
 
     async def _run(self, work: Callable[[], Awaitable[None]], *, network: bool) -> None:
-        queued = time.perf_counter()
+        # The slot records how long the job waited for it (NetworkSlots).
         async with self._semaphore if network else contextlib.nullcontext():
-            if network:
-                # How long the job waited for a slot: a queue, not slow work.
-                event_log.current().set(queued_ms=round((time.perf_counter() - queued) * 1000, 1))
             try:
                 await work()
             except asyncio.CancelledError:
@@ -1050,7 +1069,10 @@ class RefreshCoordinator:
         return key in self._restarts and not self._closed
 
     def slot(self) -> asyncio.Semaphore:
-        """One of the limited slots, for a job started with ``network=False`` to hold."""
+        """One of the limited slots, for a job started with ``network=False`` to hold.
+
+        Each wait for it is on the record of the span that waited (:class:`NetworkSlots`).
+        """
 
         return self._semaphore
 
@@ -2363,6 +2385,7 @@ __all__ = [
     "MirrorDisplay",
     "MirrorRef",
     "MirrorSession",
+    "NetworkSlots",
     "OpenedSelection",
     "OriginProbeError",
     "PROBED_REF_PREFIX",

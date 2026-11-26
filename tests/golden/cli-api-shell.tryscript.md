@@ -772,6 +772,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/gh-requests",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/guided-review",
       "methods": [
         "GET",
@@ -1231,7 +1239,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 104
+  "count": 105
 }
 ? 0
 ```
