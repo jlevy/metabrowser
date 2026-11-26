@@ -5123,6 +5123,7 @@ window.MetabrowserShell = Object.freeze({
   registerNavPanel: (/** @type {MetabrowserNavPanel} */ panel) => mainTabs?.register(panel),
   removeNavPanel: (/** @type {string} */ id) => mainTabs?.remove(id),
   renderPreviewHtml,
+  rereadFiles,
   renderPreviewNode,
   stagePreviewNode,
   shortcuts: () => shortcutRegistry,
@@ -7616,19 +7617,19 @@ function observeFileAges(ages, undated) {
     );
   }
 }
-// The ages landed: whatever was drawn without them is drawn again.
-function redrawForFileAges() {
+// The ages landed, or the header's Refresh asked (static/refresh-plan.js): the tree and the
+// file or folder the pane holds are read and drawn again. Settles when both are drawn.
+function rereadFiles() {
   subtreeCache.clear();
   fileCache.clear();
-  void loadTree({ reconcileMountedRoot: true });
+  var tree = loadTree({ reconcileMountedRoot: true });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }
-  if (currentPath) {
-    void selectFile(currentPath);
-  }
+  var held = previewPane.snapshot();
+  return Promise.all([tree, held.owner === "file" && held.path !== null && selectFile(held.path)]);
 }
-window.addEventListener("metabrowser:file-ages-landed", redrawForFileAges);
+window.addEventListener("metabrowser:file-ages-landed", rereadFiles);
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A

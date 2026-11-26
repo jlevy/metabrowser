@@ -11,7 +11,7 @@
 // three parts: the controller, which owns every decision, with the state each poll
 // returns; `mount`, the browser glue, with a scripted `fetch` and the page's own settings;
 // and the page itself, where the functions of app.js that the module meets (`observeFileAges`,
-// the landing handler `redrawForFileAges`, and the menu's counts) are lifted out of it and
+// the landing handler `rereadFiles`, and the menu's counts) are lifted out of it and
 // run against the module the way the asset loader would load it. Every line below is what
 // the code did: how many timers it holds, when it asked the shell to draw, and with what.
 
@@ -225,17 +225,18 @@ function loadRecent() { __events.push("loadRecent"); }
 function filesPanelUsesRecentSource() { return true; }
 function currentRecentFilterCursor() { return {}; }
 function selectFile(path) { __events.push("selectFile " + path); return Promise.resolve(); }
+var previewPane = { snapshot() { return { owner: "file", path: currentPath }; } };
 ${liftVar("fileAgesState")}
 ${[
   "refreshFilterTallies",
   "observeFileAges",
-  "redrawForFileAges",
+  "rereadFiles",
   "filterRecencyOptions",
   "renderRecentList",
 ]
   .map(lift)
   .join("\n")}
-${liftLine('window.addEventListener("metabrowser:file-ages-landed", redrawForFileAges);')}
+${liftLine('window.addEventListener("metabrowser:file-ages-landed", rereadFiles);')}
 `,
     context,
   );
