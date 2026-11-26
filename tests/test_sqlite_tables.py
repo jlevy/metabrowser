@@ -416,6 +416,31 @@ def test_counts_are_capped(client: TestClient, monkeypatch: pytest.MonkeyPatch) 
     assert filtered["count_complete"] is False
 
 
+def test_back_reference_count_is_incomplete_for_a_previewed_target(
+    client: TestClient, root: Path
+) -> None:
+    value = "x" * 70_000
+    build(
+        root / "wide-key.sqlite",
+        "CREATE TABLE parent (id INTEGER PRIMARY KEY, code TEXT UNIQUE);"
+        "CREATE TABLE child (id INTEGER PRIMARY KEY, code TEXT REFERENCES parent(code));"
+        f"INSERT INTO parent VALUES (1, '{value}');"
+        "INSERT INTO child SELECT 2, code FROM parent;",
+    )
+    path = "wide-key.sqlite/parent"
+    key = _get(client, "rows", path=path)["rows"][0]["key"]
+    related = _get(client, "record", path=path, key=key)["referenced_by"][0]
+    assert (related["count"], related["count_complete"]) == (0, False)
+    page = _get(
+        client,
+        "rows",
+        path="wide-key.sqlite/child",
+        ref=f"parent:{key}",
+        via=json.dumps([["code"], ["code"]]),
+    )
+    assert page["count"] == 1 and page["count_complete"] is True
+
+
 def test_search_continues_past_empty_windows(
     client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
