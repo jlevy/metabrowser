@@ -3,9 +3,9 @@ type: is
 id: is-01m8ar6wz990fewz7m05yjp9yk
 title: "Address PR #861 review A: stack page header"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 labels: []
 dependencies: []
 parent_id: is-01m8ajkqbyfmcpdphrde7rvc7z
@@ -20,6 +20,10 @@ child_order_hints:
   - is-01m8ar7yc8xwg3wgw3r93ps8fg
   - is-01m8ar821zgkc1xs2cyzghpbxs
 created_at: 2026-11-26T01:41:06.147Z
-updated_at: 2026-11-26T01:41:44.126Z
+updated_at: 2026-11-26T03:49:32.654Z
+closed_at: 2026-11-26T03:49:32.653Z
+close_reason: "Review A fixed; review B Mediums fixed; merged in #861"
+resolution: null
+duplicate_of: null
 ---
 Review A on PR #861 (https://github.com/jlevy/metabrowser/pull/861#pullrequestreview-6067404346), round 1 at head 03a5e7dde. Coordinator decisions recorded per finding in the child beads.
