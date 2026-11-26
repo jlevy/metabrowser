@@ -154,6 +154,8 @@ const response = (body, status = 200, etag = null) => ({
   status,
   headers: { get: (name) => (name === "etag" ? etag : null) },
   json: async () => body,
+  // The guide reads its answer as text, whose length it keeps (guide-reads.js).
+  text: async () => JSON.stringify(body),
 });
 globalThis.fetch = async (route, init = {}) => {
   if (route.startsWith(`${STACK_ROUTE}?`)) {
@@ -409,6 +411,9 @@ async function run() {
     ensureAsset: async () => {},
     loadKpressAssets: async () => {},
     ensureKindAssets: async () => {},
+    // The page is never idle here, so the guide reads each step when the reader moves to it;
+    // its reads ahead are pinned in github-guided-review-session.js.
+    whenIdle: () => () => {},
     decorateExternalLink(anchor) {
       decorated.push(anchor.getAttribute("href"));
       return anchor;
@@ -735,11 +740,15 @@ async function run() {
   assert.equal(asks(reads[5]), `70 1 ${movedTo.left} ${movedTo.right} ${movedTo.key}`);
   report.taken = { asks: asks(reads[5]), earlier_views_disposed: true };
 
-  // Leaving the tab while that read is on its way disposes the view and aborts the read, and
-  // its late answer draws nothing.
+  // Leaving the tab while that read is on its way disposes the view; the read goes on for
+  // the document's keep of the guide's answers (guide-reads.js), and its late answer draws
+  // nothing.
   handle.setTab("changes");
   await settle();
-  assert.equal(reads[5].signal.aborted, true);
+  assert.equal(reads[5].signal.aborted, false);
+  assert.equal(container.querySelector(".github-pull-guided-review"), null);
+  reads[5].answer(step(revision(3), 1, pinsOf(movedTo)));
+  await settle();
   assert.equal(container.querySelector(".github-pull-guided-review"), null);
   const changes = drawings.findLast((drawing) => drawing.render)?.render;
   assert.equal(changes.summary, false, "the header draws the Diff summary, the diff none");

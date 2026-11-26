@@ -70,6 +70,7 @@
 // the command line.
 
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
+import { GUIDE_DOCUMENT_HOLD_MS, guideAsks, guideReads } from "./guide-reads.js";
 import {
   actionText,
   actorSentence,
@@ -89,6 +90,7 @@ import {
   manifestFiles,
   noFiles,
   numberHeaderControls,
+  PREFETCH_IDLE_TIMEOUT_MS,
   pageHeaderParts,
   paintSizeLine,
   pullAge,
@@ -2250,6 +2252,20 @@ export function mountStackPage(container, ctx, mb) {
    *   guide's view, which the caller tells the guide's revision, or null when the body moved on.
    */
   async function paintGuided(comparison, owns) {
+    /** @type {import("./guided-review.js").GuideSubject} */
+    const subject = {
+      kind: "stack",
+      number,
+      at: { left: comparison.left, right: comparison.right, key: comparison.key },
+    };
+    // The guide's first step is asked for now, beside the module's import, rather than
+    // after it; the guide reads the same request (guide-reads.js). A stack's guide is shown
+    // with no head moved past its record (`show`'s *moved*), since the stack's comparison
+    // says what moved, so it is read ahead the same way.
+    const readAt = guideReadAt();
+    if (readAt !== null) {
+      guideReads.prefetch(guideAsks(subject), 1, readAt, false);
+    }
     const host = h(
       "section",
       { class: "github-pull-guided-review", "aria-label": "Guided Review" },
@@ -2271,94 +2287,149 @@ export function mountStackPage(container, ctx, mb) {
       .then(() => window.MetabrowserInertHtml ?? null)
       .catch(() => null);
     const prose = inertReady;
-    const view = mountGuidedReview(
-      host,
-      null,
-      {
-        kind: "stack",
-        number,
-        at: { left: comparison.left, right: comparison.right, key: comparison.key },
-      },
-      {
-        open: (path) => open({ number, tab: "changes", file: path, stack: true }),
-        openPull: (target, path) =>
-          open(
-            path === null
-              ? { number: target, tab: "" }
-              : { number: target, tab: "files", file: path },
+    const view = mountGuidedReview(host, null, subject, {
+      open: (path) => open({ number, tab: "changes", file: path, stack: true }),
+      openPull: (target, path) =>
+        open(
+          path === null
+            ? { number: target, tab: "" }
+            : { number: target, tab: "files", file: path },
+        ),
+      // A pull request's page's age, in its freshness ink.
+      age: (iso) => pullAge(mb, iso),
+      shortCommit: (sha) => mb.shortCommit(sha),
+      // A cited pull request's title and author, as a stack menu's member draws them, and
+      // the Layers glyph that names a stack other than the guide's.
+      titleNodes: mb.titleNodes,
+      stackGlyph: () => (layers === null ? null : document.importNode(layers, true)),
+      identity: (login, avatar) =>
+        authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+          placeholder: false,
+        }),
+      loadStyles: (assets) =>
+        Promise.all([
+          mb.loadKpressAssets(
+            /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
           ),
-        // A pull request's page's age, in its freshness ink.
-        age: (iso) => pullAge(mb, iso),
-        shortCommit: (sha) => mb.shortCommit(sha),
-        // A cited pull request's title and author, as a stack menu's member draws them, and
-        // the Layers glyph that names a stack other than the guide's.
-        titleNodes: mb.titleNodes,
-        stackGlyph: () => (layers === null ? null : document.importNode(layers, true)),
-        identity: (login, avatar) =>
-          authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
-            placeholder: false,
-          }),
-        loadStyles: (assets) =>
-          Promise.all([
-            mb.loadKpressAssets(
-              /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
-            ),
-            mb.ensureKindAssets("diff"),
-          ]),
-        loadDrawPatch: async () => {
-          const diff = await mb.plugins.load("diff");
-          return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
-        },
-        loadDrawDocument: async () => {
-          const diff = await mb.plugins.load("diff");
-          /**
-           * @param {{merge_base: string | null, head: string, route?: string,
-           *   image_route?: string, rendered_route?: string}} pins
-           */
-          const at = (pins) =>
-            citedPullComparison(pins) ??
-            (comparison.left === pins.merge_base && comparison.right === pins.head
-              ? diffComparison(comparison)
-              : null);
-          return {
-            draws: (pins) => at(pins) !== null,
-            mount(body, path, format, pins) {
-              const shown = at(pins);
-              if (shown === null) {
-                return { settled: Promise.resolve(false), dispose() {} };
-              }
-              return diff.mountRenderedFile(body, shown, path, {
-                ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
-                markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
-              });
-            },
-          };
-        },
-        loadDrawProse: async () => {
-          const inert = await prose;
-          if (inert === null) {
-            throw new Error("the inert HTML allowlist did not load");
-          }
-          // A note's links were made absolute against the member that carries the guide,
-          // whose page the step names; an outside link is marked as a description's is.
-          return (html, base) => {
-            const prose = inert.kpressProse(
-              inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
-              document,
-            );
-            for (const anchor of prose.querySelectorAll("a[href]")) {
-              mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
-            }
-            return prose;
-          };
-        },
-        refusalNote: textRefusalNote,
-        // The comparison drawn has moved, and may be gone: the stack is read now, so the
-        // page draws its own comparison in its place or offers it (`answerAction`).
-        moved: () => void controller.start(),
+          mb.ensureKindAssets("diff"),
+        ]),
+      loadDrawPatch: async () => {
+        const diff = await mb.plugins.load("diff");
+        return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
       },
-    );
+      loadDrawDocument: async () => {
+        const diff = await mb.plugins.load("diff");
+        /**
+         * @param {{merge_base: string | null, head: string, route?: string,
+         *   image_route?: string, rendered_route?: string}} pins
+         */
+        const at = (pins) =>
+          citedPullComparison(pins) ??
+          (comparison.left === pins.merge_base && comparison.right === pins.head
+            ? diffComparison(comparison)
+            : null);
+        return {
+          draws: (pins) => at(pins) !== null,
+          mount(body, path, format, pins) {
+            const shown = at(pins);
+            if (shown === null) {
+              return { settled: Promise.resolve(false), dispose() {} };
+            }
+            return diff.mountRenderedFile(body, shown, path, {
+              ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
+              // Rendered waits with Source hidden for as long as the rendered route can
+              // take, so the step never shows Source first in its place.
+              markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
+            });
+          },
+        };
+      },
+      loadDrawProse: async () => {
+        const inert = await prose;
+        if (inert === null) {
+          throw new Error("the inert HTML allowlist did not load");
+        }
+        // A note's links were made absolute against the member that carries the guide,
+        // whose page the step names; an outside link is marked as a description's is.
+        return (html, base) => {
+          const prose = inert.kpressProse(
+            inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
+            document,
+          );
+          for (const anchor of prose.querySelectorAll("a[href]")) {
+            mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
+          }
+          return prose;
+        };
+      },
+      refusalNote: textRefusalNote,
+      // The comparison drawn has moved, and may be gone: the stack is read now, so the
+      // page draws its own comparison in its place or offers it (`answerAction`).
+      moved: () => void controller.start(),
+      // A step's neighbors are read when the page is idle, after what it shows.
+      ahead: (run) => mb.whenIdle(run, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+    });
     return view;
+  }
+
+  /**
+   * The revision of the guide that Guided Review reads at the comparison drawn, or null when
+   * it reads none there: once the stack has moved past that comparison (`drawnCurrent`), only
+   * the guide read there before (`behind` in guided-review.js, as `paintBody` tells it).
+   *
+   * @returns {string | null}
+   */
+  function guideReadAt() {
+    if (guide === null) {
+      return null;
+    }
+    if (drawnCurrent(shown, envelope) !== false) {
+      return guide.revision;
+    }
+    return guideRead === null || guideRead === guide.revision ? guide.revision : null;
+  }
+
+  /** The comparison and guide revision read ahead, so each is read once (`readGuideAhead`). */
+  let guideAhead = "";
+  /** @type {(() => void) | null} */
+  let cancelGuideAhead = null;
+
+  /**
+   * Read the guide ahead of the reader: while Docs or Changes shows a comparison and the
+   * stack has a guide, its module and its first step at that comparison, when the page is
+   * idle, so Guided Review draws whole the moment it is opened (guide-reads.js has the cost).
+   * Guided Review's own tab reads its first step as it starts to import the module
+   * (`paintGuided`).
+   */
+  function readGuideAhead() {
+    const drawn = shown.drawn;
+    const revision = drawn === null ? null : guideReadAt();
+    if (tab === "guided" || drawn === null || revision === null) {
+      return;
+    }
+    const key = JSON.stringify([drawn.key, revision]);
+    if (guideAhead === key) {
+      return;
+    }
+    guideAhead = key;
+    cancelGuideAhead?.();
+    /** @type {import("./guided-review.js").GuideSubject} */
+    const subject = {
+      kind: "stack",
+      number,
+      at: { left: drawn.left, right: drawn.right, key: drawn.key },
+    };
+    cancelGuideAhead = mb.whenIdle(
+      () => {
+        cancelGuideAhead = null;
+        if (listening.signal.aborted) {
+          return;
+        }
+        guideReads.prefetch(guideAsks(subject), 1, revision, false);
+        void import("./guided-review.js").catch(() => {});
+      },
+      { timeout: PREFETCH_IDLE_TIMEOUT_MS },
+    );
   }
 
   /**
@@ -2482,6 +2553,7 @@ export function mountStackPage(container, ctx, mb) {
     shown = plan.body;
     const action = plan.action;
     body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));
+    readGuideAhead();
     if (shown.drawn !== null) {
       void showSummary(shown.drawn);
     }
@@ -2673,6 +2745,8 @@ export function mountStackPage(container, ctx, mb) {
 
   function stop() {
     listening.abort();
+    cancelGuideAhead?.();
+    cancelGuideAhead = null;
     controller.dispose();
     stacks.dispose();
   }

@@ -1165,6 +1165,26 @@ A document the view could not draw keeps the guide’s bar for it, with its name
 Open full diff, above the view’s one-sentence notice.
 Each document is in the step’s list of drawn views, so a step change, or the page
 ending, disposes it and aborts its read.
+
+The page shows a step whole (`compose` and `present` in `guided-review.js`): it draws
+the step out of sight, beside the one shown, and replaces that one in a single change
+once the step’s answer, the text’s stylesheets, its drawers, each document’s first
+screen (`settled` of `mountRenderedFile`, held for its rendered layer for
+`GUIDE_DOCUMENT_HOLD_MS`), and on the overview the description’s Markdown are in hand,
+the last waited for at most `GUIDE_INTRODUCTION_HOLD_MS`. Its reads go through the
+document’s keep, `guide-reads.js`: one answer per step, record revision, and whether
+GitHub reported a head past that record when it was read (`show`’s *moved*, since the
+server then answers the steps as out of date with the same revision), a read in flight
+shared by whoever asks for it the same way, never kept when it holds what a later read
+answers otherwise (`retryable`: a note a busy renderer refused, or a reference
+`not_cached`, `comparison_unavailable`, or `diff_unavailable`), and let go oldest first
+past `GUIDE_KEPT_CHARS`. A pull request’s page reads the first step ahead, when it is
+idle on another tab or beside the module’s import on Guided Review’s own, a stack’s page
+at the comparison it draws, and the guide reads the steps next to the one shown when the
+page is idle (`createGuideNavigation`’s `prefetch` and `peek`), so a step one move away,
+or one read before, shows in the same task as the press.
+A step’s documents are not read ahead: they are drawn as it is composed, and the arrows’
+delayed mark shows while they are (mb-ukmm).
 A step can also cite past its pull request, with the format’s other
 [reference kinds](arch-collection-format.md#the-record), each answered with its `kind`
 and every field, null where its kind has none (`_references` in `guided_review.py`), and

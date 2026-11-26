@@ -2012,6 +2012,31 @@
 .github-pull-guided-review [hidden] {
   display: none;
 }
+/* A step composed out of sight until what its layout depends on is in (`present` in
+   guided-review.js): laid out in the guide's own column, over the step shown, so its
+   documents draw at the width they show at and find themselves on screen, and painting
+   nothing, so nothing shown moves until it takes the shown step's place. */
+.github-pull-guided-review {
+  position: relative;
+}
+.github-pull-guided-review > .github-pull-guide-incoming {
+  position: absolute;
+  inset: 0 0 auto;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* The spinner that says a step is on its way sits before the arrows, out of flow, so the
+   step list's head moves nothing when it shows or goes. */
+.github-pull-guide-arrows {
+  position: relative;
+}
+.github-pull-guide-waiting {
+  position: absolute;
+  inset-inline-end: calc(100% + 0.5rem);
+  top: 50%;
+  translate: 0 -50%;
+  padding: 0;
+}
 
 /* KPress sets the guide's headings, paragraphs, and the space between them. A note is
    Markdown, rendered as a description is, so its blocks are set as a description's. A note

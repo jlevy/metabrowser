@@ -58,9 +58,10 @@ page’s glue between them.
 - `taken`: the reader takes the new comparison, and the guide is mounted again, its
   earlier views disposed, and read at the comparison now drawn.
 - `left`: leaving the tab for Changes while a read is on its way disposes the view,
-  aborts the read, and draws Changes as a pull request’s page draws its own, with no
-  summary of its own; the header’s Diff summary is drawn once for each comparison the
-  page drew.
+  whose late answer draws nothing, while the read goes on for the document’s keep of the
+  guide’s answers (`guide-reads.js`), and draws Changes as a pull request’s page draws
+  its own, with no summary of its own; the header’s Diff summary is drawn once for each
+  comparison the page drew.
 - `failed`: Docs and Changes that could not load.
   Each says so in a pull request’s error notice, “Docs could not load.”
   or “Changes could not load.”, with Retry, whether the diff failed to draw or drew and
@@ -223,7 +224,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
   },
   "left": {
     "tab": "Changes",
-    "read_aborted": true,
+    "read_aborted": false,
     "summaries_drawn": 2,
     "diffs_drawn": 2,
     "changes_drawing": {
