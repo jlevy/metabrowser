@@ -1200,10 +1200,12 @@ export function memberLines(envelope, known, listed) {
  * (docs/design-system.md, "The Stack Page"): a badge for each state some member is in, in
  * its state's ink, in the order a stack's members run from its top (`STACK_STATE_ORDER`),
  * "5 Pulls Draft", "2 Pulls Open", and none for a state no member is in, nor while the
- * answer is on its way.
+ * answer is on its way. A badge's `words` are its count, its noun, and its state's word, and
+ * its `label` is those said together, so the badge drawn from the words (`tallyBadge`) and
+ * its name never differ.
  *
  * @param {StackEnvelope | null} envelope
- * @returns {Array<{state: import("./pull-state.js").PullState, label: string}>}
+ * @returns {Array<{state: import("./pull-state.js").PullState, words: [string, string, string], label: string}>}
  */
 export function stateTally(envelope) {
   if (envelope === null) {
@@ -1211,15 +1213,52 @@ export function stateTally(envelope) {
   }
   return STACK_STATE_ORDER.flatMap((state) => {
     const count = envelope.states[state];
-    return count === 0
-      ? []
-      : [
-          {
-            state,
-            label: `${count} ${count === 1 ? "Pull" : "Pulls"} ${PULL_STATES[state].label}`,
-          },
-        ];
+    if (count === 0) {
+      return [];
+    }
+    /** @type {[string, string, string]} */
+    const words = [String(count), count === 1 ? "Pull" : "Pulls", PULL_STATES[state].label];
+    return [{ state, words, label: words.join(" ") }];
   });
+}
+
+/**
+ * One badge of the tally (`stateTally`), a state's badge (`stateBadge`) whose words are
+ * apart: the noun is a part of its own, which a row too narrow for a tally of every state
+ * leaves out, "12 Merged", so the four badges still differ by their words and not by ink
+ * alone (github/styles.css, `.github-pull-stack-tally-noun`). Its tooltip is its whole
+ * label, which the shell shows only while the badge is cut short (docs/design-system.md,
+ * "Tooltips Add Information").
+ *
+ * @param {ReturnType<typeof stateTally>[number]} badge
+ */
+export function tallyBadge({ state, words: [count, noun, word], label }) {
+  const badge = stateBadge(state, label);
+  badge.replaceChildren(
+    `${count} `,
+    h("span", { class: "github-pull-stack-tally-noun" }, [`${noun} `]),
+    word,
+  );
+  badge.dataset.tipText = label;
+  return badge;
+}
+
+/**
+ * One actor of the stack's sentence: the pull request page's (`authorLabel`), its name its
+ * own tooltip, which the shell shows only while the name is cut short (docs/design-system.md,
+ * "Tooltips Add Information"). A sentence of several names cuts each to its floor in a
+ * narrow pane, an avatar and a letter or two (github/styles.css, `.github-pull-identity`).
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {StackPerson} actor
+ */
+export function sentenceActor(mb, actor) {
+  const identity = authorLabel(mb, actor.login, actor.avatar, "", { loading: "eager" });
+  const name = identity.querySelector(".github-pull-author");
+  if (name instanceof HTMLElement) {
+    name.dataset.tipText = actor.login;
+  }
+  return identity;
 }
 
 /**
@@ -1754,7 +1793,7 @@ export function mountStackPage(container, ctx, mb) {
   }
 
   /**
-   * The row of ages: the tally's badges (`stateBadge`), then when a member was last opened
+   * The row of ages: the tally's badges (`tallyBadge`), then when a member was last opened
    * and last updated, each in its freshness ink (`pullAge`), held a line tall while the
    * answer is on its way. Kept while the same, and their ages told again as time passes.
    *
@@ -1767,7 +1806,7 @@ export function mountStackPage(container, ctx, mb) {
       return;
     }
     openedKey = key;
-    tallySlot.replaceChildren(...model.tally.map(({ state, label }) => stateBadge(state, label)));
+    tallySlot.replaceChildren(...model.tally.map(tallyBadge));
     const opened = model.ages?.opened ?? null;
     const updated = model.ages?.updated ?? null;
     /** @type {Array<Node | string>} */
@@ -1806,9 +1845,7 @@ export function mountStackPage(container, ctx, mb) {
               sentence.actors,
               (actor) => {
                 const id = JSON.stringify([actor.login, actor.avatar]);
-                const node =
-                  actorNodes.get(id) ??
-                  authorLabel(mb, actor.login, actor.avatar, "", { loading: "eager" });
+                const node = actorNodes.get(id) ?? sentenceActor(mb, actor);
                 kept.set(id, node);
                 return node;
               },

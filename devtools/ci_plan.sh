@@ -17,10 +17,12 @@
 #                   request while main is red, which get main's whole matrix
 #   pythons         every tier's interpreters as a JSON list: PR_CHROME_PYTHON alone on
 #                   the pull-request path, else PYTHONS
-#   chrome          whole, fast, or none: the whole Chrome tier on the main path; on the
-#                   pull-request path the tier without its slow tests when the change
-#                   touches a browser path (BROWSER_PATHS), else no Chrome job at all
-#   chrome-target   the make target that runs it: test-chrome or test-chrome-fast
+#   chrome          whole or none: the whole Chrome tier (make test-chrome) on the main
+#                   path, and on the pull-request path when the change touches a browser
+#                   path (BROWSER_PATHS); else no Chrome job at all. There is no partial
+#                   tier: until 2026-11-25 a pull request left out the tests measured at
+#                   20 s or more, and three that week merged green and turned main red
+#                   on one of them (#835, #855, #858; bead mb-593d)
 #   unit-shards, goldens-shards, chrome-shards, admitted-git-shards
 #                   each tier's parts as a JSON list of I/N, every I from 1 to N
 #   admitted-gits   the Git releases admitted-git builds: PR_ADMITTED_GIT alone on the
@@ -70,14 +72,22 @@ RUNS_PER_PAGE=30
 #             of the goldens (63 s at four at a time) and of the serial tier, with one
 #             collection between them. In two, the slower interpreters' parts took 3.9
 #             minutes of the job's 5 on main (run 45066732637).
-#   chrome    4 on both paths: 148 to 160 s without the slow tests, 92 s of them tests;
-#             main's whole tier is 193 s of tests a part.
+#   chrome    4 on main and 6 on a pull request, which runs the whole tier as main
+#             does. Its 84 tests took 1065 s, each test's median over the interpreters
+#             of main's runs 45752768224 and 45751344037. Dealt by the committed weights
+#             that is 244 to 297 s of tests a part in 4, 197 to 234 in 5, 155 to 198 in
+#             6, and 117 to 174 in 7. Until 2026-11-25 a pull request ran 4 parts
+#             without the 14 tests measured at 20 s or more (451 s of the 1065): 131 to
+#             180 s of tests a part, in jobs of 181 to 255 s (runs 45752121797 and
+#             45747488810). So 6 parts add 18 s to the longest part and two jobs to the
+#             run; 7 would add none and a third job, about a minute of setup each. One
+#             test takes 94 s, the floor under any count.
 #   admitted-git  2 on the one release: 146 to 163 s. Its 572 s of tests on four workers
 #             include tests/test_github_pulls.py at 108 s on its worker, so a third part
 #             would not shorten the longest.
 UNIT_SHARDS_MAIN=2 UNIT_SHARDS_PR=4
 GOLDENS_SHARDS_MAIN=3 GOLDENS_SHARDS_PR=3
-CHROME_SHARDS_MAIN=4 CHROME_SHARDS_PR=4
+CHROME_SHARDS_MAIN=4 CHROME_SHARDS_PR=6
 ADMITTED_GIT_SHARDS_MAIN=1 ADMITTED_GIT_SHARDS_PR=2
 
 # Prints the parts 1/N through N/N as a JSON list.
@@ -90,7 +100,10 @@ shards() {
 # The owner's direction (the fast CI plan, 2026-11-22): a change to the CLI or the
 # backend alone does not pay for Chrome on its pull request. A backend change can still
 # break a Chrome test, since each drives a real server; every push to main runs the whole
-# tier on every interpreter, and that is the net. Each entry is a shell pattern, in which
+# tier on every interpreter, and that is the net. A change that does touch one runs
+# every Chrome test, since nothing narrower is safe: #858 renumbered keys in the shell's
+# scripts and broke a test of the Files tab that pressed the old one. Each entry is a
+# shell pattern, in which
 # `*` also matches `/`, then a tab, then why it is here.
 BROWSER_PATHS=(
   $'src/metabrowser/static/*\tthe shell: the scripts, styles, and vendored libraries the browser loads'
@@ -112,7 +125,7 @@ BROWSER_PATHS=(
   $'.github/workflows/nightly.yml\tthe soak that repeats the tier'
   $'Makefile\tthe targets that run the tier'
   $'devtools/ci_*\tthis decision and the verdict on it'
-  $'devtools/shard_weights*\twhich Chrome tests are slow, and how the tier is dealt'
+  $'devtools/shard_weights*\tthe measured seconds the tier is dealt into parts by'
   $'tests/*\ttest support the Chrome tests share: fixtures, helpers, the DOM harness, and conftest'
 )
 
@@ -254,7 +267,7 @@ fi
 chrome_note=
 if [ "$EVENT" = pull_request ] && [ "$main_state" != red ]; then
   # The short path: one interpreter, the lowest admitted Git, more and shorter parts,
-  # and of the Chrome tier only what the change can reach, without its slow tests.
+  # and the Chrome tier, all of it, only when the change touches a browser path.
   path=pull-request
   pythons=$(jq -cn --arg python "$PR_CHROME_PYTHON" '[$python]')
   admitted_gits=$(jq -cn --arg git "$PR_ADMITTED_GIT" '[$git]')
@@ -262,14 +275,14 @@ if [ "$EVENT" = pull_request ] && [ "$main_state" != red ]; then
   goldens_shards=$(shards "$GOLDENS_SHARDS_PR")
   chrome_shards=$(shards "$CHROME_SHARDS_PR")
   admitted_git_shards=$(shards "$ADMITTED_GIT_SHARDS_PR")
-  chrome=fast chrome_target=test-chrome-fast
+  chrome=whole
   # What the pull request changes: the merge commit this run tests against its first
   # parent, the base branch. Anything that keeps that from being read runs Chrome.
   touched=() count=0
   if ! git rev-parse --quiet --verify 'HEAD^2' >/dev/null; then
-    chrome_note="without the slow tests: the commit this run tests is not a merge commit, so its change is not read"
+    chrome_note="the commit this run tests is not a merge commit, so its change is not read"
   elif ! changed=$(git -c core.quotePath=true diff --name-only 'HEAD^1' HEAD); then
-    chrome_note="without the slow tests: the change could not be read"
+    chrome_note="the change could not be read"
   else
     while IFS= read -r changed_path; do
       [ -n "$changed_path" ] || continue
@@ -286,7 +299,7 @@ if [ "$EVENT" = pull_request ] && [ "$main_state" != red ]; then
       chrome_note="no changed path is a browser path (BROWSER_PATHS in devtools/ci_plan.sh), so no Chrome job runs; every push to main runs the whole tier"
     else
       printf -v chrome_note '%s; ' "${touched[@]}"
-      chrome_note="without the slow tests, for $count changed browser path(s): ${chrome_note%; }"
+      chrome_note="for $count changed browser path(s): ${chrome_note%; }"
       if [ "$count" -gt "$NAMED_PATHS" ]; then
         chrome_note+="; and $((count - NAMED_PATHS)) more"
       fi
@@ -301,8 +314,8 @@ else
   goldens_shards=$(shards "$GOLDENS_SHARDS_MAIN")
   chrome_shards=$(shards "$CHROME_SHARDS_MAIN")
   admitted_git_shards=$(shards "$ADMITTED_GIT_SHARDS_MAIN")
-  chrome=whole chrome_target=test-chrome
-  chrome_note="the whole tier"
+  chrome=whole
+  chrome_note="the main path"
 fi
 
 integration=none tested_tree= merged_tree= conflicts=
@@ -342,7 +355,6 @@ fi
   echo "path=$path"
   echo "pythons=$pythons"
   echo "chrome=$chrome"
-  echo "chrome-target=$chrome_target"
   echo "unit-shards=$unit_shards"
   echo "goldens-shards=$goldens_shards"
   echo "chrome-shards=$chrome_shards"
@@ -382,7 +394,7 @@ fi
   if [ "$chrome" = none ]; then
     echo "| Chrome tier | none: $chrome_note |"
   else
-    echo "| Chrome tier | $chrome ($chrome_target): $chrome_note, in $chrome_shards on $pythons |"
+    echo "| Chrome tier | whole (make test-chrome), slow tests included: $chrome_note, in $chrome_shards on $pythons |"
   fi
   echo "| admitted-git | $admitted_gits in $admitted_git_shards |"
   echo "| stack-integration | $integration: $integration_note |"

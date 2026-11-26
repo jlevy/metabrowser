@@ -32,13 +32,11 @@ from tests.suite_tiers import (
     PARALLEL_TIER,
     SERIAL_MARKER,
     SERIAL_TIER,
-    SLOW_TEST_S,
     TIERS,
     Shard,
     dealt,
     empty_by_selection,
     parse_shard,
-    slow,
 )
 from tests.suite_workers import encodable
 from tests.test_suite_gates import MAX_INNER_BOUND_S
@@ -133,60 +131,6 @@ def test_a_tier_is_dealt_by_the_seconds_measured_for_its_tests_and_files() -> No
     modules = [f"{name}::test_it" for name in sorted(files)]
     assert dealt(modules, Shard(2, 2), BY_FILE) == dealt(modules, Shard(2, 2), BY_FILE, files)
     assert dealt(modules, Shard(2, 2), BY_FILE) != dealt(modules, Shard(2, 2), BY_FILE, {})
-
-
-# ── --skip-slow ────────────────────────────────────────────────────────────────
-
-
-def test_a_test_is_slow_only_by_its_measured_seconds() -> None:
-    seconds = {"t::at": SLOW_TEST_S, "t::over": SLOW_TEST_S + 70, "t::under": SLOW_TEST_S - 0.01}
-
-    # A test with no measurement yet is not slow, so a new test runs on its pull request.
-    assert slow(["t::at", "t::over", "t::under", "t::new"], seconds) == [True, True, False, False]
-
-
-def test_the_committed_weights_leave_a_pull_request_most_chrome_tests_and_under_half_the_time() -> (
-    None
-):
-    """What ``SLOW_TEST_S`` is set by: the slow tests are few and hold most of the time."""
-
-    seconds = {
-        nodeid: time for nodeid, time in load(TESTS).items() if "_chrome" in nodeid.split("::")[0]
-    }
-    slow_s = sum(
-        time for time, is_slow in zip(seconds.values(), slow(list(seconds)), strict=True) if is_slow
-    )
-    count = sum(slow(list(seconds)))
-
-    assert 0 < count < len(seconds) / 3
-    assert slow_s > sum(seconds.values()) / 2
-
-
-def test_skip_slow_drops_the_slow_tests_before_the_shards_are_dealt(
-    tmp_path: Path, tiers: dict[str, set[str]]
-) -> None:
-    """In a session: with no probe measured, ``--skip-slow`` drops none of them, and the
-    parts are dealt from what is left."""
-
-    whole = _collected(tmp_path, "-m", CHROME_TIER, "--skip-slow")
-    assert whole == tiers[CHROME_TIER]
-    parts = [
-        _collected(tmp_path, "-m", CHROME_TIER, "--skip-slow", f"--shard={index}/2")
-        for index in (1, 2)
-    ]
-    assert parts[0] | parts[1] == whole and not parts[0] & parts[1]
-
-
-def test_what_skip_slow_leaves_is_dealt_into_parts_that_cover_it() -> None:
-    """The hook's own arithmetic, on the committed weights: fast tests only, each once."""
-
-    nodeids = sorted(load(TESTS))
-    fast = [nodeid for nodeid, is_slow in zip(nodeids, slow(nodeids), strict=True) if not is_slow]
-    parts = [_kept(fast, Shard(index, 4), BY_TEST, load(TESTS)) for index in (1, 2, 3, 4)]
-
-    assert set().union(*parts) == set(fast)
-    assert sum(len(part) for part in parts) == len(fast)
-    assert all(load(TESTS)[nodeid] < SLOW_TEST_S for part in parts for nodeid in part)
 
 
 # ── The tier markers' meaning, as pure judgements ──────────────────────────────
@@ -402,10 +346,6 @@ def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_wor
     )
     assert recipe(makefile, "test-serial") == '\t$(PYTEST) $(EVERY_TEST) -m "$(SERIAL_TIER)"'
     assert recipe(makefile, "test-chrome") == '\t$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"'
-    # A pull request's Chrome tier is the same recipe without the slow tests.
-    assert recipe(makefile, "test-chrome-fast") == (
-        '\t$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)" --skip-slow'
-    )
     assert workers in recipe(makefile, "test-admitted-git")
     assert "$(if $(SHARD),--shard=$(SHARD) --shard-by=file)" in recipe(
         makefile, "test-admitted-git"
@@ -415,8 +355,7 @@ def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_wor
     order_only = re.search(r"^([\w -]+): \| install$", makefile, re.MULTILINE)
     phony = re.search(r"^\.PHONY: (.*)$", makefile, re.MULTILINE)
     assert order_only is not None and phony is not None
-    called = {*targets, "test-chrome-fast"}
-    assert called <= set(order_only.group(1).split()) & set(phony.group(1).split())
+    assert set(targets) <= set(order_only.group(1).split()) & set(phony.group(1).split())
 
 
 def test_a_report_s_strings_are_made_encodable_and_nothing_else_changes() -> None:

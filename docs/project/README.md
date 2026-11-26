@@ -72,6 +72,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Lean language support](specs/active/plan-2026-11-25-lean-language-support.md): Lean
+  as a code family with GitHub’s color and a tested port of the official Lean 4 grammar,
+  and the [Adding a Language](../adding-a-language.md) recipe and the `mb-*` skills that
+  make the next language or plugin repeatable
 - [Whole-stack review](specs/active/plan-2026-11-24-stack-review.md): a page for a
   stack’s whole change, one consolidated diff with Docs over it; collection references
   to a pull request, a file as one changes it, and a commit; a stack’s guide in a

@@ -2019,7 +2019,9 @@
    Measured in Chrome 152 with six authors (tests/dom/github-stack-page-chrome.mjs): at
    560 px the action keeps 87 of its 155 px and each name 47 to 99 px of its own; at
    375 px the six names' floors fill the 316 px row, and the action, whose commits the
-   size line under it says too, has none. */
+   size line under it says too, has none. No floor fits six names there: 316 px is under
+   53 px a name before its commas, an avatar and its gap taking 22 px of it, so a name cut
+   short says itself in its tooltip instead (`sentenceActor` in stack-page.js). */
 .github-pull-meta-details:has(> .github-pull-actor-sep)
 > :is(.github-pull-identity, .github-pull-action) {
   flex-shrink: 1;
@@ -2386,6 +2388,25 @@
   min-width: var(--github-pull-tally-badge-floor);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A tally of all four states in a row too narrow for it leaves out each badge's noun, "12
+   Merged" for "12 Pulls Merged" (`tallyBadge` in stack-page.js): cut at its end instead, every
+   badge read "12 Pull…", so the four differed by ink alone (mb-y5yy). The row
+   is the query's container, and its bound, 392 px at the row's 14 px type, is the tally's
+   own width with two-digit counts, 388 px; without the nouns the four are 274 px, whole in
+   the 316 px row of a 375 px pane (Chrome 152, tests/dom/github-stack-page-chrome.mjs,
+   2026-11-25). A tally of fewer states fits that row whole, three two-digit badges at most
+   296 px with their gaps, and keeps its nouns. The rule is set for
+   that case alone, four badges in the 375 px pane measured: a narrower pane, a tally of
+   fewer states in a row too narrow for it, and a longer count still cut a badge short at
+   its end, and a badge cut short says its whole label in its tooltip. */
+.github-pull-stack-page .github-pull-opened {
+  container: github-pull-stack-opened / inline-size;
+}
+@container github-pull-stack-opened (width < 28em) {
+  .github-pull-stack-tally:has(> .github-pull-badge:nth-child(4)) .github-pull-stack-tally-noun {
+    display: none;
+  }
 }
 /* The comma after each author but the last, against the name it follows: the sentence's
    gap is before it as well as after, and is taken back on its near side. */

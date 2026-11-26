@@ -26,7 +26,7 @@
 # devtools/check_file_type_colors.py holds these rules and reports the measurements.
 
 schema_version = 5
-registry_revision = 4
+registry_revision = 5
 max_extension_components = 2
 
 [[group]]
@@ -339,6 +339,15 @@ order = 360
 linguist = "SQL"
 linguist_color = "#e38c00"
 hue = 67.02
+
+[[family]]
+id = "lean"
+label = "Lean"
+group = "code"
+order = 370
+linguist = "Lean"
+linguist_color = "#3d6ac9"
+hue = 263.14
 
 [[family]]
 id = "markdown"
@@ -824,6 +833,15 @@ id = "sql"
 family = "sql"
 content_family = "code"
 extensions = ["sql"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "lean"
+family = "lean"
+content_family = "code"
+extensions = ["lean", "hlean"]
 filenames = []
 shebangs = []
 priority = 100

@@ -583,8 +583,15 @@ try {
       badge.append(probe);
       const ellipsis = box(probe).width;
       probe.remove();
+      const word = document.createRange();
+      word.selectNodeContents(badge.lastChild);
       return {
         text: badge.textContent,
+        shown: badge.innerText,
+        tip: badge.dataset.tipText ?? null,
+        cut: badge.scrollWidth > badge.clientWidth,
+        // Where the state's word ends, which tells the badges apart.
+        wordEnd: r(word.getBoundingClientRect().right),
         width: r(box(badge).width),
         natural: natural(badge),
         floor: r(parseFloat(style.minWidth)),
@@ -596,13 +603,25 @@ try {
     const meta = page.querySelector(".github-pull-meta-details");
     const floor = (identity) => parseFloat(getComputedStyle(identity).minWidth);
     const names = [...meta.querySelectorAll(":scope > .github-pull-identity")].map((identity) => ({
+      login: identity.querySelector(".github-pull-author").textContent,
+      tip: identity.querySelector(".github-pull-author").dataset.tipText ?? null,
+      // Whether the box that carries the tooltip is the one cut short, which is when the
+      // shell shows a tooltip that is its anchor's own text.
+      cut:
+        identity.querySelector(".github-pull-author").scrollWidth >
+        identity.querySelector(".github-pull-author").clientWidth,
       width: r(box(identity).width),
       natural: natural(identity),
       floor: r(floor(identity)),
     }));
     const action = meta.querySelector(".github-pull-action");
     return {
-      row: { left: r(box(row).left), right: r(box(row).right), width: r(box(row).width) },
+      row: {
+        left: r(box(row).left),
+        right: r(box(row).right),
+        width: r(box(row).width),
+        font: parseFloat(getComputedStyle(row).fontSize),
+      },
       tally: { right: r(box(tally).right), width: r(box(tally).width), natural: natural(tally) },
       badges,
       sentence: {
@@ -633,6 +652,16 @@ try {
         narrow.badges.every((badge) => badge.countEnd <= badge.contentEnd + 0.5),
       JSON.stringify({ row: narrow.row, tally: narrow.tally, badges: narrow.badges }),
     );
+    // What tells four badges of one noun apart is each one's state: its word is whole, or
+    // the badge is cut short and its tooltip, which the shell shows then, is its whole label.
+    check(
+      `at ${width} px each badge of the tally says its state, in its words or its tooltip`,
+      narrow.badges.every(
+        (badge) =>
+          badge.tip === badge.text && (badge.cut || badge.wordEnd <= badge.contentEnd + 0.5),
+      ),
+      JSON.stringify(narrow.badges),
+    );
     const { sentence } = narrow;
     const cutNames = sentence.names.filter((name) => name.width < name.natural - 0.5);
     const actionCut = sentence.action.width < sentence.action.natural - 0.5;
@@ -642,12 +671,30 @@ try {
         (!actionCut || cutNames.length > 0) &&
         (cutNames.length === 0 || actionCut) &&
         sentence.names.every((name) => name.width >= name.floor - 0.5) &&
+        // A name cut short is still said: its tooltip, which the shell shows then, is it whole.
+        sentence.names.every((name) => name.tip === name.login) &&
+        cutNames.every((name) => name.cut) &&
         // Both keep some of their words while a name is above its floor.
         (sentence.action.width >= 1 ||
           sentence.names.every((name) => name.width <= name.floor + 0.5)),
       JSON.stringify(sentence),
     );
   }
+  // At a phone's width the four badges leave out their noun and so are whole, each a count
+  // and its state's word; in the wider pane they have room for all three words.
+  check(
+    "at 375 px the four badges are whole without their noun, and at 560 px whole with it",
+    measured.narrow[375].badges.every(
+      (badge) =>
+        !badge.cut &&
+        badge.shown ===
+          badge.text
+            .split(" ")
+            .filter((_, at) => at !== 1)
+            .join(" "),
+    ) && measured.narrow[560].badges.every((badge) => !badge.cut && badge.shown === badge.text),
+    JSON.stringify([measured.narrow[375].badges, measured.narrow[560].badges]),
+  );
   // Where both give way short of the names' floors, the action keeps some of its words.
   check(
     "at 560 px the action keeps some of its words beside six cut names",

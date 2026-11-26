@@ -114,11 +114,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=suite_tiers.BY_TEST,
         help="deal --shard's parts by single test, or by whole file (tests/suite_tiers.py)",
     )
-    parser.addoption(
-        "--skip-slow",
-        action="store_true",
-        help="drop the tests measured at SLOW_TEST_S or more, before --shard (tests/suite_tiers.py)",
-    )
     suite_timing.add_option(parser)
 
 

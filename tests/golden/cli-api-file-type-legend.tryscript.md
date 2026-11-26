@@ -163,8 +163,8 @@ status: 200
     "schema": "file-type-breakdown-v1",
     "registry": {
       "schema_version": 5,
-      "revision": 4,
-      "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24"
+      "revision": 5,
+      "fingerprint": "526dd932ae6bbed9e2e5e4a2d134b3f4aeacf9abcb6a156a9f3b94724c16708c"
     },
     "metrics": {
       "all": {

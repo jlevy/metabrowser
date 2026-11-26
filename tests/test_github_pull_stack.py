@@ -31,6 +31,8 @@ from metabrowser.git.process import RepositoryStoreTarget
 from metabrowser.home import ensure_home, ensure_private_directory
 from metabrowser.view_routes import decode_safe_stack_route, format_stack_href
 from tests.diff_fixture_repo import git
+from tests.test_github_pulls import _Stand
+from tests.test_github_pulls import stand as stand
 
 A, B, C, D = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
 
@@ -554,3 +556,160 @@ def test_both_stack_routes_name_a_members_labels_by_one_rule() -> None:
         drawn = pull_stack._details(record, listed).labels  # pyright: ignore[reportPrivateUsage]
         assert named == tuple(wire["name"] for wire in drawn)
         assert member_identity(record, listed).labels == named
+
+
+def _one_layer(stand: _Stand) -> tuple[Any, StackPair]:
+    """A stack of one layer in the stand-in's store: pull request 7 at the commit under its
+    head, a pair no refresh has measured."""
+
+    record = stand.refresh(7)
+    assert record.comparison is not None
+    base, head = record.comparison.base, stand.origin["fork_earlier"]
+    members = ((7, base, head),)
+    return stand.published, StackPair(7, base, head, stack_digest(members), members, (True,))
+
+
+def _size_work(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The Git a size costs, as it runs: each listing of a diff and each measurement."""
+
+    from metabrowser.diff.adapters.git import GitDiffSource
+    from metabrowser.git import change_size as sizes
+
+    work: list[str] = []
+    listing = GitDiffSource.manifest
+    measuring = sizes.measure_change
+
+    async def listed(source: GitDiffSource, resolved: Any) -> Any:
+        work.append("list")
+        return await listing(source, resolved)
+
+    async def measured(location: Any, left: str | None, right: str) -> Any:
+        work.append("measure")
+        return await measuring(location, left, right)
+
+    monkeypatch.setattr(GitDiffSource, "manifest", listed)
+    monkeypatch.setattr(sizes, "measure_change", measured)
+    return work
+
+
+def _layer_paths(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, *, whole: bool = True
+) -> tuple[Any, StackPair]:
+    """``_one_layer`` with its member's paths read once, so a read lists nothing for them:
+    all of them, or none, which leaves the comparison restricted to fewer files than its
+    plain diff."""
+
+    published, pair = _one_layer(stand)
+    paths = asyncio.run(pull_stack._member_paths(published, pair))
+    assert all(named for _number, _place, named in paths)
+    if not whole:
+        paths = tuple((number, place, {}) for number, place, _named in paths)
+
+    async def member_paths(_published: Any, _pair: StackPair) -> Any:
+        return paths
+
+    monkeypatch.setattr(pull_stack, "_member_paths", member_paths)
+    return published, pair
+
+
+def _read_in_a_new_process(published: Any, pair: StackPair) -> Any:
+    """One read of the stack's comparison and its size as a process of its own makes it, as
+    every ``metab --api`` read is: a loop of its own and no size held in memory, so only
+    what is kept beside the store is left of the reads before."""
+
+    from metabrowser.git import change_size as sizes
+
+    sizes.KEPT_SIZES.clear()
+
+    async def both() -> Any:
+        await pull_stack.combined(published, pair)
+        return await pull_stack._size(published, pair)
+
+    return asyncio.run(both())
+
+
+@pytest.mark.parametrize("outcome", ["measured", "too_costly", "restricted", "over_cap"])
+def test_a_later_process_runs_no_git_for_a_size_asked_to_an_answer(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """Whatever the answer, a size, none because the measurement ran out of time, or none
+    because the comparison is not one that is measured, it is kept beside the store, so a
+    process that starts with nothing in memory neither lists nor measures (A1 of review A
+    on #867). The later process has time and room to measure, so one that asked again would
+    show it."""
+
+    from metabrowser.git import change_size as sizes
+
+    published, pair = _layer_paths(stand, monkeypatch, whole=outcome != "restricted")
+    work = _size_work(monkeypatch)
+    cap = pull_stack.MAX_SIZED_STACK_FILES
+    if outcome == "too_costly":
+        monkeypatch.setattr(sizes, "MEASURE_TIMEOUT_S", 0.0)
+    if outcome == "over_cap":
+        monkeypatch.setattr(pull_stack, "MAX_SIZED_STACK_FILES", 0)
+    first = _read_in_a_new_process(published, pair)
+    assert work == (["list", "measure"] if outcome in ("measured", "too_costly") else ["list"])
+    assert (first is not None) == (outcome == "measured")
+    monkeypatch.setattr(sizes, "MEASURE_TIMEOUT_S", 15.0)
+    monkeypatch.setattr(pull_stack, "MAX_SIZED_STACK_FILES", cap)
+    work.clear()
+    assert _read_in_a_new_process(published, pair) == first
+    assert work == []
+
+
+def test_a_comparison_kept_before_its_size_was_asked_is_asked_once(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A manifest a build that measured nothing kept has no size and no mark, so the read
+    that finds it lists its plain diff once more and measures it (B6 of review B on #861),
+    and no process after that does either."""
+
+    published, pair = _layer_paths(stand, monkeypatch)
+    work = _size_work(monkeypatch)
+    settle = pull_stack._settle_size
+
+    async def never(*_args: Any) -> None:
+        return None
+
+    monkeypatch.setattr(pull_stack, "_settle_size", never)
+    assert _read_in_a_new_process(published, pair) is None
+    assert work == ["list"]
+    monkeypatch.setattr(pull_stack, "_settle_size", settle)
+    work.clear()
+    size = _read_in_a_new_process(published, pair)
+    assert size is not None and size["diff_bytes"] > 0
+    assert work == ["list", "measure"]
+    work.clear()
+    assert _read_in_a_new_process(published, pair) == size
+    assert work == []
+
+
+@pytest.mark.parametrize("ending", ["git_failed", "cancelled"])
+def test_a_size_that_reached_no_answer_is_asked_again(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    """A measurement Git failed, or one whose read was cancelled, is no answer, so nothing
+    is marked and the next read asks again (A4 of review A on #867), listing the plain diff
+    once more since the comparison itself is kept."""
+
+    from metabrowser.git import change_size as sizes
+    from metabrowser.git.process import GitError
+
+    published, pair = _layer_paths(stand, monkeypatch)
+    work = _size_work(monkeypatch)
+    measuring = sizes.change_size
+
+    async def ended(_location: Any, _left: str, _right: str) -> Any:
+        raise GitError("no answer") if ending == "git_failed" else asyncio.CancelledError
+
+    monkeypatch.setattr(sizes, "change_size", ended)
+    if ending == "git_failed":
+        assert _read_in_a_new_process(published, pair) is None
+    else:
+        with pytest.raises(asyncio.CancelledError):
+            _read_in_a_new_process(published, pair)
+    assert work == ["list"]
+    monkeypatch.setattr(sizes, "change_size", measuring)
+    work.clear()
+    assert _read_in_a_new_process(published, pair) is not None
+    assert work == ["list", "measure"]
