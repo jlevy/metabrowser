@@ -478,17 +478,31 @@ async function main() {
           `${at}: #290 shows no line and no placeholder`,
           after["290"].text === "" && after["290"].pending === null,
         );
+        // The line never wraps (the owner's word of 2026-11-26): it is on the heading's line,
+        // whole or, where the row has no room, cut short at its box's edge with an ellipsis,
+        // as a pull request's lines are, and the chevron right after that edge.
         const shown =
           now.line !== null &&
           now.line.top >= now.heading.top - TOLERANCE_PX &&
-          now.line.bottom <= now.heading.bottom + TOLERANCE_PX;
-        const dropped = now.change.top >= now.heading.bottom - TOLERANCE_PX;
+          now.line.bottom <= now.heading.bottom + TOLERANCE_PX &&
+          now.change.top >= now.heading.top - TOLERANCE_PX &&
+          now.change.bottom <= now.heading.bottom + TOLERANCE_PX;
+        const whole = shown && now.line.right <= now.change.right + TOLERANCE_PX;
         check(
-          `${at}: #286's line is on its heading's line or out of view`,
-          shown !== dropped,
+          `${at}: #286's line is on its heading's line`,
+          shown,
           JSON.stringify({ line: now.line, change: now.change, heading: now.heading }),
         );
-        if (shown) {
+        check(
+          `${at}: the chevron is right after the line's box, on the heading's line`,
+          shown &&
+            Math.abs(now.toggle.left - now.change.right - 3.25) <= 1.5 &&
+            now.toggle.top >= now.heading.top - TOLERANCE_PX &&
+            now.toggle.bottom <= now.heading.bottom + TOLERANCE_PX &&
+            now.toggle.right <= now.heading.right + TOLERANCE_PX,
+          JSON.stringify({ toggle: now.toggle, change: now.change, heading: now.heading }),
+        );
+        if (whole) {
           if (waitedInView) {
             check(
               `${at}: the line starts where its placeholder did, after the dot's room`,
@@ -499,17 +513,6 @@ async function main() {
           check(
             `${at}: the line starts after the label`,
             now.change.left >= now.label.right - TOLERANCE_PX,
-          );
-          // The chevron after the line, on its line, inside the row: the toggle of the
-          // stack's changed files ends with it (mb-odt4).
-          check(
-            `${at}: the chevron follows the line, on the heading's line`,
-            now.toggle.left >= (now.note ?? now.line).left - TOLERANCE_PX &&
-              now.toggle.left >= now.line.right - TOLERANCE_PX &&
-              now.toggle.top >= now.heading.top - TOLERANCE_PX &&
-              now.toggle.bottom <= now.heading.bottom + TOLERANCE_PX &&
-              now.toggle.right <= now.heading.right + TOLERANCE_PX,
-            JSON.stringify({ toggle: now.toggle, line: now.line, heading: now.heading }),
           );
           check(
             `${at}: its totals are whole and in the row, and start the line`,
@@ -536,7 +539,7 @@ async function main() {
             `${inks.dot} ${inks.muted}`,
           );
         }
-        measured[at].shown = shown ? "whole" : "dropped";
+        measured[at].shown = whole ? "whole" : "cut";
         check(
           `${at}: the line counts no files by status`,
           now.statuses === 0 && after["290"].statuses === 0,
@@ -614,14 +617,14 @@ async function main() {
           part !== null &&
           part.top >= now.heading.top - TOLERANCE_PX &&
           part.bottom <= now.heading.bottom + TOLERANCE_PX &&
-          part.right <= now.heading.right + TOLERANCE_PX;
+          part.right <= now.change.right + TOLERANCE_PX;
         const shown = inView(now.line);
         const noteShown = inView(now.note);
         check(
           `${at}: the note is there exactly when the line is estimated`,
           (now.note !== null) === !exact,
         );
-        const state = !shown ? "dropped" : noteShown ? "whole, noted" : "whole";
+        const state = !shown ? "cut" : noteShown ? "whole, noted" : "whole";
         states[kind][width] = state;
         if (noteShown) {
           check(
@@ -690,7 +693,7 @@ async function main() {
           now.line !== null &&
           now.line.top >= now.heading.top - TOLERANCE_PX &&
           now.line.bottom <= now.heading.bottom + TOLERANCE_PX &&
-          now.line.right <= now.heading.right + TOLERANCE_PX;
+          now.line.right <= now.change.right + TOLERANCE_PX;
         check(
           `${at}: the heading says "0 lines", and its name "no lines changed"`,
           now.text === "·0 lines" && now.name === "Whole stack, Stack #286: no lines changed",
@@ -708,17 +711,17 @@ async function main() {
         );
         check(
           `${at}: "0 lines" shows wherever the long exact line does`,
-          states.exact[width] === "dropped" || shown,
+          states.exact[width] === "cut" || shown,
           JSON.stringify({ long: states.exact[width], shown }),
         );
-        noLines[at] = shown ? "whole" : "dropped";
+        noLines[at] = shown ? "whole" : "cut";
         lap(`${at}: ${noLines[at]}`);
       }
     }
     await browser.evaluate(`(window.__line286 = null, true)`);
     measured.long = states;
     measured.noLines = noLines;
-    const order = ["whole, noted", "whole", "dropped"];
+    const order = ["whole, noted", "whole", "cut"];
     const ranks = WIDTHS.map((width) => order.indexOf(states.estimated[width]));
     check(
       "the estimated line shows its note at the widest pane",
@@ -733,7 +736,7 @@ async function main() {
     check(
       "the estimated line goes from view at the widths where the exact one does",
       WIDTHS.every(
-        (width) => (states.exact[width] === "dropped") === (states.estimated[width] === "dropped"),
+        (width) => (states.exact[width] === "cut") === (states.estimated[width] === "cut"),
       ),
       JSON.stringify(states),
     );

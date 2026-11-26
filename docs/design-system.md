@@ -4331,7 +4331,7 @@ stylesheet’s stack page section.
 | Part | Spacing, as on a pull request’s page |
 | --- | --- |
 | Header | `.page-header` in the reading column, `.page-reading-column`, at the pane’s gutter, `--content-padding-x`, with the header’s own top and bottom padding |
-| Members | Under their toggle, the shell’s summary toggle, pulled left and padded back in as the Diff summary’s header is (`--summary-toggle-pull`), so the two toggles’ words start at one edge and their hover grounds at another; a page card, `.page-card`, as Guided Review’s step list and a step’s card are; each row the stack menu’s, at the menu’s height and size, inset by `--github-pull-text-inset` where the menu insets it by `--menu-row-inset`, so a member’s state icon starts where Guided Review’s badge and a step’s text start below it |
+| Members | Under their toggle, the shell’s summary toggle, pulled left and padded back in as the Diff summary’s header is (`--summary-toggle-pull`), so the two toggles’ words start at one edge and their hover grounds at another; on the page’s ground with no card or border, as the Diff summary’s files under its toggle are (the bordered card is the stack popover menu’s alone); each row the stack menu’s, at the menu’s height and size, inset by `--github-pull-text-inset` where the menu insets it by `--menu-row-inset` |
 | Tab bar | In the reading column, its first tab on the header’s content edge |
 | Body | `.github-pull-body`’s padding and gap; in the reading column on Guided Review, for a notice, and before anything is drawn, and across the pane on Docs and Changes, so a diff has room for Split (`bodyInColumn` in `stack-page.js`, as `diffTab` decides it in `pull-page.js`) |
 | Guided Review | `guided-review.js`’s step list and step card ([Guided Review](#guided-review)), their heads, a step’s note, and its references inset by `--github-pull-text-inset` |
@@ -4493,15 +4493,19 @@ when Refresh stood in that toolbar.
   modified), and every member’s lines summed (`pull_change_sums.py`). The server
   accumulates them from the cache (`GET stack-change`); it never asks GitHub, fetches,
   or runs Git. Totals a member’s list could not count, a binary file it listed, are
-  followed by the Diff summary’s muted “(estimated)”, which gives way first, and the
-  accessible name says “estimated” after the line’s words.
-  It is read for the stacks the list draws, one at a time when the browser is idle,
-  within the lines’ own hourly cap, apart from the comparison warms’, and read again
-  never on a timer but when what it is made of may have changed: when a member moves or
-  the members change, as the list’s rows report them, a member the list holds no row of
-  taken as unchanged; when a member’s list arrives or is refreshed, as the prefetch or a
-  row’s own read sees it; and, silently, while its answer names members not yet settled,
-  a list missing or one its row would refresh, a minute on and less often each time.
+  followed by the Diff summary’s muted “(estimated)”, and the accessible name says
+  “estimated” after the line’s words.
+  The line and its chevron are one unit that never wraps, laid out as a pull request’s
+  row’s lines and chevron are (`.github-pulls-change`): the chevron right after the
+  line, and where the row has no room the line gives way to an ellipsis, “(estimated)”
+  first, while “Whole stack” and the chevron stay (the owner’s word of 2026-11-26). It
+  is read for the stacks the list draws, one at a time when the browser is idle, within
+  the lines’ own hourly cap, apart from the comparison warms’, and read again never on a
+  timer but when what it is made of may have changed: when a member moves or the members
+  change, as the list’s rows report them, a member the list holds no row of taken as
+  unchanged; when a member’s list arrives or is refreshed, as the prefetch or a row’s
+  own read sees it; and, silently, while its answer names members not yet settled, a
+  list missing or one its row would refresh, a minute on and less often each time.
   The prefetch asks for those members’ lists after the reader’s own rows, in a few
   places kept for them, so a closed stack’s line fills in too.
   The answer is kept for the document under its stack and its revision, so a row drawn

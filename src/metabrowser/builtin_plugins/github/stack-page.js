@@ -1559,13 +1559,14 @@ export function mountStackPage(container, ctx, mb) {
   // server where this page's address goes (`/api/counterpart`), the stack's own page.
   const corner = h("span", { class: "view-header-end", "data-counterpart": "" });
   // The members, top first, each the stack menu's member row, so the stack reads here as
-  // it does under a pull request's stack button, in a page card, as every card on a pull
-  // request's page is. No member is this page, so none is marked. They are shown by a toggle
+  // it does under a pull request's stack button. They sit on the page's ground with no card,
+  // as the Diff summary's files under its toggle do; the border is the popover menu's alone
+  // (the owner's word of 2026-11-26). No member is this page, so none is marked. They are shown by a toggle
   // above the Diff summary, "**12** Pulls", drawn as the summary's own header is, its words
   // and then the chevron, and closed at first, as the summary is; the reader's choice holds
   // for the page's life and is not saved.
   const memberList = h("ol", {
-    class: "github-pull-stack-members page-card",
+    class: "github-pull-stack-members",
     "aria-label": `Pull requests in ${stackLabel(number)}`,
   });
   const membersId = `github-pull-stack-members-${number}`;
