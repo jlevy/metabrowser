@@ -7014,9 +7014,12 @@ menu, and a table’s column menus.
   losing focus, to another application or to a frame in the page, such as an HTML
   preview, whose presses never reach the page.
   Focus that goes nowhere, as when the focused row is removed, leaves it open.
-  A menu opened with focus outside it, as a press in Safari leaves focus where it was,
-  takes focus to its trigger, so a tree redrawn under it that puts focus back on its row
-  does not close it.
+  Focus that a press in the menu or on its trigger moves is that press’s own and closes
+  nothing: WebKit, the macOS app’s engine, focuses no button on a press and gives focus
+  to the nearest ancestor a press can focus instead, which for a menu in a view is the
+  preview pane. A menu opened with focus outside it, as that press leaves it, takes focus
+  to its trigger, so a tree redrawn under it that puts focus back on its row does not
+  close it.
 - **Opening one menu closes any other**, so at most one is open.
 
 A press inside a filter bar beside its open dropdown closes the dropdown once the
