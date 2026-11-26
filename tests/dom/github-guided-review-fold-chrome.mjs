@@ -275,7 +275,8 @@ try {
     const measured = `document.querySelector("[data-fold-measured]")`;
     await evaluate(`${measured}.querySelector(".diff-file-bar").scrollIntoView({block: "center"})`);
     await evaluate("document.fonts.ready.then(() => true)");
-    changesOpen = { bar: await evaluate(BAR(measured)), stands: await rest(measured) };
+    const openStands = await rest(measured);
+    changesOpen = { bar: await evaluate(BAR(measured)), stands: openStands };
     // Where each click on the page lands, so a press that folds nothing says what it hit.
     await evaluate(`(() => {
       window.__foldClicks = [];
@@ -288,7 +289,9 @@ try {
       await waitFor(LAYERS_IN);
     });
     await chrome.send("Fetch.disable");
-    changesFolded = { bar: await evaluate(BAR(measured)), stands: await rest(measured) };
+    // At rest first: a chevron measured while it turns has a turning square's larger box.
+    const foldedStands = await rest(measured);
+    changesFolded = { bar: await evaluate(BAR(measured)), stands: foldedStands };
     check(
       "Changes' file folds at a press on its bar",
       changesFolded.stands.said === "false",
@@ -326,7 +329,8 @@ try {
     process.stdout.write(`guided review fold in Chrome: pictures only\n`);
   } else {
     // 1 and 2. The bar is Changes' bar, open.
-    const guideOpen = { bar: await evaluate(BAR(GUIDE_CARD)), stands: await rest(GUIDE_CARD) };
+    const guideStands = await rest(GUIDE_CARD);
+    const guideOpen = { bar: await evaluate(BAR(GUIDE_CARD)), stands: guideStands };
     same("the card's trigger is Changes' trigger", guideOpen.bar.trigger, changesOpen.bar.trigger);
     check("the trigger leads the bar", guideOpen.bar.leads === true);
     for (const part of ["chevron", "glyph", "triggerStart", "nameY", "barHeight"]) {
