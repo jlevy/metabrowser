@@ -982,12 +982,21 @@ drives pull request navigation in a real browser.
 It absorbs `mb-mg37`, the hour of real browsing that `AUTOMATIC_CORE_PER_HOUR` and
 `SPECULATIVE_CORE_PER_HOUR` still wait on.
 
-- [ ] **A GitHub request report** (`mb-e2qx`): from the event log’s `gh` spans, for each
+- [x] **A GitHub request report** (`mb-e2qx`): from the event log’s `gh` spans, for each
   lane (visible, attended, prefetch, background) and job, the requests made, REST `core`
   spent (an answer other than `304`), GraphQL points, the share answered `304`, latency
   at the median and the 95th percentile, requests in flight over time, time queued,
   duplicate reads, cache hits, and the time to the first answer the reader sees.
   It is a route, so `metab --api` reaches it, with a golden over a synthetic event log.
+  Built as `GET gh-requests`
+  ([The Request Report](../../architecture/arch-github-pull-requests.md#the-request-report)).
+  Each `gh` span now records its HTTP status, its cost, the budget it is charged to, and
+  a fingerprint, and times gh alone; every wait for a network slot is added to the
+  waiting span’s `queued_ms`. A call records its budget (reader, automatic, speculative,
+  or the walk) and its job, not which of the four lanes it served, so the report groups
+  by those; and when a page first showed an answer is not in the log, since a page
+  reports a wait only once it is late.
+  The report lists both under `unrecorded`.
 - [ ] **A browsing benchmark** (`mb-ulvg`): one scripted session (open the Pulls tab,
   scroll, open several pull requests, switch tabs, come back) run two ways.
   Against the fake `gh` with recorded latencies it is deterministic, and its test holds

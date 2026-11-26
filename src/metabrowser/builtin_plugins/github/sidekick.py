@@ -6,7 +6,8 @@ files (``pull-files``, ``pull-files-refresh``), stacks
 (``stacks``, ``stacks-refresh``, ``stack-change``, and a stack's page, ``stack`` and
 ``stack-comparison``), background prefetch (``pulls-prefetch``),
 ``cache-clear``, which discards all of a repository's, and ``status``, the GitHub status
-check, which any served root answers. The table in
+check, and ``gh-requests``, the report of what the event log says the servers asked of
+GitHub, which any served root answers. The table in
 ``docs/project/architecture/arch-github-pull-requests.md``, checked against the manifest
 by ``tests/test_github_route_table.py``, names each one.
 
@@ -1347,6 +1348,33 @@ async def status_handler(request: Request) -> JSONResponse:
         forget_github_status()
     status = await github_status()
     return JSONResponse(status.to_json(), headers=_NO_STORE)
+
+
+async def gh_requests_handler(request: Request) -> JSONResponse:
+    """``GET /api/plugin/github/gh-requests?since=&until=&pid=&buckets=`` — see :mod:`.gh_requests`.
+
+    What the servers that share this event log asked of GitHub in a window: the calls, what
+    they cost, how fast they were answered, how many ran at once, and how long their jobs
+    queued. From the event log alone, with no gh and no Git, so any served root answers it,
+    as ``status`` does.
+    """
+
+    from datetime import UTC, datetime
+
+    from metabrowser import event_log
+    from metabrowser.builtin_plugins.github.gh_requests import parse_query, report
+    from metabrowser.event_log_route import QueryError
+
+    try:
+        query = parse_query(dict(request.query_params), now=datetime.now(UTC))
+    except QueryError as exc:
+        return JSONResponse({"error": str(exc), "code": "invalid_query"}, status_code=400)
+    try:
+        state, directory = event_log.log_directory()
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc), "code": "event_log_unconfigured"}, status_code=409)
+    answer = await asyncio.to_thread(report, query, state=state, directory=directory)
+    return JSONResponse(answer, headers=_NO_STORE)
 
 
 async def pull_files_handler(request: Request) -> Response:

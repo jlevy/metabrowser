@@ -224,6 +224,7 @@ class Span:
     __slots__ = (
         "_ended",
         "_next_open_ms",
+        "_stopped",
         "attrs",
         "client",
         "id",
@@ -256,6 +257,7 @@ class Span:
         self.started = time.perf_counter()
         self.started_wall = time.time()
         self._next_open_ms = OPEN_AFTER_MS
+        self._stopped: float | None = None
         self._ended = False
 
     @property
@@ -263,7 +265,20 @@ class Span:
         return self._ended
 
     def age_ms(self, now: float | None = None) -> float:
+        if self._stopped is not None:
+            return (self._stopped - self.started) * 1000
         return ((time.perf_counter() if now is None else now) - self.started) * 1000
+
+    def stop(self) -> None:
+        """Stop the span's clock: its duration ends here, however much later it ends.
+
+        Work that reads what the span's work returned, to add it to the span's record,
+        stops the clock first, so the reading is not counted as the work's time: a ``gh``
+        span reads GitHub's answer after gh exits (``builtin_plugins/github/gh.py``).
+        """
+
+        if self._stopped is None:
+            self._stopped = time.perf_counter()
 
     def set(self, **attrs: Any) -> None:
         """Add *attrs* to what the span's end record carries."""
@@ -304,6 +319,9 @@ class _NullSpan(Span):
         return None
 
     def note_failure(self, state: str, message: str | None = None) -> None:
+        return None
+
+    def stop(self) -> None:
         return None
 
     def end(self, outcome: Outcome = "ok", **attrs: Any) -> None:

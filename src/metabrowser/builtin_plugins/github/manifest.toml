@@ -189,6 +189,15 @@ route = "status"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:status_handler"
 methods = ["POST"]
 
+# What the servers sharing the event log asked of GitHub in a window, from its gh spans:
+# the calls by budget and job, what they cost, the share answered 304, their latency, how
+# many ran at once, and how long their jobs queued. From the event log alone: no gh and
+# no Git.
+[[data_hook]]
+route = "gh-requests"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:gh_requests_handler"
+methods = ["GET"]
+
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]

@@ -762,6 +762,7 @@ JOBS: Final[dict[str, str]] = {
     "pulls-prefetch": "reports or replaces the background lane's queue, from memory",
     "cache-clear": "removes the plugin's files for the repository",
     "status": "runs gh auth status, the GitHub status check, which reads no repository",
+    "gh-requests": "reports what the event log says was asked of GitHub, which reads no repository",
 }
 
 
