@@ -124,6 +124,7 @@ against one that did.
 | exp-101 | [Painting a Held Page’s Header at Once Brings the Title Back to the Record’s Arrival](experiments/exp-101-header-at-once-accepted.md) | H121 | `pr-warm title_after_pull, the title's first frame minus the first GET pull's response end, pair ratio candidate/control under 1/1.3 in at least 3 of 5 pairs` | accepted |
 | exp-102 | [CLI 0.13.0 Startup Under Matched HTTP Readiness](experiments/exp-102-cli-013-release-comparison.md) | H57 | `browser_first_row_ms` | rejected |
 | exp-103 | [Post-Load Navigation and Preparation Diagnostics](experiments/exp-103-post-load-diagnostics.md) | H88, H104, H106, H114, H117 | `first useful destination after startup` | diagnostic |
+| exp-104 | [Prepare the First Commit History Page During Startup](experiments/exp-104-history-startup.md) | H125 | `first Commits history HTTP read after startup` | diagnostic |
 
 ## Absolute numbers, per condition
 
