@@ -5,12 +5,15 @@ title: Refresh the post-load navigation and fetch performance campaign
 kind: epic
 status: in_progress
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/894
     at: 2026-11-26T21:19:38.723Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/898
+    at: 2026-11-26T22:21:54.202Z
 delegate: codex@spud10.local
 labels:
   - linear
@@ -27,7 +30,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:37:58.326Z
-updated_at: 2026-11-26T22:10:05.156Z
+updated_at: 2026-11-26T22:21:54.203Z
 started_at: 2026-11-26T20:38:34.641Z
 extensions:
   linear:
