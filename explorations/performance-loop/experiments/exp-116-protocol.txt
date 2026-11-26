@@ -1,0 +1,12 @@
+Exp-116 — vary gh subprocess fan-out for one selected Conversation
+Registered 2026-11-26 before any samples.
+
+Use the three independent first-page REST reads observed in the real loopback
+selected PR smoke: issue comments, pull review comments, and reviews of public
+pull request 888. Start one gh process per read and change only the maximum
+number launched at once. Use ordering 1, 3, 2, 2, 3, 1. Record batch elapsed
+time, peak live processes, same-content digests, per-read status and primary
+quota fields. Stop on forbidden, Retry-After, exhausted quota, or any refusal.
+Keep this distinct from RefreshCoordinator's job slots, the array shape checks,
+and the full selected Conversation route. This is a bounded provider diagnostic
+on a busy host, not a quota saturation or browser performance test.

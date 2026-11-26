@@ -1,0 +1,13 @@
+Exp-115 — verify upstream provider accounting through the live server
+Retrospective protocol for the 2026-11-26 smoke on build 55bb41ddc.
+
+Start an actual loopback server for the pinned public Metabrowser corpus with
+fresh cache and event-log state. Leave checkout-origin acquisition off to
+exercise the listed checkout metadata path in isolation. Ask for the exact
+public pull request 888 through the usual pull-refresh route and check the
+complete record. Read the GitHub request report scoped to that server process.
+
+Keep the report's REST and GraphQL counts, HTTP statuses, reported charges,
+latency percentiles, queue spans, and peak gh concurrency. Use these as
+observations of the reported provider calls. The server slot cap and the
+actual peak CLI process count measure different layers.

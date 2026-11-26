@@ -140,6 +140,7 @@ both without assigning a verdict to an unjudged run.
 | H131 | Prepare the shared diff renderer during browser idle after Git discovery. | Reduce asset requests after the first Commits click. Track the Files landing, useful Commits paint and layout shift separately. |
 | H132 | Fetch the selected Changes commits before the wildcard checkout-origin acquisition. | Compare identical diff and final refs. Measure time to exact comparison, time to all refs, and retained pack bytes separately. |
 | H133 | Let the wildcard fetch negotiate with the exact commits already obtained. | Keep the checked diff and all origin refs and recover the extra bytes of the extra fetch. |
+| H134 | Vary simultaneous gh processes within one selected Conversation. | Compare the same REST responses and quota charges. Retain refusals and per-process fan-out separately from the coordinator’s job slots. |
 
 Run one hypothesis per round and record results on its owning branch.
 Measure a small, exact read first.

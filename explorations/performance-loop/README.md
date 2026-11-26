@@ -104,6 +104,9 @@ Use its provider call durations, queue time, response status, duplicate calls, a
 reported budget charges together.
 Keep those separate from Git subprocess time and the browser’s useful-paint clock.
 An authenticated quota snapshot describes the account and can include other callers.
+The coordinator’s slots limit refresh jobs.
+A job can launch several provider processes, which the report counts under
+`peak_in_flight`. See [exp-115](experiments/exp-115-live-provider-report.md).
 
 [Exp-112](experiments/exp-112-selected-provider-handoff.md) tests a provider-slot
 handoff with an exact ASGI response.

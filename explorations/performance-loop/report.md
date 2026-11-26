@@ -135,6 +135,8 @@ against one that did.
 | exp-112 | [Give Selected Conversation Metadata the Next Free Provider Slot](experiments/exp-112-selected-provider-handoff.md) | H128 | `optional admissions before exact selected Conversation` | diagnostic |
 | exp-113 | [Fetch Exact Changes Commits Before the Full Origin](experiments/exp-113-origin-fetch-order.md) | H127, H132 | `first readable exact Changes comparison` | diagnostic |
 | exp-114 | [Negotiate the Broad Fetch With the Exact Commits Already Obtained](experiments/exp-114-origin-negotiation-hints.md) | H133 | `overlay bytes after exact and wildcard fetches` | diagnostic |
+| exp-115 | [Verify the GitHub Request Report Through the Live Server](experiments/exp-115-live-provider-report.md) | H128 | `provider request report on an exact selected Conversation` | diagnostic |
+| exp-116 | [Vary Process Fan-Out for the Same Conversation Reads](experiments/exp-116-conversation-process-fanout.md) | H134 | `wall time for three checked REST responses` | diagnostic |
 
 ## Absolute numbers, per condition
 
