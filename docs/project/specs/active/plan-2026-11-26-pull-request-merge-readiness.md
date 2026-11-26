@@ -5,9 +5,9 @@
 **Author:** Drafted with LLM assistance for the project owner’s review
 
 **Status:** Draft, for review.
-Nothing here is built.
+Being built as a stack of pull requests.
 Epic `mb-u16j`; Phase 1 is `mb-pcvm` and Phase 2 is `mb-ntnz`, built as one stack (see
-[Implementation Plan](#implementation-plan)).
+[Implementation Plan](#implementation-plan)); Phase 3, `mb-om2v`, follows it.
 
 ## Overview
 
@@ -61,6 +61,10 @@ github.com shows it, and how Metabrowser models and shows it today.
   tests in both themes.
 - Every new route and field has its `metab` equivalent and golden transcript, and the
   verdict derivation is tested by invariants, not by restating its table.
+- Browsing pull requests makes as much progress as quickly as GitHub allows: what is
+  visible is read first, independent reads run in parallel, throttling keeps the
+  account’s budget, and the cache answers what it can, all measured
+  ([Phase 3](#phase-3-github-request-performance)).
 
 ## Non-Goals
 
@@ -921,6 +925,47 @@ The two phases are the data, which `metab` shows, and the surfaces that draw it.
   system’s Pulls Tab section.
 - [ ] A changelog fragment.
 
+### Phase 3: GitHub Request Performance
+
+The owner asked on 2026-11-26 for a later phase that measures how browsing pull requests
+uses `gh` and the GitHub API, finds the bottlenecks, and makes sure parallelism,
+throttling, prioritization, and caching are right.
+The readiness stack adds reads of its own (the page’s status read and the Pulls tab’s
+scan), so this phase measures after it, and it lands as a stack of its own (`mb-om2v`).
+
+It builds on what is already there: every `gh` subprocess is a span in the event log
+with its arguments and HTTP status (`gh.py`); `gh_budget.py` counts what each answer
+spent and holds the ceilings and floors; the
+[update cadence plan](plan-2026-11-22-pull-request-update-cadence.md) measured what each
+job costs; and the performance loop
+([explorations/performance-loop](../../../../explorations/performance-loop/README.md))
+drives pull request navigation in a real browser.
+It absorbs `mb-mg37`, the hour of real browsing that `AUTOMATIC_CORE_PER_HOUR` and
+`SPECULATIVE_CORE_PER_HOUR` still wait on.
+
+- [ ] **A GitHub request report** (`mb-e2qx`): from the event log’s `gh` spans, for each
+  lane (visible, attended, prefetch, background) and job, the requests made, REST `core`
+  spent (an answer other than `304`), GraphQL points, the share answered `304`, latency
+  at the median and the 95th percentile, requests in flight over time, time queued,
+  duplicate reads, cache hits, and the time to the first answer the reader sees.
+  It is a route, so `metab --api` reaches it, with a golden over a synthetic event log.
+- [ ] **A browsing benchmark** (`mb-ulvg`): one scripted session (open the Pulls tab,
+  scroll, open several pull requests, switch tabs, come back) run two ways.
+  Against the fake `gh` with recorded latencies it is deterministic, and its test holds
+  invariants: visible work is read before background work, requests in flight stay
+  within their bounds, nothing is read twice in a window, a revisit is answered from the
+  cache, and the session spends under a stated bound.
+  Live, against this repository and a large public one, its numbers are recorded in the
+  performance loop under its durable storage rules, with `mb-mg37`’s hour.
+- [ ] **Tuning** (`mb-3i1s`): each change the measurements justify, measured before and
+  after with the report and the benchmark, its constant documented beside its definition
+  with the measurement.
+  Candidates to test, not conclusions: independent reads of one pull request run
+  concurrently; the lanes ordered visible, attended, prefetch, background; one GraphQL
+  query of aliased pull requests for the rows on screen; conditional requests wherever
+  GitHub answers `304`; fewer account checks per refresh (the update cadence plan found
+  two per refresh); and the cache answering a revisit without asking GitHub.
+
 ## Testing Strategy
 
 **Invariants of the derivation** (`pull_readiness.py`), over every combination of the
@@ -991,6 +1036,8 @@ The owner’s decisions of 2026-11-26:
    with Ready for review in place of Ready to merge.
 2. **Implement everything as one stack of pull requests**, in the layers under
    [Implementation Plan](#implementation-plan).
+3. **Measure and tune GitHub request performance as a later phase**,
+   [Phase 3](#phase-3-github-request-performance), tracked under the same epic.
 
 ## Open Questions
 
