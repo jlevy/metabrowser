@@ -748,6 +748,112 @@ async function mountStory() {
     holds(model, story.identity, stackIndex);
   };
 
+  // ── The session's second part, `node github-pulls-stack-groups-session.js reveal`: what a
+  // reveal unfolds, and what stays folded. It prints on its own so each transcript stays
+  // within what tryscript can match: one of 41 KB was refused as too large a regular
+  // expression, where 39 KB matched.
+  if (process.argv[2] === "reveal") {
+    const current = index("current");
+    // ── A reveal that must move the list first. #8 is closed, so Open leaves it out: an address
+    // that names it moves the list to All, and the row arrives after the address was named. It
+    // is revealed there as a row the list already held is, both levels opened over it, whether
+    // the reader hid the stack's pull requests or closed the stack (review of #862).
+    for (const [how, hide] of [
+      ["hides Stack #286's pull requests", (panel) => panel.setWholeOpen(286, false)],
+      ["closes Stack #286", (panel) => panel.setStackOpen(286, false)],
+    ]) {
+      const moved = mount({ filter: "open", list: "open_current", byState: true });
+      moved.controller.setStacks(current);
+      await moved.controller.start({ shown: true });
+      await settle();
+      hide(moved.controller);
+      await settle();
+      const before = moved.controller.snapshot();
+      moved.log.revealed.length = 0;
+      moved.controller.setCurrent(8);
+      await settle();
+      await settle();
+      const after = moved.controller.snapshot();
+      record(
+        `on Open the reader ${how}; an address that names #8, which Open leaves out, moves the list to All and reveals it there`,
+        moved,
+        current,
+        {
+          filter: `${before.filter} → ${after.filter}`,
+          closed: `${JSON.stringify(before.closedStacks)} → ${JSON.stringify(after.closedStacks)}`,
+          "pull requests hidden": `${JSON.stringify(before.closedWholes)} → ${JSON.stringify(after.closedWholes)}`,
+          revealed: moved.log.revealed.splice(0).map(rowName),
+          current: rowName(moved.marked()),
+          tabStop: rowName(moved.anchor()),
+        },
+      );
+      assert.equal(after.filter, "all");
+      assert.ok(
+        moved.model().stacks.rows.some((row) => row.kind === "pull" && row.number === 8),
+        "#8's row is drawn once the list holds it",
+      );
+      assert.equal(moved.anchor(), 8, "and takes the Tab stop");
+      moved.controller.dispose?.();
+    }
+    // ── What the reader folded stays folded until they open the item again. #7 is the open
+    // pull request; the reader hides it under its Whole stack row, or closes its stack. The tab
+    // shown again, a landing that keeps the list's place, and a filter picked all ask for the
+    // list, not the item, and unfold nothing; only an address that names the item again does
+    // (docs/design-system.md, "Navigation Reveals the Item"; final review of #862).
+    for (const [how, fold] of [
+      ["hides Stack #286's pull requests", (panel) => panel.setWholeOpen(286, false)],
+      ["closes Stack #286", (panel) => panel.setStackOpen(286, false)],
+    ]) {
+      const kept = mount({ filter: "all", byState: true });
+      kept.controller.setStacks(current);
+      await kept.controller.start({ shown: true });
+      await settle();
+      kept.controller.setCurrent(7);
+      await settle();
+      fold(kept.controller);
+      await settle();
+      // One line a state, so the transcript stays within what tryscript can match.
+      const folded = () => {
+        const { filter, closedStacks, closedWholes } = kept.controller.snapshot();
+        return `${filter} · closed ${JSON.stringify(closedStacks)} · pull requests hidden ${JSON.stringify(closedWholes)}`;
+      };
+      const asFolded = folded();
+      const survived = {};
+      kept.controller.setShown(false);
+      kept.controller.setShown(true);
+      await settle();
+      survived["the tab hidden and shown again"] = folded();
+      kept.controller.setCurrent(6, { preserveScroll: true });
+      await settle();
+      survived["a landing on #6 that keeps the list's place"] = folded();
+      kept.controller.setFilter("open");
+      await settle();
+      await settle();
+      survived["the Open filter picked"] = folded();
+      assert.equal(survived["the tab hidden and shown again"], asFolded);
+      assert.equal(survived["a landing on #6 that keeps the list's place"], asFolded);
+      assert.equal(survived["the Open filter picked"], asFolded.replace(/^all/, "open"));
+      assert.notEqual(asFolded, "all · closed [] · pull requests hidden []");
+      kept.controller.setCurrent(7);
+      await settle();
+      record(
+        `the reader ${how} over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded, and an address that names #7 again opens both levels`,
+        kept,
+        current,
+        {
+          folded: asFolded,
+          ...survived,
+          "an address that names #7 again": folded(),
+          tabStop: rowName(kept.anchor()),
+        },
+      );
+      assert.equal(folded(), "open · closed [] · pull requests hidden []");
+      kept.controller.dispose?.();
+    }
+    process.stdout.write(`${JSON.stringify({ steps, invariants: true }, null, 2)}\n`);
+    return;
+  }
+
   // ── The default: grouped as soon as the stacks are known, and flat until then.
   const story = mount();
   await story.controller.start({ shown: true });
@@ -933,104 +1039,6 @@ async function mountStory() {
   await open.controller.start({ shown: true });
   await settle();
   record("Open: #8 is closed, so Stack #286 holds 2 of its 3", open, current);
-  // ── A reveal that must move the list first. #8 is closed, so Open leaves it out: an address
-  // that names it moves the list to All, and the row arrives after the address was named. It
-  // is revealed there as a row the list already held is, both levels opened over it, whether
-  // the reader hid the stack's pull requests or closed the stack (review of #862).
-  for (const [how, hide] of [
-    ["hides Stack #286's pull requests", (panel) => panel.setWholeOpen(286, false)],
-    ["closes Stack #286", (panel) => panel.setStackOpen(286, false)],
-  ]) {
-    const moved = mount({ filter: "open", list: "open_current", byState: true });
-    moved.controller.setStacks(current);
-    await moved.controller.start({ shown: true });
-    await settle();
-    hide(moved.controller);
-    await settle();
-    const before = moved.controller.snapshot();
-    moved.log.revealed.length = 0;
-    moved.controller.setCurrent(8);
-    await settle();
-    await settle();
-    const after = moved.controller.snapshot();
-    record(
-      `on Open the reader ${how}; an address that names #8, which Open leaves out, moves the list to All and reveals it there`,
-      moved,
-      current,
-      {
-        filter: `${before.filter} → ${after.filter}`,
-        closed: `${JSON.stringify(before.closedStacks)} → ${JSON.stringify(after.closedStacks)}`,
-        "pull requests hidden": `${JSON.stringify(before.closedWholes)} → ${JSON.stringify(after.closedWholes)}`,
-        revealed: moved.log.revealed.splice(0).map(rowName),
-        current: rowName(moved.marked()),
-        tabStop: rowName(moved.anchor()),
-      },
-    );
-    assert.equal(after.filter, "all");
-    assert.ok(
-      moved.model().stacks.rows.some((row) => row.kind === "pull" && row.number === 8),
-      "#8's row is drawn once the list holds it",
-    );
-    assert.equal(moved.anchor(), 8, "and takes the Tab stop");
-    moved.controller.dispose?.();
-  }
-  // ── What the reader folded stays folded until they open the item again. #7 is the open
-  // pull request; the reader hides it under its Whole stack row, or closes its stack. The tab
-  // shown again, a landing that keeps the list's place, and a filter picked all ask for the
-  // list, not the item, and unfold nothing; only an address that names the item again does
-  // (docs/design-system.md, "Navigation Reveals the Item"; final review of #862).
-  for (const [how, fold] of [
-    ["hides Stack #286's pull requests", (panel) => panel.setWholeOpen(286, false)],
-    ["closes Stack #286", (panel) => panel.setStackOpen(286, false)],
-  ]) {
-    const kept = mount({ filter: "all", byState: true });
-    kept.controller.setStacks(current);
-    await kept.controller.start({ shown: true });
-    await settle();
-    kept.controller.setCurrent(7);
-    await settle();
-    fold(kept.controller);
-    await settle();
-    const folded = () => {
-      const { filter, closedStacks, closedWholes } = kept.controller.snapshot();
-      return { filter, closed: closedStacks, "pull requests hidden": closedWholes };
-    };
-    const asFolded = folded();
-    const survived = {};
-    kept.controller.setShown(false);
-    kept.controller.setShown(true);
-    await settle();
-    survived["the tab hidden and shown again"] = folded();
-    kept.controller.setCurrent(6, { preserveScroll: true });
-    await settle();
-    survived["a landing on #6 that keeps the list's place"] = folded();
-    kept.controller.setFilter("open");
-    await settle();
-    await settle();
-    survived["the Open filter picked"] = folded();
-    for (const [what, state] of Object.entries(survived)) {
-      assert.deepEqual(
-        [state.closed, state["pull requests hidden"]],
-        [asFolded.closed, asFolded["pull requests hidden"]],
-        `${what} unfolds nothing`,
-      );
-    }
-    assert.equal(survived["the Open filter picked"].filter, "open");
-    record(
-      `the reader ${how} over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded`,
-      kept,
-      current,
-      { folded: asFolded, ...survived },
-    );
-    kept.controller.setCurrent(7);
-    await settle();
-    record("an address that names #7 again opens both levels over it", kept, current, {
-      ...folded(),
-      tabStop: rowName(kept.anchor()),
-    });
-    assert.deepEqual([folded().closed, folded()["pull requests hidden"]], [[], []]);
-    kept.controller.dispose?.();
-  }
   const shared = index("shared");
   story.controller.setStacks(shared);
   record(

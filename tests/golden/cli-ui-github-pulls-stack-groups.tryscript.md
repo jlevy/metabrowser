@@ -545,167 +545,6 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ]
     },
     {
-      "step": "on Open the reader hides Stack #286's pull requests; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
-      "grouped": true,
-      "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    ▾ Whole stack [1/1]",
-        "        #8 3/3 [1/3]",
-        "        #7 2/3 [2/3]",
-        "        #6 1/3 [3/3]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
-      ],
-      "filter": "open → all",
-      "closed": "[] → []",
-      "pull requests hidden": "[286] → []",
-      "revealed": [
-        "#8"
-      ],
-      "current": "#8",
-      "tabStop": "#8"
-    },
-    {
-      "step": "on Open the reader closes Stack #286; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
-      "grouped": true,
-      "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    ▾ Whole stack [1/1]",
-        "        #8 3/3 [1/3]",
-        "        #7 2/3 [2/3]",
-        "        #6 1/3 [3/3]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
-      ],
-      "filter": "open → all",
-      "closed": "[286] → []",
-      "pull requests hidden": "[] → []",
-      "revealed": [
-        "#8"
-      ],
-      "current": "#8",
-      "tabStop": "#8"
-    },
-    {
-      "step": "the reader hides Stack #286's pull requests over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded",
-      "grouped": true,
-      "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
-        "    ▸ Whole stack [1/1]",
-        "#106 [2/99]",
-        "#105 [3/99]",
-        "…",
-        "#5 [99/99]"
-      ],
-      "folded": {
-        "filter": "all",
-        "closed": [],
-        "pull requests hidden": [
-          286
-        ]
-      },
-      "the tab hidden and shown again": {
-        "filter": "all",
-        "closed": [],
-        "pull requests hidden": [
-          286
-        ]
-      },
-      "a landing on #6 that keeps the list's place": {
-        "filter": "all",
-        "closed": [],
-        "pull requests hidden": [
-          286
-        ]
-      },
-      "the Open filter picked": {
-        "filter": "open",
-        "closed": [],
-        "pull requests hidden": [
-          286
-        ]
-      }
-    },
-    {
-      "step": "an address that names #7 again opens both levels over it",
-      "grouped": true,
-      "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
-        "    ▾ Whole stack [1/1]",
-        "        #7 2/3 [1/2]",
-        "        #6 1/3 [2/2]",
-        "#106 [2/99]",
-        "#105 [3/99]",
-        "…",
-        "#5 [99/99]"
-      ],
-      "filter": "open",
-      "closed": [],
-      "pull requests hidden": [],
-      "tabStop": "#7"
-    },
-    {
-      "step": "the reader closes Stack #286 over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded",
-      "grouped": true,
-      "rows": [
-        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
-        "#106 [2/99]",
-        "#105 [3/99]",
-        "…",
-        "#5 [99/99]"
-      ],
-      "folded": {
-        "filter": "all",
-        "closed": [
-          286
-        ],
-        "pull requests hidden": []
-      },
-      "the tab hidden and shown again": {
-        "filter": "all",
-        "closed": [
-          286
-        ],
-        "pull requests hidden": []
-      },
-      "a landing on #6 that keeps the list's place": {
-        "filter": "all",
-        "closed": [
-          286
-        ],
-        "pull requests hidden": []
-      },
-      "the Open filter picked": {
-        "filter": "open",
-        "closed": [
-          286
-        ],
-        "pull requests hidden": []
-      }
-    },
-    {
-      "step": "an address that names #7 again opens both levels over it",
-      "grouped": true,
-      "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
-        "    ▾ Whole stack [1/1]",
-        "        #7 2/3 [1/2]",
-        "        #6 1/3 [2/2]",
-        "#106 [2/99]",
-        "#105 [3/99]",
-        "…",
-        "#5 [99/99]"
-      ],
-      "filter": "open",
-      "closed": [],
-      "pull requests hidden": [],
-      "tabStop": "#7"
-    },
-    {
       "step": "#8 in two stacks: once, under the first listed, its badge naming the other",
       "grouped": true,
       "rows": [
@@ -1178,6 +1017,112 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       }
     ]
   },
+  "invariants": true
+}
+? 0
+```
+
+The session’s second part is what a reveal unfolds and what stays folded.
+It prints on its own because one transcript of both parts was larger than tryscript can
+match.
+An address that names #8, which Open leaves out, moves the list to All and reveals
+it there, opening both levels over it, whether the reader hid Stack #286’s pull requests
+or closed the stack.
+With #7 open and folded away, the tab hidden and shown again, a landing on #6 that keeps
+the list’s place, and the Open filter picked each leave it folded, and an address that
+names #7 again opens both levels.
+
+```console
+$ node tests/dom/github-pulls-stack-groups-session.js reveal
+{
+  "steps": [
+    {
+      "step": "on Open the reader hides Stack #286's pull requests; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
+        "    ▾ Whole stack [1/1]",
+        "        #8 3/3 [1/3]",
+        "        #7 2/3 [2/3]",
+        "        #6 1/3 [3/3]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "filter": "open → all",
+      "closed": "[] → []",
+      "pull requests hidden": "[286] → []",
+      "revealed": [
+        "#8"
+      ],
+      "current": "#8",
+      "tabStop": "#8"
+    },
+    {
+      "step": "on Open the reader closes Stack #286; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
+        "    ▾ Whole stack [1/1]",
+        "        #8 3/3 [1/3]",
+        "        #7 2/3 [2/3]",
+        "        #6 1/3 [3/3]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "filter": "open → all",
+      "closed": "[286] → []",
+      "pull requests hidden": "[] → []",
+      "revealed": [
+        "#8"
+      ],
+      "current": "#8",
+      "tabStop": "#8"
+    },
+    {
+      "step": "the reader hides Stack #286's pull requests over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded, and an address that names #7 again opens both levels",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    ▾ Whole stack [1/1]",
+        "        #7 2/3 [1/2]",
+        "        #6 1/3 [2/2]",
+        "#106 [2/99]",
+        "#105 [3/99]",
+        "…",
+        "#5 [99/99]"
+      ],
+      "folded": "all · closed [] · pull requests hidden [286]",
+      "the tab hidden and shown again": "all · closed [] · pull requests hidden [286]",
+      "a landing on #6 that keeps the list's place": "all · closed [] · pull requests hidden [286]",
+      "the Open filter picked": "open · closed [] · pull requests hidden [286]",
+      "an address that names #7 again": "open · closed [] · pull requests hidden []",
+      "tabStop": "#7"
+    },
+    {
+      "step": "the reader closes Stack #286 over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded, and an address that names #7 again opens both levels",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    ▾ Whole stack [1/1]",
+        "        #7 2/3 [1/2]",
+        "        #6 1/3 [2/2]",
+        "#106 [2/99]",
+        "#105 [3/99]",
+        "…",
+        "#5 [99/99]"
+      ],
+      "folded": "all · closed [286] · pull requests hidden []",
+      "the tab hidden and shown again": "all · closed [286] · pull requests hidden []",
+      "a landing on #6 that keeps the list's place": "all · closed [286] · pull requests hidden []",
+      "the Open filter picked": "open · closed [286] · pull requests hidden []",
+      "an address that names #7 again": "open · closed [] · pull requests hidden []",
+      "tabStop": "#7"
+    }
+  ],
   "invariants": true
 }
 ? 0
