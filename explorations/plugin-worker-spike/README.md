@@ -58,8 +58,8 @@ file.
   a deadline takes with it and leaves behind, and a forked child writing to the reply
   pipe.
 - `transport`: what a response costs by its size.
-- `confined` (Linux): the same worker behind `confine_linux.py`, and what a hook can
-  then reach.
+- `confined`: the same worker behind this platform’s confinement prefix, chosen by
+  `confine_backend.py`, and what a hook can then reach.
 - `identity`: whether a Git common directory’s device and inode identify a clone, three
   ways a folder can claim to be a trusted clone’s worktree, and a worktree moved by
   hand.
@@ -89,8 +89,28 @@ prefix. One of the four leaves `io_uring_setup` open, to show the hole a filter 
 `socket` alone has: a socket made by `IORING_OP_SOCKET` reaches a Unix socket outside
 every grant. A second review of this design found that hole in the launcher’s first
 version, and several of the probes here are its checks, rewritten to run on the
-stand-in. Nothing here has run on macOS, where the package’s own confinement is
-`src/metabrowser/builtin_plugins/pdf/preview_isolation.py`.
+stand-in.
+
+## Confinement on macOS
+
+`confine_macos.py` renders the same policy as a deny-by-default `sandbox-exec` profile,
+starting from the PDF render child’s grants in
+`src/metabrowser/builtin_plugins/pdf/preview_isolation.py`; the prefix is
+`sandbox-exec -p PROFILE`. `confine_backend.py` picks it or the Linux launcher, so
+`probes.py` runs on both.
+
+`macos_probe.py` is the spike `mb-gmut` asks for, and runs only on a Mac.
+Its `learn` probe starts the stand-in’s worker under the default profile, reads the
+kernel’s report of each refusal from the unified log, grants it, and repeats until the
+worker serves its hooks; the grants it had to add are the finding.
+It also covers what only macOS has: the internet granted alone, the Mach services
+`getpwuid` and the resolver use, a descriptor handed over by a same-number `dup2`,
+`sandbox-exec` inside another sandbox, the privacy controls, and the prefix’s cost.
+With `--real`, it does the same for the downstream plugins.
+
+None of it has run on macOS yet.
+Its plumbing ran on Linux with the Linux launcher standing in for `sandbox-exec` and no
+kernel reports, which shows the harness works and nothing about macOS.
 
 ## Results
 
@@ -129,7 +149,19 @@ uv --config-file uv.toml run --frozen python -I -B \
 `host.py` takes the same arguments with an output file in place of the folder.
 `-B` keeps the worker from writing bytecode into the plugin environment, so a run leaves
 that environment unchanged.
-Nothing here runs in CI.
+
+On a Mac, from a checkout after `make install`:
+
+```shell
+uv --config-file uv.toml run --frozen python -I -B \
+  explorations/plugin-worker-spike/macos_probe.py tmp/macos-run > tmp/macos.json
+```
+
+Add `--privacy ~/Documents/SOME_FILE` to check the privacy controls (watch for a prompt
+during the confined read), and
+`--real PLUGIN_ENV/bin/python ROOT RELATIVE/SPEC.md FIXTURE_DIR` for the downstream
+plugins. Reading the unified log may ask for an administrator’s password; `learn` finds
+nothing without it. Nothing here runs in CI.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

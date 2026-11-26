@@ -7,13 +7,13 @@ answers four questions the first two spikes left open:
 - ``lifecycle``: does the lifeline hold when a hook blocks the worker's event loop, what
   a deadline kill takes with it, and whether a forked child reaches the protocol;
 - ``transport``: what a response costs by its size, with no polling inside the timing;
-- ``confined`` (Linux): the same worker behind ``confine_linux.py``, and what a hook can
-  then reach;
+- ``confined``: the same worker behind this platform's confinement prefix
+  (``confine_backend.py``), and what a hook can then reach;
 - ``identity``: whether a Git common directory's device and inode identify a clone, and
   the ways a folder can claim to be a trusted clone's worktree;
 - ``watchdog``, ``locate``, ``pth``, and ``pdf``: a group leader that outlives nothing, a
   plugin directory found without importing, ``.pth`` code at interpreter start, and the
-  repository's PDF render child behind the Linux prefix.
+  repository's PDF render child behind the confinement prefix.
 
 Usage: probes.py SCRATCH_DIR [PROBE ...]
 
@@ -43,6 +43,7 @@ from typing import Any
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))  # run with -I, which leaves this folder off the path
 
+import confine_backend
 import confine_probe
 import host_runtime
 
@@ -110,7 +111,9 @@ def alive(pid: int) -> bool:
     try:
         state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
     except OSError:
-        return True
+        # No /proc, as on macOS: ask ps, which prints nothing for a reaped process.
+        done = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+        state = done.stdout.strip()[:1] or "Z"
     return state != "Z"
 
 
@@ -179,7 +182,7 @@ def lifecycle(bench: Bench) -> Result:
     try:
         other.result(timeout=4)
         other_call = "answered"
-    except TimeoutError:
+    except (TimeoutError, EOFError):  # EOFError: the host saw the worker go
         other_call = "never answered"
     child_survived = alive(child)
     result["worker killed at a deadline"] = {
@@ -197,12 +200,12 @@ def lifecycle(bench: Bench) -> Result:
     try:
         call(worker, "fork_writes_protocol", timeout=5)
         forked = "answered"
-    except TimeoutError:
+    except (TimeoutError, EOFError):  # EOFError: the host saw the worker go
         forked = "never answered"
     try:
         call(worker, "info", timeout=3)
         after = "answered"
-    except TimeoutError:
+    except (TimeoutError, EOFError):  # EOFError: the host saw the worker go
         after = "never answered"
     result["a forked child writes to the reply pipe"] = {
         "that call": forked,
@@ -240,8 +243,9 @@ def transport(bench: Bench) -> Result:
 
 
 def confined(bench: Bench) -> Result:
-    if not sys.platform.startswith("linux"):
-        return {"skipped": "confine_linux.py is the Linux backend"}
+    backend = confine_backend.name()
+    if backend is None:
+        return {"skipped": "no confinement backend in this spike for this platform"}
     outside = bench.scratch / "outside"
     writable = bench.scratch / "worker-scratch"
     for folder in (outside, writable):
@@ -253,7 +257,7 @@ def confined(bench: Bench) -> Result:
     query = f"outside={outside / 'secret.txt'}&scratch={writable}&port={listener.getsockname()[1]}"
     policy = {
         "read": [
-            *confine_probe.interpreter_roots(),
+            *confine_backend.interpreter_roots(),
             str(bench.scratch / "env"),
             str(bench.runtime),
             str(bench.root),
@@ -262,11 +266,10 @@ def confined(bench: Bench) -> Result:
             "/dev/urandom",
         ],
         "write": [str(writable)],
-        "network": False,
+        "network": "none",
     }
-    launcher = (sys.executable, "-I", "-S", str(HERE / "confine_linux.py"))
-    prefix = (*launcher, "run", json.dumps(policy), "--")
-    result: Result = {}
+    prefix = tuple(confine_backend.prefix(policy))
+    result: Result = {"backend": backend}
     for name, how in (("bare", ()), ("confined", prefix)):
         worker, ready_ms = bench.start(how)
         before = len(worker.callbacks)
@@ -364,6 +367,14 @@ def identity(bench: Bench) -> Result:
 
 
 def _file_system(path: Path) -> str:
+    if sys.platform == "darwin":
+        # BSD stat has no file system type; the mount table names it.
+        mount_point = subprocess.run(["df", "-P", str(path)], capture_output=True, text=True)
+        point = mount_point.stdout.strip().splitlines()[-1].split()[-1]
+        for line in subprocess.run(["mount"], capture_output=True, text=True).stdout.splitlines():
+            if f" on {point} (" in line:
+                return line.rsplit("(", 1)[1].split(",")[0]
+        return "unknown"
     done = subprocess.run(
         ["stat", "-f", "-c", "%T", str(path)], capture_output=True, text=True, check=False
     )
@@ -510,9 +521,9 @@ def pth(bench: Bench) -> Result:
         subprocess.run([bench.python, "-I", "-c", "pass"], check=True)
         result["a .pth line ran in a bare interpreter started with -I"] = (marks / "ran").exists()
         (marks / "ran").unlink(missing_ok=True)
-        if sys.platform.startswith("linux"):
-            policy = {"read": [*confine_probe.interpreter_roots(), str(bench.scratch / "env")]}
-            command = [*confine_probe.prefix(policy), bench.python, "-I", "-c", "pass"]
+        if confine_backend.name() is not None:
+            policy = {"read": [*confine_backend.interpreter_roots(), str(bench.scratch / "env")]}
+            command = [*confine_backend.prefix(policy), bench.python, "-I", "-c", "pass"]
             subprocess.run(command, capture_output=True, check=False)
             result["the same line wrote its file behind the confinement prefix"] = (
                 marks / "ran"
@@ -524,9 +535,10 @@ def pth(bench: Bench) -> Result:
 
 def pdf(bench: Bench) -> Result:
     """The repository's own PDF render child, unmodified, behind the Linux prefix through
-    the ``Sandbox`` seam it already has."""
+    the ``Sandbox`` seam it already has. macOS has its own profile for it already, which
+    ``tests/test_pdf_preview_sandbox.py`` runs."""
     if not sys.platform.startswith("linux"):
-        return {"skipped": "confine_linux.py is the Linux backend"}
+        return {"skipped": "macOS confines this child already; see the PDF sandbox tests"}
     sys.path.insert(0, str(HERE.parents[1]))  # for the suite's sample document
     preview = importlib.import_module("metabrowser.builtin_plugins.pdf.preview")
     isolation = importlib.import_module("metabrowser.builtin_plugins.pdf.preview_isolation")
@@ -576,6 +588,7 @@ def main() -> None:
     names = sys.argv[2:] or list(PROBES)
     bench = Bench(scratch)
     result: Result = {
+        "platform": sys.platform,
         "kernel": os.uname().release.split("-")[0],
         "python": sys.version.split()[0],
         "load_average": round(os.getloadavg()[0], 1),

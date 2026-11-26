@@ -93,6 +93,10 @@ class Worker:
                 threading.Thread(target=self._answer, args=(header,), daemon=True).start()
             else:
                 self._pending.pop(int(header["id"])).set_result((header, body))
+        # The worker is gone: fail what it will never answer, rather than leave each
+        # caller waiting out its timeout.
+        for rid in list(self._pending):
+            self._pending.pop(rid).set_exception(EOFError("the worker closed its reply pipe"))
 
     def _answer(self, header: Header) -> None:
         """The host side of the worker's requests: checked against this worker's root."""
@@ -145,8 +149,11 @@ class Worker:
         self._out.close()
 
     def kill(self) -> None:
-        os.kill(self.pid, signal.SIGKILL)
-        os.waitpid(self.pid, 0)
+        try:
+            os.kill(self.pid, signal.SIGKILL)
+            os.waitpid(self.pid, 0)
+        except (ProcessLookupError, ChildProcessError):
+            return
 
 
 def hooks_of(plugin_dir: str) -> dict[str, str]:
