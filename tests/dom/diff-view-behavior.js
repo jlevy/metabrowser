@@ -888,7 +888,6 @@ async function headLinkChecks(mountDiffView, byName) {
         {
           "button[data-chip-value]": (node) =>
             node.tagName === "BUTTON" && node.dataset.chipValue !== undefined,
-          "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
           "a[href], img[src]": (node) =>
             (node.tagName === "A" && node.getAttribute("href") !== null) ||
             (node.tagName === "IMG" && node.getAttribute("src") !== null),
