@@ -91,19 +91,27 @@ works. A commit message is not Markdown there, and its relative text is no link.
 
 ### One Resolver
 
-A new core on-demand script, `static/repository-links.js`, published as
-`MetabrowserRepositoryLinks` through `metabrowser.ensureAsset("repository-links")`,
-holds the whole decision.
-It is pure apart from one DOM helper, it does no I/O, and it reads only what the page
-already has: `metabrowser.repository` (owner, name, branch, revision, and served prefix
-of the served tree) and `metabrowser.sourceKind()`.
+A core on-demand script, `static/repository-links.js`, holds the whole decision, and
+`metabrowser.loadRepositoryLinks()` (in `static/plugin-sdk-views.js`, beside
+`loadChangedFilesTree`) is the one way a view gets it: the runtime on a page with a
+GitHub repository’s identity, or null, never a rejection.
+A view uses the runtime the loader resolves to, so no view can read the links without
+having loaded them. The bundle carries the GitPath codec the resolver spells a pin’s
+addresses with.
 
+The module reads a link the way a GitHub URL is built,
+`github.com/<owner>/<repo>/<page>/<args>`: one reader for the host, repository, path,
+query, and fragment (`readRepositoryUrl`), then one handler per GitHub page (`PAGES`),
+then one function per in-app address it can answer with and one for github.com addresses
+(`fileUrl`, `viewFileUrl`). Its header holds the table of what each GitHub URL opens;
+the rules below are the design that table implements.
 It replaces `markdown/github-localizer.js`. It lives in core rather than in the Markdown
 plugin because its consumers are core (`git-panel.js`) and three plugins (Markdown,
-GitHub, diff), and the routes it writes, `/view/`, `/commit/`, `/pull/`, and `/pulls`,
-are core’s grammar. It is on demand rather than in the startup scripts because only a
-page that shows authored text from a GitHub repository uses it, and the startup scripts
-are at their transfer budget (`performance-budgets.toml`).
+GitHub, diff), and the routes it writes, `/view/`, `/commit/`, `/pull/`, `/stack/`, and
+`/pulls`, are core’s grammar.
+It is on demand rather than in the startup scripts because only a page that shows
+authored text from a GitHub repository uses it, and the startup scripts are at their
+transfer budget (`performance-budgets.toml`).
 
 - `localize(url, context, options)` classifies one absolute URL and answers an in-app
   target, a replacement external URL, or `null` for “leave it as it is”.
@@ -111,11 +119,11 @@ are at their transfer budget (`performance-budgets.toml`).
   already reduced to the allowlist, rewrites each in-app link’s `href`, drops its
   `target` and `rel`, opens a `/view/` target through `mb.navigation.open` on a plain
   click, and returns how many links it changed.
+  A link whose address the navigation codec will not spell is left as written, and the
+  text’s other links are still read.
   It can run again over the same text with more context: it keeps the authored address
   in `data-metabrowser-authored-href`, reads it on the later pass, and moves the link’s
   one click handler to the new answer.
-  A link whose address the navigation codec will not spell is left as written, and the
-  text’s other links are still read.
   The Markdown link enhancer keeps its own DOM pass and calls only `localize`.
 
 ### Resolution Rules
