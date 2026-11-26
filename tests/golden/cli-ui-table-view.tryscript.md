@@ -6,6 +6,35 @@ env:
 ---
 # Golden test: the table view
 
+## Test: a direct relationship filter resolves its record after the schema
+
+```console
+$ node tests/dom/table-view-session.js relationships
+{
+  "during schema loading": {
+    "requests": [
+      "schema?path=market.db%2Forders"
+    ],
+    "hasRelatedLink": false
+  },
+  "after the schema resolves": {
+    "requests": [
+      "card?key=k.WzFd&path=market.db%2Fpeople",
+      "rows?limit=200&path=market.db%2Forders&ref=people%3Ak.WzFd&via=%5B%5B%22buyer%22%5D%2C%5B%22id%22%5D%5D"
+    ],
+    "label": "Referencing Ada Lovelace via Buyer",
+    "target": "market.db/people"
+  },
+  "removing the chip clears the scope": {
+    "requests": [
+      "rows?limit=200&path=market.db%2Forders"
+    ],
+    "query": ""
+  }
+}
+? 0
+```
+
 The table plugin draws one table of a tabular source.
 The server sorts, filters, searches, pages, and counts, and each of those is a route
 that `metab --api` reads (`cli-api-table.tryscript.md`); this session pins what the page
