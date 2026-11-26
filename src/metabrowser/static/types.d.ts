@@ -3967,8 +3967,6 @@ declare global {
   };
 
   type MetabrowserRepositoryLinksRuntime = Readonly<{
-    /** The tooltip of a link that opens whatever revision is served. */
-    WORKING_TREE_TITLE: string;
     localize(
       url: string,
       context: MetabrowserRepositoryContext | null | undefined,
@@ -3979,15 +3977,32 @@ declare global {
         views?: boolean;
       },
     ): MetabrowserRepositoryLinkTarget | null;
+    /** Each in-app link it makes has its link card, registered with *root*. */
     enhance(
-      root: ParentNode,
-      mb: Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">,
+      root: Element,
+      mb: MetabrowserPublicSdk,
       options?: {
         text?: MetabrowserRepositoryTextContext;
         open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
         views?: boolean;
       },
     ): number;
+    /**
+     * Give a link of *root* that opens *target* here its link card (static/link-previews.js);
+     * *authorTitle* is the title its author gave it, which the surface took off the link.
+     * Whether it has one; false where the cards are not loaded.
+     */
+    previewLink(
+      root: Element,
+      anchor: Element,
+      target: MetabrowserLinkPreviewTarget,
+      mb: MetabrowserPublicSdk,
+      options?: { authorTitle?: string | null },
+    ): boolean;
+    /** The link has no card any more. */
+    forgetPreview(anchor: Element): void;
+    /** Forget every card of *root*'s links, and put away the one it shows. */
+    disposePreviews(root: Element): void;
     fileUrl(
       context: MetabrowserRepositoryContext | null | undefined,
       revision: string,

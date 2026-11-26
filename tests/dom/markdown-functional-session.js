@@ -317,6 +317,30 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
+  // The resolver's runtime, which a page with a repository identity loads beside the render
+  // (`metabrowser.loadRepositoryLinks`), and through which each link the document opens here
+  // has its link card (static/link-previews.js): a stand-in that reads no github.com link
+  // and records each card, by its link, with its root and target.
+  const linkCards = new Map();
+  const disposedRoots = [];
+  const repositoryLinks = {
+    localize: () => null,
+    previewLink(root, anchor, target) {
+      linkCards.set(anchor, { root, target });
+      return true;
+    },
+    forgetPreview(anchor) {
+      linkCards.delete(anchor);
+    },
+    disposePreviews(root) {
+      disposedRoots.push(root);
+      for (const [anchor, entry] of linkCards) {
+        if (entry.root === root) {
+          linkCards.delete(anchor);
+        }
+      }
+    },
+  };
 
   /** Mount the document, with the plugin's load answered by *load*. */
   async function mount(load) {
@@ -348,6 +372,7 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
           },
         },
         repository: null,
+        loadRepositoryLinks: async () => repositoryLinks,
       },
     );
     await handle.ready;
@@ -432,10 +457,23 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
   const slots = drawn.container.elements.filter(
     (element) => element.getAttribute("class") === "metabrowser-pdf-embed",
   );
+  // Each link the document opens here has its card, registered with the rendered root: a
+  // link to the PDF by its path, a wiki link, and each slot's link to the PDF's view.
+  const linksDrawn = walk(drawn.container).filter((node) => node.tagName === "A");
+  const cardsShown = linksDrawn.map((link) => {
+    const entry = linkCards.get(link);
+    if (entry === undefined) {
+      return `${reads(link)}: none`;
+    }
+    const { root, target } = entry;
+    const rooted = root === drawn.container ? "" : ", not the rendered root's";
+    return `${reads(link)}: ${target.kind} ${target.localization} ${target.target.path}${rooted}`;
+  });
   drawn.handle.dispose();
   const disposal = {
     cardsLeft: slots.filter((slot) => slot.elements.length > 0).length,
     slots: slots.length,
+    linkCardsLeft: linksDrawn.filter((link) => linkCards.has(link)).length,
   };
 
   // A document replaced before the plugin answers mounts no card, and asks for no preview.
@@ -473,6 +511,7 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
     pluginLoads: { calls: drawn.loads.length, names: [...new Set(drawn.loads)] },
     previewsAsked: previews.slice(0, askedBeforeDispose),
     print: printLoading,
+    linkCards: cardsShown,
     disposal,
     replacedBeforeLoad,
     withoutPlugin,
@@ -483,6 +522,8 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
     viewers.length !== 0 ||
     pdfAddresses.length !== 0 ||
     disposal.cardsLeft !== 0 ||
+    disposal.linkCardsLeft !== 0 ||
+    !disposedRoots.includes(drawn.container) ||
     replacedBeforeLoad.asked !== 0 ||
     !plainClickOpens ||
     modifiedClickOpens

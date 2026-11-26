@@ -95,7 +95,9 @@ ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
     (
         "builtin_plugins/markdown/link-enhancer.js",
         'element.setAttribute("title", authoredTitle)',
-        "gives a document's own link back the title its author wrote",
+        "gives a document's own link back the title its author wrote once a status no longer "
+        "explains it, which its link card then says in its place (`previewLink`), on a page "
+        "that draws cards",
     ),
     # The next three explain a link or embed inside a rendered document, where the title is
     # part of what the enhancers restore and test. They predate this rule's reach to

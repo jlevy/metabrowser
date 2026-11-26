@@ -1003,6 +1003,17 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   runtime’s `enhance`, which makes a link into the served repository open its page in
   Metabrowser, in place on a plain click; `static/repository-links.js` documents which
   GitHub URLs open which pages.
+  Each link `enhance` makes in-app also has its link card, the tooltip that says what it
+  opens (`static/link-previews.js`), registered with the element it was given, so pass
+  the text’s own element: the one whose links the view puts away together.
+  A view that opens other links in the app itself reaches the cards through the same
+  runtime, never a window global:
+  `previewLink(root, anchor, target, mb, { authorTitle })` gives one link its card, for
+  a `target` of the resolver’s kind `view` or `route`, and the view takes off the link
+  any `title` its author wrote, passing it as `authorTitle`, so the reader sees one
+  tooltip; `forgetPreview(anchor)` takes a card from a link that no longer opens here;
+  and `disposePreviews(root)` forgets every card of *root*’s links, and puts away the
+  one it shows, when the view replaces that text or is disposed.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
   event log what the page waits for

@@ -332,6 +332,8 @@ const SELECTORS = {
   "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
   'a[href^="/view/"]': (node) =>
     node.tagName === "A" && (node.getAttribute("href") ?? "").startsWith("/view/"),
+  // The blocks whose links' cards a file's article puts away (`disposeFileLinks`).
+  ".kpress-prose": (node) => node.classList.contains("kpress-prose"),
 };
 
 const element = (tag) => new PageElement(tag);
@@ -456,6 +458,55 @@ globalThis.window = {
 for (const name of ["git-path.js", "repository-links.js"]) {
   const file = path.join(repoRoot, "src/metabrowser/static", name);
   require("node:vm").runInThisContext(fs.readFileSync(file, "utf8"), { filename: file });
+}
+// The link cards (static/link-previews.js), which the bundle loads after the resolver: a
+// recording stand-in, which the page reaches through the resolver's runtime. A card is its
+// link's, by identity, with its root and target, and a disposal forgets its root's.
+const cards = new Map();
+/** The roots whose cards a disposal put away. */
+const disposedRoots = new Set();
+globalThis.window.MetabrowserLinkPreviews = {
+  register(root, anchor, target) {
+    cards.set(anchor, { root, target });
+    return true;
+  },
+  forget(anchor) {
+    cards.delete(anchor);
+  },
+  dispose(root) {
+    disposedRoots.add(root);
+    for (const [anchor, card] of cards) {
+      if (card.root === root) {
+        cards.delete(anchor);
+      }
+    }
+  },
+};
+/** The cards of the links in *container*: what each opens, or `none`. */
+function cardsIn(container) {
+  return anchorsIn(container).map((link) => {
+    const card = cards.get(link);
+    if (card === undefined) {
+      return `${link.textContent}: none`;
+    }
+    const { root, target } = card;
+    // A link's root is the block that holds it, which the file's article puts away.
+    assert(root.className === "kpress-prose" && contains(root, link), "a card has its block");
+    const opens =
+      target.kind === "view"
+        ? `view ${target.localization} /view/${target.target.path}`
+        : `${target.kind} ${target.href}`;
+    return `${link.textContent}: ${opens}`;
+  });
+}
+/** Whether *node* is *ancestor* or inside it. */
+function contains(ancestor, node) {
+  for (let at = node; at; at = at.parentElement) {
+    if (at === ancestor) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** What the pin guard announces when a data request finds the server serves another pin. */
@@ -919,14 +970,16 @@ async function main() {
     assert(typeof headLinksOpen === "function", "the diff has a rule for `/view/` targets");
     // What this page's SDK says of its source, which another page's mount does not change.
     const { kind, repository } = pageSource;
-    const sdk = { navigation, repository, sourceKind: () => kind };
+    const tooltip = { show() {}, hide() {} };
+    const sdk = { navigation, repository, sourceKind: () => kind, tooltip };
     return {
       isTarget: (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
         target(href, image, links),
       // As diff-view.js reads a drawn block's links (`enhanceLinks`), its own calls held by
       // tests/dom/diff-view-behavior.js: the page's resolver, with the plugin's rule for
       // when a `/view/` target opens, and the same rule for a link to a file of the head,
-      // whose click is plain as the resolver reads one.
+      // whose click is plain as the resolver reads one. Each link that opens here has its
+      // card, with the block it is in.
       enhanceLinks(prose) {
         const links = globalThis.window.MetabrowserRepositoryLinks;
         links.enhance(prose, sdk, { views: headLinksOpen() === true });
@@ -934,8 +987,11 @@ async function main() {
           navigation,
           linksOpen: headLinksOpen,
           isPlainClick: (event) => links.isPlainClick(event),
+          preview: (link, head) => links.previewLink(prose, link, head, sdk),
         });
       },
+      // As diff-view.js puts a block's cards away (`disposeLinks`).
+      disposeLinks: (root) => globalThis.window.MetabrowserRepositoryLinks.disposePreviews(root),
     };
   }
   // The head is pinned from the pull request's branch, and so is an earlier commit of it,
@@ -996,6 +1052,7 @@ async function main() {
     return {
       drawn: serialize(prose.childNodes),
       "plain clicks": anchorsIn(prose).map((link) => press(link, {})),
+      cards: cardsIn(prose),
     };
   };
   links.repository = {
@@ -1036,6 +1093,7 @@ async function main() {
       mutate: (change) => change(),
       isTarget,
       enhanceLinks: atHead.enhanceLinks,
+      disposeLinks: atHead.disposeLinks,
       now: clock.now,
       later: clock.later,
       cancel: clock.cancel,
@@ -1414,6 +1472,9 @@ async function main() {
   // wrote again. The pin guard says so once, and the page that showed the head keeps no
   // `/view/` link from then on. The diff's own call when it hears this is diff-view.js's
   // (tests/dom/diff-view-behavior.js); here the session makes it, as the diff's stand-in.
+  // Every card a file's links had goes with the head, and none comes back: no link opens
+  // here any more.
+  const cardsAtHead = { f1: cardsIn(byId.f1.rendered), f12: cardsIn(byId.f12.rendered) };
   pinChanged(base);
   links.pages["pinned at the comparison's head, after another tab changed the pin"] = isTarget(
     headLink,
@@ -1430,6 +1491,11 @@ async function main() {
     step: "every click on a link the page opened in place is the browser's",
     clicks: { ...clicksOn(byId.f1.rendered), ...clicksOn(byId.f12.rendered) },
   });
+  steps.push({
+    step: "each link that opened here had its card, which the pin change took",
+    "at the head": cardsAtHead,
+    after: { f1: cardsIn(byId.f1.rendered), f12: cardsIn(byId.f12.rendered) },
+  });
   for (const file of files) {
     for (const link of anchorsIn(file.rendered)) {
       assert(
@@ -1441,9 +1507,20 @@ async function main() {
   }
   const closed = rows(byId.f12.rendered);
 
+  disposedRoots.clear();
   views.dispose();
   step("disposal unbinds every chooser and stops every timer", files);
-  steps.push({ step: "after disposal", bound: bound.size, timers: clock.timers.size });
+  // Each file's article and every block it draws puts its links' cards away.
+  const cardRoots = files.flatMap((file) => [
+    file.rendered,
+    ...file.rendered.querySelectorAll(".kpress-prose"),
+  ]);
+  steps.push({
+    step: "after disposal",
+    bound: bound.size,
+    timers: clock.timers.size,
+    "cards put away": cardRoots.every((root) => disposedRoots.has(root)),
+  });
 
   /** Mount *id* alone on the first screen; the views, the file, and when it was mounted. */
   const mountAlone = async (id) => {

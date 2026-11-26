@@ -204,8 +204,11 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
             in_app = "data-metabrowser-github-localization" in attributes
             assert ("target" in attributes) is not in_app, (name, link)
             assert not run["clicks"][link]["withMeta"], (name, link)
-            # One click handler a link, however many times its text is read.
-            assert run["clicks"][link]["listeners"] == (1 if in_app else 0), (name, link)
+            # One click handler a link, however many times its text is read; a link restored
+            # to what the text wrote keeps its handler, which leaves every click to the browser.
+            listeners = run["clicks"][link]["listeners"]
+            assert listeners == 1 if in_app else listeners in (0, 1), (name, link)
+            assert in_app or not run["clicks"][link]["plain"], (name, link)
         opened = [f"/view/{target['path']}" for target in run["opened"]]
         followed = [
             attributes["href"]
@@ -231,3 +234,39 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
         assert not set(page) & set(shell), name
         opened_in_place = page + (shell if run["shell"]["opens"] else [])
         assert sorted(opened_in_place) == sorted(routed), name
+
+
+def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
+    """A link ``enhance`` leaves in-app has its link card, for what its address opens, with
+    the text it was given as the root; a link it restores or makes an outside one has none,
+    and no link carries a tooltip of its own; the page's disposal of the text comes last.
+    Without the cards loaded, the links open as they do with them."""
+
+    runs = _session()["enhanced"]
+    for name, run in runs.items():
+        cards: dict[str, str] = {}
+        for call in run["previews"][:-1]:
+            verb, rest = call.split(" ", 1)
+            if verb == "register":
+                link, target = rest.split(" in the text: ", 1)
+                cards[link] = target
+            else:
+                assert verb == "forget", (name, call)
+                cards.pop(rest, None)
+        assert run["previews"][-1:] in ([], ["dispose the text"]), name
+        for link, attributes in run["anchors"].items():
+            assert "data-tip-text" not in attributes, (name, link)
+            localization = attributes.get("data-metabrowser-github-localization")
+            if localization is None or not run["previews"]:
+                assert link not in cards, (name, link)
+                continue
+            href = attributes["href"]
+            kind = f"view {localization}" if href.startswith("/view/") else "route"
+            assert cards[link] == f"{kind} {href}", (name, link)
+    without = runs["a text on a page whose link cards have not loaded"]
+    with_cards = runs["a commit's message, which has no text context"]
+    assert without["previews"] == [] != with_cards["previews"]
+    assert (without["changed"], without["anchors"]) == (
+        with_cards["changed"],
+        with_cards["anchors"],
+    )

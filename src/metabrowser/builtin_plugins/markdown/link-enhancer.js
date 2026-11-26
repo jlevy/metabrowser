@@ -26,6 +26,15 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
 /** @typedef {Readonly<{path: string, query?: string, fragment?: string}>} NavigationTarget */
 
 /**
+ * The title an author gave each in-app link, once its link card says it and the link no
+ * longer carries it (`enhanceRenderedLinks`), so a later pass over the same link, as a
+ * published route's is, still has it.
+ *
+ * @type {WeakMap<Element, string>}
+ */
+const authorTitles = new WeakMap();
+
+/**
  * Enhance the safe HTML emitted by KPress with Metabrowser navigation semantics.
  *
  * The plugin decides what an authored link names, and the shell decides how that target is
@@ -60,7 +69,14 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner, repositoryLinks?: MetabrowserRepositoryLinksRuntime | null}=} options
  *   `repositoryLinks` is what a link into the served repository opens
  *   (`metabrowser.loadRepositoryLinks`), which `rendered.js` loads beside the render; without
- *   it, such a link stays as written.
+ *   it, such a link stays as written. It also gives each link the document opens in
+ *   Metabrowser its link card, the tooltip that says what the link opens
+ *   (static/link-previews.js), registered with *container*, whose cards `dispose` puts
+ *   away: a link to a file or folder by its path, a wiki link, a PDF's View, and a
+ *   `github.com` link this resolver opens here. A link to a place in the same document has
+ *   none: it opens no other page. A title the author gave such a link moves into its card,
+ *   so the reader never sees two tooltips; an outside link keeps its title, and, without
+ *   the runtime, so does every link.
  *   `rawVersions` is the render's `raw_versions`: the version of each served file it
  *   embeds, by identity, which that file's address carries.
  *   `pagePath` is the path of the page that shows this document as its own, when that is
@@ -109,6 +125,39 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   let disposed = false;
   let fragmentFrame = 0;
 
+  /**
+   * Give *anchor*, a link this document opens in Metabrowser, its link card, saying the
+   * title its author gave it, which then leaves the link. A link whose card cannot be drawn,
+   * as on a page with no resolver, keeps its title, and a download, which saves the file
+   * rather than opening its page, has none.
+   *
+   * @param {Element} anchor
+   * @param {MetabrowserLinkPreviewTarget} target
+   */
+  function previewLink(anchor, target) {
+    if (anchor.hasAttribute("download")) {
+      return;
+    }
+    const authorTitle = anchor.getAttribute("title") ?? authorTitles.get(anchor) ?? null;
+    if (repositoryLinks?.previewLink(container, anchor, target, mb, { authorTitle }) === true) {
+      if (authorTitle !== null) {
+        authorTitles.set(anchor, authorTitle);
+      }
+      anchor.removeAttribute("title");
+    }
+  }
+
+  /**
+   * A document's own link to a file or folder, by the path it names, opens that file of the
+   * tree the document is in: here, as a link to the served commit does.
+   *
+   * @param {Element} anchor
+   * @param {NavigationTarget} target
+   */
+  function previewPath(anchor, target) {
+    previewLink(anchor, Object.freeze({ kind: "view", target, localization: "revision" }));
+  }
+
   /** @param {unknown} intent @param {(resolved: ReturnType<typeof standardLinks.resolve>) => void} commit */
   function resolveStandard(intent, commit) {
     if (standardLinks.canResolveSynchronously) {
@@ -145,6 +194,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             // pass decides; otherwise a click before the first continuation can
             // navigate to a transient, incorrect target.
             internalTargets.delete(anchor);
+            repositoryLinks?.forgetPreview(anchor);
             disableTarget(anchor, "href", "pending", "published-route-pending");
             reconciliationScope.published(
               { authoredTarget, resolvedPath: resolved.path },
@@ -163,14 +213,11 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           // link, once its address is spelled; a plain click on a `/view/` target, spelled
           // in the GitPath wire on a pin, then opens it here, and one on a pull request's,
           // the list's, or a commit's page opens that page in place, as the shell opens it.
+          // Its card says what it opens, and that a link to the served branch opens the
+          // served working tree.
           if (localized?.kind === "view") {
             const target = navigationTarget(localized.target);
             anchor.setAttribute("href", mb.navigation.href(target));
-            // The app's own tooltip (devtools/check_tooltips.py), unless the author gave the
-            // link a title of their own.
-            if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
-              anchor.setAttribute("data-tip-text", repositoryLinks?.WORKING_TREE_TITLE ?? "");
-            }
             internalTargets.set(anchor, target);
           } else if (localized?.kind === "route") {
             anchor.setAttribute("href", localized.href);
@@ -180,6 +227,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             anchor.removeAttribute("target");
             anchor.removeAttribute("rel");
             anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
+            previewLink(anchor, localized);
           }
           mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
         } else {
@@ -199,6 +247,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   function applyInternalAnchor(anchor, authoredTarget, resolved, adapted) {
     if (adapted && adapted.status !== "internal") {
       internalTargets.delete(anchor);
+      repositoryLinks?.forgetPreview(anchor);
       disableTarget(anchor, "href", adapted.status, adapted.reason);
       return;
     }
@@ -217,6 +266,9 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       anchor.removeAttribute("data-metabrowser-link-adapter");
     }
     internalTargets.set(anchor, target);
+    if (!sameDocument) {
+      previewPath(anchor, target);
+    }
     mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
   }
 
@@ -282,9 +334,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     }
   }
 
-  /** @param {Element} anchor @param {NavigationTarget} target */
+  /** A wiki link's, or a PDF's link to its view. @param {Element} anchor @param {NavigationTarget} target */
   function registerInternal(anchor, target) {
     internalTargets.set(anchor, target);
+    previewPath(anchor, target);
   }
 
   const wiki = enhanceWikiLinks(container, sourcePath, mb, registerInternal, {
@@ -406,6 +459,9 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         return;
       }
       disposed = true;
+      // Its links' cards, and the one up on any of them (docs/design-system.md, "A Surface
+      // Puts Away Only Its Own Tooltip"); a transclusion's own enhancer puts away its own.
+      repositoryLinks?.disposePreviews(container);
       wiki.dispose();
       for (const embed of pdfEmbeds) {
         embed.dispose();
@@ -607,7 +663,9 @@ function rawVersionsOf(value) {
 function disableTarget(element, attribute, status, reason) {
   if (!element.hasAttribute("data-metabrowser-link-status")) {
     // The status explanation borrows the title only while the target is
-    // disabled; keep the author's tooltip to restore.
+    // disabled; keep the author's tooltip to restore. A disabled link opens no
+    // page, so it has no link card (`previewLink`), and this explanation is the
+    // one tooltip it has, as an unresolved embed's or wiki link's is.
     const authoredTitle = element.getAttribute("title");
     if (authoredTitle !== null) {
       element.setAttribute("data-metabrowser-authored-title", authoredTitle);

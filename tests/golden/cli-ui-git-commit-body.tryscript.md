@@ -493,7 +493,7 @@ $ node tests/dom/git-commit-body-session.js
                         },
                         ", ",
                         {
-                          "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree data-tip-text=Open the corresponding path in the currently served working tree.]": "the guide"
+                          "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree]": "the guide"
                         },
                         ", ",
                         {

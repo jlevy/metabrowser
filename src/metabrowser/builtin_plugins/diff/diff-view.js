@@ -5566,28 +5566,29 @@ export function mountDiffView(container, document_, api, options = {}) {
         // github.com link the text wrote, marked as an outside link is everywhere else. A
         // link to a file of the head the server spelled opens in place on the same rule,
         // its click read as the resolver reads one, so neither kind loads the page again.
+        // Each link that opens here has its link card, registered with *prose*, the block
+        // or the file's article read, and put away with it (`disposeLinks`).
         enhanceLinks(prose) {
           const navigation = api?.navigation;
-          const sourceKind = api?.sourceKind;
           const links = loadedLinks();
-          if (links && navigation && sourceKind && api?.repository) {
-            links.enhance(
-              prose,
-              { navigation, repository: api.repository, sourceKind },
-              { views: headLinksOpen?.() === true },
-            );
+          // The plugin mounts the view with its SDK (index.js), which draws the cards.
+          const mb = /** @type {MetabrowserPublicSdk} */ (/** @type {unknown} */ (api));
+          if (links && navigation && api?.sourceKind && api?.repository) {
+            links.enhance(prose, mb, { views: headLinksOpen?.() === true });
           }
           if (navigation && headLinksOpen) {
             markdownViews.openHeadLinks(prose, {
               navigation,
               linksOpen: headLinksOpen,
               isPlainClick: (event) => loadedLinks()?.isPlainClick(event) === true,
+              preview: (link, target) => loadedLinks()?.previewLink(prose, link, target, mb),
             });
           }
           for (const link of prose.querySelectorAll('a[target="_blank"]')) {
             api?.decorateExternalLink?.(/** @type {HTMLElement} */ (link));
           }
         },
+        disposeLinks: (root) => loadedLinks()?.disposePreviews(root),
         // The structured plugin draws a YAML or JSON file's tree, as in the file view
         // (`requires` in manifest.toml).
         async ensureStructured() {

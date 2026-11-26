@@ -897,10 +897,57 @@ async function headLinkChecks(mountDiffView, byName) {
           "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
           'a[target="_blank"]': (node) =>
             node.tagName === "A" && node.getAttribute("target") === "_blank",
+          // The blocks whose links' cards a file's article puts away.
+          ".kpress-prose": (node) => node.classList.contains("kpress-prose"),
         }[selector] ?? ((node) => node.tagName === selector.toUpperCase());
       return [...this.walk()].filter((node) => node !== this && wanted(node));
     }
   }
+  /**
+   * The link cards (static/link-previews.js), which the bundle loads after the resolver: a
+   * recording stand-in in the resolver's realm *realm*, which the diff reaches through the
+   * resolver's runtime. A card is its link's, by identity, with its root and target, and a
+   * disposal forgets its root's.
+   */
+  function recordCards(realm) {
+    const cards = new Map();
+    const disposed = [];
+    realm.MetabrowserLinkPreviews = {
+      register(root, anchor, target) {
+        cards.set(anchor, { root, target });
+        return true;
+      },
+      forget(anchor) {
+        cards.delete(anchor);
+      },
+      dispose(root) {
+        disposed.push(root);
+        for (const [anchor, card] of cards) {
+          if (card.root === root) {
+            cards.delete(anchor);
+          }
+        }
+      },
+    };
+    return { cards, disposed };
+  }
+  /** What *link*'s card in *cards* says it opens, and whether the block holding it is its root. */
+  function cardOf(cards, link) {
+    const card = cards.get(link);
+    if (card === undefined) {
+      return null;
+    }
+    const { root, target } = card;
+    const opens =
+      target.kind === "view"
+        ? `view ${target.localization} /view/${target.target.path}`
+        : `${target.kind} ${target.href}`;
+    return root.classList.contains("kpress-prose") && root.contains(link)
+      ? opens
+      : `${opens}, rooted elsewhere`;
+  }
+  // The page's one tooltip, which draws a card.
+  const tooltip = { show() {}, hide() {} };
   // A rendered file's links into the served repository open its pages in place, as every
   // text's do: the view hands static/repository-links.js, run whole, the SDK's navigation, so
   // a plain click on a commit's page, the list, or another pull request's opens it through
@@ -936,12 +983,14 @@ async function headLinkChecks(mountDiffView, byName) {
     answer.blocks[added] = { ...answer.blocks[added], html };
     const routed = [];
     const host = new MarkupElement("div");
+    const routeCards = recordCards(sandbox);
     const handle = mountDiffView(
       host,
       byName.get("added-text-file"),
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
+        tooltip,
         // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
         loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
         repository: {
@@ -1031,7 +1080,20 @@ async function headLinkChecks(mountDiffView, byName) {
         ) && routed.length === 0,
       JSON.stringify({ opened, routed }),
     );
+    const routeCardsDrawn = drawn.map((link) => cardOf(routeCards.cards, link));
+    check(
+      "each of those links has the card of the page it opens, with the block that holds it",
+      JSON.stringify(routeCardsDrawn) ===
+        JSON.stringify([`/commit/${commit}`, "/pulls", "/pull/8"].map((href) => `route ${href}`)),
+      JSON.stringify(routeCardsDrawn),
+    );
     handle.dispose();
+    check(
+      "the diff's disposal puts its links' cards away",
+      routeCards.cards.size === 0 &&
+        drawn.every((link) => routeCards.disposed.includes(link.closest(".kpress-prose"))),
+      JSON.stringify({ left: routeCards.cards.size, disposed: routeCards.disposed.length }),
+    );
   }
 
   // A rendered file's Source is drawn only while it shows and once it is reached: on a pull
@@ -1354,7 +1416,11 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     check("the page heard no pin change yet", typeof pinChanged === "function");
     // The first file already rendered when the optional resolver became available.
-    global.window.MetabrowserRepositoryLinks = { viewFileUrl: () => fallback };
+    global.window.MetabrowserRepositoryLinks = {
+      viewFileUrl: () => fallback,
+      // The page drew no card for a link, with no resolver when it drew them.
+      disposePreviews() {},
+    };
     headOpen = false;
     pinChanged?.();
     check(
@@ -1391,12 +1457,14 @@ async function headLinkChecks(mountDiffView, byName) {
     const navigated = [];
     const decorated = new Set();
     const branchContainer = new MarkupElement("div");
+    const branchCards = recordCards(resolverRealm);
     const branchHandle = mountDiffView(
       branchContainer,
       byName.get("added-text-file"),
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
+        tooltip,
         loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
         repository: {
           branch: "feature",
@@ -1479,8 +1547,22 @@ async function headLinkChecks(mountDiffView, byName) {
         decorated.size === 0,
       JSON.stringify({ atHead, navigated }),
     );
+    const branchCardsAtHead = branchLinks().map((link) => cardOf(branchCards.cards, link));
+    check(
+      "at the head, each has the card of the served working tree's file, with its block",
+      JSON.stringify(branchCardsAtHead) ===
+        JSON.stringify(atHead.map((link) => `view working-tree ${link.href}`)) &&
+        branchLinks().every((link) => !link.attributes.has("data-tip-text")),
+      JSON.stringify(branchCardsAtHead),
+    );
     branchOpen = false;
     branchPinChanged?.();
+    check(
+      "once the pin changes, none has a card, since none opens here",
+      branchCards.cards.size === 0 &&
+        branchLinks().every((link) => branchCards.disposed.includes(link.closest(".kpress-prose"))),
+      JSON.stringify({ left: branchCards.cards.size, disposed: branchCards.disposed.length }),
+    );
     navigated.length = 0;
     const closed = branchLinks().map((link) => ({
       href: link.getAttribute("href"),
@@ -1539,12 +1621,14 @@ async function headLinkChecks(mountDiffView, byName) {
     let spelledPinChanged = null;
     const spelledOpened = [];
     const spelledContainer = new MarkupElement("div");
+    const spelledCards = recordCards(resolverRealm);
     const spelledHandle = mountDiffView(
       spelledContainer,
       byName.get("added-text-file"),
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
+        tooltip,
         loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
         repository: headRepository,
         sourceKind: () => "git_revision",
@@ -1633,8 +1717,20 @@ async function headLinkChecks(mountDiffView, byName) {
         ),
       JSON.stringify(spelledAtHead),
     );
+    const spelledCardsAtHead = spelledLinks().map((link) => cardOf(spelledCards.cards, link));
+    check(
+      "at the head, each link to a file of the head has the card of that file, with its block",
+      JSON.stringify(spelledCardsAtHead) ===
+        JSON.stringify(spelled.map(([href]) => `view-head ${href}`)),
+      JSON.stringify(spelledCardsAtHead),
+    );
     spelledOpen = false;
     spelledPinChanged?.();
+    check(
+      "once the pin changes, a link to a file of the head has no card",
+      spelledCards.cards.size === 0,
+      JSON.stringify([...spelledCards.cards.values()].map(({ target }) => target)),
+    );
     const spelledClosed = spelledLinks().map((link) => ({
       href: link.getAttribute("href"),
       listeners: (link.listeners.get("click") ?? []).length,

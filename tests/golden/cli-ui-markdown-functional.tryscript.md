@@ -22,6 +22,10 @@ viewer and never `/raw`. A PDF named without `.pdf` stays an image of its `/raw`
 address. The block also pins clicks, the plugin loading only for a document with a PDF,
 print making a card’s image eager, disposal, a document replaced before the plugin
 answers, and a page without the plugin.
+Each link the document opens here, the link to the PDF by its path, the wiki link, and
+each card’s View, has its link card (`linkCards`), the tooltip that says what it opens
+(`static/link-previews.js`), registered through the resolver’s runtime, a recording
+stand-in here, with the rendered root, and the document’s disposal puts them away.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -97,9 +101,17 @@ $ node tests/dom/markdown-functional-session.js
       "eager",
       "eager"
     ],
+    "linkCards": [
+      "the report: view revision papers/report.pdf",
+      "View: view revision papers/report.pdf",
+      "View: view revision papers/report.pdf",
+      "View: view revision papers/report.pdf",
+      "report.pdf: view revision papers/report.pdf"
+    ],
     "disposal": {
       "cardsLeft": 0,
-      "slots": 3
+      "slots": 3,
+      "linkCardsLeft": 0
     },
     "replacedBeforeLoad": {
       "asked": 0,
