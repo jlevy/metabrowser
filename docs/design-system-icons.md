@@ -335,7 +335,7 @@ The title carries the meaning; the symbol only marks the tab.
 | `serif`, bespoke | Registry | The serif reading font: an “A” in the generic serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `sans`, bespoke | Registry | The sans reading font: an “A” in the generic sans-serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
-| `←` | Text | Back to the working tree, before the label of a checkout revision’s back button in the Files row | `static/source-ref-selector.js` | `--muted` | The button’s |
+| `←` | Text | Back to the working tree, before the label of a checkout revision’s back button in the revision row | `static/source-ref-selector.js` | `--muted` | The button’s |
 | `✓` | Text | A chosen value in a filter chip’s menu | `static/filter-controls.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
 | `→` | Text | A SQLite foreign key from its columns to the referenced table | `builtin_plugins/sqlite/tables-model.js` | The text’s | The text’s |

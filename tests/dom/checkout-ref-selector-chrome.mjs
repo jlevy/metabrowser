@@ -25,9 +25,11 @@
 //   6. goes Back onto the revision's address while the working tree is served;
 //   7. browses a revision's page, a file and its history, and reads how every data
 //      request of each page was answered: none of a current page's is refused, and the
-//      page that switched sent none after it asked. Its Commits tab is the checkout's, and
-//      hides the button with the Files toolbar; when another tab switches the server
-//      there, its history still answers and the offer to reload shows on that tab.
+//      page that switched sent none after it asked. Its Commits tab shows the revision
+//      under the same row: the history is the revision's. Choosing another branch there
+//      reloads the page on Commits at that branch's history, and Files then shows it too;
+//      when another tab switches the server, the history is refused as the tree is, and
+//      the offer to reload shows on Commits.
 //
 // It times each switch from the click to the new document's first tree rows and to its
 // selector being mounted, and the working tree's page from navigation to its selector.
@@ -263,6 +265,45 @@ const COMMIT_IDS = `(() => {
   return { face, ids };
 })()`;
 
+/** The main tab in front. */
+const FRONT = `document.querySelector(".tab-btn.active")?.dataset.tab`;
+// Commits is in front at a commit's address, with its history's first row drawn. The tab
+// is named by its label, as clickTab names it.
+const COMMITS_LANDED = `(document.querySelector(".tab-btn.active")?.textContent.trim() === "Commits" &&
+  location.pathname.startsWith("/commit/") &&
+  document.querySelector('.git-graph-row[data-ordinal="0"]') !== null)`;
+
+/** Bring the main tab named *label* to the front by its button. */
+async function clickTab(label) {
+  await chrome.evaluate(
+    `[...document.querySelectorAll(".tab-btn")]
+      .find((tab) => tab.textContent.trim() === ${JSON.stringify(label)}).click(); true`,
+  );
+}
+
+/**
+ * What the Commits tab shows of the revision: the source row, which heads it between the
+ * tabs and its tally, what that row names, the revision the page serves, the history's
+ * newest commit, and the commit the tab landed on.
+ */
+const COMMITS = `(() => {
+  const row = document.getElementById("nav-source-ref");
+  const box = row?.getBoundingClientRect();
+  const tabs = document.querySelector(".nav-tab-bar").getBoundingClientRect();
+  const tally = document.getElementById("nav-toolbar-git").getBoundingClientRect();
+  return {
+    front: ${FRONT} ?? null,
+    row: row?.checkVisibility() ?? null,
+    placed: box !== undefined && box.top >= tabs.bottom - 0.5 && box.bottom <= tally.top + 0.5,
+    button:
+      document.querySelector("#source-ref-selector .source-ref-selector-label")?.textContent.trim() ??
+      null,
+    pin: window.METABROWSER_SOURCE_PIN ?? null,
+    newest: document.querySelector('.git-graph-row[data-ordinal="0"]')?.dataset.revision ?? null,
+    landed: location.pathname.slice("/commit/".length),
+  };
+})()`;
+
 /** What the page shows of itself and its selector. */
 const PAGE = `(() => {
   const toggle = ${SELECTOR};
@@ -285,8 +326,8 @@ const PAGE = `(() => {
         : null;
     })(),
     inFilesRow:
-      toggle?.closest("#nav-files-ref")?.previousElementSibling.matches(".nav-tab-bar") === true &&
-      toggle.closest("#nav-files-ref").nextElementSibling.id === "nav-filter-bar",
+      toggle?.closest("#nav-source-ref")?.previousElementSibling.matches(".nav-tab-bar") === true &&
+      toggle.closest("#nav-source-ref").nextElementSibling.id === "nav-filter-bar",
     heading: heading ? heading.textContent.replace(/\\s+/g, " ").trim() : null,
     commitIds: ${COMMIT_IDS},
     guard: typeof window.MetabrowserSourcePinGuard?.guardFetch === "function",
@@ -777,23 +818,33 @@ try {
   await chrome.waitFor(
     `(document.querySelector("#preview-pane")?.innerText ?? "").includes("Only on feature")`,
   );
-  await chrome.evaluate(
-    `[...document.querySelectorAll(".tab-btn")]
-      .find((tab) => tab.textContent.trim() === "Commits").click(); true`,
-  );
-  await chrome.waitFor(`document.querySelectorAll('[class$="graph-row"]').length > 0`);
+  await clickTab("Commits");
+  await chrome.waitFor(COMMITS_LANDED);
   result.revisionBrowsing = takeDataRequests();
-  // The Commits tab does not follow the Files tab: its history is the checkout's, whose
-  // HEAD chip is on the checked-out branch, and the button went with the Files toolbar.
-  result.revisionCommits = await chrome.evaluate(`({
-    head: document.querySelector('[class*="-ref-head"]')?.textContent.trim() ?? null,
-    button: document.getElementById("source-ref-selector")?.checkVisibility() ?? null,
-  })`);
-  // Another tab switches the server while Commits is in front: the tab's history still
-  // answers, since it is the checkout's whichever revision is served, and the Files
-  // tree's is refused, and the offer to reload shows on this tab. The history request is
-  // the one the tab itself made for its list, the route's `/log` under `/api/`, asked
-  // again as the tab's next page would ask it.
+  // Commits shows the revision Files shows, under the same row and chooser: feature's
+  // history, from feature's commit, which the tab lands on.
+  result.revisionCommits = await chrome.evaluate(COMMITS);
+  await capture("revision-commits");
+
+  // The chooser on Commits: topic, chosen there, reloads the page on Commits at topic's
+  // history, and Files shows topic when the reader goes back to it.
+  await openPanel();
+  await chrome.evaluate("window.__left = true; true");
+  await chrome.evaluate(`(${rowNamed("topic")}).click(); true`);
+  await chrome.waitFor(`!window.__left && ${MOUNTED} && ${COMMITS_LANDED}`, 30000);
+  result.chosenOnCommits = await chrome.evaluate(COMMITS);
+  await capture("chosen-on-commits");
+  await clickTab("Files");
+  await chrome.waitFor(`${ROWS}.length > 0 && ${FRONT} === "files"`);
+  result.chosenOnCommitsFiles = await chrome.evaluate(PAGE);
+  await clickTab("Commits");
+  await chrome.waitFor(COMMITS_LANDED);
+  result.chosenOnCommitsBrowsing = takeDataRequests();
+
+  // Another tab switches the server while Commits is in front: the tab's history is the
+  // revision this page was drawn for, so it is refused as the Files tree is, and the offer
+  // to reload shows on this tab. The history request is the one the tab itself made for
+  // its list, the route's `/log` under `/api/`, asked again as the tab's next page would.
   await chrome.evaluate(`fetch("/api/source/pin", {
     method: "POST",
     headers: { "content-type": "application/json" },

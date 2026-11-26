@@ -5995,8 +5995,10 @@ The tab’s shortcut moves focus to the newest row without scrolling the list, s
 focus until the row arrives, unless the reader moves focus first.
 An empty history selects nothing, and the pane says “No commits yet.”
 Clicking Commits while it is already in front changes nothing.
-`static/git-panel.js` (`landOnNewestCommit`) owns the selection;
-`tests/dom/git-commit-history-session.js` runs it.
+The history is the revision the Files tab shows, under the same revision row, and a
+revision chosen there reloads the page on Commits at its newest commit
+([The Ref Selector](#the-ref-selector)). `static/git-panel.js` (`landOnNewestCommit`)
+owns the selection; `tests/dom/git-commit-history-session.js` runs it.
 
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
@@ -6379,8 +6381,9 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   `--nav-metadata-rule-width`, under it.
   The padding is derived from the slot’s height, the line height, and the rule, so one
   line of it is exactly the toolbar slot’s height, and on Commits, which has no toolbar
-  of its own, the line stands in the slot and its text sits as far from either rule as
-  it does under the Files and Pulls toolbars.
+  of its own, the line stands in the slot and its text sits as far from what stands over
+  it, the tab bar’s rule or a checkout’s revision row, and from the rule under it, as it
+  does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
 - **Placement.** Every line stands in the fixed chrome over its panel, never in the
   panel’s scroller, so it stays in view while the tree or the list scrolls, and its rule
@@ -6872,10 +6875,10 @@ children. Visually similar surfaces do not borrow the wrong role merely to share
 
 ### The Ref Selector
 
-A served mirror or a served checkout has a revision row directly below the Files tab and
-above the filters, including Group by (`static/source-ref-selector.js`). A checkout’s
-row first says which view the page shows, **Working tree** or **Revision**, in words; a
-mirror’s names the ref alone.
+A served mirror or a served checkout has a revision row directly below the tab bar,
+above the Files filters, including Group by, and above the Commits tally
+(`static/source-ref-selector.js`). A checkout’s row first says which view the page
+shows, **Working tree** or **Revision**, in words; a mirror’s names the ref alone.
 The row has these targets:
 
 - **The branch or tag chip** names the ref the page shows, or, on a checkout’s working
@@ -6890,10 +6893,21 @@ The row has these targets:
   click, as described below.
 
 The chooser has a filter box and one row per ref.
-The revision row belongs to Files.
-Pulls has its own scope, and a checkout’s Commits shows its history across Files
-revisions
-([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
+
+- **One choice heads Files and Commits.** The server serves one source at a time, and
+  both tabs show it: Files its files, and Commits its history, from the chosen commit,
+  or, on a checkout’s working tree, from `HEAD`, its upstream, and the trunk refs
+  ([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
+  So the row is one element with one chooser, mounted once, which `activateNavPanel` in
+  `static/main-tabs.js` shows under both tabs.
+  The two tabs cannot name different revisions, and a tab switch neither resets the row
+  nor draws it again; it only closes an open list, as each tab’s own menus close.
+  Pulls has its own scope, and the row hides there.
+
+- **A switch keeps the reader on their tab.** Chosen under Files, the page reloads on
+  the same file or folder in the new revision when it has it, else at the root.
+  Chosen under Commits, the page reloads on Commits at the tab’s own landing, the newest
+  commit of the new history, as a press on the tab lands (`switchTo`).
 
 - **A ref’s row is its name, its commit, and its age.** The name is its
   [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
@@ -7028,11 +7042,10 @@ revisions.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload page”
-  (`.source-ref-selector-stale`). Every tab shows it because the Pulls tab and
-  comparison requests can also be refused.
-  The chooser belongs to Files.
-  A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
-  `source_routes.py`). It appears only after another tab has switched the server.
+  (`.source-ref-selector-stale`). Every tab shows it because every tab’s requests are
+  refused then (`SourcePinGuard` in `source_routes.py`): the Files tree’s, the Commits
+  history’s, which is the revision’s, and the Pulls tab’s and a comparison’s. It appears
+  only after another tab has switched the server.
 
 - **The revision row keeps its box from first paint.** The server draws the row, its
   view’s word and a revision’s button back included, before the chooser module loads.

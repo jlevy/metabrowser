@@ -149,9 +149,9 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         ),
     ),
     (
-        "The Commits tab is the checkout's whichever revision the Files tab shows: on "
-        "feature, the repository's HEAD is still the checked-out topic, and the history "
-        "starts there, at second, as it does on the working tree.",
+        "The Commits tab shows the revision the Files tab shows: on feature, HEAD is "
+        "feature's commit, detached, and the history is that commit's, from feature "
+        "back to first, where the working tree's starts at the checked-out topic.",
         (
             (("checkout", "--ref", "feature", "--api", "/api/git/repo"), 0),
             (("checkout", "--ref", "feature", "--api", "/api/git/log?limit=2"), 0),
