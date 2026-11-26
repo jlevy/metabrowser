@@ -145,6 +145,8 @@ const LIST = `(() => {
     } else if (row.classList.contains("github-pulls-whole-row") && open !== null) {
       // The stack's Whole stack row, its one row (mb-cm31, mb-tvhs): its words, then its
       // stack's change line, if the server could sum one (mb-9ekj).
+      // The stack's Whole stack row, one of its set (mb-cm31).
+      const glyph = row.querySelector(".github-pull-stack-icon");
       open.whole = {
         text: row.querySelector(".github-pulls-whole-title")?.textContent ?? "",
         change: row.querySelector(".github-pulls-stack-change")?.textContent ?? "",
@@ -153,6 +155,9 @@ const LIST = `(() => {
         level: row.getAttribute("aria-level"),
         expanded: row.getAttribute("aria-expanded"),
         place: row.getAttribute("aria-posinset") + "/" + row.getAttribute("aria-setsize"),
+        // Its Layers glyph is in the row's text's ink, as the stack page's title glyph is
+        // (mb-68uk).
+        inked: glyph !== null && getComputedStyle(glyph).color === getComputedStyle(row).color,
       };
     } else if (row.getAttribute("aria-level") === "3" && open !== null) {
       const place = row.querySelector(".github-pulls-place");
@@ -292,6 +297,9 @@ const LIST = `(() => {
     wholeToggle: left(wholeRow?.querySelector(".github-pulls-toggle")),
     wholeTitle: left(wholeRow?.querySelector(".github-pulls-whole-title")),
     wholeRowHeight: box(wholeRow)?.height ?? null,
+    wholeIcon: left(wholeRow?.querySelector(".github-pull-stack-icon")),
+    // A stack's row draws no icon (mb-68uk): its heading is its name.
+    stackIcons: stackRow?.querySelectorAll(".github-pull-stack-icon").length ?? null,
     // The text column: the run's first text, the title's, and the last line's, the toggle's.
     flatTitle: textStart(flat),
     flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
@@ -364,7 +372,7 @@ const LIST = `(() => {
         token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
         pull: of(flat, flat, ".github-pulls-toggle", ".github-pull-state-icon", ".github-pulls-title"),
         stack: of(stackRow, stackRow, ".github-pulls-toggle", null, ".github-pull-stack-label"),
-        whole: of(wholeRow, wholeRow, ".github-pulls-toggle", null, ".github-pulls-whole-title"),
+        whole: of(wholeRow, wholeRow, ".github-pulls-toggle", ".github-pull-stack-icon", ".github-pulls-whole-title"),
       };
     })(),
   };
@@ -719,7 +727,7 @@ try {
     // stack's own page and the folder of its pull requests, open by default, which shows the
     // stack's change line and says it in its name; the keys below say where it is.
     check(
-      "each open stack's one row is its Whole stack row, open, which links to the stack's page and says its change line",
+      "each open stack's one row is its Whole stack row, open, its glyph in its text's ink, which links to the stack's page and says its change line",
       list.stacks.every(
         (stack) =>
           stack.expanded !== "true" ||
@@ -728,6 +736,7 @@ try {
             stack.whole.level === "2" &&
             stack.whole.expanded === "true" &&
             stack.whole.place === "1/1" &&
+            stack.whole.inked &&
             (stack.whole.change === ""
               ? // No line, or its read on its way, which the name says is pending.
                 [
@@ -826,16 +835,20 @@ try {
     // The leading slots are the tree's one icon slot, 14 px, the Files tree's too: at 16 px
     // a title and a stack's label started 44 px from the row's content edge, and at 14,
     // 40 (mb-hmv7). A pull request's row has one slot, the state icon's, on its inset, and its
-    // chevron ends its run (mb-pw8t); a stack's row and its Whole stack row have one too,
-    // the chevron's (mb-tvhs): a stack's row once had a second, its Layers icon's (mb-3vil).
+    // chevron ends its run (mb-pw8t); a stack's row has one too, its chevron's, and its label
+    // after it, with no icon (mb-68uk), where it had the Layers icon's slot as well (mb-3vil);
+    // its Whole stack row has two, its chevron's and the stack's Layers glyph's (mb-tvhs).
     const slots = list.slots;
     check(
-      "a row's chevron and icon, a stack row's chevron, and its Whole stack row's, are each the tree's 14 px icon slot",
+      "a row's chevron and icon, a stack row's chevron, and its Whole stack row's chevron and glyph, are each the tree's 14 px icon slot",
       slots.token === "14px" &&
         [slots.pull, slots.stack, slots.whole].every(
           (row) => row !== null && row.toggle === 14 && row.chevron === 12,
         ) &&
         slots.pull.glyph === 14 &&
+        slots.whole.glyph === 14 &&
+        slots.stack.icon === null &&
+        list.stackIcons === 0 &&
         // A stack's chevron, and its Whole stack row's, leads its row; a pull request's
         // ends its run.
         slots.stack.toggleFromInset === 0 &&
@@ -843,9 +856,10 @@ try {
         near(slots.pull.iconFromInset, 0) &&
         near(slots.pull.text, 14 + slots.pull.gap) &&
         near(slots.stack.text, 14 + slots.stack.gap) &&
-        near(slots.whole.text, 14 + slots.whole.gap) &&
+        near(slots.whole.iconFromInset, 14 + slots.whole.gap) &&
+        near(slots.whole.text, 2 * 14 + 2 * slots.whole.gap) &&
         slots.pull.icon === 14,
-      JSON.stringify(slots),
+      JSON.stringify({ ...slots, stackIcons: list.stackIcons }),
     );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
@@ -873,9 +887,11 @@ try {
       }),
     );
     check(
-      "its Whole stack row's chevron starts where its label does, and its pull requests' state icons where that row's words do",
-      near(list.stackLabel, list.wholeToggle) && near(list.wholeTitle, list.memberIcon),
-      `${list.stackLabel} ${list.wholeToggle} ${list.wholeTitle} ${list.memberIcon}`,
+      "its Whole stack row's chevron starts where its label does, and its pull requests' state icons and titles where that row's glyph and words do",
+      near(list.stackLabel, list.wholeToggle) &&
+        near(list.wholeIcon, list.memberIcon) &&
+        near(list.wholeTitle, list.memberTitle),
+      `${list.stackLabel} ${list.wholeToggle} ${list.wholeIcon} ${list.memberIcon} ${list.wholeTitle} ${list.memberTitle}`,
     );
     check(
       "its Whole stack row starts one tree level in, one icon slot and gap, and its pull requests two",
@@ -1602,6 +1618,15 @@ try {
           parts: [...row.children].map((el) => el.className),
           glyph: icon?.querySelector("svg") !== null,
           ink: icon ? getComputedStyle(icon).color : null,
+          // The text's ink, which the glyph takes, as the stack page's title icon does.
+          textInk: (() => {
+            const probe = document.createElement("span");
+            probe.style.color = "var(--text)";
+            document.body.append(probe);
+            const ink = getComputedStyle(probe).color;
+            probe.remove();
+            return ink;
+          })(),
           iconLeft: r(icon.getBoundingClientRect().left),
           iconWidth: r(icon.getBoundingClientRect().width),
           titleLeft: words === null ? null : r(words.getBoundingClientRect().left),
@@ -1827,15 +1852,16 @@ try {
       JSON.stringify(lines.map(({ number, by }) => ({ number, by }))),
     );
     // The Whole stack row is in the members' row grid (mb-7cn4): the stack's Layers glyph,
-    // muted, in the state icon's slot, where every member's icon starts, and its words where
-    // every member's title starts. With the menu row's own gap and an empty slot, its words
-    // started 2 px past the titles.
+    // in the text's ink as the stack page's title glyph is (mb-68uk), in the state icon's
+    // slot, where every member's icon starts, and its words where every member's title
+    // starts. With the menu row's own gap and an empty slot, its words started 2 px past the
+    // titles.
     check(
       "the Whole stack row's glyph and words start where the members' icons and titles do",
       menu.whole !== null &&
         menu.whole.text === "Whole stack" &&
         menu.whole.glyph &&
-        menu.whole.ink === first.muted &&
+        menu.whole.ink === menu.whole.textInk &&
         Math.abs(menu.whole.iconLeft - first.iconLeft) <= 0.5 &&
         Math.abs(menu.whole.iconWidth - first.iconWidth) <= 0.5 &&
         Math.abs(menu.whole.titleLeft - first.titleLeft) <= 0.5,

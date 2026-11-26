@@ -2,8 +2,7 @@
   “Stack #286 · 4 pulls”, the number bold, with the age of the stack’s most recent
   change at the row’s end, whether the stack is open or closed.
   The age is the newest update among the stack’s pull requests in the list.
-  The row no longer draws the Layers icon, and the lines the stack changes moved to its
-  Whole stack row
+  The lines the stack changes moved to its Whole stack row
   ([Stack Groups in the Pulls Tab](docs/design-system.md#stack-groups-in-the-pulls-tab)).
 
 - **Whole stack holds the stack’s pull requests.** The row under an open stack reads

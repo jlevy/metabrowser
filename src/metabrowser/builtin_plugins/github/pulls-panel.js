@@ -4871,8 +4871,9 @@ export function mountPullsPanel(container, ctx, mb) {
    * requests' (`stackUpdatedAt`); both are known when the row is first drawn, the stacks'
    * snapshot and the list's rows being what draws it, so the row has no pending state and
    * nothing in it arrives later. The lines the stack changes are its Whole stack row's
-   * (`paintWholeRow`). A row of the tree that opens and closes, as a folder is; it opens no
-   * page, so it is not a link.
+   * (`paintWholeRow`), which carries the stack's Layers glyph too (mb-68uk), so this row
+   * draws none. A row of the tree that opens and closes, as a folder is; it opens no page, so
+   * it is not a link.
    *
    * @param {import("./pull-stacks.js").StackGroupRow} group
    * @returns {PaintedStack}
@@ -4958,8 +4959,9 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * Draw a stack's Whole stack row, the one row under its open stack: a link to the stack's
    * own page (`/stack/<n>`, stack-page.js) and the folder of the stack's pull requests, which
-   * are the rows a level in under it. It is one line: its chevron, in the slot a member's
-   * state icon has, which shows and hides the pull requests, then "Whole stack", then, after
+   * are the rows a level in under it. It is one line: its chevron, which shows and hides the
+   * pull requests, then the stack's Layers glyph, in the text's ink, over the members' state
+   * icons (mb-68uk), then "Whole stack", where their titles start, then, after
    * a muted dot, the lines the stack changes, "Whole stack · +1,234 −567", the shell's brief
    * change line of its line totals alone, with no file statuses, as a pull request's row
    * says its own (`metabrowser.changeLine`; mb-lqkb), whose words the row's accessible name
@@ -4998,6 +5000,9 @@ export function mountPullsPanel(container, ctx, mb) {
         },
         [
           toggle,
+          h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
+            stackSvg === null ? null : document.importNode(stackSvg, true),
+          ]),
           h("span", { class: "github-pulls-whole-line" }, [
             h("span", { class: "github-pulls-title github-pulls-whole-title" }, [WHOLE_STACK]),
             change,

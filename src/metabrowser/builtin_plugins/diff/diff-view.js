@@ -2895,12 +2895,15 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
     line.append(...parts);
     return { element: line, dispose: () => {} };
   }
-  const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
+  const toggle = el(
+    "button",
+    "diff-summary diff-summary-toggle summary-toggle disclosure-toggle collapsed",
+  );
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
   const words = view.countsFiles ? said : withoutFileCount(said);
   toggle.setAttribute("aria-label", words.label);
-  const chevron = el("span", "diff-summary-chevron");
+  const chevron = el("span", "diff-summary-chevron summary-toggle-chevron");
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
   chevron.innerHTML = chevronSvg;

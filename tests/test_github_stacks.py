@@ -148,6 +148,9 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     )
     first = stack_envelope(StackView(repository, None, False))
     assert first["stacks"][0]["titles"] == ["A useful title", None]
+    # Its labels too, from which a stack's page decides its labels row at first paint: the
+    # row's names, and none known for a member with neither a row nor a record.
+    assert first["stacks"][0]["labels"] == [[], None]
     # The member's author and avatar come from the same cached row, for the stack menu.
     assert first["stacks"][0]["authors"] == ["maintainer", None]
     # The catalog keeps the avatar at the size a list draws it.
@@ -155,9 +158,17 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     assert envelope_etag(first) != envelope_etag(before)
     seed_catalog(
         repository,
-        [generated_item(7) | {"title": "Updated title", "updated_at": "2026-10-02T12:00:00Z"}],
+        [
+            generated_item(7)
+            | {
+                "title": "Updated title",
+                "updated_at": "2026-10-02T12:00:00Z",
+                "labels": [{"name": "bug"}, {"name": "needs review"}],
+            }
+        ],
     )
     assert envelope(repository)["stacks"][0]["titles"] == ["Updated title", None]
+    assert envelope(repository)["stacks"][0]["labels"] == [["bug", "needs review"], None]
     assert read_stacks(repository) == stored
     assert len(calls) == 4, "projecting cached titles never invokes the provider"
     data = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_text()
@@ -198,6 +209,13 @@ def test_a_member_the_catalog_lacks_is_named_by_its_cached_record(
     stack = envelope(repository)["stacks"][0]
     assert stack["titles"] == ["Work item 7", "Merged work", None, None]
     assert stack["authors"] == ["contributor", "maintainer", None, None]
+    # A record's labels are named as its page names them, by their names alone here.
+    assert stack["labels"] == [
+        [],
+        [label.name for label in recorded.pull.labels],
+        None,
+        None,
+    ]
 
 
 @pytest.mark.parametrize("changed", ["reader", "source"])

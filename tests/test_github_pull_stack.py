@@ -140,6 +140,29 @@ def test_a_member_the_top_lacks_adds_no_file() -> None:
     assert [change.id for change in kept.files] == ["f1"]
 
 
+def test_only_a_comparison_that_is_its_plain_diff_is_measured() -> None:
+    # The size measures the two commits' plain diff, so it is said only where the stack's
+    # comparison is that diff whole, and the size and the file count describe one diff.
+    plain = _manifest(_change("f1", "a.txt", "a.txt"), _change("f2", "b.txt", "b.txt"))
+    every = ((30, 1, {"a.txt": "a.txt", "b.txt": "b.txt"}),)
+    some = ((30, 1, {"a.txt": "a.txt"}),)
+    assert pull_stack._sized(plain, pull_stack._restricted(plain, every))
+    assert not pull_stack._sized(plain, pull_stack._restricted(plain, some))
+    cut = plain.model_copy(update={"truncated": True})
+    assert not pull_stack._sized(cut, pull_stack._restricted(cut, every))
+    # Past its bound, measured to cost more than the listing it follows, none is measured.
+    many = _manifest(
+        *(
+            _change(f"f{at}", f"f{at}.txt", f"f{at}.txt")
+            for at in range(pull_stack.MAX_SIZED_STACK_FILES + 1)
+        )
+    )
+    named = {f"f{at}.txt": f"f{at}.txt" for at in range(pull_stack.MAX_SIZED_STACK_FILES + 1)}
+    assert not pull_stack._sized(many, pull_stack._restricted(many, ((30, 1, named),)))
+    fewer = _manifest(*many.files[:-1])
+    assert pull_stack._sized(fewer, pull_stack._restricted(fewer, ((30, 1, named),)))
+
+
 @pytest.mark.parametrize(
     ("raw", "route"),
     [
@@ -422,6 +445,7 @@ def test_a_fetch_that_ends_while_the_records_are_read_is_answered_as_fetching(
                 author=None,
                 avatar=None,
                 moved=False,
+                details=pull_stack._Details(),  # pyright: ignore[reportPrivateUsage]
             )
             for number in found.pulls
         )
@@ -480,3 +504,53 @@ def test_a_member_with_no_record_takes_its_author_from_the_cached_list(
         ("Count to two", "octo", "https://avatars.githubusercontent.com/u/1?s=40"),
         (None, None, None),
     ]
+
+
+def test_both_stack_routes_name_a_members_labels_by_one_rule() -> None:
+    # A stack's page decides at first paint whether it has a labels row from the stacks
+    # route's names, and keeps it from its own answer's, so the two must agree even when the
+    # member's record and its list row disagree, as after a label change neither marks.
+    from metabrowser.builtin_plugins.github.pull_list import PullListRow
+    from metabrowser.builtin_plugins.github.pull_stacks_route import member_identity
+
+    def label(name: str) -> Any:
+        return SimpleNamespace(name=name, color="ededed", description=None)
+
+    pull = SimpleNamespace(
+        title="Count to two",
+        author="octo",
+        author_avatar_url=None,
+        created_at=None,
+        updated_at=None,
+        labels=(label("stale"), label("kept")),
+        commits=1,
+        merged=False,
+        merged_by=None,
+        merged_by_avatar_url=None,
+    )
+    record = cast(Any, SimpleNamespace(pull=pull))
+
+    def row(*labels: str) -> PullListRow:
+        return PullListRow(
+            number=1,
+            title="Count to two",
+            state="open",
+            draft=False,
+            merged_at=None,
+            author="octo",
+            author_avatar_url=None,
+            created_at="2026-09-16T12:00:00Z",
+            updated_at="2026-09-17T12:00:00Z",
+            closed_at=None,
+            base_ref="topic",
+            head_ref="work",
+            head_repository="octo/demo",
+            labels=labels,
+        )
+
+    # The stacks route reads a record only for a member the list does not hold.
+    for listed in (row(), row("kept"), row("kept", "new"), None):
+        named = member_identity(record if listed is None else None, listed).labels
+        drawn = pull_stack._details(record, listed).labels  # pyright: ignore[reportPrivateUsage]
+        assert named == tuple(wire["name"] for wire in drawn)
+        assert member_identity(record, listed).labels == named
