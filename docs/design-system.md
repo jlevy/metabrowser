@@ -3386,6 +3386,35 @@ A new part of the guide takes its words from these constants and its look from a
 existing part of the design system.
 It does not get a new name or a new look of its own.
 
+**A step shows whole, and nothing in it moves.** A step is drawn out of sight and
+replaces the one shown in a single change once everything its layout depends on is in
+hand: its answer, the text’s stylesheets, what draws its excerpts and documents, each
+document’s first screen with its rendered layer (`GUIDE_DOCUMENT_HOLD_MS` in
+`guide-reads.js`), and on the overview the description’s Markdown
+(`GUIDE_INTRODUCTION_HOLD_MS`, past which the overview shows with its placeholder).
+Until then the step the reader left stays as it was, and the arrows move on from the
+step the reader went to, with their waiting mark beside them, out of the flow, as a
+delayed loading state.
+A page loaded on the tab shows the delayed loading block until the guide’s first step
+shows.
+
+**What a reader is about to see is read ahead.** A pull request’s page reads its guide’s
+first step and module when it is idle on another tab, and on Guided Review’s own tab
+beside the module’s import; a stack’s page does the same at the comparison Docs or
+Changes draws.
+The guide reads the steps next to the one shown when the page is idle, and
+keeps what it reads for the document (`guide-reads.js`), so moving one step, leaving the
+tab and coming back, or opening the tab shows a step at once, with no loading state.
+A step that cites a file whole still draws that document as it shows, so the arrows’
+mark may show while it does.
+A step that cites what is not read yet, as another pull request, is read again each time
+the reader goes to it, so it fills in once that is read, and every step is read again
+once GitHub reports newer commits, since the guide may then be out of date.
+`tests/dom/github-guided-review-motion-chrome.mjs` samples every frame from a press, or
+a page load, to the settled step and holds that nothing moves, on a pull request’s page
+and a stack’s, cold and warm; `tests/dom/github-guided-review-session.js` pins what is
+read ahead and kept.
+
 ### Label Colors
 
 **A label is colored exactly as github.com colors it, in our chip’s box.** GitHub gives

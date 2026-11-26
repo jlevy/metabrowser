@@ -231,6 +231,10 @@ show it.
   late otherwise. Mustache, then Highlight.js, start through `whenIdle` with
   `PREFETCH_IDLE_TIMEOUT_MS` as the ceiling; a plugin that needs Mustache sooner demands
   the same `mustache` bundle, so it loads once.
+  A pull request’s page whose description carries a guide prefetches Guided Review’s
+  module, `builtin_plugins/github/guided-review.js`, with the guide’s first step, and a
+  stack’s page with a guide does too (`readGuideAhead` in `pull-page.js` and
+  `stack-page.js`; the cost is in `guide-reads.js`).
 - **On demand:** fetched the first time something needs it, for code that is large,
   narrowly used, or both: the bundles in `on_demand_script_bundles` in `server.py`.
 - **Inline, page-specific:** written into the shell of the pages that use it and of no

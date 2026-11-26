@@ -873,7 +873,36 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "R: showed Guided Review",
             "an example of the block inside another fence: "
             "Guided Review R, Conversation C, Docs D, Changes G, Checks E",
+            # The guide loads what draws its steps as it mounts, so a step shows whole
+            # (mb-7bu6); this page has neither, and the guide says so once for each.
+            "the guide, with no diff plugin or allowlist here, said: "
+            "metabrowser github: the diff plugin did not load for the guide; "
+            "metabrowser github: the guide's notes will show as typed",
             "disposed: keys none",
+        ],
+        # The guide's first step waits for the description it draws above it (mb-7bu6):
+        # a pending Markdown render keeps the step out of sight, and its insertion,
+        # which ends the wait, shows the step whole.
+        "guideIntroduction": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "the Markdown is inserted: the notice says This pull request has no guide.; "
+            "the description shows Counts to two, rendered.; a step waits out of sight "
+            "false",
+            "warned: 2",
+        ],
+        # A description whose Markdown never comes keeps the guide out of sight only until
+        # the introduction's bound, `GUIDE_INTRODUCTION_HOLD_MS` (review of #859, M2): then
+        # the step shows with the description's placeholder.
+        "guideIntroductionBound": [
+            "asked: pull-files-summary, stacks, guided-review, pull-markdown, pull",
+            "the guide answered, its description's Markdown not yet: the notice hidden; "
+            "the description hidden; a step waits out of sight true",
+            "its Markdown never comes, and the bound runs out: the notice says This pull "
+            "request has no guide.; the description shows its placeholder; a step waits out "
+            "of sight false",
+            "warned: 2",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
         # one notice right after its plain text, which a rebuilt text element keeps, a
