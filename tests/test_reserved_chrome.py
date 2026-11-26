@@ -543,11 +543,12 @@ def test_the_pulls_metadata_uses_the_shared_line_boxes() -> None:
     line = _rule(_css(), ".nav-metadata")
     assert "min-height: 1lh;" in line and "box-sizing: content-box;" in line
     css = _github_css()
-    # The count's one item is cut short; the line itself is the component's
-    # (tests/test_nav_metadata_line.py), and Chrome measures it one line in a narrow pane.
+    # The repository total gives way on the shared line, keeping the state tally visible.
     assert ".github-pulls-status {" not in css
     total = _rule(css, ".github-pulls-total-line")
-    assert "white-space: nowrap;" in total and "text-overflow: ellipsis;" in total
+    assert "white-space: nowrap;" in total
+    assert "text-overflow: ellipsis;" in _rule(css, ".github-pulls-total-lead")
+    assert "flex: none;" in _rule(css, ".github-pulls-total-scope")
     assert ".github-pulls-connection:not([hidden])" not in css
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     assert "status.hidden" not in panel and "connection.hidden" not in panel

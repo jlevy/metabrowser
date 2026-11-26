@@ -173,9 +173,76 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert.equal(page.controller.snapshot().filter, "open");
   assert.equal(page.controller.snapshot().rows, 500);
   assert.equal(page.requests.length, 5);
-  assert.equal(page.model().countNumber, "9,000");
-  assert.equal(page.model().countSuffix, " PRs on ");
-  assert.equal(page.model().repository, "jlevy/metabrowser");
+  const scoped = (count, state) => [
+    { separator: " · ", spoken: "," },
+    { number: count },
+    ` ${state}`,
+  ];
+  assert.deepEqual(page.model().countSummary, {
+    total: [{ number: "9,000" }, " pull requests"],
+    scope: scoped("8,000", "open"),
+  });
+  assert.match(page.model().listName, /jlevy\/metabrowser/u);
+  const countFor = (filter, envelope, filterTotals) =>
+    panel.describePulls(envelope, {
+      filter,
+      filterTotals,
+      rows: [],
+      rowsVersion: 0,
+      nowMs: page.state.now,
+      error: null,
+      more: false,
+      formatTime: (at) => at,
+      formatCount: (count) => count.toLocaleString("en-US"),
+    }).countSummary;
+  const cached = {
+    ...page.envelope("/api/plugin/github/pulls?state=all&limit=0"),
+    state: "stale",
+    filter_totals: { all: 31, open: 3, closed: 28 },
+  };
+  for (const filter of ["open", "closed", "all"]) {
+    assert.deepEqual(countFor(filter, cached), {
+      total: [{ number: "31" }, " pull requests"],
+      scope: filter === "closed" ? scoped("28", "closed") : scoped("3", "open"),
+    });
+  }
+  assert.deepEqual(
+    countFor("all", {
+      ...cached,
+      filter_totals: { all: 1, open: 0, closed: 1 },
+    }),
+    {
+      total: [{ number: "1" }, " pull request"],
+      scope: scoped("0", "open"),
+    },
+  );
+  assert.deepEqual(
+    countFor("closed", {
+      ...cached,
+      filter_totals: { all: 0, open: 0, closed: 0 },
+    }),
+    {
+      total: [{ number: "0" }, " pull requests"],
+      scope: scoped("0", "closed"),
+    },
+  );
+  assert.equal(countFor("all", null), null);
+  assert.equal(
+    countFor("all", { ...cached, state: "absent", reason: "not_github" }, cached.filter_totals),
+    null,
+    "an unsupported source never shows the prior tally",
+  );
+  assert.deepEqual(
+    countFor("all", {
+      ...cached,
+      repository_total: 31,
+      filter_totals: null,
+    }),
+    {
+      total: [{ number: "31" }, " pull requests"],
+      scope: null,
+    },
+  );
   // No notice says how many rows are held: below them, the crawl's progress, in its words.
   assert.equal(page.model().progress, "~6,000 pull requests fetched");
   assert.doesNotMatch(JSON.stringify(page.model()), /Showing last|cached|Fetch more/u);
@@ -227,7 +294,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   page.state.total = null;
   page.controller.onVisibilityChange();
   await settle();
-  assert.equal(page.model().countNumber, null, "unknown totals must not become zero");
+  assert.equal(page.model().countSummary, null, "unknown totals must not become zero");
   page.dispose();
 
   // Near the tail, add one cache page while holding selection and the existing prefix.

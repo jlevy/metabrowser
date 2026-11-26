@@ -56,7 +56,6 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "absent",
         "listName": "Pull requests of octo/demo",
-        "summary": "octo/demo",
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
@@ -77,7 +76,6 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "absent",
         "listName": "Pull requests of octo/demo",
-        "summary": "octo/demo",
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
@@ -97,7 +95,6 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "pending",
         "listName": "Pull requests of octo/demo",
-        "summary": "octo/demo",
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
@@ -120,7 +117,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "summary": "102 PRs on octo/demo",
+        "summary": "102 pull requests · 100 open",
         "connection": {
           "state": "connected",
           "text": "",
@@ -149,7 +146,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "summary": "102 PRs on octo/demo",
+        "summary": "102 pull requests · 100 open",
         "connection": {
           "state": "connected",
           "text": "",
@@ -197,7 +194,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "open",
         "status": "current",
         "listName": "Pull requests of octo/demo: 100 pull requests",
-        "summary": "102 PRs on octo/demo",
+        "summary": "102 pull requests · 100 open",
         "connection": {
           "state": "connected",
           "text": "",
@@ -215,21 +212,42 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
+      "step": "Closed uses the known tally while its list loads",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100"
+      ],
+      "timer": "fast",
+      "marks": [
+        "anchor 106 -> null"
+      ],
+      "filterChanged": [
+        "closed"
+      ],
+      "painted": 1,
+      "paint": {
+        "filter": "closed",
+        "status": "loading",
+        "listName": "Pull requests",
+        "summary": "102 pull requests · 2 closed",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "canRefresh": false
+        },
+        "live": "Fetching pull requests…"
+      }
+    },
+    {
       "step": "leaving a filter aborts its read",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100",
         "aborted GET /api/plugin/github/pulls?state=closed&limit=100",
         "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\""
       ],
       "timer": "slow",
       "marks": [
-        "anchor 106 -> null",
         "anchor null -> 106"
       ],
-      "filterChanged": [
-        "closed"
-      ],
-      "painted": 2
+      "painted": 1
     },
     {
       "step": "500 shown while the catalog continues in the background",
@@ -251,7 +269,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "summary": "1,000 PRs on octo/demo",
+        "summary": "1,000 pull requests · 1,000 closed",
         "connection": {
           "state": "connected",
           "text": "",
@@ -280,7 +298,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "summary": "6,000 PRs on octo/demo",
+        "summary": "6,000 pull requests · 6,000 closed",
         "connection": {
           "state": "connected",
           "text": "",
@@ -309,7 +327,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "summary": "6,000 PRs on octo/demo",
+        "summary": "6,000 pull requests · 6,000 closed",
         "connection": {
           "state": "connected",
           "text": "",
@@ -342,7 +360,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "summary": "6,000 PRs on octo/demo",
+        "summary": "6,000 pull requests · 6,000 closed",
         "connection": {
           "state": "connected",
           "text": "",
@@ -380,7 +398,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
-        "summary": "6,001 PRs on octo/demo",
+        "summary": "6,001 pull requests · 6,001 closed",
         "connection": {
           "state": "connected",
           "text": "",
@@ -993,18 +1011,30 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "Closed 2",
       "All 102"
     ],
-    "only the repository name is bold": [
+    "both counts are bold": [
       {
         "node": "SPAN",
         "text": "102"
       },
       {
         "node": "#text",
-        "text": " PRs on "
+        "text": " pull requests"
       },
       {
-        "node": "STRONG",
-        "text": "octo/demo"
+        "node": "SPAN",
+        "text": " · "
+      },
+      {
+        "node": "SPAN",
+        "text": ","
+      },
+      {
+        "node": "SPAN",
+        "text": "100"
+      },
+      {
+        "node": "#text",
+        "text": " open"
       }
     ],
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",

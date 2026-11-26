@@ -53,7 +53,7 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 // Text positions are fractional; under half a pixel is not a different place.
 const TOLERANCE_PX = 0.5;
 // Wide enough that every state's text, the longest remedy included, is one line; and
-// narrower than the stand-in's count, "102 PRs on octo/demo", which must keep to its line.
+// narrower than the stand-in's count, "102 pull requests · 100 open", which must keep to its line.
 const WIDE_PX = 720;
 const NARROW_PX = 120;
 // Each wait's bound: a paint, or a fake `gh` refresh of the stand-in's catalog, which takes
@@ -507,15 +507,41 @@ try {
     `${pullsFailed}` === "true,false,true",
     pullsFailed,
   );
-  // In a pane narrower than the count, the count is cut short on its one line.
+  // The longest state word and grouped counts still leave the tally visible at 180px.
+  await paneWidth(180);
+  const minimum = await evaluate(`(() => {
+    const total = document.querySelector(".github-pulls-total-line");
+    const lead = total.querySelector(".github-pulls-total-lead");
+    const scope = total.querySelector(".github-pulls-total-scope");
+    const originalLead = lead.innerHTML;
+    const originalScope = scope.innerHTML;
+    lead.querySelector(".summary-number").textContent = "123,456";
+    scope.querySelector(".summary-number").textContent = "123,453";
+    scope.lastChild.textContent = " closed";
+    const result = {
+      leadClips: lead.scrollWidth > lead.clientWidth,
+      scopeFits: scope.scrollWidth <= scope.clientWidth &&
+        scope.getBoundingClientRect().right <= total.getBoundingClientRect().right + 0.5,
+    };
+    lead.innerHTML = originalLead;
+    scope.innerHTML = originalScope;
+    return result;
+  })()`);
+  check(
+    "pulls minimum: the state tally stays whole when the total clips",
+    minimum.leadClips && minimum.scopeFits,
+    JSON.stringify(minimum),
+  );
+
+  // In a pane narrower than the supported minimum, the heading still uses one line.
   await paneWidth(NARROW_PX);
   narrowCount = await evaluate(`(() => {
     const line = document.querySelector(".github-pulls-status");
-    const total = line.querySelector(".github-pulls-total-line");
+    const lead = line.querySelector(".github-pulls-total-lead");
     const cs = getComputedStyle(line);
     return {
       lines: Math.round(parseFloat(cs.height) / parseFloat(cs.lineHeight)),
-      cut: total.scrollWidth > total.clientWidth,
+      cut: lead.scrollWidth > lead.clientWidth,
     };
   })()`);
   await paneWidth(null);
@@ -643,12 +669,15 @@ for (const [width, measured] of [
     remark?.innerText === remark?.text && remark?.text === "Filtered to 2 files.",
     JSON.stringify(remark?.innerText),
   );
-  // The Pulls count's number is bold, as every count summary's, and its words regular.
   const count = measured["pulls updated"]?.lines[0];
   check(
-    `pulls updated (${width}): the count's one number is bold`,
-    count?.numbers.length === 1 && count.numbers[0].weight === "700",
-    JSON.stringify(count?.numbers),
+    `pulls updated (${width}): both numbers are bold in one line`,
+    count?.numbers.length === 2 &&
+      count.numbers.every((number) => number.weight === "700") &&
+      count.lines === 1 &&
+      count.text.replace(" · ,", " · ") ===
+        `${count.numbers[0].text} pull requests · ${count.numbers[1].text} open`,
+    JSON.stringify(count),
   );
 }
 // The pending tallies of Files and Commits sit alike in their lines.

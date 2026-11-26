@@ -775,7 +775,7 @@ keeps it.
 | The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
 | The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `_renderFilteredTally` in `static/app.js` in one span of its line |
 | The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
-| The Pulls count, “448 PRs on owner/repo” | `.github-pulls-total` in the GitHub plugin’s `pulls-panel.js` |
+| The Pulls count, “448 pull requests · 12 open” | `.github-pulls-total-line` in the GitHub plugin’s `pulls-panel.js` |
 | A Pulls stack row’s size, “Stack #286 · 4 pulls” | `paintStackRow` in the GitHub plugin’s `pulls-panel.js`, through `metabrowser.countPartsNodes`, after the stack’s label ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)) |
 | A pull request’s Checks summary, “3 success · 1 failure” | `paintChecks` in the GitHub plugin’s `pull-page.js`, through `metabrowser.countPartsNodes`, its dots `.summary-punctuation` in a line muted already, each saying a comma in its place |
 | A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js`, in one span of its line |
@@ -3899,7 +3899,7 @@ holds the one helper and the one rule in source.
 | Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s Whole stack row above it has the icon |
 | Stack group | A row of the tree: the chevron, then “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no icon, the stack’s size as a count summary, “· 4 pulls” ([Heading Tallies](#heading-tallies)), and its age at the row’s end; its Whole stack row and its pull requests one icon slot and gap in, that row’s Layers glyph and each state icon under the label’s start, and each title under “Whole stack” | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
-| Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
+| Count | The first line of the [navigation metadata line](#navigation-metadata-line). Open and All read “31 pull requests · 3 open,” and Closed reads “31 pull requests · 28 closed.” Both numbers are bold, the words are regular, and the dot is muted ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)). The total ellipsizes before the state tally, and the line stays one line tall | The total counts the repository, and the tally counts the selected state. Known counts stay while a new filter loads. A missing state count leaves just the total, and an unknown total reserves the line. |
 | Refresh | The navigation’s Refresh, at the top of the navigation pane, just before the Metabrowser menu’s gear, on every page and under every tab, from the first paint, so the header never moves | With Pulls in front it refreshes the list and the pull request page beside it first, then the rest of the page. The tooltip gives the time and duration of the last completed list refresh. |
 | Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” while no rows are shown, and actionable copy when a load is incomplete or fails, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
@@ -6574,8 +6574,8 @@ without a browser.
 Under each main tab’s toolbar, a line or two says what the list below holds and how
 current it is: the Files totals, “12,797 files (413.8 MB)” over “+ 248,189 ignored (10.1
 GB)”, and the filter’s remarks under them; the Commits tally, “10,044 commits begun 1y
-ago”; and the Pulls count, “381 PRs on owner/repo”, with a connection line for first
-load, incomplete results, and failures.
+ago”; and the Pulls count, “381 pull requests · 12 open”, with a connection line for
+first load, incomplete results, and failures.
 All of them are one component, `.nav-metadata` in `static/styles.css`. They were three
 recipes, and the reader saw it: 13px text 6px under the Files filters, 13px text centred
 in the Commits slot, and 12px muted text with no space above it under the Pulls filters.
@@ -6676,11 +6676,11 @@ first tally; and reads each line’s tooltip, which shows only while the line is
 at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
-loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
-in a narrow pane. It also holds every section rule on Files, Commits, and Pulls, the tab
-bar’s, the toolbar’s, and the band’s, to the pane’s full width, at the narrowest pane,
-the default, and a wide one, with the content under them overflowing its scroller and
-not.
+loading, updated, unreachable, signed out, and with no gh; and the Pulls lead count cut
+short with its state tally visible in a narrow pane.
+It also holds every section rule on Files, Commits, and Pulls, the tab bar’s, the
+toolbar’s, and the band’s, to the pane’s full width, at the narrowest pane, the default,
+and a wide one, with the content under them overflowing its scroller and not.
 
 ### Section Headings
 
