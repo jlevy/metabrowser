@@ -240,7 +240,8 @@ from the link it kept, since its targets include folders and queries, which
 - An in-app link’s `href` is the address a plain click opens, so a new tab, a copied
   address, and the browser’s history open what the click opens.
 - A plain click opens an in-app page in place whenever the shell can show it, on every
-  surface: no route link loads the page again once the shell’s tabs have loaded.
+  surface: no link loads the page again once the shell can show its address
+  ([Phase 2](#phase-2-routes-in-place) lists when it cannot yet).
 - No link in authored text switches the served pin, starts a fetch, or posts anything.
 - `localize` is a pure function of the URL, the repository context, and the text
   context: one table of cases pins every surface.
@@ -280,8 +281,11 @@ request loaded the page again, which lost the shell’s state.
   The address already shown it opens again where it is, as `navigation.open` does: it
   pushes no entry and lands nothing, so the page keeps its place, and the panel reveals
   the item again, as Quick Search for the item shown does.
-  It answers false for any other address, and before the shell tools have loaded, and
-  the browser follows the link.
+  It answers false for an address the shell cannot show in place, or cannot show yet,
+  and the browser follows the link: any other address; any before the shell tools have
+  loaded; a pull request’s, a stack’s, or the list’s before `pull-route.js` has loaded,
+  or on a page with no Pulls tab; and a commit’s before Git discovery registers the
+  Commits tab.
 - [x] The SDK’s `metabrowser.navigation.openRoute(href)`, an additive method of the
   facade, so `PLUGIN_SDK_VERSION` stays; it is one eager line that asks the controller.
 - [x] `enhance` falls back to it for every route a page’s own `open` declines, so the
