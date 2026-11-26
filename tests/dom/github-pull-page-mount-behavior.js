@@ -1098,7 +1098,10 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
     setTimeout: () => Symbol(),
     clearTimeout() {},
   };
-  globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
+  // *fetchFirst* answers a route it knows, or null for the 304 every other route gets.
+  const { fetchFirst, ...sdk } = more;
+  globalThis.fetch = async (route) =>
+    (await fetchFirst?.(route)) ?? { status: 304, headers: { get: () => null } };
   const container = new Element("main");
   const handle = page.mountPullPage(
     container,
@@ -1122,11 +1125,109 @@ async function mountOn(page, body, tab, ageLabel, more = {}) {
       },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
-      ...more,
+      ...sdk,
     },
   );
   await settle();
   return { container, handle };
+}
+
+// Guided Review's overview is the description, which shows with the guide's first answer
+// once its Markdown is in, so the overview's first paint is its last (mb-7bu6). A guide that
+// answers before that Markdown waits for it out of sight, and shows the moment the render
+// replaces the description's plain text, whatever the guide answered: here that the
+// description has no guide, as `/pull/10/guided` answers in Chrome
+// (tests/dom/github-guided-review-chrome.mjs). A render that replaced the plain text without
+// telling the wait left the guide out of sight for good.
+async function guideIntroduction(page) {
+  const body = structuredClone(recorded.current.body);
+  body.record_revision = "c".repeat(64);
+  body.record.pull.body = "Counts to two.\n\n```guided-review\nsoftschema: {}\n```\n";
+  body.record.issue_comments = [];
+  body.record.reviews = [];
+  body.record.review_comments = [];
+  let releaseMarkdown = () => {};
+  const markdown = new Promise((resolve) => {
+    releaseMarkdown = resolve;
+  });
+  const answer = (value) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    json: async () => value,
+    text: async () => JSON.stringify(value),
+  });
+  const asked = [];
+  const warned = [];
+  const consoleWarn = console.warn;
+  console.warn = (message) => warned.push(String(message));
+  const { container, handle } = await mountOn(page, body, "guided", () => "now", {
+    ensureAsset: async () => {
+      window.MetabrowserInertHtml = {
+        sanitizeHtml: (html) => html,
+        kpressProse(html) {
+          const node = document.createElement("p");
+          node.textContent = html;
+          return node;
+        },
+      };
+    },
+    loadKpressAssets: async () => {},
+    plugins: {
+      load: async () => {
+        throw new Error("no diff plugin here");
+      },
+    },
+    fetchFirst: (route) => {
+      asked.push(route.split("?")[0].split("/").at(-1));
+      if (route.startsWith("/api/plugin/github/pull-markdown")) {
+        return markdown.then(() =>
+          answer({
+            number: 7,
+            fetched_at: body.fetched_at,
+            record_revision: body.record_revision,
+            part: "body",
+            html: "Counts to two, rendered.",
+            assets: {},
+          }),
+        );
+      }
+      if (route.startsWith("/api/plugin/github/guided-review")) {
+        return Promise.resolve(answer({ state: "absent", record_revision: body.record_revision }));
+      }
+      return null;
+    },
+  });
+  const guide = () =>
+    [...container.descendants()].find((node) => node.classes.has("github-pull-guided-review"));
+  const shownState = () => {
+    const host = guide();
+    const notice = host?.children.find(
+      (child) =>
+        typeof child !== "string" && child.tag === "p" && child.classes.has("github-pull-quiet"),
+    );
+    const introduction = host?.children.find(
+      (child) =>
+        typeof child !== "string" &&
+        child.tag === "div" &&
+        child.querySelector?.(".github-pull-guide-introduction") !== null,
+    );
+    const waiting = host?.children.some(
+      (child) => typeof child !== "string" && child.classes.has("github-pull-guide-incoming"),
+    );
+    return `the notice ${notice === undefined || notice.hidden ? "hidden" : `says ${notice.textContent}`}; the description ${introduction === undefined || introduction.hidden ? "hidden" : `shows ${introduction.querySelector(".github-pull-guide-introduction")?.textContent ?? ""}`}; a step waits out of sight ${waiting === true}`;
+  };
+  const steps = [];
+  await settle();
+  steps.push(`asked: ${[...new Set(asked)].join(", ")}`);
+  steps.push(`the guide answered, its description's Markdown not yet: ${shownState()}`);
+  releaseMarkdown();
+  await settle();
+  steps.push(`the Markdown is inserted: ${shownState()}`);
+  console.warn = consoleWarn;
+  handle.dispose();
+  steps.push(`warned: ${warned.length}`);
+  return steps;
 }
 
 // Browse code switches the pin through the diff plugin's view, whose switch is in a module
@@ -4193,6 +4294,7 @@ async function run() {
   const coldHoldSteps = await coldHold(page);
   const counterpartStepsTold = await counterpartSteps(page);
   const tabKeySteps = await tabKeys(page);
+  const guideIntroductionSteps = await guideIntroduction(page);
   const textRefusalSteps = await textRefusal();
   const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
@@ -4227,6 +4329,7 @@ async function run() {
     coldHold: coldHoldSteps,
     counterpart: counterpartStepsTold,
     tabKeys: tabKeySteps,
+    guideIntroduction: guideIntroductionSteps,
     textRefusal: textRefusalSteps,
     textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,

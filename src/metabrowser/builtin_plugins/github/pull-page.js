@@ -5604,16 +5604,20 @@ export function mountPullPage(container, ctx, mb) {
    */
   function showPending(element, part, value) {
     const plain = element.querySelector(":scope > .github-pull-plain");
-    if (plain === null || textOf.get(element) !== value) {
-      return;
+    if (plain !== null && textOf.get(element) === value) {
+      // A text already refused shows its source and says why while it is asked again, rather
+      // than turn back into a placeholder under that line.
+      plain.classList.toggle(
+        "github-pull-plain-pending",
+        refusedNotes.get(part)?.text !== value &&
+          (controller.pending(part, value) || inserting.get(part) === value),
+      );
     }
-    // A text already refused shows its source and says why while it is asked again, rather
-    // than turn back into a placeholder under that line.
-    plain.classList.toggle(
-      "github-pull-plain-pending",
-      refusedNotes.get(part)?.text !== value &&
-        (controller.pending(part, value) || inserting.get(part) === value),
-    );
+    textsChanged();
+  }
+
+  /** Tell each wait on texts (`textsSettled`) that one may have stopped waiting. */
+  function textsChanged() {
     for (const check of [...pendingWatchers]) {
       check();
     }
@@ -5621,7 +5625,8 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * What waits for texts to stop waiting for their Markdown (`textsSettled`), told each time
-   * one may have, as `showPending` marks it, or when the page is disposed.
+   * one may have (`textsChanged`): as `showPending` marks a text, as a render replaces one
+   * (`renderMarkdown`), or when the page is disposed.
    *
    * @type {Set<() => void>}
    */
@@ -5824,39 +5829,45 @@ export function mountPullPage(container, ctx, mb) {
     const element = texts.get(part);
     inserting.set(part, text);
     void Promise.all([inertReady, textStyles(rendered.assets)]).then(([inert]) => {
-      if (inserting.get(part) === text) {
-        inserting.delete(part);
-      }
-      if (listening.signal.aborted) {
-        return;
-      }
-      const held = firstPaint;
-      // The description a delayed first paint waits for may be insertable now, or never.
-      if (held?.mode === "delayed" && part === "body" && held.text === text) {
-        held.plain ||= inert === null;
-        if (firstPaintReady()) {
-          settleFirstPaint();
+      // However this ends, a wait on the text hears of it: the render replaces the plain text
+      // whose pending mark it was waiting on, and `showPending` sees no plain text after.
+      try {
+        if (inserting.get(part) === text) {
+          inserting.delete(part);
+        }
+        if (listening.signal.aborted) {
           return;
         }
-      }
-      const plain =
-        element === undefined || texts.get(part) !== element || textOf.get(element) !== text
-          ? null
-          : element.querySelector(":scope > .github-pull-plain");
-      if (plain && element !== undefined && inert !== null) {
-        plain.replaceWith(kpressHost(inert, rendered, element));
-        // The text is rendered now, so what said why it was plain goes with the plain text.
-        element?.querySelector(":scope > .github-pull-text-refused")?.remove();
-        if (refusedNotes.get(part)?.text === text) {
-          refusedNotes.delete(part);
+        const held = firstPaint;
+        // The description a delayed first paint waits for may be insertable now, or never.
+        if (held?.mode === "delayed" && part === "body" && held.text === text) {
+          held.plain ||= inert === null;
+          if (firstPaintReady()) {
+            settleFirstPaint();
+            return;
+          }
         }
-      } else if (inert === null) {
-        held?.failed.add(part);
-      }
-      // A text still plain shows its source now if no other render of it is on its way.
-      showPendingPart(part);
-      if (held?.mode === "hidden") {
-        settleFirstPaint();
+        const plain =
+          element === undefined || texts.get(part) !== element || textOf.get(element) !== text
+            ? null
+            : element.querySelector(":scope > .github-pull-plain");
+        if (plain && element !== undefined && inert !== null) {
+          plain.replaceWith(kpressHost(inert, rendered, element));
+          // The text is rendered now, so what said why it was plain goes with the plain text.
+          element?.querySelector(":scope > .github-pull-text-refused")?.remove();
+          if (refusedNotes.get(part)?.text === text) {
+            refusedNotes.delete(part);
+          }
+        } else if (inert === null) {
+          held?.failed.add(part);
+        }
+        // A text still plain shows its source now if no other render of it is on its way.
+        showPendingPart(part);
+        if (held?.mode === "hidden") {
+          settleFirstPaint();
+        }
+      } finally {
+        textsChanged();
       }
     });
   }
@@ -8472,6 +8483,8 @@ export function mountPullPage(container, ctx, mb) {
     // Each paint of the tab clears the page's texts: the description's is registered again
     // so its Markdown lands here.
     askForTexts([shown.block]);
+    // A description drawn again, rendered from what the page kept, waits for nothing now.
+    textsChanged();
   }
 
   /** The record revision whose guide was read ahead, so it is read once (`readGuideAhead`). */

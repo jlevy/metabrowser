@@ -3404,7 +3404,7 @@ The guide reads the steps next to the one shown when the page is idle, and
 keeps what it reads for the document (`guide-reads.js`), so moving one step, leaving the
 tab and coming back, or opening the tab shows a step at once, with no loading state.
 A step that cites a file whole still draws that document as it shows, so the arrows’
-mark may show while it does (mb-ukmm).
+mark may show while it does.
 `tests/dom/github-guided-review-motion-chrome.mjs` samples every frame from a press, or
 a page load, to the settled step and holds that nothing moves, on a pull request’s page
 and a stack’s, cold and warm; `tests/dom/github-guided-review-session.js` pins what is

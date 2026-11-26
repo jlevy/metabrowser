@@ -83,9 +83,11 @@ try {
     await chrome.send("Page.navigate", { url: `${base}${route}` });
     await waitFor(`location.pathname === ${JSON.stringify(route)}`);
   };
+  // A step is composed out of sight (`.github-pull-guide-incoming`, guided-review.js) and
+  // shows whole once what it draws is in, so a check reads only the step shown.
   const settled = (title) =>
     waitFor(
-      `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
+      `document.querySelector(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
     );
   /** Open the step titled *title* from the guide's list of steps. */
   const open = async (title) => {
@@ -125,8 +127,8 @@ try {
   same(
     "the step draws two documents and no excerpt",
     await evaluate(`[
-      document.querySelectorAll(".github-pull-guide-step .github-pull-guide-document").length,
-      document.querySelectorAll(".github-pull-guide-step .github-pull-guide-excerpt").length,
+      document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-document").length,
+      document.querySelectorAll(".github-pull-guide-step:not(.github-pull-guide-incoming) .github-pull-guide-excerpt").length,
     ]`),
     [2, 0],
   );
