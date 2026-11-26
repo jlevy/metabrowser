@@ -214,6 +214,9 @@ def _record_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[st
         git(checkout, "checkout", "-q", "--detach", "topic")
         git_repo.clear_repo_cache()
         recorded["branches_detached"] = listing(kind="branch")
+        # A switch made on the Commits tab names no address: the page lands on that tab
+        # (static/source-ref-selector.js, `switchTo`).
+        recorded["switch_from_commits"] = switch({"ref": "refs/heads/feature"})
     # A folder holding a `.git` that is no repository, whose row the page removes.
     hollow = sandbox / "hollow"
     (hollow / ".git").mkdir(parents=True)
@@ -279,6 +282,10 @@ def test_recording_is_what_a_served_checkout_answers(
     assert recorded["switch_missing"]["status"] == 404
     detached = recorded["branches_detached"]["body"]["working_tree"]
     assert (detached["current"], detached["head"], detached["head_name"]) == (True, None, None)
+    # Asked with no address, the answer names none: where the page goes is the page's.
+    from_commits = recorded["switch_from_commits"]["body"]
+    assert from_commits["status"]["ref"] == "refs/heads/feature"
+    assert "view_href" not in from_commits
     check_recording(CHECKOUT_RECORDING, recorded, transcript=TRANSCRIPT)
 
 
@@ -333,6 +340,17 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     assert by_name["the page goes to the same file in the folder"]["navigated"] == [
         recording["views"]["readme"]
     ]
+    # The chooser heads the Commits tab too. A switch made there names no address, and the
+    # page reloads on Commits, at the tab's own landing, which selects the newest commit of
+    # the history now served; the row there names the revision chosen.
+    assert by_name["a switch on the Commits tab names no address"]["requests"] == [
+        'POST /api/source/pin {"ref":"refs/heads/feature"}'
+    ]
+    assert by_name["the page reloads on the Commits tab's own landing"]["navigated"] == [
+        '/view/ {"gitLanding":true}'
+    ]
+    reloaded = by_name["the reloaded Commits tab's row names the revision chosen there"]
+    assert reloaded["paint"]["button"] == "Revision · Branch: feature"
     # The way back failed with the list closed: the row says why, and the list clears it.
     failed = by_name["a failed way back says so in the row, with the list closed"]["paint"]
     assert (failed["open"], failed["error"]) == (False, "The switch request failed.")

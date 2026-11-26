@@ -4849,10 +4849,7 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       filesShown: resumeRootSummaryRefresh,
-      filesHidden: () => {
-        closeFilterMenu();
-        window.MetabrowserSourceRefSelector?.mounted()?.close();
-      },
+      filesHidden: closeFilterMenu,
       flushPull: () => pullPageHost?.page()?.flush?.(),
       // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,

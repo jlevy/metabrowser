@@ -79,9 +79,6 @@ class _Mirror:
     async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
         return {}
 
-    async def default_tip(self) -> str | None:
-        return None
-
     async def default_ref(self) -> str | None:
         return None
 

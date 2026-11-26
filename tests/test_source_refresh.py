@@ -317,11 +317,10 @@ def test_a_refresh_that_moves_the_served_branch_is_followed(
     readme = served.get("/api/file", params={"path": _wire("README.md")}).json()
     assert "Second revision." not in readme["content"]
     assert served.get("/api/file", params={"path": _wire("data.json")}).status_code == 404
-    # The Commits tab is the default branch's whichever commit Files shows: the owner's
-    # "independent, at least for now".
-    assert served.get("/api/git/repo").json()["head"]["revision"] == newer
+    # The Commits tab shows the commit Files shows, and that commit's history.
+    assert served.get("/api/git/repo").json()["head"]["revision"] == origin.first
     history = served.get("/api/git/log", params={"limit": "10"}).json()
-    assert [commit["id"] for commit in history["commits"]] == [newer, origin.second, origin.first]
+    assert [commit["id"] for commit in history["commits"]] == [origin.first]
 
 
 def test_concurrent_refresh_requests_join_one_fetch(
@@ -599,7 +598,7 @@ def test_a_refresh_that_moves_a_ref_makes_an_open_all_branch_cursor_stale(
     stale = served.get("/api/git/log", params={"limit": "1", "scope": "all", "cursor": cursor})
     assert stale.status_code == 409
     assert stale.json()["code"] == "history_stale"
-    # The default walk is the default branch's, which a new branch does not move.
+    # The default walk is the served commit's, which a new branch does not move.
     default = served.get("/api/git/log", params={"limit": "1"}).json()
     assert (
         served.get("/api/git/log", params={"limit": "1", "cursor": default["cursor"]}).status_code
@@ -1271,9 +1270,6 @@ class _BusyMirror:
 
     async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
         return {}
-
-    async def default_tip(self) -> str | None:
-        return None
 
     async def default_ref(self) -> str | None:
         return None

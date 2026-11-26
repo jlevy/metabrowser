@@ -2913,7 +2913,7 @@ html.theme-anim .menu {
 /* The navigation frame and Files list keep their first font for this page.
    A late Source Sans response cannot reposition the tabs, folder menu, or filter bar. */
 html:not([data-app-font="system"]) .tree-pane
-  > :where(.app-header, .nav-tab-bar, .nav-files-ref, [data-nav-toolbar], .nav-metadata-band),
+  > :where(.app-header, .nav-tab-bar, .nav-source-ref, [data-nav-toolbar], .nav-metadata-band),
 html:not([data-app-font="system"]) .tree-pane #tab-files {
   --font-sans: "Metabrowser Sidebar Sans", var(--app-sans-system);
   font-family: var(--font-sans);
@@ -3088,15 +3088,16 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   white-space: nowrap;
 }
 
-/* The Files source sits above its filters. The adjacent chooser opens a menu as
-   wide as the row so branch names, commit IDs, and ages have room. */
-.nav-files-ref {
+/* The served revision sits above the Files filters and the Commits tally, the two tabs
+   that show it. The adjacent chooser opens a menu as wide as the row so branch names,
+   commit IDs, and ages have room. */
+.nav-source-ref {
   position: relative;
   z-index: 3;
   flex-shrink: 0;
 }
-.nav-files-ref[hidden],
-.nav-files-ref:has(> .source-ref-selector[hidden]),
+.nav-source-ref[hidden],
+.nav-source-ref:has(> .source-ref-selector[hidden]),
 .source-ref-selector[hidden] {
   display: none;
 }

@@ -1439,12 +1439,6 @@ _PIN_EXEMPT_PREFIX: Final = "/api/source/"
 # it serves. A page left on an old pin still sends its reports there, the last of them as
 # it is left, and its Details read the log, so neither is refused (A4, review A of #629).
 _PIN_EXEMPT_EVENT_LOG: Final = "/api/event-log"
-# A checkout's Commits tab and a commit's view: answered whichever revision a page names,
-# since they read the checkout's history and its Git directory whichever revision Files
-# shows (`history_git_location` in git/routes.py). The chooser that switches the served
-# revision is in the Files toolbar, which the Commits tab hides, so a refusal there would
-# stop the tab at a reload offer its reader cannot see.
-_CHECKOUT_HISTORY_PREFIX: Final = "/api/git/"
 
 
 def pin_changed_response(claimed: str | None) -> JSONResponse | None:
@@ -1473,12 +1467,13 @@ class SourcePinGuard:
     working tree names :data:`WORKING_TREE_PIN`, since its server can serve a revision
     of the checkout instead, and is refused while one is served. The ``/api/source/``
     routes are exempt: a page learns what is served from the status route and switches
-    through the pin route. So are the event log's, which are about the server. So are a checkout's ``/api/git/`` routes, which answer the same
-    whichever of its revisions is served. A mirror's stay guarded: its freshness row, at
-    the foot of the pane, offers the reload on every tab. The refusal is
-    ``409 pin_changed`` with the served commit, or
-    an empty value when a folder is served, in :data:`PIN_CHANGED_HEADER`, which the page
-    reads without consuming the body.
+    through the pin route. So are the event log's, which are about the server. The
+    ``/api/git/`` routes are not: the Commits tab's history is the served revision's, as
+    the Files tab's tree is (``session_git_location`` in ``git/routes.py``), and a page's
+    freshness row, at the foot of the pane, offers the reload on every tab. The refusal
+    is ``409 pin_changed`` with the served commit, or an empty value when a folder is
+    served, in :data:`PIN_CHANGED_HEADER`, which the page reads without consuming the
+    body.
 
     One request that names nothing is refused too, on a server that can show a working
     tree. A working-tree page takes its guard with the selector's bundle, after its first
@@ -1510,7 +1505,7 @@ class SourcePinGuard:
                 # such page, and its requests are checked only by what they name.
                 claimed = WORKING_TREE_PIN
             response = pin_changed_response(claimed)
-            if response is not None and not _checkout_history(scope):
+            if response is not None:
                 await response(scope, receive, send)
                 return
         await self.app(scope, receive, send)
@@ -1531,18 +1526,6 @@ def _guarded(scope: dict[str, Any]) -> bool:
         and not path.startswith(_PIN_EXEMPT_PREFIX)
         and path != _PIN_EXEMPT_EVENT_LOG
         and not path.startswith(f"{_PIN_EXEMPT_EVENT_LOG}/")
-    )
-
-
-def _checkout_history(scope: dict[str, Any]) -> bool:
-    """Whether this is a checkout's ``/api/git/`` request, which no switch makes stale.
-
-    Asked only of a request about to be refused, so a page whose pin is served pays
-    nothing for it.
-    """
-
-    return (
-        _route_path(scope).startswith(_CHECKOUT_HISTORY_PREFIX) and checkout_revisions() is not None
     )
 
 

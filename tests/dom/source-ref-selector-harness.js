@@ -53,7 +53,8 @@ async function settle() {
 /**
  * Injected browser facilities for one page: requests wait for the step to answer them.
  *
- * @param {{view: string | null}} page The page's pathname.
+ * @param {{view: string | null, tab?: string}} page The page's pathname, and the main tab
+ *   in front, Files unless it says otherwise.
  */
 function createPage(page) {
   const log = [];
@@ -96,10 +97,12 @@ function createPage(page) {
       model = next;
       renders += 1;
     },
-    navigate(href) {
-      navigated.push(href);
+    // A landing that is a history entry's state, the Commits tab's, prints the state.
+    navigate(href, state) {
+      navigated.push(state === undefined ? href : `${href} ${JSON.stringify(state)}`);
     },
     currentView: () => page.view,
+    tab: () => page.tab ?? "files",
   };
 
   return {
