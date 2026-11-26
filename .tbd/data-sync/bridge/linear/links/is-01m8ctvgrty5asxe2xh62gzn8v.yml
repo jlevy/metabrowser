@@ -5,16 +5,16 @@ base:
     - linear
     - Feature
   priority: 2
-  slot: in_progress
-  status: in_progress
+  slot: backlog
+  status: open
   title: Shared YAML and JSON views in Metabrowser
 bead_id: is-01m8ctvgrty5asxe2xh62gzn8v
 external_id: 7acc64fa-fd5d-4b37-b24d-9f321abb3ea6
 external_key: OS-637
 external_url: https://linear.app/finterm-ai/issue/OS-637/shared-yaml-and-json-views-in-metabrowser
-refinement_slot: in_progress
-refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-26T21:15:29.657Z
+refinement_slot: backlog
+refinement_state_id: 30434c7c-0bd1-48d7-9b9e-1d658e48c852
+remote_updated_at: 2026-11-26T21:20:21.548Z
 state: linked
-synced_at: 2026-11-26T21:15:29.923Z
+synced_at: 2026-11-26T21:20:21.925Z
 type: lk
