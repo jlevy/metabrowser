@@ -992,7 +992,7 @@ try {
     // none of them opens a page, though the chevron is in the row's link.
     const wholeState = async () => [
       ...(await evaluate(
-        `[document.querySelector(".github-pulls-whole-row").getAttribute("aria-expanded"), document.querySelectorAll('.github-pulls-item[data-level="3"]').length > 0, location.pathname]`,
+        `[document.querySelector(".github-pulls-whole-row").getAttribute("aria-expanded"), document.querySelector('a.github-pulls-row[data-number="7"]') !== null, location.pathname]`,
       )),
       await focused(),
     ];
@@ -1085,7 +1085,9 @@ try {
       await focused(),
       await evaluate(`${ROW106}?.getAttribute("aria-expanded") ?? null`),
       await evaluate(
-        `document.querySelectorAll('a.github-pulls-row[aria-expanded="true"]').length`,
+        // A pull request's row with its files open: a Whole stack row, a link too, is open
+        // while its stack's pull requests are shown, and is not one.
+        `document.querySelectorAll('a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-whole-row)').length`,
       ),
     ];
     await evaluate(`document.activeElement?.blur(), ${ROW106}.focus()`);
