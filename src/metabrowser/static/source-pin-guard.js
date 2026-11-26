@@ -318,7 +318,10 @@
 
   const switchHold = createSwitchHold((callback, ms) => void window.setTimeout(callback, ms));
 
+  // A stale shell can mount another page from its own cached data before the next request.
+  let pinChanged = false;
   window.MetabrowserSourcePinGuard = Object.freeze({
+    hasChanged: () => pinChanged,
     PIN_CHANGED_HEADER,
     PIN_HEADER,
     WORKING_TREE_PIN,
@@ -358,6 +361,7 @@
       shown ?? WORKING_TREE_PIN,
       () => window.location.href,
       (served) => {
+        pinChanged = true;
         history.refused();
         window.dispatchEvent(
           new CustomEvent("metabrowser:pin-changed", { detail: { pin: served } }),

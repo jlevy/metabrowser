@@ -269,17 +269,7 @@ $ node tests/dom/repository-links-session.js
       {
         "label": "its Changes, at one file and line",
         "url": "https://github.com/example/docs/pull/12/changes#diff-0000000000000000000000000000000000000000000000000000000000000000R3",
-        "result": {
-          "kind": "route",
-          "href": "/pull/12/files",
-          "localization": "pull",
-          "pull": {
-            "number": 12,
-            "tab": "files",
-            "file": "",
-            "stack": false
-          }
-        }
+        "result": null
       },
       {
         "label": "its Checks",
@@ -339,12 +329,7 @@ $ node tests/dom/repository-links-session.js
       {
         "label": "a commit, at one file",
         "url": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#diff-0000000000000000000000000000000000000000000000000000000000000000",
-        "result": {
-          "kind": "route",
-          "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "localization": "commit",
-          "pull": null
-        }
+        "result": null
       },
       {
         "label": "a commit comment",
@@ -449,17 +434,7 @@ $ node tests/dom/repository-links-session.js
       {
         "label": "its Changes, at a file anchor in capitals",
         "url": "https://github.com/example/docs/pull/12/files#diff-0000000000000000000000000000000000000000000000000000000000000000",
-        "result": {
-          "kind": "route",
-          "href": "/pull/12/files",
-          "localization": "pull",
-          "pull": {
-            "number": 12,
-            "tab": "files",
-            "file": "",
-            "stack": false
-          }
-        }
+        "result": null
       },
       {
         "label": "not a URL",
@@ -559,6 +534,16 @@ $ node tests/dom/repository-links-session.js
         }
       }
     ],
+    "text beside a checkout of its head": [
+      {
+        "label": "a head file uses GitHub even if checkout bytes differ",
+        "url": "https://github.com/example/docs/pull/docs/guide.md",
+        "result": {
+          "kind": "external",
+          "url": "https://github.com/example/docs/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/guide.md"
+        }
+      }
+    ],
     "text at the served head": [
       {
         "label": "a path-relative reference",
@@ -566,7 +551,7 @@ $ node tests/dom/repository-links-session.js
         "result": {
           "kind": "view",
           "target": {
-            "path": "docs/trade-runner/README.md"
+            "path": "g1-ZG9jcw/g1-dHJhZGUtcnVubmVy/g1-UkVBRE1FLm1k"
           },
           "localization": "revision"
         }
@@ -577,7 +562,7 @@ $ node tests/dom/repository-links-session.js
         "result": {
           "kind": "view",
           "target": {
-            "path": "docs/"
+            "path": "g1-ZG9jcw/"
           },
           "localization": "revision"
         }
@@ -593,7 +578,7 @@ $ node tests/dom/repository-links-session.js
         "result": {
           "kind": "view",
           "target": {
-            "path": "src/app.py",
+            "path": "g1-c3Jj/g1-YXBwLnB5",
             "query": "plain=1",
             "fragment": "L2"
           },
@@ -626,7 +611,7 @@ $ node tests/dom/repository-links-session.js
         "result": {
           "kind": "view",
           "target": {
-            "path": "2024/notes.md"
+            "path": "g1-MjAyNA/g1-bm90ZXMubWQ"
           },
           "localization": "revision"
         }
@@ -666,6 +651,27 @@ $ node tests/dom/repository-links-session.js
             "file": "docs/trade-runner/README.md",
             "stack": false
           }
+        }
+      },
+      {
+        "label": "an authored absolute patch URL",
+        "url": "https://github.com/example/docs/pull/7.patch",
+        "result": null
+      },
+      {
+        "label": "the same resolution from an authored relative file",
+        "url": "https://github.com/example/docs/pull/7.patch",
+        "result": {
+          "kind": "external",
+          "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/7.patch"
+        }
+      },
+      {
+        "label": "an anchored changed file, on GitHub",
+        "url": "https://github.com/example/docs/pull/docs/trade-runner/README.md#install",
+        "result": {
+          "kind": "external",
+          "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/trade-runner/README.md#install"
         }
       },
       {
@@ -732,7 +738,7 @@ $ node tests/dom/repository-links-session.js
         "result": {
           "kind": "view",
           "target": {
-            "path": "a.md"
+            "path": "g1-YS5tZA"
           },
           "localization": "revision"
         }
@@ -788,8 +794,28 @@ $ node tests/dom/repository-links-session.js
       "href": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-install",
       "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md#user-content-install"
     },
+    "a name with a leading byte-order mark": {
+      "href": "/view/g1-77u_cGxhbi5tZA",
+      "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/%EF%BB%BFplan.md"
+    },
+    "a name with a literal replacement character": {
+      "href": "/view/g1-ZG9jcw/g1-77-9Lm1k",
+      "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/%EF%BF%BD.md"
+    },
+    "a name with a control character": {
+      "href": "/view/g1-YQcubWQ",
+      "url": null
+    },
+    "a name with a backslash": {
+      "href": "/view/g1-YVxiLm1k",
+      "url": null
+    },
     "a name that is not text": {
       "href": "/view/g1-_w",
+      "url": null
+    },
+    "a partially encoded path": {
+      "href": "/view/g1-ZG9jcw/setup.md",
       "url": null
     },
     "not a pin's address": {
@@ -808,17 +834,15 @@ $ node tests/dom/repository-links-session.js
       ],
       "anchors": {
         "file": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/docs/new.md",
           "data-metabrowser-github-localization": "revision",
-          "href": "/view/docs/new.md"
+          "data-metabrowser-path-relative": "",
+          "href": "/view/g1-ZG9jcw/g1-bmV3Lm1k"
         },
         "pull": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/12/files",
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
         },
         "commit": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
@@ -852,7 +876,7 @@ $ node tests/dom/repository-links-session.js
       },
       "opened": [
         {
-          "path": "docs/new.md"
+          "path": "g1-ZG9jcw/g1-bmV3Lm1k"
         }
       ],
       "routed": []
@@ -863,18 +887,16 @@ $ node tests/dom/repository-links-session.js
       ],
       "anchors": {
         "file": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/docs/new.md",
+          "data-metabrowser-path-relative": "",
           "href": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/new.md",
           "rel": "noopener noreferrer",
           "target": "_blank"
         },
         "pull": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/12/files",
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
         },
         "commit": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
@@ -918,17 +940,15 @@ $ node tests/dom/repository-links-session.js
       ],
       "anchors": {
         "file": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/docs/new.md",
           "data-metabrowser-github-localization": "pull",
+          "data-metabrowser-path-relative": "",
           "href": "/pull/7/files/docs/new.md"
         },
         "pull": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/12/files",
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
         },
         "commit": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
@@ -974,17 +994,15 @@ $ node tests/dom/repository-links-session.js
       ],
       "anchors": {
         "file": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/docs/new.md",
           "data-metabrowser-github-localization": "pull",
+          "data-metabrowser-path-relative": "",
           "href": "/pull/7/files/docs/new.md"
         },
         "pull": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/12/files",
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
         },
         "commit": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
@@ -1028,17 +1046,16 @@ $ node tests/dom/repository-links-session.js
       ],
       "anchors": {
         "file": {
+          "data-metabrowser-path-relative": "",
           "href": "https://github.com/example/docs/pull/docs/new.md",
           "rel": "noopener noreferrer",
           "target": "_blank"
         },
         "pull": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/pull/12/files",
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
         },
         "commit": {
-          "data-metabrowser-authored-href": "https://github.com/example/docs/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
@@ -1079,6 +1096,7 @@ $ node tests/dom/repository-links-session.js
       ],
       "anchors": {
         "file": {
+          "data-metabrowser-path-relative": "",
           "href": "https://github.com/example/docs/pull/docs/new.md",
           "rel": "noopener noreferrer",
           "target": "_blank"

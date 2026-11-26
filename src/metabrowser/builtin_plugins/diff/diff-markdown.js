@@ -337,21 +337,21 @@ const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#[\w%.~-]+)?$/;
  * Every other local address is dropped (null).
  * @param {string | undefined} imageRoute The comparison's `image_route`, when it names one.
  * @param {() => boolean} linksOpen
- * @param {(href: string) => string | null} [headFile] The head's file a `/view/` link
+ * @param {(href: string, links?: MetabrowserRepositoryLinksRuntime | null) => string | null} [headFile] The head's file a `/view/` link
  *   names, on github.com, or null.
- * @returns {(value: string, image: boolean) => string | null}
+ * @returns {(value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null}
  */
 export function markdownTargets(imageRoute, linksOpen, headFile = () => null) {
   const images =
     typeof imageRoute === "string" && imageRoute.startsWith("/") && imageRoute.includes("?")
       ? imageRoute
       : null;
-  return (value, image) => {
+  return (value, image, links) => {
     if (!image) {
       if (!HEAD_LINK.test(value)) {
         return null;
       }
-      return linksOpen() ? value : headFile(value);
+      return linksOpen() ? value : headFile(value, links);
     }
     if (images === null || !value.startsWith(`${images}&`)) {
       return null;
@@ -1114,6 +1114,7 @@ export function kpressStylesheets(assets, base) {
  *   load: (fileId: string, signal: AbortSignal, ask?: RenderedAsk) => Promise<unknown>,
  *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
+ *   prepareLinks?: () => Promise<void>,
  *   ensureStructured?: () => Promise<TreeHelpers | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
@@ -1543,7 +1544,7 @@ export function createMarkdownViews(deps) {
       /** @type {MetabrowserInertHtmlRuntime | undefined} */
       let inert;
       try {
-        inert = await inertReady;
+        [inert] = await Promise.all([inertReady, deps.prepareLinks?.()]);
       } catch {
         inert = undefined;
       }

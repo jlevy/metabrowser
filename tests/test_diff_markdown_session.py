@@ -270,7 +270,7 @@ def test_session_replays_the_recording() -> None:
     on_github = f"https://github.com/octo/demo/blob/{'b' * 40}/docs/setup.md"
     assert transcript["links"]["pages"] == {
         "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
-        "pinned at the merge base": on_github,
+        "pinned at the merge base after the resolver arrives": on_github,
         "beside a checkout at the head, which has no pin": on_github,
         "pinned at the comparison's head, after another tab changed the pin": on_github,
     }

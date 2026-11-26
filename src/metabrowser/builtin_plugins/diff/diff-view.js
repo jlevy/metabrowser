@@ -5405,7 +5405,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *     ask?: import("./diff-markdown.js").RenderedAsk,
  *   ) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
- *   markdownTargets?: (value: string, image: boolean) => string | null,
+ *   markdownTargets?: (value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void,
@@ -5530,19 +5530,18 @@ export function mountDiffView(container, document_, api, options = {}) {
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
-        ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
+        isTarget: (value, image) =>
+          options.markdownTargets?.(value, image, repositoryLinks) ?? null,
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         opens: options.unfold === true ? "prefer-full" : "concise",
         show: view.show,
         async ensureInert() {
-          // The allowlist, and what a rendered file's links open, without which a link keeps
-          // its address (metabrowser.loadRepositoryLinks).
-          const [, links] = await Promise.all([
-            api?.ensureAsset?.("inert-html"),
-            api?.loadRepositoryLinks?.() ?? null,
-          ]);
-          repositoryLinks = links ?? null;
+          await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
+        },
+        async prepareLinks() {
+          // A later projection can use a bundle that missed the first draw's deadline.
+          repositoryLinks = (await api?.loadRepositoryLinks?.()) ?? null;
         },
         // A rendered file's link into the repository opens its page here, a pull request or
         // a commit, which names no revision (static/repository-links.js); a `/view/` target

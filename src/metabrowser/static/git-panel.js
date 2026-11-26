@@ -1567,20 +1567,45 @@
     const article = document.createElement("article");
     article.className = "kpress kpress-inert";
     article.append(inert.kpressProse(inert.sanitizeHtml(html, linkBase), document));
-    const pluginSdk = sdk();
-    if (pluginSdk) {
-      links?.enhance(article, pluginSdk);
-    }
-    for (const anchor of article.querySelectorAll("a[href]")) {
-      if (anchor instanceof HTMLElement) {
-        sdk()?.decorateExternalLink?.(anchor);
-      }
-    }
+    linkCommitProse(article, links, !window.MetabrowserSourcePinGuard?.hasChanged());
     const host = document.createElement("div");
     host.className = "metabrowser-kpress-host";
     host.append(article);
     return host;
   }
+
+  /**
+   * @param {Element} article
+   * @param {MetabrowserRepositoryLinksRuntime | null} links
+   * @param {boolean} views
+   */
+  function linkCommitProse(article, links, views) {
+    const pluginSdk = sdk();
+    if (pluginSdk) {
+      links?.enhance(article, pluginSdk, { views });
+    }
+    for (const anchor of article.querySelectorAll("a[href]")) {
+      if (anchor instanceof HTMLElement) {
+        pluginSdk?.decorateExternalLink?.(anchor);
+      }
+    }
+  }
+
+  window.addEventListener?.(
+    "metabrowser:pin-changed",
+    () => {
+      void sdk()
+        ?.loadRepositoryLinks?.()
+        .then((links) => {
+          if (links) {
+            for (const article of document.querySelectorAll(".git-commit-body .kpress-inert")) {
+              linkCommitProse(article, links, false);
+            }
+          }
+        });
+    },
+    { once: true },
+  );
 
   /**
    * The key a comparison request is kept under, or null when its answer can change.
@@ -2757,13 +2782,34 @@
     });
   }
 
+  /** A GitHub commit URL for a missing local object, from the served repository identity.
+   * @param {string} revision
+   */
+  function missingCommitGitHubUrl(revision) {
+    const repository = sdk()?.repository;
+    if (repository?.host !== "github.com" || !FULL_COMMIT_ID.test(revision)) {
+      return null;
+    }
+    const { owner, name } = repository;
+    if (
+      !/^[A-Za-z0-9-]{1,39}$/.test(owner) ||
+      !/^[A-Za-z0-9._-]{1,100}$/.test(name) ||
+      name === "." ||
+      name === ".."
+    ) {
+      return null;
+    }
+    return `https://github.com/${owner}/${name}/commit/${revision}`;
+  }
+
   /**
    * The preview for a commit the repository does not have, or could not be asked about.
    *
    * @param {MetabrowserMissingCommitModel} model
    * @param {(() => void) | null} retry
+   * @param {string | null} [githubUrl]
    */
-  function missingCommitNode(model, retry) {
+  function missingCommitNode(model, retry, githubUrl = null) {
     const node = document.createElement("div");
     node.className = "preview-empty preview-error git-commit-missing";
     node.dataset.state = model.state;
@@ -2785,6 +2831,15 @@
       button.textContent = "Retry";
       button.addEventListener("click", retry);
       node.appendChild(button);
+    }
+    if (githubUrl !== null) {
+      const link = document.createElement("a");
+      link.textContent = "View on GitHub";
+      link.setAttribute("href", githubUrl);
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
+      sdk()?.decorateExternalLink?.(link);
+      node.appendChild(link);
     }
     return node;
   }
@@ -2818,11 +2873,12 @@
     const firstPaint = new Promise((resolve) => {
       painted = resolve;
     });
+    const githubUrl = missingCommitGitHubUrl(revision);
     /** @param {MetabrowserMissingCommitModel} model */
     const paint = (model) => {
       if (current()) {
         const retry = () => void showMissingCommit(revision, previewClaim, { retry: true });
-        bridge.renderPreviewNode(missingCommitNode(model, retry), previewClaim);
+        bridge.renderPreviewNode(missingCommitNode(model, retry, githubUrl), previewClaim);
       }
       painted();
     };

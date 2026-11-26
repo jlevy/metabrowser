@@ -97,10 +97,10 @@ works. A commit message is not Markdown there, and its relative text is no link.
 A core on-demand script, `static/repository-links.js`, holds the whole decision, and
 `metabrowser.loadRepositoryLinks()` (in `static/plugin-sdk-views.js`, beside
 `loadChangedFilesTree`) is the one way a view gets it: the runtime on a page with a
-GitHub repository’s identity, or null, never a rejection.
-A view uses the runtime the loader resolves to, so no view can read the links without
-having loaded them. The bundle carries the GitPath codec the resolver spells a pin’s
-addresses with.
+GitHub repository’s identity.
+The shared loader returns null when the asset is unavailable or misses its deadline.
+A later view can use the asset once it has loaded.
+The bundle carries the GitPath codec the resolver spells a pin’s addresses with.
 
 The module reads a link the way a GitHub URL is built,
 `github.com/<owner>/<repo>/<page>/<args>`: one reader for the host, repository, path,
@@ -124,9 +124,8 @@ transfer budget (`performance-budgets.toml`).
   click, and returns how many links it changed.
   A link whose address the navigation codec will not spell is left as written, and the
   text’s other links are still read.
-  It can run again over the same text with more context: it keeps the authored address
-  in `data-metabrowser-authored-href`, reads it on the later pass, and moves the link’s
-  one click handler to the new answer.
+  It keeps the sanitized link attributes in a weak map so a later pass can update the
+  address and its click handler, or restore the original link.
   The Markdown link enhancer keeps its own DOM pass and calls only `localize`.
 
 ### Resolution Rules
@@ -143,11 +142,11 @@ escape, which a raw HTML link can carry and no `/view/` address can spell.
 | `/<o>/<r>`, with or without a fragment, or with the repository page’s `?tab=readme-ov-file` | `/view/` and the fragment, which scrolls the root’s README as GitHub’s repository page does; only when the served root is the repository root |
 | `tree/<ref>[/<path>]`, `blob/<ref>/<path>` naming the served branch or the served commit’s full or abbreviated ID | `/view/<path>`, `/view/` for the branch’s root; query and fragment kept |
 | `pull/<n>` | `/pull/<n>` |
-| `pull/<n>/files`, `pull/<n>/changes` | `/pull/<n>/files`; a `#diff-<hash>` anchor is dropped, since only the server can name its file |
+| `pull/<n>/files`, `pull/<n>/changes` | `/pull/<n>/files` when the link has no anchor |
 | `pull/<n>/checks` | `/pull/<n>/checks` |
-| `pull/<n>/commits/<id>`, `commit/<id>`, with a full commit ID | `/commit/<id>`, lowercased; a file anchor is dropped, as `urls.py` does |
+| `pull/<n>/commits/<id>`, `commit/<id>`, with a full commit ID | `/commit/<id>`, lowercased, when the link has no anchor |
 | `pulls`, with no query | `/pulls` |
-| Anything else: another branch, a tag, another or abbreviated commit, `issues`, `compare`, `commits`, `wiki`, `raw`, a query on `/pulls`, a pull-request fragment other than a file anchor | Left external |
+| Anything else: another branch, a tag, another or abbreviated commit, `issues`, `compare`, `commits`, `wiki`, `raw`, a query on `/pulls`, a pull-request or commit fragment | Left external |
 
 A path in a `/view/` target is the repository path less the served prefix; a path
 outside the served prefix is left external.
@@ -165,32 +164,35 @@ is what “respect the current branch” requires; a relative link always does, 
 A description, comment, review, review comment, or Guided Review note has the pull
 request’s page as its base on the server, unchanged, so the page receives the same
 absolute URLs github.com would, and `localize` reads them with a **text context**: the
-commit the text describes, the head, and, once the page knows them, the files its
-comparison changes.
+commit the text describes and the paths its comparison changes on the head side.
+The hardener marks path-relative references before making them absolute.
+The marker distinguishes an authored file reference from an absolute GitHub URL such as
+a pull request’s patch link.
 
-A URL under `/<o>/<r>/pull/` whose rest is not a pull-request address is what a
-path-relative reference becomes against that page, and is read as the repository path it
-names, at the head. A pull-request address begins with GitHub’s `new`, the page that
-opens a pull request, or with a number followed by nothing or one of a pull request’s
-pages (`files`, `changes`, `checks`, `commits`), so `7/files` is still pull request 7’s
-Changes and `2024/notes.md` is a folder named with digits.
+A marked URL under `/<o>/<r>/pull/` whose rest names no pull request is read as a
+repository path at the head.
+A pull-request address begins with GitHub’s `new`, the page that opens a pull request,
+or with a number followed by nothing or one of a pull request’s pages (`files`,
+`changes`, `checks`, `commits`), so `7/files` is still pull request 7’s Changes and
+`2024/notes.md` is a folder named with digits.
 A bare `pull` is no reference.
 The path opens where Metabrowser can show that file without switching what it serves:
 
-1. in place at `/view/<path>`, when the served revision is the head and the path is
+1. in place at `/view/<path>`, when the page is pinned to the head and the path is
    inside the served root;
 2. in the pull request’s Changes at that file, `/pull/<n>/files/<path>`, or a stack’s,
-   `/stack/<n>/changes/<path>`, when the comparison changes the file, since Changes
-   shows it at the head; the page opens it in place;
+   `/stack/<n>/changes/<path>`, when the head side changes the file and the link has no
+   query or anchor to keep.
+   The page opens it in place.
 3. otherwise, the external link to that path at the head,
-   `github.com/<o>/<r>/blob/<head>/<path>`, or `tree/` for a path ending in `/`, which
-   shows exactly the file the author meant, where github.com itself showed a missing
-   page.
+   `github.com/<o>/<r>/blob/<head>/<path>`, or `tree/` for a path ending in `/`,
+   preserving any query or fragment.
 
 So `docs/x.md` and `./docs/x.md` name the head’s file, and `../blob/main/x.md` and
 `/<o>/<r>/blob/main/x.md` mean what they mean on github.com.
-A merged pull request’s head is never the served commit again, so the second step is
-what keeps its description’s links to its own documents inside Metabrowser.
+A checkout at the head can contain local edits.
+Its PR text uses Changes or GitHub for the head’s file.
+If the server’s pin moves, the stale page uses GitHub until reloaded.
 The changed files can arrive after a text is drawn; the page then runs `enhance` again
 over its drawn texts, which reads each link as the text wrote it.
 A stack’s Guided Review notes use the stack page’s drawn comparison, its head and its
@@ -199,7 +201,9 @@ files, since the stack’s guide describes the whole stack.
 ### Commit Messages and Rendered Diffs
 
 A commit body keeps its `about:blank` base, so a relative reference stays text, as on
-github.com; its repository links are localized against the served tree.
+github.com. Its repository links are localized against the served tree.
+When a checkout lacks a linked commit object, the commit pane offers that commit on
+GitHub.
 
 In rendered Markdown in Changes, Docs, and guided documents, a link to a file of the
 head opens it in place while the served pin is the head, as now; when it is not, or the
@@ -226,9 +230,10 @@ One pull request.
   on-demand bundle with the GitPath codec, `metabrowser.loadRepositoryLinks()`, its
   runtime type, and its session; `github-localizer.js` removed
 - [x] Markdown documents: `link-enhancer.js` uses `localize` for every repository link,
-  with the runtime `rendered.js` loads, waiting at most `REPOSITORY_LINKS_WAIT_MS`
+  with the runtime `rendered.js` loads through the SDK’s bounded loader
 - [x] Pull request texts and Guided Review notes, on a pull request and a stack: the
-  text context, the Changes step, and a re-read once the changed files arrive
+  text context, the Changes step, and a re-read when changed files arrive or the served
+  pin moves
 - [x] Commit bodies: `commitKpressHost` applies `enhance`
 - [x] Rendered diffs: the head-link fallback (`viewFileUrl`) and repository links
 - [x] Parity rows, sessions and goldens, user guides, the skill’s guidance on links in
@@ -281,7 +286,6 @@ Beads under the Markdown rendering epic, each from a review of #874:
 - `mb-0uzt`: a commit’s or the list’s page, and another pull request outside the pull
   request page, open in place rather than by a page load.
 - `mb-e2lo`: a rendered diff localizes `/view/` targets while it shows the head.
-- `mb-wt8y`: a pull request’s texts read their links again when the pin changes.
 - `mb-40en`: a single helper that loads and applies the links; the loader now makes a
   forgotten load impossible, and the bead is whether more is worth it.
 

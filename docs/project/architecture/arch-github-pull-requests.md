@@ -566,14 +566,13 @@ answers shows a placeholder in its place, never its Markdown source.
 A text farther off keeps its plain text, which find in page reaches, and is asked for as
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
-The render’s links are absolute against the pull request’s page, as github.com resolves
-them, and the page reads each through `static/repository-links.js` with the pull
-request’s head (`inertProse` in `pull-page.js`): a link into the repository that
-Metabrowser has a page for opens it, and an address under `pull/` that names no pull
-request, which is what a path-relative reference becomes, opens the head’s file, in
-place when the pin is the head and on github.com otherwise
-([In-App Link Resolution](../specs/active/plan-2026-11-26-in-app-link-resolution.md)). A
-text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
+The render makes links absolute against the pull request’s page and marks authored
+path-relative references before that conversion.
+`static/repository-links.js` reads marked references against the pull request’s head and
+can open a changed head-side path in Changes.
+An authored absolute URL follows its own GitHub route.
+See [In-App Link Resolution](../specs/active/plan-2026-11-26-in-app-link-resolution.md).
+A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
 through the Markdown plugin’s exported `drawDiagrams` with `isolated: true`
 (`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
 diagram modules and vendored Mermaid, none of which the text names.

@@ -827,10 +827,15 @@ async function textLinks() {
   // The allowlist's stand-in: each `<a href>` of a text's HTML becomes a link made absolute
   // against *base*, the pull request's page, an outside link as the allowlist leaves one.
   const inert = {
-    sanitizeHtml(html, base) {
-      return [...html.matchAll(/<a href="([^"]*)">([^<]*)<\/a>/g)].map(([, href, text]) => {
+    sanitizeHtml(html, base, keepPathRelative) {
+      return [
+        ...html.matchAll(/<a href="([^"]*)"( data-metabrowser-path-relative="")?>([^<]*)<\/a>/g),
+      ].map(([, href, relative, text]) => {
         const link = new Element("a");
         link.setAttribute("href", new URL(href, base).href);
+        if (keepPathRelative && relative) {
+          link.setAttribute("data-metabrowser-path-relative", "");
+        }
         link.setAttribute("target", "_blank");
         link.setAttribute("rel", "noopener noreferrer");
         link.textContent = text;
@@ -847,11 +852,12 @@ async function textLinks() {
   const COMMENT = recorded.current.body.record.issue_comments[0].id;
   const texts = {
     body: [
-      '<a href="docs/changed.md">the changed guide</a>',
-      '<a href="docs/same.md">an unchanged file</a>',
+      '<a href="https://github.com/octo/demo/pull/docs/changed.md" data-metabrowser-path-relative="">the changed guide</a>',
+      '<a href="https://github.com/octo/demo/pull/docs/same.md" data-metabrowser-path-relative="">an unchanged file</a>',
       '<a href="https://github.com/octo/demo/pull/7/files">the Changes tab</a>',
     ].join(""),
-    [`issue_comment/${COMMENT}`]: '<a href="./docs/before.md">the renamed file</a>',
+    [`issue_comment/${COMMENT}`]:
+      '<a href="https://github.com/octo/demo/pull/docs/before.md" data-metabrowser-path-relative="">the renamed file</a>',
   };
   // The comparison's read: one file changed in place and one renamed, whose old path a link
   // names too.
@@ -907,8 +913,10 @@ async function textLinks() {
       createElement: (tag) => new Element(tag),
       importNode: () => new Element("svg"),
     };
+    const listeners = new EventTarget();
     globalThis.window = {
       location: { pathname: "/pull/7" },
+      addEventListener: listeners.addEventListener.bind(listeners),
       setTimeout(callback) {
         tasks.push(callback);
         return Symbol();
@@ -1000,7 +1008,8 @@ async function textLinks() {
       }
       await settle();
     };
-    return { container, handle, opened, viewed, idle };
+    const movePin = () => listeners.dispatchEvent(new Event("metabrowser:pin-changed"));
+    return { container, handle, opened, viewed, idle, movePin };
   }
   const anchors = (holder) => holder.querySelectorAll("a[href]");
   const told = (holder) =>
@@ -1036,6 +1045,13 @@ async function textLinks() {
   steps.push(`  click ${click(headBody, "the changed guide", atHead)}`);
   await atHead.idle();
   steps.push(`  the comparison read: ${told(headBody)}`);
+  atHead.movePin();
+  assert.equal(
+    anchors(headBody)[1].getAttribute("href"),
+    `https://github.com/octo/demo/blob/${comparison.head}/docs/same.md`,
+    "a stale pin drops view links and keeps the PR head",
+  );
+  steps.push(`  after the served revision moves: ${told(headBody)}`);
   atHead.handle.dispose();
 
   // Served away from it: github.com at the head, then Changes for a changed file.
@@ -1070,6 +1086,11 @@ async function textLinks() {
   ]) {
     steps.push(`  click ${click(holder, text, away)}`);
   }
+  assert.equal(
+    anchors(comment)[0].getAttribute("href"),
+    `https://github.com/octo/demo/blob/${comparison.head}/docs/before.md`,
+    "a renamed-away path does not select the destination diff",
+  );
   const counted = [...anchors(description), ...anchors(comment)].map(
     (link) => `${link.textContent} ${listeners.get(link) ?? 0}`,
   );

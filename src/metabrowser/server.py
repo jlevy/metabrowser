@@ -2414,7 +2414,7 @@ async def index(
         # would cost every folder's shell its compressed size, 8,166 bytes, and the startup
         # scripts were 109 bytes under their budget when it was written (2026-11-26). On
         # demand it arrives before a Markdown file's render is asked for
-        # (builtin_plugins/markdown/rendered.js has the measurement). The GitPath codec it
+        # (static/plugin-sdk-views.js has the measurement). The GitPath codec it
         # spells a pin's addresses with comes first: a startup script of a pin's shell,
         # which a browser has cached there, and needed elsewhere only by a rendered diff
         # beside a checkout, whose link to a file of the head it reads back.

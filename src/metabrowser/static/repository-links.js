@@ -18,7 +18,7 @@
 // | nothing, `#<heading>`, or `?tab=readme-ov-file` | `/view/`, the served root and its README |
 // | `/tree/<ref>[/<path>]`, `/blob/<ref>/<path>`, `<ref>` the served branch or commit | `/view/<path>` |
 // | `/pull/<n>` | `/pull/<n>` |
-// | `/pull/<n>/files` or `/changes`, with or without a file anchor | `/pull/<n>/files` |
+// | `/pull/<n>/files` or `/changes`, without an anchor | `/pull/<n>/files` |
 // | `/pull/<n>/checks` | `/pull/<n>/checks` |
 // | `/pull/<n>/commits/<id>`, `/commit/<id>`, with a full commit ID | `/commit/<id>` |
 // | `/pulls` | `/pulls` |
@@ -75,11 +75,6 @@
   const PULL_PAGES = new Set(["files", "changes", "checks", "commits"]);
   // GitHub's page that opens a pull request, `pull/new/<branch>`, which `git push` prints.
   const NEW_PULL = "new";
-  // GitHub's anchor for one file of a pull request's Changes tab or a commit's page:
-  // `diff-` and the SHA-256 of its path (builtin_plugins/github/urls.py), optionally with a
-  // line. Only the server can name its file (pull_file_anchor.py), so a link with one opens
-  // the page, as `metab URL` does for a commit.
-  const FILE_ANCHOR = /^diff-[0-9a-f]{64}(?:[LR][0-9]+(?:-[LR][0-9]+)?)?$/i;
   // The repository page's own query when it shows the README (`?tab=readme-ov-file`, as
   // github.com's README anchors copy), which the served root's Overview shows too.
   const README_TAB = "tab=readme-ov-file";
@@ -104,6 +99,8 @@
    * @typedef {{
    *   sourceKind?: "filesystem" | "git_revision",
    *   text?: TextContext,
+   *   pathRelative?: boolean,
+   *   views?: boolean,
    * }} LocalizeOptions
    *   `sourceKind` is what the served tree is (`metabrowser.sourceKind()`): a pinned
    *   revision addresses its paths in the GitPath wire. `text` is a pull request's text.
@@ -128,6 +125,8 @@
    *   context: MetabrowserPublicRepositoryContext,
    *   sourceKind: "filesystem" | "git_revision",
    *   text: TextContext | undefined,
+   *   pathRelative: boolean,
+   *   views: boolean,
    * }} Scope
    */
 
@@ -150,11 +149,14 @@
     if (link === null || page === undefined) {
       return null;
     }
-    return page(link, {
+    const resolved = page(link, {
       context,
       sourceKind: options.sourceKind === "git_revision" ? "git_revision" : "filesystem",
       text: options.text,
+      pathRelative: options.pathRelative === true,
+      views: options.views !== false,
     });
+    return resolved?.kind === "view" && options.views === false ? null : resolved;
   }
 
   /**
@@ -305,7 +307,7 @@
       !PULL_NUMBER.test(number) ||
       (tab !== undefined && !PULL_PAGES.has(tab))
     ) {
-      return scope.text ? textPath(link, scope, scope.text) : null;
+      return scope.text && scope.pathRelative ? textPath(link, scope, scope.text) : null;
     }
     if (link.query) {
       return null;
@@ -315,7 +317,7 @@
       return link.fragment ? null : pullRoute(pull, "");
     }
     if (more.length === 0 && (tab === "files" || tab === "changes")) {
-      return !link.fragment || FILE_ANCHOR.test(link.fragment) ? pullRoute(pull, "files") : null;
+      return link.fragment ? null : pullRoute(pull, "files");
     }
     if (more.length === 0 && tab === "checks") {
       return link.fragment ? null : pullRoute(pull, "checks");
@@ -333,8 +335,7 @@
    *
    * 1. in place, when the served tree is the head and serves the path;
    * 2. in the pull request's or stack's Changes, when the comparison changes the file, so
-   *    Changes shows it at the head (a link with a query keeps its own meaning and skips
-   *    this);
+   *    Changes shows it at the head, when the link has no query or anchor to keep;
    * 3. on github.com at the head otherwise, where it shows the file the author meant
    *    rather than the missing page under `pull/`.
    *
@@ -351,6 +352,8 @@
       return null;
     }
     const here =
+      scope.views &&
+      scope.sourceKind === "git_revision" &&
       head.toLowerCase() === scope.context.revision.toLowerCase()
         ? viewTarget(scope, path, link.directory, link.query, link.fragment, "revision")
         : null;
@@ -358,7 +361,14 @@
       return here;
     }
     const file = path.join("/");
-    if (text.changes && !link.directory && !link.query && text.changes.files.has(file)) {
+    if (
+      scope.views &&
+      text.changes &&
+      !link.directory &&
+      !link.query &&
+      !link.fragment &&
+      text.changes.files.has(file)
+    ) {
       return changesRoute(text.changes, file);
     }
     const url = fileUrl(scope.context, head, path, link.directory, `${link.search}${link.hash}`);
@@ -388,20 +398,15 @@
 
   /**
    * A commit's page, for `commit/<id>` and `pull/<n>/commits/<id>`, by its full ID only:
-   * the route refuses anything else (`revision_not_full`). A file anchor is dropped, since
-   * only the server can name its file; any other fragment or a query leaves the link as
-   * written.
+   * the route refuses anything else (`revision_not_full`). Keep links with a fragment or
+   * query on GitHub so they reach the requested location.
    *
    * @param {string} revision
    * @param {RepositoryLink} link
    * @returns {RepositoryLinkTarget | null}
    */
   function commitTarget(revision, link) {
-    if (
-      !FULL_REVISION.test(revision) ||
-      link.query ||
-      (link.fragment && !FILE_ANCHOR.test(link.fragment))
-    ) {
+    if (!FULL_REVISION.test(revision) || link.query || link.fragment) {
       return null;
     }
     return commitRoute(revision);
@@ -576,8 +581,9 @@
       return null;
     }
     const [wire = "", fragment] = href.slice("/view/".length).split("#", 2);
-    const path = window.MetabrowserGitPath?.display(wire) ?? null;
-    if (path === null || path.includes("�")) {
+    const path = window.MetabrowserGitPath?.text(wire) ?? null;
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: GitHub rejects C0 and DEL in URL paths.
+    if (path === null || /[\\\u0000-\u001f\u007f]/.test(path)) {
       return null;
     }
     return fileUrl(
@@ -591,11 +597,10 @@
 
   // ── Applying it to a text ──────────────────────────────────────
 
-  // Where `enhance` keeps the address a link's text gave it, the first time it changes the
-  // link, so a later pass that knows more (the files a pull request changes, once they
-  // arrive) reads the authored link rather than its own answer. The allowlist keeps no
-  // attribute of the text's own, so only the page writes it.
-  const AUTHORED_HREF = "data-metabrowser-authored-href";
+  // Read the sanitized attributes again as the comparison becomes available or the pin
+  // changes. Keeping the original lets a later pass undo an earlier rewrite.
+  /** @type {WeakMap<Element, {href: string, target: string | null, rel: string | null}>} */
+  const authoredLinks = new WeakMap();
   // The tooltip of a link that opens whatever revision is served, not the one it named.
   const WORKING_TREE_TITLE = "Open the corresponding path in the currently served working tree.";
   /**
@@ -644,13 +649,18 @@
     const sourceKind = mb.sourceKind() === "git_revision" ? "git_revision" : "filesystem";
     let changed = 0;
     for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
-      // A later pass, which may know more, reads the link as the text wrote it.
-      const authored = anchor.getAttribute(AUTHORED_HREF) ?? anchor.getAttribute("href") ?? "";
+      const original = authoredLinks.get(anchor);
+      const authored = original?.href ?? anchor.getAttribute("href") ?? "";
       const resolved = localize(authored, mb.repository, {
         sourceKind,
+        pathRelative: anchor.getAttribute("data-metabrowser-path-relative") === "",
         ...(options.text ? { text: options.text } : {}),
+        ...(options.views === false ? { views: false } : {}),
       });
-      if (resolved === null || (resolved.kind === "view" && options.views === false)) {
+      if (resolved === null) {
+        if (original) {
+          restoreAuthoredLink(anchor, original);
+        }
         continue;
       }
       let href;
@@ -665,10 +675,20 @@
         // An address the codec will not spell leaves this link as written, and the text's
         // other links are still read.
         console.warn("metabrowser: a link was left as written", error);
+        if (original) {
+          restoreAuthoredLink(anchor, original);
+        }
         continue;
       }
       changed += 1;
-      anchor.setAttribute(AUTHORED_HREF, authored);
+      if (!original) {
+        authoredLinks.set(anchor, {
+          href: authored,
+          target: anchor.getAttribute("target"),
+          rel: anchor.getAttribute("rel"),
+        });
+      }
+      anchor.removeAttribute("data-tip-text");
       anchor.setAttribute("href", href);
       if (resolved.kind === "external") {
         // It leaves the page, as the allowlist's outside links do.
@@ -693,6 +713,24 @@
       }
     }
     return changed;
+  }
+
+  /**
+   * @param {Element} anchor
+   * @param {{href: string, target: string | null, rel: string | null}} original
+   */
+  function restoreAuthoredLink(anchor, original) {
+    for (const [name, value] of Object.entries(original)) {
+      if (value === null) {
+        anchor.removeAttribute(name);
+      } else {
+        anchor.setAttribute(name, value);
+      }
+    }
+    anchor.removeAttribute("data-metabrowser-github-localization");
+    anchor.removeAttribute("data-tip-text");
+    authoredLinks.delete(anchor);
+    opens.delete(anchor);
   }
 
   /**

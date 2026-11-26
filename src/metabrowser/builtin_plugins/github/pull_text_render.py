@@ -46,6 +46,7 @@ async def render_text(text: str, *, number: int, part: str, link_base: str) -> s
             size=len(text.encode()),
             include_toc="off",
             link_base=link_base,
+            mark_path_relative=True,
         )
     )
     return str(rendered["html"])

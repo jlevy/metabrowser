@@ -435,24 +435,16 @@ function headLinksOpen(comparison) {
  * the link's `/view/` address back and spells the github.com one (`viewFileUrl`). Null
  * without a GitHub repository, or for a name that is not text.
  *
- * The links load here, as the diff is mounted, and the diff's allowlist waits for the same
- * load before it reads a rendered file (`ensureInert` in diff-view.js), so this answer is
- * in hand by the first link it is asked for.
+ * The renderer supplies the resolver it receives alongside the allowlist. A load
+ * that misses the SDK deadline can still serve a projection that renders later.
  *
  * @param {Comparison | undefined} comparison
- * @returns {(href: string) => string | null}
+ * @returns {(href: string, links?: MetabrowserRepositoryLinksRuntime | null) => string | null}
  */
 function headFile(comparison) {
-  /** @type {MetabrowserRepositoryLinksRuntime | null} */
-  let links = null;
-  void Promise.resolve(mb.loadRepositoryLinks?.() ?? null).then((loaded) => {
-    links = loaded;
-  });
-  return (href) => {
+  return (href, links) => {
     const head = comparison?.right;
-    return links !== null && typeof head === "string"
-      ? links.viewFileUrl(mb.repository, head, href)
-      : null;
+    return links && typeof head === "string" ? links.viewFileUrl(mb.repository, head, href) : null;
   };
 }
 

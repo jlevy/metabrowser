@@ -1696,6 +1696,15 @@ export function mountStackPage(container, ctx, mb) {
    * which `relinkNotes` reads again; weak, so a note the guide lets go is not held here.
    * @type {WeakMap<Element, StackComparison>} */
   const noteProses = new WeakMap();
+  let noteViewsOpen = !window.MetabrowserSourcePinGuard?.hasChanged();
+  window.addEventListener?.(
+    "metabrowser:pin-changed",
+    () => {
+      noteViewsOpen = false;
+      relinkNotes();
+    },
+    { signal: listening.signal, once: true },
+  );
   /** The Diff summary: the comparison it is drawn for, the claim of its latest draw, its
    * mount, its file count for the size line, and whether its last draw failed. */
   let summary = {
@@ -2116,6 +2125,7 @@ export function mountStackPage(container, ctx, mb) {
   function linkNote(prose, text) {
     repositoryLinks?.enhance(prose, mb, {
       text,
+      views: noteViewsOpen,
       open: (route) => {
         const opening = textRouteOpening(route);
         if (opening === null || listening.signal.aborted) {
@@ -2138,7 +2148,7 @@ export function mountStackPage(container, ctx, mb) {
   function relinkNotes() {
     for (const prose of container.querySelectorAll(".kpress-prose")) {
       const drawnAt = noteProses.get(prose);
-      if (drawnAt !== undefined && drawnAt.key === changedFiles?.key) {
+      if (drawnAt !== undefined && (!noteViewsOpen || drawnAt.key === changedFiles?.key)) {
         linkNote(prose, noteText(drawnAt));
       }
     }
@@ -2490,7 +2500,7 @@ export function mountStackPage(container, ctx, mb) {
         // description's is.
         return (html, base) => {
           const prose = inert.kpressProse(
-            inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
+            inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/", true),
             document,
           );
           noteProses.set(prose, comparison);

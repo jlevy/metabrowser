@@ -72,6 +72,17 @@ const contexts = {
       revision: SERVED,
       served_prefix: "",
     },
+    options: { sourceKind: "git_revision", text: { head: SERVED } },
+  },
+  "text beside a checkout of its head": {
+    context: {
+      branch: "main",
+      host: "github.com",
+      name: "docs",
+      owner: "example",
+      revision: SERVED,
+      served_prefix: "",
+    },
     options: { sourceKind: "filesystem", text: { head: SERVED } },
   },
   "text away from its head": {
@@ -115,7 +126,7 @@ const contexts = {
       revision: SERVED,
       served_prefix: "packages/handbook",
     },
-    options: { sourceKind: "filesystem", text: { head: SERVED } },
+    options: { sourceKind: "git_revision", text: { head: SERVED } },
   },
   "text with no head yet": {
     context: {
@@ -205,6 +216,9 @@ const cases = {
     ["the pinned branch's root", `${repo}/tree/main`],
     ["a file at the pinned commit", `${repo}/blob/${PINNED}/README.md`],
   ],
+  "text beside a checkout of its head": [
+    ["a head file uses GitHub even if checkout bytes differ", `${repo}/pull/docs/guide.md`],
+  ],
   "text at the served head": [
     ["a path-relative reference", `${repo}/pull/docs/trade-runner/README.md`],
     ["a folder", `${repo}/pull/docs/`],
@@ -220,6 +234,9 @@ const cases = {
   ],
   "text away from its head": [
     ["a file the pull request changes, in its Changes", `${repo}/pull/docs/trade-runner/README.md`],
+    ["an authored absolute patch URL", `${repo}/pull/7.patch`, false],
+    ["the same resolution from an authored relative file", `${repo}/pull/7.patch`],
+    ["an anchored changed file, on GitHub", `${repo}/pull/docs/trade-runner/README.md#install`],
     ["a file it does not change, on github.com", `${repo}/pull/docs/guide.md`],
     [
       "a changed file with a query, on github.com",
@@ -245,10 +262,10 @@ const cases = {
 const localized = {};
 for (const [name, rows] of Object.entries(cases)) {
   const { context, options } = contexts[name];
-  localized[name] = rows.map(([label, url]) => ({
+  localized[name] = rows.map(([label, url, pathRelative = Boolean(options.text)]) => ({
     label,
     url,
-    result: links.localize(url, context, options),
+    result: links.localize(url, context, { ...options, pathRelative }),
   }));
 }
 
@@ -292,7 +309,7 @@ function enhanced(context, sourceKind, options) {
   const routed = [];
   const outside = { target: "_blank", rel: "noopener noreferrer" };
   const anchors = {
-    file: anchor(`${repo}/pull/docs/new.md`, outside),
+    file: anchor(`${repo}/pull/docs/new.md`, { ...outside, "data-metabrowser-path-relative": "" }),
     pull: anchor(`${repo}/pull/12/files`, outside),
     commit: anchor(`${repo}/commit/${OTHER}`, outside),
     other: anchor("https://example.com/", outside),
@@ -351,7 +368,18 @@ const viewFiles = Object.fromEntries(
       "a file, at a heading",
       `/view/${sandbox.MetabrowserGitPath.wire("docs/setup.md")}#user-content-install`,
     ],
+    [
+      "a name with a leading byte-order mark",
+      `/view/${sandbox.MetabrowserGitPath.wire("\uFEFFplan.md")}`,
+    ],
+    [
+      "a name with a literal replacement character",
+      `/view/${sandbox.MetabrowserGitPath.wire("docs/\uFFFD.md")}`,
+    ],
+    ["a name with a control character", `/view/${sandbox.MetabrowserGitPath.wire("a\u0007.md")}`],
+    ["a name with a backslash", `/view/${sandbox.MetabrowserGitPath.wire("a\\b.md")}`],
     ["a name that is not text", "/view/g1-_w"],
+    ["a partially encoded path", "/view/g1-ZG9jcw/setup.md"],
     ["not a pin's address", "/view/docs/setup.md"],
     ["not a view", "/pull/7/files/docs/setup.md"],
   ].map(([label, href]) => [label, { href, url: links.viewFileUrl(head, OTHER, href) }]),
@@ -364,7 +392,7 @@ console.log(
       localized,
       viewFiles,
       enhanced: {
-        "a text at its served head": enhanced(textContext, "filesystem", {
+        "a text at its served head": enhanced(textContext, "git_revision", {
           text: { head: SERVED },
         }),
         "a text away from its head, with the page's own router": enhanced(

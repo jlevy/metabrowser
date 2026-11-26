@@ -2033,8 +2033,9 @@ type MetabrowserSdk = {
   /** The shared changed-files tree model, loaded once on demand (static/changed-files-tree.js). */
   loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
   /**
-   * What a link in authored text opens (static/repository-links.js), loaded once on a page
-   * with a GitHub repository's identity, or null; never rejects (static/plugin-sdk-views.js).
+   * What a link in authored text opens (static/repository-links.js). Resolves to null off
+   * GitHub repository pages or when the load fails or exceeds its shared deadline.
+   * Later calls can use the resolver after it arrives (static/plugin-sdk-views.js).
    */
   loadRepositoryLinks(): Promise<MetabrowserRepositoryLinksRuntime | null>;
   navigation: MetabrowserNavigationApi;
@@ -3946,7 +3947,9 @@ declare global {
       context: MetabrowserRepositoryContext | null | undefined,
       options?: {
         sourceKind?: "filesystem" | "git_revision";
-        text?: { head: string | null };
+        text?: MetabrowserRepositoryTextContext;
+        pathRelative?: boolean;
+        views?: boolean;
       },
     ): MetabrowserRepositoryLinkTarget | null;
     enhance(
@@ -4003,7 +4006,7 @@ declare global {
     outsideLink(href: string | null, base: string | null): string | null;
     remoteImage(src: string | null, base: string | null): string | null;
     kpressProse(nodes: Node[], doc: Document): HTMLElement;
-    sanitizeHtml(html: string, base: string | null): Node[];
+    sanitizeHtml(html: string, base: string | null, keepPathRelative?: boolean): Node[];
     sanitizeNodes(
       nodes: ArrayLike<Node>,
       doc: Pick<Document, "createElement" | "createTextNode">,
@@ -5197,6 +5200,7 @@ declare global {
     /** static/git-path.js, which only a pinned revision's shell loads. */
     MetabrowserGitPath?: Readonly<{
       display(path: string): string | null;
+      text(path: string): string | null;
       wire(path: string | Uint8Array): string | null;
     }>;
     /** static/pull-route.js, the `pull-route` on-demand bundle. */
@@ -5241,6 +5245,7 @@ declare global {
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{
+      hasChanged(): boolean;
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
       /** What the page of a checkout's working tree names in place of a commit. */

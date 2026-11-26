@@ -519,7 +519,7 @@ def test_recording_is_what_a_served_pull_request_answers(
     # hands one to the page's allowlist directly.
     for hazard in ('"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
-    assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
+    assert allowlist_violations(recorded["markdown added"]["body"]["html"], pr_text=True) == []
     merged = recorded["merged"]["body"]["record"]["pull"]
     assert (merged["merged"], merged["merged_by"], merged["commits"]) == (True, "octo", 1)
     conclusions = [run["conclusion"] for run in recorded["merged"]["body"]["record"]["check_runs"]]
@@ -556,7 +556,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     transcript = run_session("github-pull-page-session.js", "--part", "all")
     steps = {step["step"]: step for step in transcript["steps"]}
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
-    assert allowlist_violations(hook) == []
+    assert allowlist_violations(hook, pr_text=True) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
     # An image written in full over https is an image, with no referrer sent.
     assert (

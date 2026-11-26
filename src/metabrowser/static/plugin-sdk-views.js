@@ -2823,16 +2823,19 @@
     );
   }
 
-  /** The one load of the repository links, shared by every view that asks. @type {Promise<MetabrowserRepositoryLinksRuntime | null> | null} */
-  let repositoryLinks = null;
+  // Limit how long a view waits to localize links before rendering. In nine cold loads
+  // of a checkout's README from 127.0.0.1 in headless Chromium 152 on 2026-11-26, the asset
+  // took 4 to 25 ms and always arrived before the Markdown request started. The limit
+  // lets every surface render if that optional request stalls.
+  const REPOSITORY_LINKS_WAIT_MS = 250;
+
+  /** @type {Promise<MetabrowserRepositoryLinksRuntime | null> | null} */
+  let repositoryLinksWait = null;
 
   /**
-   * What a link in authored text opens (static/repository-links.js), for a view that shows
-   * such a text: the runtime on a page with a GitHub repository's identity
-   * (`metabrowser.repository`), loaded once with the GitPath codec it reads a pin's
-   * addresses with, and null on any other page or when it does not load, when every link
-   * stays as written. It never rejects, and a view uses the runtime it resolves to, so no
-   * view can read the links without having loaded them.
+   * The link resolver for a page with a GitHub repository's identity. All views join one
+   * load and stop waiting at the same deadline. A stalled request stays in flight, so a
+   * later view can use the resolver once installed. A failed request can be retried.
    *
    * @returns {Promise<MetabrowserRepositoryLinksRuntime | null>}
    */
@@ -2840,16 +2843,24 @@
     if (!mb.repository) {
       return Promise.resolve(null);
     }
-    repositoryLinks ??= mb.ensureAsset("repository-links").then(
-      () => global.MetabrowserRepositoryLinks ?? null,
-      (error) => {
-        // Asked again by the next view, since a later load may succeed.
-        repositoryLinks = null;
-        console.warn("metabrowser: repository links are unavailable", error);
-        return null;
-      },
-    );
-    return repositoryLinks;
+    if (global.MetabrowserRepositoryLinks) {
+      return Promise.resolve(global.MetabrowserRepositoryLinks);
+    }
+    repositoryLinksWait ??= new Promise((resolve) => {
+      const deadline = setTimeout(() => resolve(null), REPOSITORY_LINKS_WAIT_MS);
+      void Promise.resolve()
+        .then(() => mb.ensureAsset("repository-links"))
+        .then(
+          () => resolve(global.MetabrowserRepositoryLinks ?? null),
+          (error) => {
+            repositoryLinksWait = null;
+            console.warn("metabrowser: repository links are unavailable", error);
+            resolve(null);
+          },
+        )
+        .finally(() => clearTimeout(deadline));
+    });
+    return repositoryLinksWait;
   }
 
   function loadChangedFilesTree() {

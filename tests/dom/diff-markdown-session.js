@@ -814,7 +814,9 @@ async function main() {
     }
     const mounted = await plugin.render({}, { comparison, raw: structuredClone(added) });
     assert(typeof mounted?.options?.markdownTargets === "function", "the diff has a rule");
-    return mounted.options.markdownTargets;
+    const target = mounted.options.markdownTargets;
+    return (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
+      target(href, image, links);
   }
   const isTarget = await targetsOn(head);
   const atBase = await targetsOn(base);
@@ -828,7 +830,8 @@ async function main() {
     // github.com.
     pages: {
       "pinned at the comparison's head": isTarget(headLink, false),
-      "pinned at the merge base": atBase(headLink, false),
+      "pinned at the merge base before the resolver arrives": atBase(headLink, false, null),
+      "pinned at the merge base after the resolver arrives": atBase(headLink, false),
       "beside a checkout at the head, which has no pin": beside(headLink, false),
     },
     // On the page that shows the head.

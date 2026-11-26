@@ -908,10 +908,15 @@ async function noteLinks(page, mb) {
   }
   const allowlist = window.MetabrowserInertHtml;
   window.MetabrowserInertHtml = {
-    sanitizeHtml(html, base) {
-      return [...html.matchAll(/<a href="([^"]*)">([^<]*)<\/a>/g)].map(([, href, text]) => {
+    sanitizeHtml(html, base, keepPathRelative) {
+      return [
+        ...html.matchAll(/<a href="([^"]*)"( data-metabrowser-path-relative="")?>([^<]*)<\/a>/g),
+      ].map(([, href, relative, text]) => {
         const link = new Element("a");
         link.setAttribute("href", new URL(href, base).href);
+        if (keepPathRelative && relative) {
+          link.setAttribute("data-metabrowser-path-relative", "");
+        }
         link.setAttribute("target", "_blank");
         link.setAttribute("rel", "noopener noreferrer");
         link.textContent = text;
@@ -981,7 +986,7 @@ async function noteLinks(page, mb) {
   reads.at(-1).answer({
     ...step(revision(4), 1, pinsOf(drawn)),
     note_html:
-      '<p><a href="docs/draft.md">the draft</a><a href="./src/same.txt">an unchanged file</a></p>',
+      '<p><a href="https://github.com/octo/demo/pull/docs/draft.md" data-metabrowser-path-relative="">the draft</a><a href="https://github.com/octo/demo/pull/src/same.txt" data-metabrowser-path-relative="">an unchanged file</a></p>',
   });
   await settle();
   const note = () => container.querySelector(".kpress-prose");

@@ -8,14 +8,6 @@ import { transclusionKey } from "./transclusion.js";
 let mountSequence = 0;
 
 /** Shown when the optional wiki preprocessing step could not run. */
-// How long a document waits for the repository links before it is placed without them, its
-// github.com links then left as written. Measured 2026-11-26 in headless Chromium 152 on a
-// checkout's README, nine cold loads from 127.0.0.1: the script, 8,166 bytes compressed,
-// arrived 4 to 25 ms after it was asked for, before the render request began in every load,
-// so the wait adds nothing to the first paint; the bound, about ten times the slowest, keeps
-// a stalled request from holding the document, which only needs the script to localize.
-const REPOSITORY_LINKS_WAIT_MS = 250;
-
 const MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC = Object.freeze({
   code: "markdown-preprocessing-unavailable",
   message:
@@ -205,17 +197,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
     '<span class="sr-only">Loading document…</span></div>';
   async function render() {
-    // What a link into the served repository opens (metabrowser.loadRepositoryLinks),
-    // fetched beside the render and waited for at most `REPOSITORY_LINKS_WAIT_MS`. Without
-    // it, such a link stays the github.com link it is.
-    /** @type {Promise<MetabrowserRepositoryLinksRuntime | null>} */
-    const repositoryLinks = new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(null), REPOSITORY_LINKS_WAIT_MS);
-      void Promise.resolve(mb.loadRepositoryLinks?.() ?? null).then((links) => {
-        clearTimeout(timer);
-        resolve(links);
-      });
-    });
+    // Start the optional resolver beside the render. The shared loader limits the wait.
+    const repositoryLinks = mb.loadRepositoryLinks?.() ?? null;
     try {
       const raw =
         ctx.raw && typeof ctx.raw === "object"

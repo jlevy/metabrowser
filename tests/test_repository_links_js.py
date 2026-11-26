@@ -36,6 +36,7 @@ TEXT_HEADS = {
     "text away from its head": "b" * 40,
     "a stack's note away from its head": "b" * 40,
     "text at the served head, from a subfolder": "a" * 40,
+    "text beside a checkout of its head": "a" * 40,
 }
 
 
@@ -88,6 +89,19 @@ def test_an_in_app_page_is_the_one_the_server_opens_the_link_at() -> None:
             decode_safe_pull_route(href.encode()) is not None
             or decode_safe_commit_route(href.encode()) is not None
         ), href
+
+
+def test_pr_and_diff_links_preserve_authored_destinations() -> None:
+    localized = _session()["localized"]
+    checkout = {row["label"]: row["result"] for row in localized["checkout"]}
+    away = {row["label"]: row["result"] for row in localized["text away from its head"]}
+    assert checkout["its Changes, at one file and line"] is None
+    assert checkout["a commit, at one file"] is None
+    assert away["an authored absolute patch URL"] is None
+    assert away["the same resolution from an authored relative file"]["url"].endswith(
+        f"/blob/{TEXT_HEADS['text away from its head']}/7.patch"
+    )
+    assert away["an anchored changed file, on GitHub"]["url"].endswith("README.md#install")
 
 
 def test_a_pinned_revisions_address_is_the_servers_spelling_of_the_path() -> None:
@@ -153,18 +167,21 @@ def test_a_rendered_diffs_head_link_on_github_is_the_file_its_wire_names() -> No
     address that is not a pin's, has no github.com address.
     """
 
-    answered = 0
-    for label, case in _session()["viewFiles"].items():
-        href, url = case["href"], case["url"]
-        if url is None:
-            continue
-        answered += 1
+    expected_files = {
+        "a file",
+        "a file, at a heading",
+        "a name with a leading byte-order mark",
+        "a name with a literal replacement character",
+    }
+    cases = _session()["viewFiles"]
+    assert {label for label, case in cases.items() if case["url"] is not None} == expected_files
+    for label in expected_files:
+        href, url = cases[label]["href"], cases[label]["url"]
         wire = urlsplit(href).path.removeprefix("/view/")
         selection = _reduced(url).selection
         assert selection.kind == "blob", label
         head = TEXT_HEADS["text away from its head"].encode()
         assert selection.ref_and_path == (head, *GitPath.from_wire(wire).segments), label
-    assert answered == 2
 
 
 def test_an_in_app_link_opens_what_its_address_says() -> None:

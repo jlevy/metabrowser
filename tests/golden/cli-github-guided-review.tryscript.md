@@ -1117,7 +1117,7 @@ Raw <b>bold</b><script>alert(1)</script> <img src=x onerror=alert(1)> ![chart](h
 is preserved:</p>
 <ul>
 <li><code>one</code> stays,</li>
-<li>and <a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank" rel="noopener noreferrer">the guide</a> says so.</li>
+<li>and <a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank" rel="noopener noreferrer" data-metabrowser-path-relative="">the guide</a> says so.</li>
 </ul>
 <p>Raw <b>bold</b> <a href="https://github.com/octo/demo/pull/x" target="_blank" rel="noopener noreferrer"><span class="mb-image-fallback" data-tip-text="https://github.com/octo/demo/pull/x">image</span></a> <img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/chart.png" alt="chart"></p></div></div>
 Read the `count` before *its* explanation.

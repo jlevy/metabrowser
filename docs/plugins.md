@@ -994,9 +994,10 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   which folders are open, a change set’s header text, and `displayPath`. A diff’s Diff
   summary and the Pulls tab’s changed files both draw with it;
   `static/changed-files-tree.js` documents each function.
-- `loadRepositoryLinks()` loads, once, what a link in authored text opens on a page with
-  a GitHub repository’s identity, and resolves to null anywhere else or when it does not
-  load; it never rejects.
+- `loadRepositoryLinks()` loads what a link in authored text opens on a page with a
+  GitHub repository’s identity.
+  It returns null if the identity or asset is unavailable at the shared deadline.
+  A late load can serve future views.
   A view that shows Markdown or other authored text passes each rendered element to the
   runtime’s `enhance`, which makes a link into the served repository open its page in
   Metabrowser; `static/repository-links.js` documents which GitHub URLs open which

@@ -251,10 +251,9 @@ export function manifestFiles(raw) {
 }
 
 /**
- * The paths a comparison changes, from the manifest of what was read of all of it, on either
- * side, since Changes finds a file by either (`fileEntryForPath` in diff-view.js): a text's
- * path-relative link to one opens it there (static/repository-links.js). Null when *raw*
- * lists no files. A list cut short at its bound (`MAX_MANIFEST_FILES` in
+ * The paths a comparison changes at its head. Text links address the head, so deletion,
+ * rename-source, and copy-source paths cannot select a diff for another path. Null when
+ * the manifest lists no files. A list cut short at its bound (`MAX_MANIFEST_FILES` in
  * diff/adapters/git.py) names only its first page, and a link to a later file stays the
  * github.com link to it.
  *
@@ -269,11 +268,9 @@ export function changedPaths(raw) {
   /** @type {Set<string>} */
   const paths = new Set();
   for (const change of files) {
-    const sides = /** @type {{new?: {path?: unknown}, old?: {path?: unknown}} | null} */ (change);
-    for (const path of [sides?.new?.path, sides?.old?.path]) {
-      if (typeof path === "string" && path !== "") {
-        paths.add(path);
-      }
+    const path = /** @type {{new?: {path?: unknown}} | null} */ (change)?.new?.path;
+    if (typeof path === "string" && path !== "") {
+      paths.add(path);
     }
   }
   return paths;
@@ -5960,7 +5957,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function inertProse(inert, html) {
     const prose = inert.kpressProse(
-      inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/"),
+      inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/", true),
       document,
     );
     textProses.add(prose);
@@ -5984,6 +5981,7 @@ export function mountPullPage(container, ctx, mb) {
   let changedFiles = null;
   /** What the drawn texts' links were last read with (`textReading`'s key). */
   let textsLinkedFor = "";
+  let textViewsOpen = !window.MetabrowserSourcePinGuard?.hasChanged();
 
   /**
    * What a text of this pull request describes, for its links (static/repository-links.js),
@@ -6021,7 +6019,7 @@ export function mountPullPage(container, ctx, mb) {
    * @param {MetabrowserRepositoryTextContext} text
    */
   function linkText(prose, text) {
-    repositoryLinks?.enhance(prose, mb, { text, open: openTextRoute });
+    repositoryLinks?.enhance(prose, mb, { text, open: openTextRoute, views: textViewsOpen });
     for (const anchor of prose.querySelectorAll("a[href]")) {
       decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
     }
@@ -9686,6 +9684,15 @@ export function mountPullPage(container, ctx, mb) {
   // Disposing a page ends its work: a superseded page's requests are cancelled, whatever
   // answer they were waiting for, and its listeners go with them.
   const listening = new AbortController();
+  window.addEventListener?.(
+    "metabrowser:pin-changed",
+    () => {
+      textViewsOpen = false;
+      textsLinkedFor = "";
+      relinkTexts();
+    },
+    { signal: listening.signal, once: true },
+  );
   // The tab keys end with it too: cancelPending() aborts the signal. A page the shell
   // stages for a retained navigation is inert, so its keys wait until it is shown.
   tabKeys = attachTabKeys(

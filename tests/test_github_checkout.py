@@ -394,7 +394,7 @@ def test_pull_request_text_is_inert_under_both_profiles(
             rendered = by_profile[profile] = _rendered(client)
             unhardened = _unhardened(record)
         for part, html in rendered.items():
-            assert allowlist_violations(html) == [], (profile, part)
+            assert allowlist_violations(html, pr_text=True) == [], (profile, part)
             # Raw markup survives only as text: the corpus's script is escaped, never a tag.
             assert "<script" not in html and "onerror=" not in html, (profile, part)
             for name in HOSTILE_LINKS["refused"]:
