@@ -215,6 +215,9 @@
   /** @type {Promise<boolean> | null} */
   let viewHelpersPending = null;
   let refreshing = false;
+  // While a reader's Refresh reads the history again, the rows on screen stay as they are
+  // until the new walk reaches them (refreshHistory, `inPlace`): nothing paints the panel.
+  let paintHeld = false;
   // How many of ensureHistory's HEAD reads are on their way, by the history generation
   // each began in. While one of the current generation is, its walk may be about to be
   // replaced, so a waiting newest landing is not answered from it (selectNewestWhenReady).
@@ -2085,7 +2088,7 @@
   function renderVirtualRows(force = false) {
     const list = panelElement()?.querySelector(".git-graph-list");
     const scroller = historyScroller();
-    if (!(list instanceof HTMLElement) || !scroller) {
+    if (!(list instanceof HTMLElement) || !scroller || paintHeld) {
       return;
     }
     const origin = historyOrigin();
@@ -2300,7 +2303,7 @@
 
   function renderPanel() {
     const panel = panelElement();
-    if (!panel) {
+    if (!panel || paintHeld) {
       return;
     }
 
@@ -3487,11 +3490,65 @@
   }
 
   /**
+   * Where the reader has scrolled the list, for a Refresh in place to come back to: the row
+   * at the top of the view and how far into it, and how many rows the new walk must read to
+   * fill the view again. Bounded as recovery's replay is (recoverHistorySession). A list
+   * behind another tab has no offset of its own, since the scroller is shared: the tab
+   * puts its saved offset back when it shows, so the walk need only read that far.
+   *
+   * @returns {{shown: boolean, ordinal: number, offsetPx: number, through: number}}
+   */
+  function placeOnScreen() {
+    const bound = PAGE_CACHE_PAGES * LOG_LIMIT;
+    const range = state.mountedRange;
+    const scroller = historyScroller();
+    const rowHeight = graphModule().SWIMLANE_HEIGHT;
+    const shown = panelInFront() && scroller !== null && range !== null;
+    const logicalPx =
+      shown && range
+        ? range.segmentStart * rowHeight + Math.max(0, (scroller?.scrollTop || 0) - historyOrigin())
+        : 0;
+    const top = Math.floor(logicalPx / rowHeight);
+    const ordinal = Math.min(top, bound - 1);
+    return {
+      shown,
+      ordinal,
+      offsetPx: ordinal === top ? logicalPx - top * rowHeight : 0,
+      through: Math.min(range?.visibleEnd ?? 0, bound),
+    };
+  }
+
+  /**
+   * Draw the new walk where the old one was (`placeOnScreen`), in one paint. A walk that
+   * something else replaced meanwhile is drawn where it is: the place was the old walk's.
+   *
+   * @param {{shown: boolean, ordinal: number, offsetPx: number}} place
+   * @param {boolean} current Whether the walk read for the place is still the panel's.
+   */
+  function returnToPlace(place, current) {
+    const scroller = historyScroller();
+    if (current && place.shown && panelInFront() && scroller && state.rowCount > 0) {
+      const ordinal = Math.min(place.ordinal, state.rowCount - 1);
+      scroller.scrollTop =
+        historyOrigin() +
+        state.virtualWindow.rebaseToOrdinal(ordinal, viewportHeight(scroller), "start") +
+        (ordinal === place.ordinal ? place.offsetPx : 0);
+    }
+    state.mountedRange = null;
+    renderPanel();
+  }
+
+  /**
    * `supersede` replaces the walk even while a page of it is on its way: HEAD moved, so
    * that page is obsolete, and the reset below aborts it. Without it a page on its way
    * defers the refresh to whoever reads HEAD next.
    *
-   * @param {{preserveDetail?: boolean, selectedId?: string | null, supersede?: boolean}} [options]
+   * `inPlace` is a reader's Refresh of a list on screen: the rows stay, with the scroll
+   * position and the selected row, until the new walk has read as far as the reader had
+   * scrolled, and then the new rows replace them where they were, with no skeleton between
+   * (docs/design-system.md, "Refresh, Retry, and Reload Page").
+   *
+   * @param {{inPlace?: boolean, preserveDetail?: boolean, selectedId?: string | null, supersede?: boolean}} [options]
    * @returns {Promise<void>}
    */
   async function refreshHistory(options = {}) {
@@ -3505,7 +3562,9 @@
     }
 
     refreshing = true;
+    const place = options.inPlace === true && state.rowCount > 0 ? placeOnScreen() : null;
     resetHistoryRequests();
+    const walk = historyGeneration;
     // A selection's busy state is obsolete once its walk is replaced. A waiting newest
     // landing's is not: the new walk is what it waits for, and the pane stays busy until
     // the landing selects, says why it cannot, or loses the pane.
@@ -3547,6 +3606,7 @@
       clearComparisonCache();
     }
     state.loading = true;
+    paintHeld = place !== null;
     renderPanel();
     try {
       const read = await fetchRepoInfo();
@@ -3565,10 +3625,26 @@
       await loadRefColors();
       state.loading = false;
       await loadNextPage(true);
+      while (
+        place !== null &&
+        walk === historyGeneration &&
+        state.rowCount < place.through &&
+        state.cursor &&
+        !state.failed &&
+        !state.endReached
+      ) {
+        if (!(await loadNextPage(false))) {
+          break;
+        }
+      }
       // Fired, not awaited: the tally walks the whole graph server-side
       // and must never hold up the first page of history.
       void loadHistorySummary();
     } finally {
+      if (place !== null) {
+        paintHeld = false;
+        returnToPlace(place, walk === historyGeneration);
+      }
       refreshing = false;
       // The first page landed while the refresh still held the panel.
       selectNewestWhenReady();
@@ -3581,6 +3657,22 @@
     if (restoreLanding) {
       await restoreCommitLanding();
     }
+  }
+
+  /**
+   * The navigation's Refresh (static/refresh-plan.js): read the history again from the
+   * routes that follow the revision the server serves (`session_git_location` in
+   * git/routes.py), as the stale notice's Refresh does, keeping the selected row. Settles
+   * once the first page is drawn. A panel that has not read its history has nothing to
+   * refresh: its first show reads it then.
+   *
+   * @returns {Promise<void>}
+   */
+  async function refresh() {
+    if (!started || (state.rowCount === 0 && !state.endReached && !state.failed)) {
+      return;
+    }
+    await refreshHistory({ inPlace: true, selectedId: state.selectedId });
   }
 
   /** @returns {Promise<void>} */
@@ -4068,6 +4160,7 @@
   window.MetabrowserGitPanel = Object.freeze({
     init,
     cancelPending,
+    refresh,
     restoreCommitLanding,
     // Exposed for tests, which drive the panel without a network.
     _internals: {

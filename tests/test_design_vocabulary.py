@@ -457,11 +457,15 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     overview_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
         encoding="utf-8"
     )
+    github_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/github/styles.css").read_text(
+        encoding="utf-8"
+    )
     for css, selector in (
         (styles, ".tree-children"),
         (diff_css, ".metabrowser-diff-host .diff-file-body"),
         (diff_css, ".metabrowser-diff-host .diff-fold-group"),
         (overview_css, ".folder-overview-panel-body"),
+        (github_css, ".github-pull-stack-members-body"),
     ):
         rule = _rule(css, selector)
         assert "height var(--transition-fast)" in rule, f"{selector} lost the travel"
@@ -471,6 +475,7 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
         (diff_css, ".metabrowser-diff-host .diff-file-body-collapsed"),
         (diff_css, ".metabrowser-diff-host .diff-fold-collapsed"),
         (overview_css, ".folder-overview-panel-body-collapsed"),
+        (github_css, ".github-pull-stack-members-body-collapsed"),
     ):
         rule = _rule(css, selector)
         assert "height: 0" in rule and "visibility: hidden" in rule, f"{selector} state drifted"
@@ -1104,9 +1109,12 @@ def test_each_context_assigns_its_chip_kind() -> None:
     # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
-    assert len(chips) == 2, "the selector draws a chip for the source and for each list row"
+    assert len(chips) == 3, (
+        "the selector draws a chip for the source, for the working tree's branch,"
+        " and for each list row"
+    )
     for chip in chips:
-        assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
+        assert re.search(r'kind: (?:model\.selectedRef\.kind|row\.chip|"local"),', chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
     squeezed = re.sub(r"\s+", " ", selector)
     # The chooser's rows by list kind and the source row by the currently viewed ref.
@@ -2157,7 +2165,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-fold.js": ('"fold-expander diff-fold-control disclosure-toggle"',),
     "diff/diff-view.js": (
         '"diff-file-bar disclosure-toggle"',
-        '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
+        '"diff-summary diff-summary-toggle summary-toggle disclosure-toggle collapsed"',
     ),
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
@@ -2166,11 +2174,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
+        '"github-pulls-row github-pulls-whole-row disclosure-toggle"',
     ),
     "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
     "github/pull-page.js": (
         '"btn github-pull-stack-trigger disclosure-toggle"',
         '{ class: "fold-expander disclosure-toggle" }',
+    ),
+    "github/stack-page.js": (
+        '"summary-toggle github-pull-stack-members-toggle disclosure-toggle collapsed"',
     ),
 }
 # Sources with a marker that build no toggle of their own, and why.
@@ -2215,7 +2227,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "diff/diff-view.js": (
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
-        ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
+        (
+            'shellIcon("toggle")',
+            '"diff-summary diff-summary-toggle summary-toggle disclosure-toggle collapsed"',
+        ),
     ),
     "diff/diff-summary.js": (
         (
@@ -2229,6 +2244,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "github/pulls-panel.js": (
         ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
         ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
+        ("[chevron()]", '"github-pulls-row github-pulls-whole-row disclosure-toggle"'),
     ),
     "github/pull-files-view.js": (
         ("host.chevron()", '"changed-file-row github-pull-folder-row disclosure-toggle"'),
@@ -2236,6 +2252,12 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "github/pull-page.js": (
         ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
         ('h("summary"', '{ class: "fold-expander disclosure-toggle" }'),
+    ),
+    "github/stack-page.js": (
+        (
+            "[chevron()]",
+            '"summary-toggle github-pull-stack-members-toggle disclosure-toggle collapsed"',
+        ),
     ),
 }
 # A glyph built far from its builder: a folder row's parts are made by one function and
@@ -2271,10 +2293,13 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "diff-summary-folder",
         "github-pulls-row",
         "github-pulls-stack-row",
+        "github-pulls-whole-row",
         "github-pull-folder-row",
         "changed-file-row",
         "btn",
         "github-pull-stack-trigger",
+        "github-pull-stack-members-toggle",
+        "summary-toggle",
     }
 )
 # One compound selector that names a toggle: its marker class, a component class, or a
@@ -2598,7 +2623,6 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
-    assert 'class: "btn github-pulls-refresh"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     # No control or notice counts the rows held. Below them, pages still on their way show
@@ -3141,8 +3165,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert '"loading mb-delayed-loading github-pull-diff-loading"' in page
     assert '"loading mb-delayed-loading github-pull-changes-pending"' in page
     assert 'h("span", { class: "github-pull-freshness mb-refreshing-muted" })' in page
-    assert 'freshnessLine.classList.toggle("mb-refreshing", busy);' in page
-    assert 'freshnessLine.setAttribute("aria-busy", "true");' in page
+    assert 'meta.line.classList.toggle("mb-refreshing", busy);' in page
+    assert 'meta.line.setAttribute("aria-busy", "true");' in page
     assert 'status.setAttribute("aria-busy"' not in page, "the status line's controls stay usable"
     assert '"recent-loading github-pull-loading github-pull-section-loading"' in page
     assert github[".github-pull-section-loading"] == {"height": "calc(var(--ui-row-height) * 3)"}
@@ -3460,11 +3484,30 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
             named = any(re.search(rf"\.{name}(?![\w-])", subject) for name in classes)
             if named and "::" not in subject:
                 assert set(body) <= owned, (sheet, selector, body)
-    # The Diff summary's header hovers and rings as its rows do: square, the ring inside.
-    diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
-    toggle = ".metabrowser-diff-host .diff-summary-toggle"
-    assert diff[toggle]["border-radius"] == "0"
-    assert diff[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
+    # The Diff summary's header hovers and rings as its rows do: square, the ring inside. It
+    # is the shell's summary toggle, which the stack page's members toggle is too, and no
+    # plugin restates its box, hover, ring, or chevron slot (A5 of review A on #861).
+    toggle = ".summary-toggle"
+    assert shell[toggle]["border-radius"] == "0"
+    assert shell[toggle]["padding"] == "0 6px 0 var(--summary-toggle-pull)"
+    assert shell[toggle + ":hover"] == {"background": "var(--hover-bg)"}
+    assert shell[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
+    assert shell[".summary-toggle-chevron"]["width"] == "var(--tree-icon-slot)"
+    for sheet, source, classes in (
+        ("diff/styles.css", "diff/diff-view.js", ("diff-summary-toggle", "diff-summary-chevron")),
+        (
+            "github/styles.css",
+            "github/stack-page.js",
+            ("github-pull-stack-members-toggle", "summary-toggle-chevron"),
+        ),
+    ):
+        text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
+        assert re.search(r'"(?:[\w-]+ )*summary-toggle(?: [\w-]+)*"', text), source
+        assert re.search(r'"(?:[\w-]+ )*summary-toggle-chevron(?: [\w-]+)*"', text), source
+        for selector, body in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / sheet):
+            if any(re.search(rf"\.{name}(?![\w-])", selector) for name in classes):
+                restated = {"padding", "margin", "border-radius", "outline", "cursor"} & set(body)
+                assert not restated, (sheet, selector, restated)
     # A folder's tooltip gives what its sums leave out, the counts alone.
     for source in sources:
         text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
@@ -4394,7 +4437,6 @@ _FOCUS_OFFSET_OUTSET = "var(--focus-ring-offset-outset)"
 _FOCUS_RING_OUTSET = frozenset(
     {
         ".nav-shortcut-action:focus-visible",
-        ".source-freshness-label:focus-visible",
         ".filter-check:has(input:focus-visible)",
         ".help-project a:focus-visible",
         ".event-log-details a:focus-visible",

@@ -89,7 +89,7 @@ from metabrowser.capabilities import (
     untrusted_shell_csp,
 )
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
-from metabrowser.checkout_store import checkout_store, lifespan_checkout_store
+from metabrowser.checkout_store import lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
 from metabrowser.content_errors import ContentReadError
@@ -254,6 +254,7 @@ from metabrowser.settings import (
     blocks_remote_images,
     client_settings_dict,
 )
+from metabrowser.shell_glyphs import REFRESH_SVG
 from metabrowser.source import (
     ContentRef,
     SubjectNotOpenError,
@@ -1644,15 +1645,12 @@ def _source_ref_chip_html(name: str, kind: str) -> str:
     )
 
 
-def _source_ref_view_html(word: str) -> str:
-    """The word a checkout's revision row starts with, then the dot before its ref."""
-
-    return (
-        f'<span class="source-ref-selector-view">{word}</span>'
-        # The spaces are the text's alone: as a flex item's edges they collapse, and
-        # the label's gap sets the room.
-        '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
-    )
+# What a checkout's row says before the branch its files on disk are on, then the dot
+# before that branch (static/source-ref-selector.js, `WORKING_TREE`).
+_WORKING_TREE_WORD: Final = '<span class="source-ref-selector-view">Working tree</span>'
+# The spaces are the text's alone: as a flex item's edges they collapse, and the label's
+# gap sets the room.
+_WORKING_TREE_DOT: Final = '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
 
 
 def _source_ref_label_html(
@@ -1660,9 +1658,9 @@ def _source_ref_label_html(
 ) -> str:
     """The selected source before the chooser mounts, in the same faces and dimensions.
 
-    A checkout's row says which of its two views the page shows, in words, before the ref:
-    "Working tree" and the branch, or the commit a detached ``HEAD`` is at, that the files
-    on disk are on, or "Revision" and the ref that was chosen
+    The row names what the page shows, in one form: a ref or a commit alone, on a mirror
+    and on a checkout alike, and, for a checkout's files on disk, "Working tree" and the
+    branch they are on, or the commit a detached ``HEAD`` is at
     (``static/source-ref-selector.js``, ``describe``).
     """
 
@@ -1670,16 +1668,14 @@ def _source_ref_label_html(
         if not checkout:
             return "Revision"
         if working_head is None:
-            return "Working tree"
+            return _WORKING_TREE_WORD
         on = (
             _source_ref_chip_html(working_head.branch, "local")
             if working_head.branch is not None
             else f'<span class="git-commit-sha">{html_escape(short_commit(working_head.revision))}</span>'
         )
-        return _source_ref_view_html("Working tree") + on
-    if checkout:
-        return _source_ref_view_html("Revision") + _source_ref_revision_html(pin, checkout=True)
-    return _source_ref_revision_html(pin, checkout=False)
+        return _WORKING_TREE_WORD + _WORKING_TREE_DOT + on
+    return _source_ref_revision_html(pin, checkout=checkout)
 
 
 def _source_ref_revision_html(pin: GitRevisionSubject, *, checkout: bool) -> str:
@@ -1923,50 +1919,39 @@ async def index(
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
-    # A pin's freshness row, filled by static/source-freshness.js. A plain folder has
-    # none. A checkout that keeps a store of its origin has one on every page, its
-    # working tree's too, saying when that store was fetched and offering Refresh.
-    origin_store = checkout_store(request.app) if checkout is not None else None
+    # A pin's freshness row, filled by static/source-freshness.js, which mounts on a
+    # pinned revision only (app.js, `startSourceFreshness`). A plain folder has none, and
+    # neither has a checkout's working tree: it shows the disk, and the store of its origin
+    # is fetched from there by the navigation's Refresh (static/refresh-plan.js, `origin`).
     # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
     # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
-        if git_pin or (origin_store is not None and origin_store.fetchable)
+        if git_pin
         else ""
     )
     # The selector is its own row, under the tabs and above the Files and Commits toolbars,
-    # since both tabs show the revision it chooses. Reserve the label, its chooser button,
-    # and a revision's way back at first paint. A checkout's row says
-    # which view the page shows: the working tree, the live files on disk, named with the
-    # branch or commit they are on, or a revision chosen from the list, with a button back
-    # to the working tree (docs/design-system.md, "The Ref Selector").
+    # since both tabs show the revision it chooses. Reserve the label and its chooser
+    # button at first paint: the row is those two whatever is shown, so nothing in it
+    # moves when the chooser mounts or the page changes what it shows. A checkout's
+    # working tree, the live files on disk, is named with the branch or commit they are
+    # on; anything else by its ref (docs/design-system.md, "The Ref Selector").
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
         working_head: CheckedOutHead | None = None
         view_attrs = ""
-        back = ""
         if checkout is not None and pin is None:
             working_head = (
                 CheckedOutHead(tip_context["branch"], tip_context["revision"])
                 if tip_context is not None
                 else await asyncio.to_thread(checked_out_head, checkout.root)
             )
-            view_attrs = ' data-view="working-tree"'
             if working_head is not None and working_head.branch is not None:
                 view_attrs += (
                     f' data-working-branch="{html_escape(working_head.branch, quote=True)}"'
                 )
             elif working_head is not None:
                 view_attrs += f' data-working-commit="{working_head.revision}"'
-        elif checkout is not None:
-            view_attrs = ' data-view="revision"'
-            back = (
-                '<button type="button" class="btn source-ref-selector-back"'
-                ' aria-label="Back to the working tree"'
-                ' data-tip-text="Back to the working tree, the files on disk">'
-                '<span class="source-ref-selector-back-arrow" aria-hidden="true">←</span>'
-                "Working tree</button>"
-            )
         label = _source_ref_label_html(
             pin, checkout=checkout is not None, working_head=working_head
         )
@@ -1976,7 +1961,7 @@ async def index(
             f'<span class="source-ref-selector-label">{label}</span>'
             '<button type="button" class="icon-btn source-ref-selector-toggle disclosure-toggle"'
             ' aria-label="Switch branch or tag" aria-haspopup="dialog" aria-expanded="false"'
-            f' data-tip-text="Switch branch or tag"></button></span>{back}</div>'
+            ' data-tip-text="Switch branch or tag"></button></span></div>'
         )
     # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
     # checkout's revisions and subdirectories. It costs a plain folder nothing,
@@ -2052,6 +2037,21 @@ async def index(
         "Pulls</button>"
         if pulls_tab
         else ""
+    )
+    # The navigation's one Refresh, at the top of the navigation pane just before the
+    # Metabrowser menu, an icon button as the menu's gear is, on every page and under every
+    # tab. It is here, glyph and all, from the first paint (shell_glyphs.py), so nothing in
+    # the header appears or moves after it. A press refreshes what the page shows, the parts
+    # on screen first (static/refresh-plan.js, which wires it once `shell-tools` loads).
+    # Its cost is page bytes, not a request: the button is 334 bytes as written. With it and
+    # refresh-plan.js's entry in the `shell-tools` bundle, a folder's page grew from 67,950
+    # to 68,402 bytes, and from 17,772 to 17,881 as sent compressed, against main at
+    # a96ac3304, measured 2026-11-25 with `render_shells` and `sent_body_bytes` in
+    # devtools/check_startup_scripts.py (the served root's temporary name moves the sent
+    # size by a few bytes from run to run).
+    nav_refresh = (
+        '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
+        f' aria-label="Refresh" data-tip-text="Refresh">{REFRESH_SVG}</button>'
     )
     pulls_container = ""
     if pulls_tab:
@@ -2320,6 +2320,8 @@ async def index(
             {"src": git_graph_url},
             {"src": git_history_window_url},
             {"src": git_panel_url},
+            # The navigation's Refresh: mounts as it evaluates, on the button the server drew.
+            {"src": _static_asset_url("refresh-plan.js"), "provides": "MetabrowserRefreshPlan"},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
             # The event log's reporter, last: nothing here waits on it (`event-reports`).
@@ -2623,7 +2625,7 @@ async def index(
             {root_repository_links}
             <div class="root-details-status" role="status"></div>
           </div>
-        </div>
+        </div>{nav_refresh}
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,

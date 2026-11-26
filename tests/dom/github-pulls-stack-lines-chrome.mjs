@@ -1,5 +1,7 @@
-// Each stack heading's brief change line in the Pulls tab, laid out by headless Chrome: the
-// production panel module and its stylesheets, mounted on recorded answers.
+// Each stack's brief change line in the Pulls tab, on its Whole stack row (mb-tvhs), laid out
+// by headless Chrome: the production panel module and its stylesheets, mounted on recorded
+// answers. "Heading" below is the row's one line, "Whole stack" and then the change line;
+// the stack's own row, its label, its size, and its age, is read beside it (`stack`).
 //
 //   CHROME_BIN=/path/to/chrome KPRESS_STATIC=/dir/with/css/and/fonts \
 //     CHROME_PROFILES=/dir/the/caller/removes \
@@ -18,8 +20,9 @@
 //
 // - a heading waits only while its own stack's read is on its way: the list draws #290
 //   first, and while its read is held #286's heading, queued behind it, holds no placeholder;
-// - nothing moves when the line arrives: the row, its chevron, its icon, its label, and the
-//   placeholder's start, which is the line's;
+// - nothing moves when the line arrives: the row, its chevron, its words, and the
+//   placeholder's start, which is the line's; nor anything of the stack's own row, its
+//   chevron, its label, its count, and its age, which are whole from the first paint;
 // - the heading stays one line: the row is one `--ui-row-height`, and the line, the stack's
 //   line totals alone with no file statuses (mb-lqkb), is either whole on the heading's line
 //   or out of view entirely, never cut through its totals or across the label;
@@ -223,7 +226,8 @@ const MOUNT = `async (width, theme, fresh = true) => {
   return true;
 }`;
 
-// In the page: each stack heading's geometry and what it shows, read from its row's top.
+// In the page: each stack's Whole stack row's geometry and what it shows, read from its
+// row's top, and the geometry and text of the stack's own row (`stack`).
 const READ = `(() => {
   const box = (el) => {
     if (!el) return null;
@@ -231,16 +235,25 @@ const READ = `(() => {
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
   };
   const rowHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height"));
-  return Object.fromEntries([...document.querySelectorAll(".github-pulls-stack-row")].map((row) => {
-    const heading = row.querySelector(".github-pulls-stack-heading");
-    const label = row.querySelector(".github-pull-stack-label");
+  return Object.fromEntries([...document.querySelectorAll(".github-pulls-whole-row")].map((row) => {
+    const heading = row.querySelector(".github-pulls-whole-line");
+    const label = row.querySelector(".github-pulls-whole-title");
     const change = row.querySelector(".github-pulls-stack-change");
+    const stackRow = document.querySelector('.github-pulls-stack-row[data-stack="' + row.dataset.stack + '"]');
+    const stackLabel = stackRow.querySelector(".github-pull-stack-label");
     const pending = change.querySelector(".github-pulls-stack-change-pending");
     const line = change.querySelector(".change-line");
     const stats = change.querySelector(".change-line-stats");
     return [row.dataset.stack, {
       row: box(row), toggle: box(row.querySelector(".github-pulls-toggle")),
-      icon: box(row.querySelector(".github-pull-stack-icon")), heading: box(heading),
+      heading: box(heading),
+      stack: {
+        row: box(stackRow), toggle: box(stackRow.querySelector(".github-pulls-toggle")),
+        label: box(stackLabel), count: box(stackRow.querySelector(".github-pulls-stack-count")),
+        age: box(stackRow.querySelector(".github-pulls-age")),
+        labelCut: stackLabel.scrollWidth > stackLabel.clientWidth + 0.5,
+        text: stackRow.textContent,
+      },
       label: box(label), labelCut: label.scrollWidth > label.clientWidth + 0.5,
       change: box(change), pending: box(pending), pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(line), stats: box(stats), note: box(change.querySelector(".github-pulls-stack-change-note")),
@@ -262,7 +275,7 @@ const INKS = `(() => {
     const style = el ? getComputedStyle(el) : null;
     return [selector, style ? [style.color, style.fontWeight] : null];
   }));
-  const heading = document.querySelector('.github-pulls-stack-row[data-stack="286"] .github-pulls-stack-change');
+  const heading = document.querySelector('.github-pulls-whole-row[data-stack="286"] .github-pulls-stack-change');
   const reference = document.getElementById("reference");
   const answers = window.__answers.changes.current.body;
   // The line totals alone, a zero one left out, as the heading draws them (mb-lqkb, mb-efum).
@@ -338,7 +351,7 @@ async function main() {
         const at = `${width} px ${theme}`;
         await browser.evaluate(`(${MOUNT})(${width}, ${JSON.stringify(theme)})`);
         const pending = (stack) =>
-          `document.querySelector('.github-pulls-stack-row[data-stack="${stack}"] .github-pulls-stack-change-pending')`;
+          `document.querySelector('.github-pulls-whole-row[data-stack="${stack}"] .github-pulls-stack-change-pending')`;
         const waited = (condition) =>
           browser.waitFor(condition, 5000).then(
             () => true,
@@ -374,7 +387,7 @@ async function main() {
         await browser.evaluate(`window.__release(), true`);
         // The lane reads one stack at a time, so release each read as it is asked for.
         await browser.waitFor(
-          `(window.__release(), document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line') !== null && document.querySelector('.github-pulls-stack-row[data-stack="290"] .github-pulls-stack-change').childNodes.length === 0)`,
+          `(window.__release(), document.querySelector('.github-pulls-whole-row[data-stack="286"] .change-line') !== null && document.querySelector('.github-pulls-whole-row[data-stack="290"] .github-pulls-stack-change').childNodes.length === 0)`,
         );
         await browser.evaluate(
           `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
@@ -414,13 +427,40 @@ async function main() {
             was.pending.left >= was.label.right - TOLERANCE_PX,
           );
         }
-        for (const part of ["row", "toggle", "icon", "label"]) {
+        for (const part of ["row", "toggle", "label"]) {
           check(
             `${at}: #286's ${part} does not move when its line arrives`,
             ["left", "top", "width", "height"].every((side) =>
               near(was?.[part]?.[side], now?.[part]?.[side]),
             ),
             `${JSON.stringify(was?.[part])} ${JSON.stringify(now?.[part])}`,
+          );
+        }
+        // The stack's own row is whole from its first paint, its count and its age with it,
+        // and a line's arrival moves and changes nothing of it (mb-tvhs).
+        for (const stack of ["286", "290"]) {
+          for (const part of ["row", "toggle", "label", "count", "age"]) {
+            check(
+              `${at}: Stack #${stack}'s own ${part} does not move when a line arrives`,
+              ["left", "top", "width", "height"].every((side) =>
+                near(before[stack]?.stack?.[part]?.[side], after[stack]?.stack?.[part]?.[side]),
+              ),
+              `${JSON.stringify(before[stack]?.stack?.[part])} ${JSON.stringify(after[stack]?.stack?.[part])}`,
+            );
+          }
+          check(
+            `${at}: Stack #${stack}'s own row says the same before and after`,
+            before[stack]?.stack?.text === after[stack]?.stack?.text &&
+              /^Stack #\d+· \d+ pulls?/.test(after[stack]?.stack?.text ?? ""),
+            JSON.stringify([before[stack]?.stack?.text, after[stack]?.stack?.text]),
+          );
+          check(
+            `${at}: Stack #${stack}'s own row is one row tall, its label whole, its age at its end`,
+            near(after[stack].stack.row.height, after[stack].rowHeight) &&
+              !after[stack].stack.labelCut &&
+              after[stack].stack.age.right <= after[stack].stack.row.right + TOLERANCE_PX &&
+              after[stack].stack.age.left >= after[stack].stack.label.right - TOLERANCE_PX,
+            JSON.stringify(after[stack].stack),
           );
         }
         for (const stack of ["286", "290"]) {
@@ -467,7 +507,7 @@ async function main() {
           );
           check(
             `${at}: the name says the line's totals in words`,
-            now.name.startsWith("Stack #286: 5 lines added; "),
+            now.name === "Whole stack, Stack #286: 5 lines added",
             now.name,
           );
           for (const [part, ink] of Object.entries(inks.reference)) {
@@ -551,7 +591,7 @@ async function main() {
         const at = `${width} px ${kind} long line`;
         await browser.evaluate(`(${MOUNT})(${width}, "light")`);
         await browser.waitFor(
-          `(window.__release(), document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line') !== null)`,
+          `(window.__release(), document.querySelector('.github-pulls-whole-row[data-stack="286"] .change-line') !== null)`,
         );
         await browser.evaluate(
           `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
@@ -603,14 +643,14 @@ async function main() {
         const at = `${width} px ${theme} no lines`;
         await browser.evaluate(`(${MOUNT})(${width}, ${JSON.stringify(theme)})`);
         await browser.waitFor(
-          `(window.__release(), document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line') !== null)`,
+          `(window.__release(), document.querySelector('.github-pulls-whole-row[data-stack="286"] .change-line') !== null)`,
         );
         await browser.evaluate(
           `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
         );
         const now = (await browser.evaluate(READ))["286"];
         const ink = await browser.evaluate(`(() => {
-          const line = document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line');
+          const line = document.querySelector('.github-pulls-whole-row[data-stack="286"] .change-line');
           const none = line?.querySelector(".change-line-stats > .change-line-none") ?? null;
           const probe = document.createElement("span");
           probe.style.color = "var(--muted)";
@@ -640,7 +680,7 @@ async function main() {
           now.line.right <= now.heading.right + TOLERANCE_PX;
         check(
           `${at}: the heading says "0 lines", and its name "no lines changed"`,
-          now.text === "·0 lines" && now.name.startsWith("Stack #286: no lines changed; "),
+          now.text === "·0 lines" && now.name === "Whole stack, Stack #286: no lines changed",
           JSON.stringify({ text: now.text, name: now.name }),
         );
         check(

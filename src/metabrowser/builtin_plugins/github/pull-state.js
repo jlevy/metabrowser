@@ -13,6 +13,18 @@ export const PULL_STATES = Object.freeze({
   closed: Object.freeze({ icon: "gitPullRequestClosed", label: "Closed" }),
 });
 
+/**
+ * The states in the order a stack's members run from its top to its base: drafts at the top,
+ * still being written, then open ones, then merged ones at the base, then closed ones, which
+ * left it. A stack's tally counts them in this order, "5 Pulls Draft · 2 Pulls Open · 2 Pulls
+ * Merged", the owner's (docs/design-system.md, "The Stack Page").
+ *
+ * @type {ReadonlyArray<PullState>}
+ */
+export const STACK_STATE_ORDER = Object.freeze(
+  /** @type {PullState[]} */ (["draft", "open", "merged", "closed"]),
+);
+
 // The four shapes, Lucide v1.17.0 (ISC; https://lucide.dev), by Lucide id. Only a GitHub
 // repository's page draws them, so they arrive with this code: in static/icons.js they were 251
 // compressed bytes of every folder's startup scripts (check_startup_scripts, 2026-11-03).

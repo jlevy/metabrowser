@@ -309,7 +309,14 @@ The server watches the served folder and streams changes to the page.
 - **A container’s entries**, such as a patch file’s changed paths, are read again when
   the file changes.
 - **Any other open file** shows its new content the next time you open it, or when you
-  reload.
+  press **Refresh**.
+
+**Refresh**, the circular arrow at the top of the navigation pane, is there on every
+tab. It reads the tree and the open file or folder again, and everything else the page
+holds, starting with what is on screen.
+Where the foot of the navigation pane says when the origin or the mirror was last
+fetched, it fetches from the origin first.
+Its key is `1`.
 
 Files that a running process writes get more.
 Metabrowser watches the files in a folder named `.logs` or `.state` whose names end in
@@ -336,7 +343,7 @@ and **Run ended** when the tail closes because the file was removed or replaced.
 2. Check whether the file is under a tool directory the file watcher skips, such as
    `node_modules`, `.venv`, or `__pycache__`. The tree can list those files, but a
    change to one does not update the page live.
-3. Reload the page.
+3. Press **Refresh**, or reload the page.
 4. If the server log says it is refreshing slow browser connections after a queue
    overflow, a burst of changes outran the page, which then reconnects and catches up
    from a fresh snapshot.

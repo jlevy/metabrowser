@@ -66,7 +66,7 @@ While the pane is hidden, the keys of its controls, such as `0`, `F`, and the fi
 numbers, do nothing until it is shown again.
 With the pane hidden, a pull request page that waits on a fetch or a failed refresh
 still offers Fetch or Retry on its status line, but its other refreshes, such as one for
-a newer copy, wait for the Pulls tab’s Refresh.
+a newer copy, wait for the navigation’s Refresh.
 
 ## Keys in a Menu
 
@@ -86,8 +86,9 @@ Each control is numbered only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
-| The Pulls tab | Open, Closed, and All, then Refresh, which refreshes the pull request page beside the list and then the list, and keeps its number while it waits |
+| Every tab | Refresh, the circular arrow at the top of the navigation pane, which is `1` under every tab: it refreshes everything the page shows, what is on screen first, and keeps its number while it waits |
+| The Files tab | After Refresh: Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
+| The Pulls tab | After Refresh: Open, Closed, and All |
 | A pull request page | The header’s links and actions, such as Browse code, the status line’s Retry or Fetch where it offers one, and Browse the checkout, in the order the header shows them; Retry keeps its number while it waits |
 | A stack page | The status line’s Retry where it offers one, then Show the new comparison where it offers that |
 
@@ -115,11 +116,13 @@ In the Pulls list, Up and Down or `K` and `J` move a row, a pull request’s thr
 being one, Enter opens the pull request, and Space shows or hides its changed files;
 Right shows them or moves into them, and Left hides them.
 Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
-opens it or goes to its first row, and Left closes it, or returns to it from its Whole
-stack row or from a pull request inside it whose files are closed.
-An open stack’s first row, Whole stack, above its pull requests, opens the stack’s page:
-a move onto it opens it, as a move onto a pull request opens that, so `J` or Right from
-the stack’s row opens it, Enter and Space open it, and Left returns to the stack’s row.
+opens it or goes to its one row, Whole stack, and Left closes it.
+The Whole stack row opens the stack’s page: a move onto it opens it, as a move onto a
+pull request opens that, so `J` or Right from the stack’s row opens it, and so does
+Enter. It also holds the stack’s pull requests, as a folder does: Right shows them or
+goes to the first, Left hides them or returns to the stack’s row, and Space shows or
+hides them. Left on a pull request in a stack, its files closed, returns to the Whole
+stack row.
 
 Press `#` to open Quick Search for pull requests.
 The cursor starts after the prefix, ready for a number or title.

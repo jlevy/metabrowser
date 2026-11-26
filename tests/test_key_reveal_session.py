@@ -249,10 +249,13 @@ def test_the_session_runs_on_the_recording() -> None:
         assert by_name[step]["pressed"] == {"key": typed, "handled": True}, step
         assert by_name[step]["did"] == ["went home"], step
         assert ["0", "shell.home", "squares"] in by_name[step]["keys"], step
-    # A pin's bar: Group by first, then its one filter (no Modified within on a pin).
-    assert positional["numbers"] == ["Group by", "File type"]
-    assert ["1", "Group by"] in positional["badges"]
-    assert ["2", "File type"] in positional["badges"]
+    # The navigation's Refresh is 1, first in reading order on every screen; then a pin's
+    # bar: Group by first, then its one filter (no Modified within on a pin).
+    assert positional["numbers"] == ["Refresh", "Group by", "File type"]
+    # Its badge sits beside the icon, in the header that anchors it, as Home's does.
+    assert ["1", "beside, in app-header"] in positional["badges"]
+    assert ["2", "Group by"] in positional["badges"]
+    assert ["3", "File type"] in positional["badges"]
     # A pin has no By age, so Group by registers N and T only, as app.js does.
     assert [key for key, _action, _description in positional["menus"]] == ["N", "T"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
@@ -280,19 +283,20 @@ def test_the_session_runs_on_the_recording() -> None:
         "↑ on a tree row moves one row and keeps the reveal",
         "a held J moves rows and does no reveal work on its repeats",
         "H with Shift still held opens Commits, focuses its row, and keeps the reveal",
-        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
+        "F during the reveal shows the filter bar, and Group by and its filters gain 2 to 4",
     ):
         assert by_name[moved]["reveal"] == "revealed", moved
     assert by_name["the window losing focus ends the reveal"]["reveal"] == "idle"
     files = by_name[
-        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3"
+        "F during the reveal shows the filter bar, and Group by and its filters gain 2 to 4"
     ]
-    assert ["1", "Group by"] in files["badges"]
-    assert ["2", "Modified within"] in files["badges"]
-    assert ["3", "File type"] in files["badges"]
-    assert files["numbers"] == ["Group by", "Modified within", "File type"]
+    assert ["1", "beside, in app-header"] in files["badges"]
+    assert ["2", "Group by"] in files["badges"]
+    assert ["3", "Modified within"] in files["badges"]
+    assert ["4", "File type"] in files["badges"]
+    assert files["numbers"] == ["Refresh", "Group by", "Modified within", "File type"]
     opened = by_name[
-        "3 opens the closed drawer and the file type filter, and focuses its checked row"
+        "4 opens the closed drawer and the file type filter, and focuses its checked row"
     ]
     # The drawer's filters keep their numbers while it is closed; a number opens it.
     assert opened["drawerBefore"] is False
@@ -341,7 +345,7 @@ def test_the_session_runs_on_the_recording() -> None:
         ["A", "By age", "Choose By age in the Group by menu."],
         ["T", "By file type", "Choose By file type in the Group by menu."],
     ]
-    group_open = by_name["1 opens Group by and focuses its checked row, whose letters are live"]
+    group_open = by_name["2 opens Group by and focuses its checked row, whose letters are live"]
     assert [key for key in group_open["keys"] if key[1].startswith("menu.")] == [
         ["N", "menu.group.n", "No grouping row"],
         ["A", "menu.group.a", "By age row"],
@@ -365,7 +369,7 @@ def test_the_session_runs_on_the_recording() -> None:
     ):
         assert by_name[quick]["pressed"] == {"key": "t", "handled": True}, quick
         assert by_name[quick]["focus"] == "combobox", quick
-    by_type = by_name["1 focuses By age, the checked row, and T chooses By file type"]
+    by_type = by_name["2 focuses By age, the checked row, and T chooses By file type"]
     assert by_type["focus"]["row"] == "By age" and by_type["focus"]["checked"] == "true"
     assert by_type["trigger"] == "By file type"
     outside = by_name["with focus outside the open menu, T is Quick Search, which closes it"]

@@ -151,7 +151,12 @@ function grouped(more = {}) {
 
 /** The page's host. Without *allowlist*, the inert allowlist does not load, as when its
  * script fails: `window.MetabrowserInertHtml` is never set. */
+/** The document's keep of step answers (guide-reads.js), which each host empties: each is a
+ * fresh load of the page. */
+let guideReads = null;
+
 function host({ allowlist = true } = {}) {
+  guideReads?.clear();
   const timers = new Map();
   /** Each read of the guide: its step, its signal, and the answer or failure that ends it. */
   const reads = [];
@@ -234,6 +239,8 @@ function host({ allowlist = true } = {}) {
     status,
     headers: { get: () => null },
     json: async () => body,
+    // The guide reads its answer as text, whose length it keeps (guide-reads.js).
+    text: async () => JSON.stringify(body),
   });
   globalThis.fetch = async (route, init = {}) => {
     if (route.startsWith(`${GUIDE_ROUTE}?`)) {
@@ -299,6 +306,7 @@ function host({ allowlist = true } = {}) {
           shortCommit: (commit) => commit.slice(0, 7),
           icons: { toggle: "" },
           ensureKindAssets: async () => {},
+          whenIdle: require("./sdk-idle-fixture.js").whenIdle,
           plugins: {
             async load(name) {
               assert.equal(name, "diff", "the guide loads only the diff plugin");
@@ -460,6 +468,9 @@ const asked = (reads) => reads.map((read) => `step ${read.step}`).join(", ") || 
 
 async function run() {
   const page = await import(pathToFileURL(pagePath).href);
+  ({ guideReads } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
+  ));
   const steps = [];
 
   // The front page of a pull request with a guide is Guided Review.
@@ -629,15 +640,19 @@ async function run() {
       `Open full diff: ${first.opened.map((route) => `${route.tab} ${route.file}`).join("; ")}`,
     );
 
-    // Next asks for step 2 alone; leaving the tab with that read on its way disposes the
-    // view and aborts the read, and its late answer paints nothing.
+    // Next asks for step 2 alone, and the step shown stays, its diff with it, until step 2
+    // is in hand to show in its place. Leaving the tab with that read on its way disposes
+    // the view and its diff; the read goes on for the document's keep, and its late answer
+    // paints nothing.
     view.press("Next step");
     await settle();
     const second = first.pending()[0];
     assert.equal(second.step, 2);
-    assert.equal(first.patches[0].disposed, true, "the next step's read disposes this diff");
+    assert.equal(first.patches[0].disposed, false, "the step shown stays while the next is read");
+    steps.push(`Next with step 2 on its way: step shown ${view.shown()}`);
     view.arrive("conversation");
     await settle();
+    assert.equal(first.patches[0].disposed, true, "leaving the tab disposes the step's diff");
     steps.push(
       `left for Conversation with step 2 on its way: read aborted ${second.signal.aborted}; guide ${view.guided() === null ? "gone" : "still there"}`,
     );
@@ -645,20 +660,23 @@ async function run() {
     await settle();
     assert.equal(view.guided(), null);
 
-    // Back on the tab, a view of its own is mounted again, on its overview, which reads
-    // step 1.
+    // Back on the tab, a view of its own is mounted again, on its overview, which the keep
+    // shows at once with the steps read before, reading none of them again.
+    const before = first.reads.length;
     view.arrive("guided");
     await settle();
-    steps.push(`its tab again: asked ${asked(first.reads.slice(2))}`);
-
-    // The page ends with a read on its way: the read is aborted.
-    const waiting = first.pending()[0];
+    steps.push(`its tab again: ${view.position()}; asked ${asked(first.reads.slice(before))}`);
+    view.press("Next step");
+    view.press("Next step");
+    steps.push(
+      `and its kept steps at once: step shown ${view.shown()}; asked ${asked(first.reads.slice(before))}`,
+    );
     view.handle.dispose();
-    steps.push(`the page ends: read aborted ${waiting.signal.aborted}`);
   }
 
   // Replacement: a new record revision asks for the step on screen again, and drops the read
-  // on its way; the late answer to the dropped read paints nothing.
+  // on its way, which goes on for the document's keep; the late answer to the dropped read
+  // paints nothing.
   {
     const second = host();
     const view = second.mount(page, "guided", envelope(1));
@@ -786,7 +804,7 @@ async function run() {
     await settle();
     const answered = step(1, 1, 3);
     const head = "c".repeat(40);
-    wide.pending()[0].answer({
+    const past = {
       ...answered,
       state: "stale",
       stale: {
@@ -871,9 +889,19 @@ async function run() {
           target: { subject: "Fetched and dated", committed_at: "2026-08-29T14:40:00Z" },
         }),
       ],
-    });
+    };
+    wide.pending()[0].answer(past);
     await settle();
     view.press("Next step");
+    await settle();
+    // It cites pull requests this copy has not read, so its answer is not kept: the step is
+    // read again as the reader moves to it, and fills in once they are read (`retryable` in
+    // guide-reads.js).
+    const again = wide.pending();
+    steps.push(
+      `moving to it reads it again: ${again.length} read, ${view.shown() ?? "the overview"} shown meanwhile`,
+    );
+    again[0].answer(past);
     await settle();
     steps.push(`a step past its pull request: ${view.card()}; ${view.references()}`);
     const plain = {
@@ -1382,27 +1410,28 @@ async function run() {
       const at = Number(new URL(route, "http://localhost").searchParams.get("step"));
       const changed = ["src/app.txt", "gone.txt"];
       const refused = refuse(at);
+      const body = refused ?? {
+        ...step(1, at),
+        stack: 70,
+        carrier: 10,
+        state: "stale",
+        stale: {
+          guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+          current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+          github_newer: false,
+          history: "rewritten",
+          commit_count: 1,
+          commits: [],
+          changed_paths: changed,
+          changed_steps: [1],
+        },
+      };
       return {
         ok: true,
         status: 200,
         headers: { get: () => null },
-        json: async () =>
-          refused ?? {
-            ...step(1, at),
-            stack: 70,
-            carrier: 10,
-            state: "stale",
-            stale: {
-              guide: { merge_base: "a".repeat(40), head: "c".repeat(40) },
-              current: { merge_base: "a".repeat(40), head: "b".repeat(40) },
-              github_newer: false,
-              history: "rewritten",
-              commit_count: 1,
-              commits: [],
-              changed_paths: changed,
-              changed_steps: [1],
-            },
-          },
+        json: async () => body,
+        text: async () => JSON.stringify(body),
       };
     };
     const { mountGuidedReview } = await import(
@@ -1424,6 +1453,8 @@ async function run() {
         loadDrawDocument: async () => null,
         loadDrawProse: async () => null,
         refusalNote: () => null,
+        // Nothing is read ahead here, so each step is read when the reader moves to it.
+        ahead: () => () => {},
       },
     );
     view.show(revisionOf(1), false);
@@ -1491,6 +1522,8 @@ async function run() {
       carrier: 10,
       message: "The stack-review block cannot be read.",
     });
+    // On a fresh page, whose keep holds none of the steps read above.
+    guideReads.clear();
     const whole = new Element("section");
     const refusedView = mountGuidedReview(
       whole,

@@ -97,8 +97,11 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
-A member’s row shows its place after its title and before its number, such as **Fix the
-reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
+The row shows how many pull requests the stack has and how long ago one of them last
+changed, such as **Stack #286 · 4 pulls** and **2h**. Under it, **Whole stack** shows
+the lines the whole stack changes, and its chevron hides or shows the stack’s pull
+requests. A member’s row shows its place after its title and before its number, such as
+**Fix the reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
@@ -114,11 +117,14 @@ Without the extension, or when GitHub cannot answer, pull requests read as usual
 list stays flat, unless stacks are cached.
 
 **Whole stack**, the first row in the menu and under each open stack in the Pulls tab,
-opens the stack’s own page, laid out as a pull request’s page for the whole stack: its
-members under the title, top first, each as the menu lists it; the top member’s head
-branch → the stack’s base; the files changed and the Diff summary of the stack’s
-combined change; and **Docs** and **Changes** of that change, with **Guided Review**
-first when the stack has a guide.
+opens the stack’s own page, laid out as a pull request’s page for the whole stack, each
+line saying of all its pull requests what a pull request’s says of one: how many are in
+each state, such as **2 Pulls Open**, and when one was last opened and last updated;
+their authors and commits; the top member’s head branch → the stack’s base; their
+labels; the commits, files, and size of the stack’s combined change; the pull requests
+themselves under **N Pulls**, top first, each as the menu lists it, closed at first as
+the Diff summary is; then the Diff summary of that change, and **Docs** and **Changes**
+of it, with **Guided Review** first when the stack has a guide.
 **View on GitHub** there opens the stack on github.com.
 While that page is open, the stack’s **Whole stack** row in the Pulls tab is marked as
 the current row, as a pull request’s row is on its page; J and K stop on it and open the
@@ -570,8 +576,11 @@ entries.
 
 The page says when GitHub CLI fetched what it shows, as in
 `Fetched 3 min ago via GitHub CLI`, at the end of the author’s line.
-The page has no Refresh of its own: the Pulls tab’s **Refresh** refreshes the pull
-request page beside the list, then the list.
+The page has no Refresh of its own: **Refresh**, the circular arrow at the top of the
+navigation pane just before the gear, refreshes everything the page shows, starting with
+what is on screen: the pull request page, and the list while the Pulls tab is in front,
+then the other tabs.
+It is there on every tab, and is dimmed while what is on screen refreshes.
 While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
@@ -589,8 +598,8 @@ The page names a problem only when it cannot refresh: `Offline`, a rate limit wi
 time of its next check, or the last failure with **Retry**, which asks again even while
 the navigation pane is hidden.
 The page tries a failure again once a window while it stays open, except one you must
-fix, such as GitHub CLI missing or signed out, which waits for **Retry**. The Pulls
-tab’s **Refresh** asks for a new check of the page and the list.
+fix, such as GitHub CLI missing or signed out, which waits for **Retry**. **Refresh**
+asks for a new check of the page and the list.
 
 The page follows the pull request.
 When new commits are pushed, the conversation and checks update, and **Changes** and
@@ -610,7 +619,7 @@ A commit you opened by its ID stays put; when it was the head, the foot of the
 navigation pane says the pull request is now at the newer commit, with **Switch**.
 Beside a checkout, only Changes moves, since Files and Commits show your working tree.
 The foot of the navigation pane says separately when the repository’s mirror was
-fetched.
+fetched; **Refresh** fetches it again before it refreshes the rest.
 
 ### Several Pull Requests at Once
 
@@ -708,11 +717,11 @@ The record names why in `unavailable.comparison`:
 | Name | What it means | What to do |
 | --- | --- | --- |
 | `no_store` | A checkout has the record but no comparison yet | Open **Changes**, which prepares it |
-| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | The Pulls tab’s **Refresh** with the network, which fetches more history into the cache |
-| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | The Pulls tab’s **Refresh** tries to recover them from the origin |
-| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then the Pulls tab’s **Refresh**; Metabrowser never writes to your checkout |
+| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | **Refresh** with the network, which fetches more history into the cache |
+| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | **Refresh** tries to recover them from the origin |
+| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then **Refresh**; Metabrowser never writes to your checkout |
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
-| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | The Pulls tab’s **Refresh**, or read the diff on GitHub |
+| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
 
 The page says each of these in one short sentence of its own.
 Every reason also comes with a message that says more, in the route’s JSON that

@@ -128,6 +128,11 @@ type MetabrowserPullsNavHost = Readonly<{
    * connection lines fill; or null.
    */
   metadata?: HTMLElement | null;
+  /**
+   * The navigation's one Refresh (static/refresh-plan.js), to which the list provides its
+   * own refresh and the shown pull request page's; or null on a page with no Refresh.
+   */
+  refreshParts?: MetabrowserRefreshParts | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */
@@ -161,10 +166,14 @@ type MetabrowserPullsPanelHandle = Readonly<{
   toggleFiles(number: number): boolean;
   /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
   toggleStack(number: number): boolean;
+  /** Space on a stack's Whole stack row shows or hides the stack's pull requests under it. */
+  toggleWhole(number: number): boolean;
   /**
    * Right and Left on a pull request's row: its changed files open, or close, and Left from
-   * a closed one goes to the stack's row it is under. On a stack's row: it opens, or Right
-   * goes to its first row, Whole stack, and Left closes it.
+   * a closed one goes to the Whole stack row it is under. On a stack's row: it opens, or
+   * Right goes to its one row, Whole stack, and Left closes it. On a Whole stack row: Right
+   * shows the stack's pull requests, or goes to the first, and Left hides them, or goes to
+   * the stack's row.
    */
   expand(): boolean;
   collapse(): boolean;
@@ -3992,6 +4001,8 @@ declare global {
     start(): Promise<void>;
     poll(): Promise<void>;
     requestRefresh(body?: Record<string, unknown>): Promise<string | null>;
+    /** A reader's refresh, settled once nothing is fetching (static/refresh-plan.js). */
+    refreshNow(): Promise<void>;
     fetchMissing(options?: {
       retry?: boolean;
       waiting?: () => void;
@@ -4046,6 +4057,9 @@ declare global {
 
   /** `remote` is a checkout's remote-tracking branches; a mirror has no such list. */
   type MetabrowserSourceRefKind = "branch" | "tag" | "remote";
+  /** A list the chooser has a tab for: a kind of ref, or a checkout's working tree, which
+   * is no ref and whose list answers only where its `HEAD` is. */
+  type MetabrowserSourceListKind = MetabrowserSourceRefKind | "working_tree";
 
   /** One row of `GET /api/source/refs`. */
   type MetabrowserSourceRef = {
@@ -4090,19 +4104,21 @@ declare global {
   /** One answer of `GET /api/source/refs`: every matching ref, the default or
    * checked-out branch first and then newest first. */
   type MetabrowserSourceRefListing = {
-    kind: MetabrowserSourceRefKind;
+    kind: MetabrowserSourceListKind;
     query: string;
     /** The served commit and ref; both null while a checkout's working tree is served. */
     pin: string | null;
     ref: string | null;
-    /** The lists the subject has. */
-    kinds: MetabrowserSourceRefKind[];
-    /** A checkout's working tree: whether it is served, the branch checked out, and the
+    /** The lists the subject has, in the order of the chooser's tabs. */
+    kinds: MetabrowserSourceListKind[];
+    /** A checkout's working tree: whether it is served, the branch checked out or the
+     * commit a detached `HEAD` is at, both read when the listing was made, and the
      * folder's name and its path with the home directory as `~`. Null on a mirror. */
     working_tree: {
       current: boolean;
       head: string | null;
       head_name: string | null;
+      head_commit: string | null;
       name: string;
       location: string;
     } | null;
@@ -4134,7 +4150,7 @@ declare global {
   type MetabrowserSourceRefSelectorState = {
     shown: MetabrowserSourcePage | null;
     open: boolean;
-    kind: MetabrowserSourceRefKind;
+    kind: MetabrowserSourceListKind;
     query: string;
     listing: MetabrowserSourceRefListing | null;
     loading: boolean;
@@ -4142,10 +4158,10 @@ declare global {
     error: string | null;
     /** Whether the page is a checkout's; absent on a mirror's. */
     checkout?: boolean;
-    /** The branch whose live checkout is shown, when HEAD names a branch. */
+    /** The branch the checkout's HEAD is on, when it names one: as the page was drawn
+     * with, and then as each listing says. */
     workingBranch?: string;
-    /** The commit a detached HEAD is at, when the working tree is shown and HEAD names
-     * no branch. */
+    /** The commit a detached HEAD is at, when HEAD names no branch. */
     workingCommit?: string;
     /** What the server came to serve instead of this page: a commit, "" for the working
      * tree, or null while the page is current. A checkout's page only. */
@@ -4157,40 +4173,47 @@ declare global {
   /** What the ref selector shows for one state. */
   type MetabrowserSourceRefSelectorModel = {
     selectedRef: { name: string; label: string; kind: string; ref?: string } | null;
-    /** What the row says, as text: a checkout's view word, a dot, and the ref. */
+    /** What the row says, as text: the ref, after "Working tree" and a dot on a
+     * checkout's files on disk. */
     button: string;
-    /** Which of a checkout's two views the page shows; null on a mirror's. */
-    view: "working-tree" | "revision" | null;
-    /** "Working tree" or "Revision", which a checkout's row starts with; null on a mirror's. */
+    /** "Working tree", which a checkout's row starts with while the page shows its files
+     * on disk; null on any page that shows a ref. */
     viewLabel: string | null;
-    /** The view word's tooltip. */
+    /** Those words' tooltip. */
     viewTip: string | null;
-    /** The ref the row names after its view word, as text: "Branch: main", or "" for
-     * a working tree whose HEAD could not be read. */
+    /** The ref the row names, as text: "Branch: main", or "" for a working tree whose
+     * HEAD could not be read. */
     refText: string;
-    /** Whether the row offers its button back to the working tree: a checkout's revision. */
-    back: boolean;
     /** The served pull request's number, "#7", when the page is a pull request's head. */
     pullNumber: string | null;
     /** The served commit's ID, set in the commit-ID face, when the page is a bare commit's. */
     commitId: string | null;
     open: boolean;
-    kind: MetabrowserSourceRefKind;
-    /** The lists offered: a checkout's remote-tracking branches are a third. */
-    kinds: MetabrowserSourceRefKind[];
+    kind: MetabrowserSourceListKind;
+    /** The tabs offered: a checkout's begin with its working tree, and its
+     * remote-tracking branches are another. */
+    kinds: MetabrowserSourceListKind[];
     query: string;
     /** What the filter box says and is named: it finds pull requests too once the server
-     * has them. */
-    filterLabel: string;
+     * has them. Null on the working tree's tab, which has no filter. */
+    filterLabel: string | null;
     /** What the listing says of its pull requests; null with none. */
     pullRequests: MetabrowserSourceRefPullRequests | null;
     loading: boolean;
     switching: boolean;
-    /** A checkout's working-tree row: whether it is what the server serves, and the
-     * folder's path, "" until the first listing says it. Null on a mirror. */
-    /** A checkout's working tree: its path, and that path cut before the folder's own
-     *  name, which the row keeps whole. */
-    workingTree: { current: boolean; location: string; directory: string; base: string } | null;
+    /** A checkout's working tree, the one entry of its tab: whether it is what the server
+     * serves; the branch `HEAD` is on, or the short ID of the commit a detached one is at,
+     * both null when it could not be read; and the folder's path, "" until the first
+     * listing says it, with that path cut before the folder's own name, which the entry
+     * keeps whole. Null on a mirror. */
+    workingTree: {
+      current: boolean;
+      branch: string | null;
+      commit: string | null;
+      location: string;
+      directory: string;
+      base: string;
+    } | null;
     rows: Array<{
       name: string;
       ref: string;
@@ -4251,19 +4274,17 @@ declare global {
     root: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
-    /** A checkout's revision's button back to the working tree. */
-    back: HTMLButtonElement;
-    /** Why a switch the back button asked for failed, while the list is closed. */
-    backError: HTMLElement;
     stale: HTMLElement;
     staleText: HTMLElement;
     reload: HTMLButtonElement;
     panel: HTMLElement;
     workingTree: HTMLButtonElement;
+    /** Where `HEAD` is: the branch's chip, or a detached commit's ID. */
+    workingTreeHead: HTMLElement;
     workingTreeDirectory: HTMLElement;
     workingTreeBase: HTMLElement;
     kinds: HTMLElement;
-    tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
+    tabs: Record<MetabrowserSourceListKind, HTMLButtonElement>;
     filter: HTMLInputElement;
     /** The list's scrolling box, whose rows are only those in its view (`drawWindow`). */
     list: HTMLElement;
@@ -4302,11 +4323,22 @@ declare global {
     open(): Promise<void>;
     close(): void;
     toggle(): Promise<void>;
-    setKind(kind: MetabrowserSourceRefKind): Promise<void>;
+    /** Show another tab's list, as an arrow key along the tabs does; never switches. */
+    setKind(kind: MetabrowserSourceListKind): Promise<void>;
+    /** A press on a tab: on Working tree from a page that shows a ref, switch to the files
+     * on disk; otherwise show the tab's list. */
+    pressKind(kind: MetabrowserSourceListKind): Promise<void>;
     setQuery(query: string): void;
     choose(ref: string): Promise<void>;
-    /** Serve a checkout's working tree again; does nothing on a mirror. */
+    /** Show a checkout's working tree; does nothing on a mirror. */
     chooseWorkingTree(): Promise<void>;
+    /** The checkout's `HEAD` moved: ask where it is and name it in place. */
+    headChanged(): Promise<void>;
+    /** Read an open list again, in place; a closed one reads when it next opens. */
+    reread(): Promise<void>;
+    /** Fetch the store of a checkout's origin, as the reader's Refresh asks; an open list
+     * follows the fetch to its end. Does nothing on a mirror. */
+    fetchOrigin(): Promise<void>;
     /** The server serves *served*, a commit or "" for the working tree, not this page. */
     servedChanged(served: string): void;
     dispose(): void;
@@ -4336,6 +4368,8 @@ declare global {
     /** The selector this page mounted, for the branch or tag key; null until it mounts. */
     mounted(): MetabrowserSourceRefSelectorMount | null;
     moveRow(key: string, index: number, count: number): number | null;
+    /** The tab a list opens on: the one that holds what the page shows. */
+    openKind(shown: MetabrowserSourcePage | null, checkout: boolean): MetabrowserSourceListKind;
     /** How often an open list asks again while the server fills its pull requests, in ms. */
     PULLS_POLL_MS: number;
     ROWS_OVERSCAN: number;
@@ -4487,8 +4521,44 @@ declare global {
     renderCommitGraph(row: MetabrowserGitGraphRow): SVGSVGElement;
   };
 
+  /** A part of the page the navigation's Refresh refreshes (static/refresh-plan.js). */
+  type MetabrowserRefreshPart = "source" | "refs" | "page" | "files" | "pulls" | "git" | "origin";
+
+  /** What a module that owns a part lends the plan: its refresh, until released. */
+  type MetabrowserRefreshParts = Readonly<{
+    provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
+  }>;
+
+  type MetabrowserRefreshPlan = MetabrowserRefreshParts &
+    Readonly<{
+      press(): Promise<boolean>;
+      waiting(): boolean;
+      parts(): MetabrowserRefreshPart[];
+    }>;
+
+  type MetabrowserRefreshPlanRuntime = Readonly<{
+    PARTS: readonly MetabrowserRefreshPart[];
+    createPlan(deps: {
+      shown(id: MetabrowserRefreshPart): boolean;
+      waiting(on: boolean): void;
+      failed?(id: MetabrowserRefreshPart, error: unknown): void;
+    }): MetabrowserRefreshPlan;
+    inVisibilityOrder(
+      ids: readonly MetabrowserRefreshPart[],
+      shown: (id: MetabrowserRefreshPart) => boolean,
+    ): { visible: MetabrowserRefreshPart[]; hidden: MetabrowserRefreshPart[] };
+    isShown(
+      id: MetabrowserRefreshPart,
+      view: { front: string; owner: string; chooser?: boolean },
+    ): boolean;
+    mount(): MetabrowserRefreshPlan | null;
+    plan(): MetabrowserRefreshPlan | null;
+  }>;
+
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
+    /** Read the history again once it has been read; settles when it is drawn. */
+    refresh(): Promise<void>;
     /** Stops the panel's work for another owner; returns what disposes its shown commit diff. */
     cancelPending(): (() => void) | null;
     restoreCommitLanding(): Promise<void>;
@@ -4603,6 +4673,8 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    /** Read the tree and the file or folder the pane holds again; settles when drawn. */
+    rereadFiles(): Promise<unknown>;
     stagePreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): (() => void) | null;
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
@@ -4986,6 +5058,7 @@ declare global {
     MetabrowserResourceContext: MetabrowserResourceContextRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserShell?: MetabrowserShellRuntime;
+    MetabrowserRefreshPlan?: MetabrowserRefreshPlanRuntime;
     MetabrowserMainTabs?: Readonly<{
       create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
       REVEAL_ROUTES: readonly MetabrowserRevealRoute[];

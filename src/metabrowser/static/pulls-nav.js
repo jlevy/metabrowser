@@ -80,6 +80,7 @@
    *   container(): HTMLElement | null,
    *   toolbar?(): HTMLElement | null,
    *   metadata?(): HTMLElement | null,
+   *   refreshParts?(): MetabrowserRefreshParts | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -152,6 +153,9 @@
                 toolbar: deps.toolbar?.() ?? null,
                 // The band under it, which the list's count and connection lines fill.
                 metadata: deps.metadata?.() ?? null,
+                // The navigation's one Refresh, to which the list lends its own refresh and
+                // the shown pull request page's (static/refresh-plan.js).
+                refreshParts: deps.refreshParts?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}} */ route,
@@ -397,6 +401,8 @@
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
       /** @param {number} number */
       toggleStack: (number) => handle?.toggleStack(number) ?? false,
+      /** @param {number} number */
+      toggleWhole: (number) => handle?.toggleWhole(number) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -542,9 +548,10 @@
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
           }
-          // A Whole stack row has nothing to expand: Space opens the stack's page, as Enter does.
+          // A Whole stack row is the folder of its stack's pull requests: Space shows or
+          // hides them, as it does a folder's rows, and Enter opens the stack's page.
           if (target.matches(".github-pulls-whole-row")) {
-            return event?.repeat === true || nav.activateAnchor();
+            return event?.repeat === true || nav.toggleWhole(Number(target.dataset.stack));
           }
           if (target.matches(".github-pulls-row")) {
             return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));
@@ -761,6 +768,7 @@
       container: () => document.getElementById("tab-pulls"),
       toolbar: () => document.getElementById("nav-toolbar-pulls"),
       metadata: () => document.getElementById("nav-metadata-pulls"),
+      refreshParts: () => window.MetabrowserRefreshPlan?.plan() ?? null,
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {

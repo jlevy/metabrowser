@@ -22,8 +22,12 @@
 // tab switched it, or a restart -- the row offers a reload.
 //
 // A repository folder that keeps a store of its checkout's origin has the row on every
-// page, its working tree's too: what is fetched there is that store, never the checkout,
-// and the row says so (`describe` with `checkout`). Its ref selector offers the reload.
+// page of a revision: what is fetched there is that store, never the checkout, and the
+// row says so (`describe` with `checkout`). Its ref selector offers the reload. Its
+// working tree's page has no row, since it shows the disk and nothing of the store: the
+// row mounts only on a pinned revision (app.js, `startSourceFreshness`). The store is
+// fetched from that page by the navigation's Refresh (static/refresh-plan.js, `origin`)
+// and by an open chooser list (static/source-ref-selector.js, `askForOrigin`).
 //
 // A repository folder's page on one of the checkout's own branches follows that branch
 // too, when the reader's commit or fetch moves it. The status says how often to ask
@@ -166,8 +170,7 @@
    * @param {{shown: MetabrowserSourcePage | null, nowMs: number, error?: string | null, checkout?: boolean}} page
    *   *shown* is the pin and ref the page was rendered for. *checkout* is whether the page
    *   is a repository folder's: what is fetched is then the store Metabrowser keeps of the
-   *   checkout's origin, on every page of the folder, its working tree's too, and the row
-   *   says so where a mirror's says "mirror".
+   *   checkout's origin, and the row says so where a mirror's says "mirror".
    * @returns {MetabrowserSourceFreshnessModel}
    */
   function describe(status, page) {
@@ -242,8 +245,8 @@
       OUTCOME_DETAIL[code] ??
       OUTCOME_DETAIL.failed;
     let label = folder ? `Origin fetched ${age}` : `Fetched ${age}`;
-    // One sentence: the tooltip adds its one remedy, "Press to refresh now."
-    // (docs/design-system-messages.md). The label already says when it was fetched.
+    // One sentence, the label's tooltip (docs/design-system-messages.md). The label already
+    // says when it was fetched; the navigation's Refresh fetches again (static/refresh-plan.js).
     let detail = folder
       ? `The origin was last fetched ${age}, without changing the checkout.`
       : `The mirror was last fetched from its origin ${age}.`;
@@ -289,7 +292,8 @@
     }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
-    // A folder's ref selector makes this offer itself, for its working tree's page too.
+    // A folder's ref selector makes this offer itself, as it does on its working tree's
+    // page, which has no row.
     if (
       !folder &&
       page.shown !== null &&
@@ -1076,6 +1080,24 @@
       return { status, error, fetched, waited, pullRefused };
     }
 
+    /**
+     * A reader's refresh from the navigation's Refresh (static/refresh-plan.js), the row's
+     * one way to ask: ask for the fetch, as {@link requestRefresh} does, and settle once
+     * nothing is fetching, so a part that reads the mirror next reads what the fetch
+     * brought. A refusal or a failure says why in the row. Waiting rides the page's own
+     * polls, as {@link fetchMissing}'s does, and ends at the first poll that fails.
+     *
+     * @returns {Promise<void>}
+     */
+    async function refreshNow() {
+      if ((await requestRefresh()) === null) {
+        return;
+      }
+      while (!disposed && status !== null && status.refreshing && error === null) {
+        await nextChange();
+      }
+    }
+
     async function acceptOffer() {
       const model = describe(status, { shown, nowMs: deps.now(), error: followError });
       const offer = model.offer;
@@ -1133,6 +1155,7 @@
       start: () => poll(),
       poll,
       requestRefresh,
+      refreshNow,
       fetchMissing,
       acceptOffer,
       onVisibilityChange,
@@ -1180,7 +1203,7 @@
    *
    * @param {HTMLElement} element
    * @param {MetabrowserSourceFreshnessModel} model
-   * @param {{refresh(): void, accept(): void}} actions
+   * @param {{accept(): void}} actions
    * @param {HTMLElement} live
    */
   function paint(element, model, actions, live) {
@@ -1199,14 +1222,21 @@
       focused instanceof HTMLElement && element.contains(focused)
         ? focused.className.split(" ").find((name) => name.startsWith("source-freshness-"))
         : undefined;
-    const label = document.createElement("button");
-    label.type = "button";
+    // The label is text: the navigation's Refresh is the one way to fetch again
+    // (static/refresh-plan.js), so the age is not a second one. Its detail, a failure's
+    // reason among them, is the pointer's tooltip and also visually hidden text after the
+    // label, since a tooltip cannot be the only source of a state (docs/design-system.md,
+    // "Tooltip Input Modality").
+    const label = document.createElement("span");
     label.className = "source-freshness-label";
     label.textContent = model.label;
-    label.dataset.tipText = `${model.detail} Press to refresh now.`;
-    label.setAttribute("aria-label", `${model.label}. ${model.detail} Refresh now.`);
-    label.disabled = model.tone === "refreshing";
-    label.addEventListener("click", actions.refresh);
+    label.dataset.tipText = model.detail;
+    if (model.detail) {
+      const detail = document.createElement("span");
+      detail.className = "sr-only";
+      detail.textContent = `${/[.…!?]$/.test(model.label) ? " " : ". "}${model.detail}`;
+      label.append(detail);
+    }
     /** @type {HTMLElement[]} */
     const children = [label];
     if (model.pull !== null) {
@@ -1257,7 +1287,6 @@
     /** @type {ReturnType<typeof createController> | null} */
     let controller = null;
     const actions = {
-      refresh: () => void controller?.requestRefresh(),
       accept: () => void controller?.acceptOffer(),
     };
     const live = document.createElement("span");

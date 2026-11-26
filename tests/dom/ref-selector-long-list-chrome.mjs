@@ -197,9 +197,12 @@ try {
     keptIndex: KEPT,
   };
 
-  // 1. Open: from the click to the frame after the rows.
+  // 1. Open: from the click to the frame after the rows. The working tree's page opens
+  // its list on the Working tree tab, so the press on Branches follows the click at once.
   let started = Date.now();
-  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
+  await chrome.evaluate(
+    `${ROOT}.querySelector(".source-ref-selector-toggle").click(); ${ROOT}.querySelector('.source-ref-selector-kinds button[data-chip-value="branch"]').click(); true`,
+  );
   await chrome.waitFor(`${SETTLED} && ${LIST}.querySelectorAll("button").length > 0`);
   await chrome.evaluate(FRAMES);
   result.openMs = Date.now() - started;

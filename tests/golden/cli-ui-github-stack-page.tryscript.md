@@ -75,19 +75,32 @@ them.
   (`readerKey`): one pressed in the page, or with focus on nothing in particular, the
   body or the document’s root, and not a key typed into the shell’s own fields, nor a
   modifier pressed alone, which may begin a chord that leaves the page.
-- `header` is the page’s header, row by row (`stackHeader`), a pull request’s header
-  made of the rows a stack has: its title, the View on GitHub corner, its members top
-  first, the merge it makes, the status line while it has something to say, the size
-  line, and the Diff summary.
-  The first paint draws the members from the stack the Pulls tab knows, titled as its
-  lists last read them and authored as the stacks route names them, and holds the
-  merge’s row and the size line and summary pending, so each answer after it lands in
-  the same rows: a member being fetched keeps its row’s title, the answer names the
-  author of a member whose record has one where the stacks route named none (10’s), and
-  only the status line comes and goes, as the members 71’s top lacks are said there.
-  A stack the Pulls tab does not know is held cold for the quiet period until its answer
-  names the members, and one that cannot be shown as one comparison, with none drawn,
-  has no size line or summary.
+- `header` is the page’s header, row by row (`stackHeader`), a pull request’s header in
+  a pull request’s order, said of the stack: its title, the View on GitHub corner, the
+  row of ages, the author’s row, the merge it makes, its labels, the status line while
+  it has something to say, the size line, its members, and the Diff summary.
+  The row of ages leads with the tally of the members’ states (`tally`), a badge for
+  each state some member is in, in the states’ order, and says when a member was last
+  opened and last updated (`ages`). The author’s row says every author once, “want to
+  merge” after two, with the commits of the members the top contains (`sentence`), and
+  the freshness note says the oldest member record’s fetch, here five minutes before
+  (`note`). The labels are every member’s, each once, top first, held while a member’s
+  are not known (`null`), as 70’s are while its members have neither a record nor a list
+  row. The first paint draws the members from the stack the Pulls tab knows, titled as
+  its lists last read them and authored as the stacks route names them, and holds every
+  other row a line tall, so each answer after it lands in the same rows: a member being
+  fetched keeps its row’s title, the answer names the author of a member whose record
+  has one where the stacks route named none (10’s), and only the status line comes and
+  goes, as the members 71’s top lacks are said there.
+  Until its answer the page is held cold for the quiet period, as a pull request’s page
+  is until its record, and a stack that cannot be shown as one comparison, with none
+  drawn, has no size line or summary.
+- `sentences` is the author’s row’s sentence for a stack whose members are all merged,
+  which names who merged them, for one with two authors, for one whose commits are not
+  all counted, which says its action alone, and for one with no members, which has none.
+- `size_inputs` is what the size line is drawn from for the comparison drawn: the
+  answer’s commits and sizes, each left out while not known, and the files the Diff
+  summary counts.
 - `drawing` is the stack’s own part of what the page passes the diff view for Docs and
   Changes: the stack’s comparison and Docs’ word for no documents.
   The session holds that the rest is a pull request’s drawings, each value the shared
@@ -479,8 +492,13 @@ $ node tests/dom/github-stack-page-session.js
   ],
   "header": {
     "first_paint": {
-      "cold": false,
-      "rows": "title, corner, members, merge, size, summary",
+      "cold": true,
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [],
+      "ages": null,
+      "sentence": null,
+      "note": null,
+      "labels": null,
       "members": [
         "(unknown) WIP: draft the next page 2/2 · #10",
         "merged Say more in the guide 1/2 · #8 · maintainer"
@@ -491,7 +509,15 @@ $ node tests/dom/github-stack-page-session.js
     },
     "pending": {
       "cold": false,
-      "rows": "title, corner, members, merge, size, summary",
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [],
+      "ages": {
+        "opened": null,
+        "updated": null
+      },
+      "sentence": null,
+      "note": null,
+      "labels": null,
       "members": [
         "(unknown) WIP: draft the next page 2/2 · #10",
         "merged Say more in the guide 1/2 · #8 · maintainer"
@@ -502,7 +528,22 @@ $ node tests/dom/github-stack-page-session.js
     },
     "current": {
       "cold": false,
-      "rows": "title, corner, members, merge, size, summary",
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer wants to merge 2 commits",
+      "note": "Fetched 5 min ago via GitHub CLI",
+      "labels": [
+        "bugfix #d73a4a",
+        "shared design #0e8a16",
+        "earnings analysis #5319e7"
+      ],
       "members": [
         "draft WIP: draft the next page 2/2 · #10 · maintainer",
         "merged Say more in the guide 1/2 · #8 · maintainer"
@@ -513,7 +554,24 @@ $ node tests/dom/github-stack-page-session.js
     },
     "lacking": {
       "cold": false,
-      "rows": "title, corner, members, merge, status, size, summary",
+      "rows": "title, corner, opened, meta, merge, labels, status, size, members, summary",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "open: 1 Pull Open",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer, forker want to merge 2 commits",
+      "note": "Fetched 5 min ago via GitHub CLI",
+      "labels": [
+        "bugfix #d73a4a",
+        "shared design #0e8a16",
+        "enhancement #2700af",
+        "earnings analysis #5319e7"
+      ],
       "members": [
         "draft WIP: draft the next page 3/3 · #10 · maintainer",
         "open Count to two in the app 2/3 · #7 · forker",
@@ -527,7 +585,12 @@ $ node tests/dom/github-stack-page-session.js
     },
     "unknown_first_paint": {
       "cold": true,
-      "rows": "title, corner, merge, size, summary",
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [],
+      "ages": null,
+      "sentence": null,
+      "note": null,
+      "labels": null,
       "members": null,
       "merge": null,
       "status": [],
@@ -535,7 +598,22 @@ $ node tests/dom/github-stack-page-session.js
     },
     "unknown_not_linear": {
       "cold": false,
-      "rows": "title, corner, members, merge",
+      "rows": "title, corner, opened, meta, merge, labels, members",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer wants to merge 2 commits",
+      "note": "Fetched 5 min ago via GitHub CLI",
+      "labels": [
+        "shared design #0e8a16",
+        "earnings analysis #5319e7",
+        "bugfix #d73a4a"
+      ],
       "members": [
         "merged Say more in the guide 2/2 · #8 · maintainer",
         "draft WIP: draft the next page 1/2 · #10 · maintainer"
@@ -543,6 +621,207 @@ $ node tests/dom/github-stack-page-session.js
       "merge": "guide-more → topic",
       "status": [],
       "comparison": "none"
+    },
+    "labelled_first_paint": {
+      "cold": true,
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [],
+      "ages": null,
+      "sentence": null,
+      "note": null,
+      "labels": [
+        "earnings analysis",
+        "bugfix",
+        "shared design"
+      ],
+      "members": [
+        "(unknown) WIP: draft the next page 2/2 · #10",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
+      ],
+      "merge": null,
+      "status": [],
+      "comparison": "pending"
+    },
+    "bare_first_paint": {
+      "cold": true,
+      "rows": "title, corner, opened, meta, merge, size, members, summary",
+      "tally": [],
+      "ages": null,
+      "sentence": null,
+      "note": null,
+      "labels": [],
+      "members": [
+        "(unknown) WIP: draft the next page 2/2 · #10",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
+      ],
+      "merge": null,
+      "status": [],
+      "comparison": "pending"
+    },
+    "bare_current": {
+      "cold": false,
+      "rows": "title, corner, opened, meta, merge, size, members, summary",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer wants to merge 2 commits",
+      "note": "Fetched 5 min ago via GitHub CLI",
+      "labels": [],
+      "members": [
+        "draft WIP: draft the next page 2/2 · #10 · maintainer",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
+      ],
+      "merge": "wip → topic",
+      "status": [],
+      "comparison": "drawn"
+    },
+    "held_labels_answered_bare": {
+      "cold": false,
+      "rows": "title, corner, opened, meta, merge, size, members, summary",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer wants to merge 2 commits",
+      "note": "Fetched 5 min ago via GitHub CLI",
+      "labels": [],
+      "members": [
+        "draft WIP: draft the next page 2/2 · #10 · maintainer",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
+      ],
+      "merge": "wip → topic",
+      "status": [],
+      "comparison": "drawn"
+    },
+    "offline_behind": {
+      "cold": false,
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer wants to merge 2 commits",
+      "note": "Offline · fetched 5 min ago via GitHub CLI",
+      "labels": [
+        "bugfix #d73a4a",
+        "shared design #0e8a16",
+        "earnings analysis #5319e7"
+      ],
+      "members": [
+        "draft WIP: draft the next page 2/2 · #10 · maintainer",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
+      ],
+      "merge": "wip → topic",
+      "status": [],
+      "comparison": "drawn"
+    },
+    "offline_current": {
+      "cold": false,
+      "rows": "title, corner, opened, meta, merge, labels, size, members, summary",
+      "tally": [
+        "draft: 1 Pull Draft",
+        "merged: 1 Pull Merged"
+      ],
+      "ages": {
+        "opened": "2026-09-16T10:57:23Z",
+        "updated": "2026-09-16T17:39:01Z"
+      },
+      "sentence": "maintainer wants to merge 2 commits",
+      "note": "Fetched 5 min ago via GitHub CLI",
+      "labels": [
+        "bugfix #d73a4a",
+        "shared design #0e8a16",
+        "earnings analysis #5319e7"
+      ],
+      "members": [
+        "draft WIP: draft the next page 2/2 · #10 · maintainer",
+        "merged Say more in the guide 1/2 · #8 · maintainer"
+      ],
+      "merge": "wip → topic",
+      "status": [],
+      "comparison": "drawn"
+    }
+  },
+  "sentences": {
+    "all_merged": {
+      "actors": [
+        {
+          "login": "octo",
+          "avatar": null
+        }
+      ],
+      "action": "merged 2 commits"
+    },
+    "all_merged_no_merger": {
+      "actors": [],
+      "action": "merged 2 commits"
+    },
+    "two_authors": {
+      "actors": [
+        {
+          "login": "maintainer",
+          "avatar": null
+        },
+        {
+          "login": "forker",
+          "avatar": null
+        }
+      ],
+      "action": "want to merge 2 commits"
+    },
+    "no_commits_counted": {
+      "actors": [
+        {
+          "login": "maintainer",
+          "avatar": null
+        }
+      ],
+      "action": "wants to merge"
+    },
+    "no_members": null,
+    "no_authors": null
+  },
+  "tally_order": [
+    "5 Pulls Draft",
+    "2 Pulls Open",
+    "2 Pulls Merged",
+    "1 Pull Closed"
+  ],
+  "size_inputs": {
+    "current": {
+      "commits": 2,
+      "files": 1,
+      "pushedBytes": null,
+      "diffBytes": null
+    },
+    "sized": {
+      "commits": 2,
+      "files": 1,
+      "pushedBytes": 380,
+      "diffBytes": 741
+    },
+    "pending": {
+      "files": null,
+      "pushedBytes": null,
+      "diffBytes": null
+    },
+    "none": {
+      "files": null,
+      "pushedBytes": null,
+      "diffBytes": null
     }
   },
   "drawing": {
@@ -601,7 +880,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+        "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
       }
     },
     {
@@ -614,7 +893,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+        "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
       }
     },
     {
@@ -627,7 +906,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad"
+        "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
       }
     }
   ],
