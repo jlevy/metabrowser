@@ -23,9 +23,6 @@ RECONCILIATION_COORDINATOR_JS = (
 PROJECT_ADAPTER_JS = (
     Path(__file__).resolve().parent / "dom" / "markdown-project-adapter-behavior.js"
 )
-GITHUB_LOCALIZER_JS = (
-    Path(__file__).resolve().parent / "dom" / "markdown-github-localizer-behavior.js"
-)
 TRANSCLUSION_JS = Path(__file__).resolve().parent / "dom" / "markdown-transclusion-behavior.js"
 MARKDOWN_WORKER_JS = Path(__file__).resolve().parent / "dom" / "markdown-worker-behavior.js"
 DOM_TRAVERSAL_JS = Path(__file__).resolve().parent / "dom" / "markdown-dom-traversal-behavior.js"
@@ -175,21 +172,6 @@ def test_configured_markdown_project_adapters() -> None:
         f"Markdown project adapter failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "markdown project adapter OK" in result.stdout
-
-
-def test_verified_github_url_localization() -> None:
-    require_node()
-    result = subprocess.run(
-        ["node", str(GITHUB_LOCALIZER_JS), str(REPO_ROOT)],
-        capture_output=True,
-        text=True,
-        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
-        check=False,
-    )
-    assert result.returncode == 0, (
-        f"Markdown GitHub localizer failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    )
-    assert "markdown GitHub localizer OK" in result.stdout
 
 
 def test_bounded_markdown_transclusion() -> None:

@@ -1979,6 +1979,10 @@ const poolFor = (part) => (part === "body" ? renderedDescriptions : renderedPart
 // KPress's stylesheets for texts have loaded, or failed to, on some page of this document:
 // they are the same for every text, so a later page inserts a kept render at once.
 let kpressStylesSettled = false;
+// What a text's links open (static/repository-links.js) has loaded, or failed to, on some
+// page of this document, so a later page inserts a kept render at once. A text inserted
+// before it would keep its links as github.com links.
+let repositoryLinksSettled = false;
 
 /**
  * @param {string} source
@@ -5471,11 +5475,20 @@ export function mountPullPage(container, ctx, mb) {
    *   heldMs: number,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
-  // The allowlist a text's Markdown passes through before it is inserted; a text stays
-  // plain if it cannot load.
+  // The allowlist a text's Markdown passes through before it is inserted, and what its links
+  // open (`inertProse`); a text stays plain if the allowlist cannot load, and keeps its
+  // links as github.com links if the second cannot.
+  const repositoryLinksReady = (
+    mb.repository
+      ? mb.ensureAsset("repository-links").catch((error) => {
+          console.warn("metabrowser github: repository links are unavailable", error);
+        })
+      : Promise.resolve()
+  ).then(() => {
+    repositoryLinksSettled = true;
+  });
   /** @type {Promise<MetabrowserInertHtmlRuntime | null>} */
-  const inertReady = mb
-    .ensureAsset("inert-html")
+  const inertReady = Promise.all([mb.ensureAsset("inert-html"), repositoryLinksReady])
     .then(() => window.MetabrowserInertHtml ?? null)
     .catch(() => null);
   /** @type {{left: string, right: string, route?: string} | null} */
@@ -5847,7 +5860,12 @@ export function mountPullPage(container, ctx, mb) {
    * @returns {boolean}
    */
   function insertableNow(rendered) {
-    return rendered !== null && kpressStylesSettled && window.MetabrowserInertHtml !== undefined;
+    return (
+      rendered !== null &&
+      kpressStylesSettled &&
+      repositoryLinksSettled &&
+      window.MetabrowserInertHtml !== undefined
+    );
   }
 
   /**
@@ -5872,7 +5890,9 @@ export function mountPullPage(container, ctx, mb) {
   /**
    * A text's inert HTML in KPress's prose element, as `kpressHost` sets a description's and
    * Guided Review sets a note's (`DrawProse` in guided-review.js): rebuilt from the allowlist,
-   * links absolute against the pull request.
+   * links absolute against the pull request, then each link into the repository opening its
+   * page here (static/repository-links.js). A path-relative reference, which github.com
+   * resolves under the pull request's page, names the head's file.
    *
    * @param {MetabrowserInertHtmlRuntime} inert
    * @param {string} html
@@ -5882,6 +5902,10 @@ export function mountPullPage(container, ctx, mb) {
       inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/"),
       document,
     );
+    window.MetabrowserRepositoryLinks?.enhance(prose, mb, {
+      text: { head: shown?.pull?.headSha || null },
+      open: openTextRoute,
+    });
     // Only this newly sanitized, lazily opened message is visited. Authored SVG and
     // state attributes have already been discarded; known state comes from our record.
     for (const anchor of prose.querySelectorAll("a[href]")) {
@@ -6158,6 +6182,20 @@ export function mountPullPage(container, ctx, mb) {
       void open(route);
     });
     return link;
+  }
+
+  /**
+   * Open a pull request's page or tab that a text links to in place, as `pageLink` does;
+   * answer false for any other route, a commit's or the list's, which the browser follows.
+   *
+   * @param {Extract<MetabrowserRepositoryLinkTarget, {kind: "route"}>} route
+   */
+  function openTextRoute(route) {
+    if (route.pull === null || listening.signal.aborted) {
+      return false;
+    }
+    void open({ number: route.pull.number, tab: route.pull.tab });
+    return true;
   }
 
   /**

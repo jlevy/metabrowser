@@ -197,6 +197,20 @@ The page has up to five tabs:
   again.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
 
+### Links in a Pull Request’s Text
+
+A link in the description, a comment, a review, or a Guided Review note goes where
+GitHub sends it, except where Metabrowser can show the same thing itself: a link to this
+repository’s pull request, its Changes or Checks, a commit, or the list of pull requests
+opens that page here, and so does one to a file on the branch or commit being browsed,
+as in a Markdown file ([links](browsing-files.md#markdown)). A path such as
+`docs/plan.md`, which GitHub resolves under the pull request’s own page where nothing
+is, opens that file at the pull request’s head instead: here when the head is what
+Metabrowser serves, and on GitHub otherwise.
+A link to another branch, a tag, an issue, or a particular comment stays a GitHub link.
+In Changes and Docs, a rendered document’s link to another file of the head opens it
+here while the head is served, and on GitHub otherwise.
+
 ### Guided Review
 
 The guide opens on its overview, the description, under a list of its steps.
@@ -238,11 +252,14 @@ shown as typed. A note is Markdown, rendered as the description is, inert, in ev
 guide: raw HTML is cut to the same safe subset, a single line break joins two lines into
 one paragraph, and a blank line starts the next.
 A Mermaid block in a note shows as code.
-Write a link in a note as a full URL: a relative one resolves against the pull request’s
-page on GitHub, not the repository, so `docs/plan.md` leads nowhere.
-A note whose render takes too long, or fails, shows as typed, with its line breaks kept
-and the line a description’s refusal says under it; when the renderer was only busy,
-returning to the step or reloading the page renders it.
+Write a link to a file in a note as its path from the repository’s root, such as
+`docs/plan.md`: it opens that file at the pull request’s head, in Metabrowser when the
+head is what it serves and on GitHub otherwise.
+A full GitHub link into the repository opens its page in Metabrowser when there is one
+([Links in a Pull Request’s Text](#links-in-a-pull-requests-text)). A note whose render
+takes too long, or fails, shows as typed, with its line breaks kept and the line a
+description’s refusal says under it; when the renderer was only busy, returning to the
+step or reloading the page renders it.
 
 ````markdown
 ```guided-review

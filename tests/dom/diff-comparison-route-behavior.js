@@ -175,7 +175,7 @@ async function main() {
   assert.equal(requests[0].params.file, "tree-file", "and for its projection first");
   requests.length = 0;
   // The route codec a page has loaded; View on branch's own behavior is its session's.
-  window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k" };
+  window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k", display: () => "README.md" };
   const mounted = await registered.render({}, { comparison: pull });
   assert.equal(typeof mounted.options.renderMarkdown, "function");
   await mounted.options.renderMarkdown(markdown[0], signal);
@@ -188,12 +188,13 @@ async function main() {
   });
   assert.equal(requests.at(-1).signal, signal);
   // An image of the head opens on the comparison's image route; a link to a file of the
-  // head opens only while the page shows that head, which a page with no pin never does.
+  // head opens only while the page shows that head, which a page with no pin never does, and
+  // a page with no GitHub repository has no github.com address for it either.
   const target = `${image_route}&path=g1-UkVBRE1FLm1k`;
-  assert.equal(mounted.options.markdownTargets(target, true), true);
-  assert.equal(mounted.options.markdownTargets(target, false), false);
-  assert.equal(mounted.options.markdownTargets("/view/g1-UkVBRE1FLm1k", false), false);
-  assert.equal(mounted.options.markdownTargets("/api/tree", false), false);
+  assert.equal(mounted.options.markdownTargets(target, true), target);
+  assert.equal(mounted.options.markdownTargets(target, false), null);
+  assert.equal(mounted.options.markdownTargets("/view/g1-UkVBRE1FLm1k", false), null);
+  assert.equal(mounted.options.markdownTargets("/api/tree", false), null);
   const plain = await registered.render({}, { comparison });
   assert.equal(plain.options.renderMarkdown, undefined, "no rendered route, no Rendered view");
   const errors = [];

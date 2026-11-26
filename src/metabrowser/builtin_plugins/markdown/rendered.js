@@ -197,6 +197,14 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
     '<span class="sr-only">Loading document…</span></div>';
   async function render() {
+    // What a link into the served repository opens (static/repository-links.js), fetched
+    // beside the render on a page that has a repository's identity. Without it, such a
+    // link stays the github.com link it is.
+    const repositoryLinks = mb.repository
+      ? mb.ensureAsset("repository-links").catch((error) => {
+          console.warn("metabrowser markdown: repository links are unavailable", error);
+        })
+      : null;
     try {
       const raw =
         ctx.raw && typeof ctx.raw === "object"
@@ -242,6 +250,10 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
               ? wiki.source
               : undefined,
       });
+      if (disposed || controller.signal.aborted) {
+        return;
+      }
+      await repositoryLinks;
       if (disposed || controller.signal.aborted) {
         return;
       }

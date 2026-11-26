@@ -2320,8 +2320,16 @@ export function mountStackPage(container, ctx, mb) {
     if (!owns()) {
       return null;
     }
-    inertReady ??= mb
-      .ensureAsset("inert-html")
+    // The allowlist a note passes through, and what its links open (static/repository-links.js),
+    // without which they stay github.com links.
+    inertReady ??= Promise.all([
+      mb.ensureAsset("inert-html"),
+      mb.repository
+        ? mb.ensureAsset("repository-links").catch((error) => {
+            console.warn("metabrowser github: repository links are unavailable", error);
+          })
+        : null,
+    ])
       .then(() => window.MetabrowserInertHtml ?? null)
       .catch(() => null);
     const prose = inertReady;
@@ -2388,12 +2396,24 @@ export function mountStackPage(container, ctx, mb) {
           throw new Error("the inert HTML allowlist did not load");
         }
         // A note's links were made absolute against the member that carries the guide,
-        // whose page the step names; an outside link is marked as a description's is.
+        // whose page the step names. A link into the repository opens its page here, and a
+        // path-relative reference names the stack's head's file, the commit the guide reads
+        // (static/repository-links.js); an outside link is marked as a description's is.
         return (html, base) => {
           const prose = inert.kpressProse(
             inert.sanitizeHtml(html, base ?? envelope?.github_url ?? "https://github.com/"),
             document,
           );
+          window.MetabrowserRepositoryLinks?.enhance(prose, mb, {
+            text: { head: comparison.right },
+            open: (route) => {
+              if (route.pull === null) {
+                return false;
+              }
+              void open({ number: route.pull.number, tab: route.pull.tab });
+              return true;
+            },
+          });
           for (const anchor of prose.querySelectorAll("a[href]")) {
             mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor), {});
           }

@@ -185,6 +185,11 @@ labelled action
 ([Pull Requests in a Repository Folder](../../architecture/arch-open-modes.md#pull-requests-in-a-repository-folder)).
 That is not built, and the table in [Design](#design) describes what is.
 
+**Addendum, 2026-11-26.** A rendered link that the page does not keep at its `/view/`
+address now opens the head’s file on github.com rather than staying plain text, as the
+[In-App Link Resolution](plan-2026-11-26-in-app-link-resolution.md) plan decided; it
+still never switches the pin.
+
 ## References
 
 - Survey and review of `origin/main` at `e442ed10d`, 2026-11-16 and 2026-11-17.

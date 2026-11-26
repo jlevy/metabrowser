@@ -2406,6 +2406,22 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # What a link in authored text opens (static/repository-links.js): only a page with a
+        # GitHub repository's identity reads one, beside the text that holds it, a Markdown
+        # render, a pull request's text, a commit's message, or a rendered diff. As a startup
+        # script it would cost every folder's shell its compressed size, and the startup
+        # scripts were 109 bytes under their budget when it was written (2026-11-26).
+        "repository-links": [
+            {
+                "src": _static_asset_url("repository-links.js"),
+                "provides": "MetabrowserRepositoryLinks",
+            }
+        ],
+        # The GitPath wire codec, a startup script of a pinned revision's shell
+        # (PIN_STARTUP_SCRIPTS), for the one page elsewhere that reads a wire back: a
+        # pull request's rendered diff beside a checkout's working tree, whose link to a
+        # file of the head opens it on github.com (builtin_plugins/diff/index.js).
+        "git-path": [{"src": _static_asset_url("git-path.js"), "provides": "MetabrowserGitPath"}],
         # The menu's Block remote images checkbox draws from the page's settings and
         # needs this only to change them, once.
         "remote-images": [{"src": remote_images_url, "provides": "MetabrowserRemoteImages"}],

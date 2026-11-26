@@ -3897,6 +3897,51 @@ declare global {
 
   /** What the freshness label says and offers; see static/source-freshness.js. */
   /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
+  type MetabrowserPublicNavigationTarget = MetabrowserNavigationTarget;
+  type MetabrowserPublicRepositoryContext = MetabrowserRepositoryContext;
+  /** static/repository-links.js, the `repository-links` on-demand bundle. */
+  type MetabrowserRepositoryLinkTarget =
+    | Readonly<{
+        kind: "view";
+        target: MetabrowserNavigationTarget;
+        localization: "revision" | "working-tree";
+      }>
+    | Readonly<{
+        kind: "route";
+        href: string;
+        localization: "pull" | "commit" | "pulls";
+        /** The pull request a `pull` route opens, for a page that opens it in place. */
+        pull: Readonly<{ number: number; tab: "" | "files" | "checks" }> | null;
+      }>
+    | Readonly<{ kind: "external"; url: string }>;
+
+  type MetabrowserRepositoryLinksRuntime = Readonly<{
+    localize(
+      url: string,
+      context: MetabrowserRepositoryContext | null | undefined,
+      options?: {
+        sourceKind?: "filesystem" | "git_revision";
+        text?: { head: string | null };
+      },
+    ): MetabrowserRepositoryLinkTarget | null;
+    enhance(
+      root: ParentNode,
+      mb: Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">,
+      options?: {
+        text?: { head: string | null };
+        open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
+        views?: boolean;
+      },
+    ): number;
+    fileUrl(
+      context: MetabrowserRepositoryContext | null | undefined,
+      revision: string,
+      path: string[],
+      directory?: boolean,
+      suffix?: string,
+    ): string | null;
+  }>;
+
   type MetabrowserInertHtmlRuntime = Readonly<{
     ALIGN_VALUES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
@@ -5149,6 +5194,7 @@ declare global {
     }>;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
+    MetabrowserRepositoryLinks?: MetabrowserRepositoryLinksRuntime;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{

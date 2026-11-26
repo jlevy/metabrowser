@@ -41,6 +41,11 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   of a count summary, which a Diff summary is drawn with.
  * @property {MetabrowserPublicSdk["changeLine"]} [changeLine] The brief change line's builder.
  * @property {MetabrowserPublicSdk["changeLineNodes"]} [changeLineNodes] Its painter.
+ * @property {MetabrowserPublicSdk["navigation"]} [navigation]
+ * @property {MetabrowserPublicSdk["repository"]} [repository] What a rendered file's links
+ *   into the repository open is read against (static/repository-links.js).
+ * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
+ * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
  */
 
 /**
@@ -5084,7 +5089,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *     ask?: import("./diff-markdown.js").RenderedAsk,
  *   ) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
- *   markdownTargets?: (value: string, image: boolean) => boolean,
+ *   markdownTargets?: (value: string, image: boolean) => string | null,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void,
@@ -5205,8 +5210,39 @@ export function mountDiffView(container, document_, api, options = {}) {
         opens: options.unfold === true ? "prefer-full" : "concise",
         current: view.show === "current",
         async ensureInert() {
-          await api?.ensureAsset?.("inert-html");
+          await Promise.all([
+            api?.ensureAsset?.("inert-html"),
+            // What a rendered file's links open, and the codec that reads back the path of
+            // a link to a file of the head, which only a pinned revision's shell loads; a
+            // link keeps its address without them.
+            api?.repository && api.ensureAsset
+              ? Promise.all([
+                  api.ensureAsset("repository-links"),
+                  window.MetabrowserGitPath ? null : api.ensureAsset("git-path"),
+                ]).catch((error) => {
+                  console.warn("metabrowser diff: repository links are unavailable", error);
+                })
+              : null,
+          ]);
           return window.MetabrowserInertHtml;
+        },
+        // A rendered file's link into the repository opens its page here, a pull request or
+        // a commit, which names no revision (static/repository-links.js); a `/view/` target
+        // would open whatever the server serves once the pin moves, so it stays a link to
+        // github.com, marked as an outside link is everywhere else.
+        enhanceLinks(prose) {
+          const navigation = api?.navigation;
+          const sourceKind = api?.sourceKind;
+          if (navigation && sourceKind && api?.repository) {
+            window.MetabrowserRepositoryLinks?.enhance(
+              prose,
+              { navigation, repository: api.repository, sourceKind },
+              { views: false },
+            );
+          }
+          for (const link of prose.querySelectorAll('a[target="_blank"]')) {
+            api?.decorateExternalLink?.(/** @type {HTMLElement} */ (link));
+          }
         },
         // The structured plugin draws a YAML or JSON file's tree, as in the file view
         // (`requires` in manifest.toml).

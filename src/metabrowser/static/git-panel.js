@@ -1446,7 +1446,16 @@
   async function insertableBody(body) {
     const pluginSdk = sdk();
     try {
-      await pluginSdk.ensureAsset("inert-html");
+      await Promise.all([
+        pluginSdk.ensureAsset("inert-html"),
+        // What the body's links open (static/repository-links.js); without it they stay the
+        // github.com links they are.
+        pluginSdk.repository
+          ? pluginSdk.ensureAsset("repository-links").catch((/** @type {unknown} */ error) => {
+              console.warn("metabrowser git: repository links are unavailable", error);
+            })
+          : null,
+      ]);
       if (body.html !== "") {
         bodyStyles ??= pluginSdk.loadKpressAssets(body.assets);
         await bodyStyles.catch((/** @type {unknown} */ error) => {
@@ -1541,7 +1550,9 @@
   /**
    * A body's sanitized nodes in a KPress article, as a pull request's page builds one for a
    * description: the page's own article and classes, KPress's stylesheets setting the type,
-   * and each kept link decorated as an outside link.
+   * each link into the served repository opening its page here (static/repository-links.js),
+   * and each other kept link decorated as an outside link. A relative reference has no
+   * address, as on github.com, where a commit's message is not Markdown.
    *
    * @param {MetabrowserInertHtmlRuntime} inert
    * @param {string} html The route's hardened HTML.
@@ -1552,6 +1563,10 @@
     const article = document.createElement("article");
     article.className = "kpress kpress-inert";
     article.append(inert.kpressProse(inert.sanitizeHtml(html, linkBase), document));
+    const pluginSdk = sdk();
+    if (pluginSdk) {
+      window.MetabrowserRepositoryLinks?.enhance(article, pluginSdk);
+    }
     for (const anchor of article.querySelectorAll("a[href]")) {
       if (anchor instanceof HTMLElement) {
         sdk()?.decorateExternalLink?.(anchor);

@@ -67,15 +67,19 @@ heading in a later chunk draws every chunk through it before it goes there.
 An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
-every page, and a page that learns another pin is served makes every such link plain
-text. Every other local address is dropped before the shared sanitizer.
+every page, and on any other page, or once a page learns another pin is served, the link
+opens that file at the head on github.com instead (`headFile` in
+`builtin_plugins/diff/index.js`). Every other local address is dropped before the shared
+sanitizer.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
-`builtin_plugins/diff/index.js`, and `static/inert-html.js` whole, and plays the
-server’s side from `tests/fixtures/diff-markdown-responses.json`: what the production
-projection answers for these documents, bound to a pull request’s head, with Python’s
-HTML parse of every block, from which the session builds the template a page parses a
-block into. `tests/test_diff_markdown_session.py` fails when the recording drifts.
+`builtin_plugins/diff/index.js`, `static/inert-html.js`, and the two scripts a
+repository’s page reads a link with, `static/git-path.js` and
+`static/repository-links.js`, whole, and plays the server’s side from
+`tests/fixtures/diff-markdown-responses.json`: what the production projection answers
+for these documents, bound to a pull request’s head, with Python’s HTML parse of every
+block, from which the session builds the template a page parses a block into.
+`tests/test_diff_markdown_session.py` fails when the recording drifts.
 The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`, and its views
 by `tests/golden/cli-github-pull-rendered-views.txt`. The shared chip family, the
 stylesheet loader, and the diff’s layout are stand-ins, the page is an element tree that
@@ -83,17 +87,17 @@ records what the production code builds, and time is a clock the session advance
 hand. The plugin mounts the pull request’s comparison on each page the shell renders and
 hands the diff its rule for which addresses open there, which this session draws with.
 
-`links.pages` says whether a link to a file of the head opens on each page: pinned at
-the comparison’s head, pinned at its merge base, beside a checkout at the head, which
-has no pin, and pinned at the head once another tab changed the pin.
-`links.opens` says which addresses in a rendered block open something on the page pinned
-at the head. Each step lists the requests the page made and each file whose state it
-changed: its chooser (`*` chosen, and `unavailable` with the reason for a view that
-cannot be chosen), what its body shows (`nothing` while it waits within the loading
-delay), `progress` while its mark counts down, and its rendered rows, a fold as its bar
-and a chunk not drawn yet as the place it keeps, a long file’s rows shortened to their
-first and last four.
-The session fails if a file’s chooser is ever gone.
+`links.pages` says what a link to a file of the head opens on each page: pinned at the
+comparison’s head, pinned at its merge base, beside a checkout at the head, which has no
+pin, and pinned at the head once another tab changed the pin.
+`links.opens` says what each address in a rendered block keeps on the page pinned at the
+head, null for one that is dropped.
+Each step lists the requests the page made and each file whose state it changed: its
+chooser (`*` chosen, and `unavailable` with the reason for a view that cannot be
+chosen), what its body shows (`nothing` while it waits within the loading delay),
+`progress` while its mark counts down, and its rendered rows, a fold as its bar and a
+chunk not drawn yet as the place it keeps, a long file’s rows shortened to their first
+and last four. The session fails if a file’s chooser is ever gone.
 It prints its transcript in two parts, each a block of its own: the links and the steps
 before the long document’s, then the long document’s steps on (`long`).
 
@@ -103,19 +107,19 @@ $ node tests/dom/diff-markdown-session.js
   "links": {
     "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
     "pages": {
-      "pinned at the comparison's head": true,
-      "pinned at the merge base": false,
-      "beside a checkout at the head, which has no pin": false,
-      "pinned at the comparison's head, after another tab changed the pin": false
+      "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+      "pinned at the merge base": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+      "beside a checkout at the head, which has no pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+      "pinned at the comparison's head, after another tab changed the pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
     },
     "opens": {
-      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": true,
-      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": true,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
-      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": false,
-      "link /api/tree?path=docs": false
+      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup",
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc",
+      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
+      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": null,
+      "link /api/tree?path=docs": null
     }
   },
   "steps": [
@@ -931,7 +935,7 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
-      "step": "a page that learns another pin is served keeps no link to a file",
+      "step": "a page that learns another pin is served links a file to the head on github.com",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
@@ -944,7 +948,7 @@ $ node tests/dom/diff-markdown-session.js long
             "  context: title = Guide",
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
-            "added: <p>Read the <a>first setup notes</a> first.</p>",
+            "added: <p>Read the <a href=\"https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
             "context: <p>Unchanged paragraph 2.</p>",

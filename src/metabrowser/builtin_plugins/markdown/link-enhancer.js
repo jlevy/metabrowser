@@ -1,6 +1,5 @@
 import { findElementById, MAX_ENHANCED_TARGETS, matchingDescendants } from "./dom-traversal.js";
-import { localizeGithubUrl } from "./github-localizer.js";
-import { createTrustedStandardLinkResolutionContext, gitPathWireForDisplayPath } from "./links.js";
+import { createTrustedStandardLinkResolutionContext } from "./links.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import {
   holdImage,
@@ -40,11 +39,13 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  *    opens the ordinary not-found state; nothing guesses by basename. Media goes through
  *    `/raw`, except an embedded PDF, which is the pdf plugin's card with a link to the
  *    PDF's view (`mountPdfEmbed`); a link to a PDF opens its view, as any file's does.
- * 3. GitHub localization (`github-localizer.js`): a `github.com` blob or tree URL opens
- *    locally only when the served repository's identity, which `repository_context.py`
- *    reads from Git metadata with bounded reads and no Git process, proves it names the
- *    served tree: origin, branch or exact revision, and served subdirectory. Anything
- *    unproven stays an outbound link.
+ * 3. Repository links (`static/repository-links.js`, which `rendered.js` loads beside the
+ *    render): a `github.com` link into the served repository opens in Metabrowser when
+ *    its page exists here and shows the same thing, as the served repository's identity
+ *    (`repository_context.py`, read from Git metadata with bounded reads and no Git
+ *    process) proves: a file or folder on the served branch or commit, the repository's
+ *    root, a pull request and its Changes and Checks, a commit, and the pull request list.
+ *    Anything unproven, another branch among it, stays an outbound link.
  * 4. Published-site routes (`project-adapters.js`): with an MkDocs, Docusaurus, or Jekyll
  *    configuration at the served root, a published route such as `/guide/` maps to the
  *    source document behind it; it stays inert until the pinned catalog pass decides.
@@ -143,16 +144,21 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             applyInternalAnchor(anchor, authoredTarget, resolved, null);
           }
         } else if (resolved.status === "external") {
-          const localized = localizeGithubUrl(authoredTarget, mb.repository);
-          if (localized) {
-            // A pin addresses its tree by GitPath wire, as every internal link on it does.
-            const target = navigationTarget(
-              sourceKind === "git_revision"
-                ? { ...localized, path: gitPathWireForDisplayPath(localized.path) }
-                : localized,
-            );
-            anchor.setAttribute("href", mb.navigation.href(target));
+          const localized =
+            window.MetabrowserRepositoryLinks?.localize(authoredTarget, mb.repository, {
+              sourceKind,
+            }) ?? null;
+          if (localized?.kind === "view" || localized?.kind === "route") {
+            // An in-app page does not leave the page, so it loses what an inert render gives
+            // an outside link; a plain click on a `/view/` target then opens it here.
+            anchor.removeAttribute("target");
+            anchor.removeAttribute("rel");
             anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
+          }
+          if (localized?.kind === "view") {
+            // Spelled in the GitPath wire on a pin, as every internal link on it is.
+            const target = navigationTarget(localized.target);
+            anchor.setAttribute("href", mb.navigation.href(target));
             if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
               anchor.setAttribute(
                 "title",
@@ -160,6 +166,11 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
               );
             }
             internalTargets.set(anchor, target);
+          } else if (localized?.kind === "route") {
+            // A pull request's or a commit's page, which a plain click follows as a link.
+            anchor.setAttribute("href", localized.href);
+          } else if (localized?.kind === "external") {
+            anchor.setAttribute("href", localized.url);
           }
           mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
         } else {

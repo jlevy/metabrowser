@@ -549,8 +549,9 @@ worker process, for a pair the record or its snapshot file admits (`pull_snapsho
 Its images load from `GET pull-image`, which serves an image at the head of an admitted
 pair without changing the pin or the checkout; its links to a file of the head are that
 file’s `/view/` address, the same in every answer, which the page keeps only while its
-pin is the head and leaves as plain text otherwise.
-`pull_snapshot.py`’s docstring lists every outcome code.
+pin is the head, and otherwise points at that file at the head on github.com (`headFile`
+in `builtin_plugins/diff/index.js`). `pull_snapshot.py`’s docstring lists every outcome
+code.
 `GET pull-markdown` (`pull_markdown.py`) renders one text of the record, or with no
 record cached the core preview’s description, through KPress in sanitized mode, then
 reduces it to the inert allowlist of `inert_html.py`, both in the server’s Markdown
@@ -565,7 +566,14 @@ answers shows a placeholder in its place, never its Markdown source.
 A text farther off keeps its plain text, which find in page reaches, and is asked for as
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
-A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
+The render’s links are absolute against the pull request’s page, as github.com resolves
+them, and the page reads each through `static/repository-links.js` with the pull
+request’s head (`inertProse` in `pull-page.js`): a link into the repository that
+Metabrowser has a page for opens it, and an address under `pull/` that names no pull
+request, which is what a path-relative reference becomes, opens the head’s file, in
+place when the pin is the head and on github.com otherwise
+([In-App Link Resolution](../specs/active/plan-2026-11-26-in-app-link-resolution.md)). A
+text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
 through the Markdown plugin’s exported `drawDiagrams` with `isolated: true`
 (`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
 diagram modules and vendored Mermaid, none of which the text names.
@@ -1298,7 +1306,8 @@ member’s own guide current.
   current, and is null otherwise, since a member not read yet may carry a block.
 - **The route.** `guided-review?stack=<n>&step=<k>` (`stack_guided_review`) answers in
   the envelope a pull request’s guide has, naming the `stack`, its `carrier`, and the
-  carrier’s page, `carrier_url`, which a note’s links are absolute against.
+  carrier’s page, `carrier_url`, which a note’s links are absolute against; the page
+  reads a path-relative one as the file at the stack’s head.
   A stack this copy cannot pair is `stack_unavailable`, with the `stack` answer’s
   `reason`, and one with a member not read yet is `not_cached`; both come before the
   carrier is found, so they name no `record_revision`, and the page takes them as that
