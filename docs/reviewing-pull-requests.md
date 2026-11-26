@@ -564,9 +564,11 @@ entries.
 
 The page says when GitHub CLI fetched what it shows, as in
 `Fetched 3 min ago via GitHub CLI`, at the end of the author’s line.
-The page has no Refresh of its own: the Pulls tab’s **Refresh** refreshes the pull
-request page beside the list, then the list.
-While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
+The page has no Refresh of its own: the Pulls tab’s **Refresh**, the circular arrow at
+the top of the navigation pane just before the gear, refreshes the pull request page
+beside the list, then the list.
+It shows while the Pulls tab is in front, and is dimmed while a refresh it asked for
+runs. While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
 A record counts as current for 60 seconds after its fetch, the freshness window, and for

@@ -329,6 +329,7 @@ The title carries the meaning; the symbol only marks the tab.
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
+| `REFRESH_GLYPH`, Lucide `rotate-cw` | Plugin | Refresh: the Pulls tab’s Refresh, at the top of the navigation pane just before the Metabrowser menu’s gear, which refreshes the pull request page beside the list and then the list | `builtin_plugins/github/pulls-panel.js` | `--muted` at rest, `--text` on hover; dimmed while it waits | `--icon-glyph` |
 | `monitor`, Lucide `monitor` | Registry | The system theme, in the menu’s theme chooser; also the Media category’s shape | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`: a segment’s glyph is its whole label (`.menu-seg svg`) |
 | `sun`, Lucide `sun` | Registry | The light theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `moon`, Lucide `moon` | Registry | The dark theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |

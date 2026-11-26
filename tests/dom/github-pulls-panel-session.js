@@ -987,6 +987,8 @@ async function paintStory(panel, selection = false) {
     }
     const opened = [];
     const current = first.body.rows[1].number;
+    // The tab's Refresh, the shell's button at the top of the navigation, which the list wires.
+    const refresh = new PanelElement("button");
     const mounted = panel.mountPullsPanel(
       container,
       {
@@ -996,6 +998,7 @@ async function paintStory(panel, selection = false) {
           current,
           shown: true,
           refreshAhead: false,
+          refresh,
           scrollRoot: selection ? container : null,
           open: (route) => opened.push(route.number),
           file: selection ? "src/app.txt" : null,
@@ -1015,15 +1018,6 @@ async function paintStory(panel, selection = false) {
       node.classList?.contains("github-pulls-connection"),
     );
     const [connectionText] = connection.childNodes;
-    const controlsRow = container.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-filters"),
-    );
-    const refresh = controlsRow.childNodes.at(-1);
-    assert(refresh.classList.contains("github-pulls-refresh"), "Refresh follows the state filters");
-    assert(
-      refresh.getAttribute("aria-checked") === null && refresh.tabIndex !== -1,
-      "Refresh remains a normal keyboard action rather than a filter chip",
-    );
     const [spinner, message] = connectionText.childNodes;
     assert(
       !connection.hidden && message.textContent === "Fetching pull requests…",
@@ -1049,10 +1043,8 @@ async function paintStory(panel, selection = false) {
         !spinner.classList.contains("mb-delayed-loading"),
       "one shared spinner and delay for the first loading message",
     );
-    assert(
-      refresh.textContent === "Refresh" && refresh.getAttribute("aria-disabled") === "true",
-      "the same refresh control waits while loading",
-    );
+    const refreshWhileLoading = refresh.getAttribute("aria-disabled");
+    assert(refreshWhileLoading === "true", "Refresh waits while the list loads");
     const live = container.childNodes.filter((node) => node.getAttribute("aria-live") === "polite");
     assert(live.length === 1 && live[0].textContent === message.textContent, "one announcement");
     const loading = message.textContent;
@@ -1083,11 +1075,8 @@ async function paintStory(panel, selection = false) {
     filterChips.at(-1).focus();
     await answer(first);
     assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
-    assert(
-      controlsRow.childNodes.at(-1) === refresh &&
-        refresh.getAttribute("aria-disabled") === "false",
-      "the stable Refresh becomes available when settled",
-    );
+    const refreshWhenSettled = refresh.getAttribute("aria-disabled");
+    assert(refreshWhenSettled === "false", "the same Refresh is offered once the list settles");
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
     assert(
@@ -1539,7 +1528,9 @@ async function paintStory(panel, selection = false) {
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
-      "ready action": refresh.textContent,
+      "Refresh waits, then is offered": [refreshWhileLoading, refreshWhenSettled].map(
+        (disabled) => `aria-disabled=${disabled}`,
+      ),
       landing: pane.textContent,
       "filter tallies": filterTallies,
       "only the repository name is bold": total.childNodes.map((node) => ({
@@ -1799,11 +1790,12 @@ async function paintStory(panel, selection = false) {
 // shortcut stand-in is the production registry and plugin facade, static/keyboard-shortcuts.js
 // and static/plugin-shortcuts.js, loaded whole into a realm of their own as `shell-tools` loads
 // them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
-// shaped as the shell's: the navigation pane, with the Files tab's filter bar, whose triggers
-// the shell numbers through `attachNumbered()`, and the Pulls tab, before the main pane, with a
-// pull request header's Browse code. Switching tabs hides the other with `display: none`, as
-// main-tabs.js does. The elements answer what the registry reads of one in a browser:
-// connection, `hidden` and `display: none` up the tree, `inert`, and document order.
+// shaped as the shell's: the navigation pane, with its header's Refresh, the Files tab's filter
+// bar, whose triggers the shell numbers through `attachNumbered()`, and the Pulls tab, before
+// the main pane, with a pull request header's Browse code. Switching tabs hides the other with
+// `display: none`, and the header's Refresh with `visibility: hidden`, as main-tabs.js does. The
+// elements answer what the registry reads of one in a browser: connection, `hidden`,
+// `display: none`, and `visibility: hidden` up the tree, `inert`, and document order.
 
 async function numberStory(panel) {
   const vm = require("node:vm");
@@ -1823,7 +1815,8 @@ async function numberStory(panel) {
         if (
           node.hidden === true ||
           node.attributes?.has("hidden") ||
-          node.style?.display === "none"
+          node.style?.display === "none" ||
+          node.style?.visibility === "hidden"
         ) {
           return false;
         }
@@ -1864,8 +1857,8 @@ async function numberStory(panel) {
       return super.querySelectorAll();
     }
   }
-  /** A control's own label: its first text, before a tally or a badge. */
-  const name = (node) => node.childNodes[0]?.textContent.trim();
+  /** A control's own label: its first text, before a tally or a badge, or a glyph's name. */
+  const name = (node) => node.childNodes[0]?.textContent.trim() || node.getAttribute("aria-label");
   const element = (tag, label) => {
     const made = new NumberedElement(tag);
     made.append(label);
@@ -1958,8 +1951,14 @@ async function numberStory(panel) {
     filterBar.append(recency, types);
     const filesTab = new NumberedElement("div");
     const pullsTab = new NumberedElement("div");
+    // The header's Refresh, as server.py draws it: named, and waiting.
+    const refresh = new NumberedElement("button");
+    refresh.setAttribute("aria-label", "Refresh");
+    refresh.setAttribute("aria-disabled", "true");
+    const header = new NumberedElement("header");
+    header.append(refresh);
     const navigation = new NumberedElement("div");
-    navigation.append(filterBar, filesTab, pullsTab);
+    navigation.append(header, filterBar, filesTab, pullsTab);
     const browseCode = element("a", "Browse code");
     const main = new NumberedElement("div");
     main.append(browseCode);
@@ -1968,6 +1967,7 @@ async function numberStory(panel) {
       filterBar.style.display = tab === "files" ? "" : "none";
       filesTab.style.display = tab === "files" ? "" : "none";
       pullsTab.style.display = tab === "pulls" ? "" : "none";
+      refresh.style.visibility = tab === "pulls" ? "" : "hidden";
     };
     // What the shell's filter menus and the page's link were asked to do.
     const ran = [];
@@ -2008,6 +2008,7 @@ async function numberStory(panel) {
           current: null,
           shown: true,
           refreshAhead: false,
+          refresh,
           scrollRoot: null,
           open() {},
           file: null,
@@ -2025,8 +2026,6 @@ async function numberStory(panel) {
     );
     const chips = filters.childNodes.filter((node) => node.dataset.chipValue !== undefined);
     const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
-    const refresh = filters.childNodes.at(-1);
-    assert(refresh.classList.contains("github-pulls-refresh"), "Refresh ends the filter row");
     const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
     /** What one act asked of the server and the list, what else ran, and where it moved focus. */
     async function acted(what, act) {
@@ -2095,18 +2094,18 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Refresh,5 Browse code",
-      "the chips and Refresh take 1 to 4 in reading order, before the page's link",
+      numbers().join() === "1 Refresh,2 Open,3 Closed,4 All,5 Browse code",
+      "Refresh and the chips take 1 to 4 in reading order, before the page's link",
     );
     assert(
       refresh.getAttribute("aria-disabled") === "true",
       "positive control: Refresh waits while the list loads",
     );
-    story["Refresh waits"] = [await press("4"), await clickRefresh()];
+    story["Refresh waits"] = [await press("1"), await clickRefresh()];
     await answer("/api/plugin/github/pulls", recorded.more_done);
     assert(refresh.getAttribute("aria-disabled") === "false", "the settled Refresh is available");
     story["the Pulls tab, settled"] = numbers();
-    const byKey = await press("4");
+    const byKey = await press("1");
     await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
     const byClick = await clickRefresh();
     story.Refresh = [byKey, byClick];
@@ -2118,13 +2117,13 @@ async function numberStory(panel) {
     // same order. Then the chip already chosen: its number, like its click, asks for nothing.
     const chosen = [];
     for (const act of [
-      () => press("1"),
       () => press("2"),
       () => press("3"),
+      () => press("4"),
       () => clickChip("open"),
       () => clickChip("closed"),
       () => clickChip("all"),
-      () => press("3"),
+      () => press("4"),
       () => clickChip("all"),
     ]) {
       chosen.push(await act());
@@ -2140,7 +2139,7 @@ async function numberStory(panel) {
         .slice(0, 3)
         .map((step) => step.list)
         .join() === "open,closed,all",
-      "1, 2, and 3 are Open, Closed, and All",
+      "2, 3, and 4 are Open, Closed, and All",
     );
     assert(
       asks(chosen[6]) === asks({}) && asks(chosen[7]) === asks({}),
@@ -2155,7 +2154,7 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [...chips, refresh, recency, types, browseCode]
+    story["the keycaps while Shift is held"] = [refresh, ...chips, recency, types, browseCode]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;

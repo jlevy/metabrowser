@@ -128,6 +128,11 @@ type MetabrowserPullsNavHost = Readonly<{
    * connection lines fill; or null.
    */
   metadata?: HTMLElement | null;
+  /**
+   * The tab's Refresh at the top of the navigation, a glyph-only button the shell draws and
+   * shows while the tab is in front, which the list fills with its glyph and wires; or null.
+   */
+  refresh?: HTMLElement | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */

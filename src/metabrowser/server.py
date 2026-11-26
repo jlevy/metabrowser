@@ -2049,6 +2049,20 @@ async def index(
         if pulls_tab
         else ""
     )
+    # The Pulls tab's Refresh, at the top of the navigation pane just before the Metabrowser
+    # menu, an icon button as the menu's gear is. Its box is here from the first paint and
+    # stays while another tab is in front, hidden but holding its place, as a tab's panel is
+    # hidden behind it (static/main-tabs.js#activateNavPanel), so nothing in the header moves
+    # when Pulls shows. It waits, `aria-disabled`, until the list says what it can refresh:
+    # builtin_plugins/github/pulls-panel.js draws its glyph and wires it.
+    refresh_behind = "" if pulls_in_front else ' style="visibility: hidden"'
+    pulls_refresh = (
+        '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
+        ' aria-label="Refresh" data-tip-text="Refresh" aria-disabled="true"'
+        f"{refresh_behind}></button>"
+        if pulls_tab
+        else ""
+    )
     pulls_container = ""
     if pulls_tab:
         pulls_container = (
@@ -2630,7 +2644,7 @@ async def index(
              looking for the project. It carries its own accessible name saying
              where it goes — the bare wordmark would announce as the menu's
              name repeated — and it is not aria-hidden, because a control that
-             cannot be reached is not a control. -->
+             cannot be reached is not a control. -->{pulls_refresh}
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
                   aria-haspopup="true" aria-label="Metabrowser menu"></button>

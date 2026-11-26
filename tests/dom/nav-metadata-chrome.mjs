@@ -25,7 +25,10 @@
 // short on its one line. And in a pane too narrow for it, the Commits tally, which stands in
 // the toolbar slot, wraps between its phrases at its own line height, as the tab bar over
 // it wraps between its tabs (docs/design-system.md, "Navigation Toolbars Wrap"), held to
-// that rule by tests/dom/nav-toolbar-wrap.mjs at every width from the narrowest.
+// that rule by tests/dom/nav-toolbar-wrap.mjs at every width from the narrowest. Over all of
+// it the navigation's header holds still in every state on every tab: the Pulls tab's
+// Refresh keeps its box behind the other tabs, shows only while Pulls is in front, and is
+// the gear's size on the gear's line.
 //
 // The states are the real ones where the running app can reach them, and otherwise the
 // markup the production code writes: the server's own Commits slot, read from the page it
@@ -185,6 +188,26 @@ const RULES = `(() => {
 // fits, and one short enough that every tab's content overflows its scroller.
 const SHORT_PANE_PX = 220;
 
+// In the page: the navigation's header, which no tab and no state moves: each box in it,
+// whether the Pulls tab's Refresh shows, and the Refresh's box and the gear's, since they
+// are one control (docs/design-system.md, "Every Icon-Only Control Is the Same Control").
+const HEADER = `(() => {
+  const round = (value) => Math.round(value * 100) / 100;
+  const at = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: round(r.left), top: round(r.top), width: round(r.width), height: round(r.height) };
+  };
+  const refresh = document.getElementById("nav-refresh");
+  return {
+    boxes: [...document.querySelector(".app-header").children]
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => [el.id || el.className, at(el)]),
+    shown: refresh !== null && getComputedStyle(refresh).visibility === "visible",
+    refresh: refresh === null ? null : at(refresh),
+    gear: at(document.getElementById("settings-btn")),
+  };
+})()`;
+
 const chrome = await launchChrome(process.env.CHROME_BIN, {
   profiles: process.env.CHROME_PROFILES,
   width: 1280,
@@ -193,6 +216,8 @@ const chrome = await launchChrome(process.env.CHROME_BIN, {
 // Each state's band at the default pane width, and at the wide one.
 const bands = {};
 const wide = {};
+// Each state's header, at the default pane width.
+const headers = {};
 // Each state's rules, at the narrowest, default, and wide panes, at the window's height and
 // a short one.
 const rules = [];
@@ -222,6 +247,7 @@ try {
     const read = setup === null ? BAND : `(${setup}, ${BAND})`;
     await paneWidth(null);
     bands[name] = await evaluate(read);
+    headers[name] = await evaluate(HEADER);
     await paneWidth(WIDE_PX);
     wide[name] = await evaluate(read);
     await paneWidth(null);
@@ -493,25 +519,54 @@ try {
   // A refresh that cannot reach GitHub, then one gh refuses until it is signed in, then no
   // gh at all: the rows stay, and the connection line says why and what to do.
   // Refresh answers only while no refresh runs, as when the catalog's pages still arrive.
-  const reloadReady = `document.querySelector(".github-pulls-refresh")?.getAttribute("aria-disabled") === "false"`;
+  const reloadReady = `document.querySelector("#nav-refresh")?.getAttribute("aria-disabled") === "false"`;
   scenario({ stderr: "error connecting to api.github.com\n", exit: 1 });
   await waitFor(reloadReady);
-  await click(".github-pulls-refresh");
+  await click("#nav-refresh");
   await waitFor(`(${connection}).includes("Could not reach GitHub")`);
   await measure("pulls unreachable");
   scenario({ stderr: "To get started with GitHub CLI, please run:  gh auth login\n", exit: 4 });
   await waitFor(reloadReady);
-  await click(".github-pulls-refresh");
+  await click("#nav-refresh");
   await waitFor(`(${connection}).includes("gh auth login")`);
   await measure("pulls signed out");
   fs.chmodSync(GH_BIN, 0o644);
   await waitFor(reloadReady);
-  await click(".github-pulls-refresh");
+  await click("#nav-refresh");
   await waitFor(`(${connection}).includes("Install GitHub CLI")`);
   await measure("pulls without gh");
 } finally {
   await chrome.close();
   phase("closed");
+}
+
+// The header holds still on every tab and in every state: the Pulls tab's Refresh keeps its
+// box behind another tab, so nothing in the row moves when Pulls comes to the front. It shows
+// only while Pulls is in front, and it is the gear's size, on the gear's line.
+check(
+  "the header was read on every tab",
+  ["files", "commits", "pulls loading", "pulls updated"].every((name) => name in headers),
+  Object.keys(headers).join(", "),
+);
+for (const [name, header] of Object.entries(headers)) {
+  check(
+    `${name}: the header holds still`,
+    JSON.stringify(header.boxes) === JSON.stringify(headers.files.boxes),
+    `${JSON.stringify(header.boxes)} against ${JSON.stringify(headers.files.boxes)}`,
+  );
+  check(
+    `${name}: the Pulls tab's Refresh shows only while Pulls is in front`,
+    header.shown === name.startsWith("pulls"),
+    String(header.shown),
+  );
+  check(
+    `${name}: Refresh is the gear's size, on the gear's line`,
+    header.refresh !== null &&
+      near(header.refresh.width, header.gear.width) &&
+      near(header.refresh.height, header.gear.height) &&
+      near(header.refresh.top, header.gear.top),
+    JSON.stringify({ refresh: header.refresh, gear: header.gear }),
+  );
 }
 
 // One type for every line on every tab, in every state, at both widths: the Files totals'

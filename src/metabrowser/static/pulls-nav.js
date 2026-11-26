@@ -80,6 +80,7 @@
    *   container(): HTMLElement | null,
    *   toolbar?(): HTMLElement | null,
    *   metadata?(): HTMLElement | null,
+   *   refresh?(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -152,6 +153,9 @@
                 toolbar: deps.toolbar?.() ?? null,
                 // The band under it, which the list's count and connection lines fill.
                 metadata: deps.metadata?.() ?? null,
+                // The tab's Refresh at the top of the navigation, which the list draws and
+                // wires; the shell shows it while the tab is in front.
+                refresh: deps.refresh?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}} */ route,
@@ -761,6 +765,7 @@
       container: () => document.getElementById("tab-pulls"),
       toolbar: () => document.getElementById("nav-toolbar-pulls"),
       metadata: () => document.getElementById("nav-metadata-pulls"),
+      refresh: () => document.getElementById("nav-refresh"),
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {

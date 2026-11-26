@@ -1380,7 +1380,7 @@ the control does, not from where the answer comes from:
 
 | Word | What it does | Where |
 | --- | --- | --- |
-| Refresh | Asks for the current state of what the view shows, in place: the page stays, and what is on screen stays until the answer replaces it ([Refreshing Content](#refreshing-content)). The answer may come from the disk, the repository, GitHub, or a mirror’s origin; the reader asks for the same thing, so the word is the same | The Pulls tab’s toolbar, for the list and the pull request page beside it; the Commits tab after “No commits yet.” and after “History changed since this list loaded.” |
+| Refresh | Asks for the current state of what the view shows, in place: the page stays, and what is on screen stays until the answer replaces it ([Refreshing Content](#refreshing-content)). The answer may come from the disk, the repository, GitHub, or a mirror’s origin; the reader asks for the same thing, so the word is the same | The top of the navigation pane while Pulls is in front, for the list and the pull request page beside it; the Commits tab after “No commits yet.” and after “History changed since this list loaded.” |
 | Fetch | The first ask for something not held at all, where there is nothing yet to refresh | A pull request’s status line before its record, and the Changes body’s “Changes have not been fetched.” |
 | Retry | Asks again for what failed, beside the sentence that says what failed | A pull request’s status line after a failed fetch or refresh, the Changes body, a page of history, a commit a mirror lacks, a folder Overview panel |
 | Reload page | Reloads the whole page, as the browser’s Reload does, where the page itself is out of date | The ref selector’s and the freshness row’s “The server now serves another revision” |
@@ -1400,17 +1400,22 @@ the control does, not from where the answer comes from:
   it: one statement, at most one remedy, no internals.
 - **The same widget for the same word.** A `.btn` in a toolbar or after a notice’s
   sentence; a [text action](#control-families) in a line of chrome among links, as a
-  pull request’s Retry or Fetch ends its status line.
+  pull request’s Retry or Fetch ends its status line; and an
+  [icon button](#every-icon-only-control-is-the-same-control) in the navigation’s
+  header, where the Pulls tab’s Refresh stands just before the Metabrowser menu’s gear,
+  as a circular arrow named Refresh.
   A control that waits for a refresh already running stays in its place,
-  `aria-disabled`, and a press does nothing.
+  `aria-disabled`, and a press does nothing; an icon button’s glyph dims while it waits.
 - **One Refresh for what the screen shows.** A pull request’s page has no Refresh of its
   own: the Pulls tab’s Refresh refreshes the page beside the list, then the list.
   The page offers Fetch or Retry only beside a sentence that says what it lacks or what
   failed, so the reader still has a remedy with the navigation pane hidden.
-- **Keys.** Refresh in the Pulls tab, and Retry or Fetch on a pull request’s status
-  line, are situational and numbered; the status line’s is the page’s one way to ask
-  again while the navigation pane, and its numbers, are hidden.
-  Other Retries and Reload page are rare and take no key ([The Rules](#the-rules)).
+- **Keys.** The Pulls tab’s Refresh, and Retry or Fetch on a pull request’s status line,
+  are situational and numbered; the status line’s is the page’s one way to ask again
+  while the navigation pane, and its numbers, are hidden.
+  Refresh, at the top of the navigation, comes first in reading order, so while Pulls is
+  in front it is `1`. Other Retries and Reload page are rare and take no key
+  ([The Rules](#the-rules)).
 - **One exception.** A mirror’s freshness row has no Refresh of its own: its age line,
   “Fetched 3 min ago”, is the control, and its tooltip and accessible name say it
   refreshes now.
@@ -1418,7 +1423,8 @@ the control does, not from where the answer comes from:
 The owner found the Pulls tab’s Reload and a pull request’s Refresh doing the same thing
 under two names (2026-11-24); before that a Reload meant three different things.
 The owner then asked for one Refresh that refreshes the page and the list together
-(2026-11-25), so the page’s own Refresh went.
+(2026-11-25), so the page’s own Refresh went, and the same day for it to be an icon at
+the top of the navigation, beside the gear.
 `test_asking_again_has_one_word_for_each_meaning` in `tests/test_browser_copy.py` holds
 the shipped browser code to these words: no “Refresh the page”, no lowercase “refresh
 to”, no Reload that does not name the page, and none of the labels this replaced.
@@ -3054,7 +3060,7 @@ leaves the line, dot and all, so the author and the sentence keep their natural 
 while it shows, and only then is the sentence cut short.
 Alone on the row, before a record, it is cut short with its whole text as a tooltip.
 The page has no Refresh of its own: the Pulls tab’s Refresh refreshes the page beside
-the list and then the list, and waits, muted, while neither has anything to refresh
+the list and then the list, and waits, dimmed, while neither has anything to refresh
 ([Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page)). The page offers its
 remedy where it says what it lacks or what failed: Fetch beside “This pull request has
 not been fetched yet.”, or beside a saved copy another version wrote, and Retry beside a
@@ -3799,10 +3805,10 @@ holds the one helper and the one rule in source.
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one icon slot and gap in, each state icon under the Layers icon and each title under the label | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
-| Refresh | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
+| Refresh | At the top of the navigation pane, just before the Metabrowser menu’s gear, while Pulls is in front; its box is there from the first paint and keeps its place, hidden, while another tab is in front, so the header never moves | It refreshes what the tab shows. The update age stays below the repository summary. |
 | Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
-| Refresh | `.btn` | Refresh checks GitHub for changes to the list. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
+| Refresh | `.icon-btn`, the gear’s primitive, drawn by the server; the list gives it its glyph, a circular arrow, and dims it while it waits ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)) | Refresh checks GitHub for changes to the list and the pull request page beside it. See [Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page). |
 
 A pull request is a run and a last line, one item, and two targets, because a pane is
 narrower than its parts.
@@ -4156,9 +4162,9 @@ list’s border and ground, and each member’s state icon to the badge’s edge
 ### Stack Groups in the Pulls Tab
 
 **The Pulls tab always groups by stack** once the repository’s stacks are known; there
-is no option to turn it off, because a Group by stack chip, worded or a glyph alone,
-does not fit the Pulls toolbar beside the Show group and Refresh at the default pane
-width.
+is no option to turn it off, because a Group by stack chip, worded or a glyph alone, did
+not fit the Pulls toolbar beside the Show group and Refresh at the default pane width,
+when Refresh stood in that toolbar.
 
 - **Rows.** Each stack with a pull request in the list has a row, open by default, and
   under it, one tree level in, its Whole stack row and then the stack’s pull requests
@@ -4925,8 +4931,9 @@ to the navigation’s mark and a folder inside it to the ordinary one.
 
 An icon-only button is one primitive, `.icon-btn`, documented in the
 `── Icon buttons ──` block of `static/styles.css`. It pairs `--icon-glyph` with
-`--icon-btn-size` for the hit target, so the settings gear, the print action, and the
-copy buttons are interchangeable wherever they appear.
+`--icon-btn-size` for the hit target, so the settings gear, the Pulls tab’s Refresh
+beside it, the print action, and the copy buttons are interchangeable wherever they
+appear.
 
 At rest an icon button is a bare muted glyph with no border and no fill.
 It raises a hover surface and a hairline border only while hovered, focused, or holding
@@ -4941,6 +4948,14 @@ weight without adding information.
 
 The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
 above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
+
+An icon button that cannot act now keeps its place with its glyph dimmed, at
+`--dimmed-content-opacity`, and raises no surface under the pointer, since a press does
+nothing. Up at the served root is `disabled`; the Pulls tab’s Refresh is `aria-disabled`
+while it waits, which leaves it its focus, its tooltip, and its number
+([Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page)). The primitive holds
+the state (`.icon-btn:is(:disabled, [aria-disabled="true"])`), so no use site draws its
+own.
 
 ### Copyable Identifiers Use One Delegate
 
@@ -6192,21 +6207,19 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   A mirror or checkout shows the [revision row](#the-ref-selector) above the filters,
   directly below the tabs.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
-  and stays right-aligned: Clear and the chevron on Files, Refresh on Pulls.
+  and stays right-aligned: Clear and the chevron on Files.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
   and the tab bar between its tabs.
   A segmented group in the cluster layout (below) is the one exception: it is one
   control drawn over several lines, and what follows it starts a line of its own.
-  So where the Pulls Show group is the cluster, Refresh takes a line under it even where
-  it would fit beside the cluster’s last chip.
 - **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
   and `--nav-toolbar-gap` apart.
   That is also the gap between controls along a line and above the first line and below
   the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
   it grows by a line and a gap for each line it adds.
   Every control is one line tall: a shorter one is centered in a line’s height, and a
-  taller one, a `.btn` such as Refresh, is held to it, so no line is cramped and none
-  stands taller than the rest.
+  taller one, such as a `.btn`, is held to it, so no line is cramped and none stands
+  taller than the rest.
   An open drawer’s controls wrap on the same gap and are one line tall too, Show
   ignored’s checkbox centered in its line, and a closed drawer adds nothing under the
   lines. The Commits tally is text, so its lines are its line height apart,

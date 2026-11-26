@@ -92,6 +92,12 @@ def _toolbars(html: str) -> dict[str, bool]:
         assert "tally-pending" in body, opening
     assert list(toolbars.values()).count(True) == 1, toolbars
     assert set(toolbars) == set(_tabs(html)), (toolbars, _tabs(html))
+    # The Pulls tab's Refresh, at the top of the navigation, is drawn with the tab, and shown
+    # with its toolbar: hidden, but in its place, while another tab is in front.
+    refresh = re.search(r'<button [^>]*id="nav-refresh"[^>]*>', html)
+    assert (refresh is not None) is ("pulls" in toolbars), refresh
+    if refresh is not None:
+        assert ("visibility: hidden" not in refresh.group(0)) is toolbars["pulls"], refresh.group(0)
     return toolbars
 
 
@@ -118,6 +124,7 @@ def test_a_folder_draws_no_tab_and_lists_no_script(tmp_path: Path) -> None:
             html = client.get(route).text
             assert _tabs(html) == {"files": True}, route
             assert 'id="tab-pulls"' not in html, route
+            assert 'id="nav-refresh"' not in html, route
             assert "pulls-nav.js" not in html, route
             assert "/static/pulls-nav.js" not in _shell_tools(html), route
             assert "/static/pulls-nav.js" not in _startup_scripts(html), route

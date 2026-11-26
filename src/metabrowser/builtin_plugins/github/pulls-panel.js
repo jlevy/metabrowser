@@ -91,6 +91,13 @@ import { PULLS_RUN, stackMemberRow } from "./stack-member-row.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
+// The tab's Refresh, at the top of the navigation: a circular arrow, Lucide v1.17.0 (ISC;
+// https://lucide.dev). Only a GitHub repository's page draws it, so it arrives with this
+// code rather than in static/icons.js, which every folder's startup pays for
+// (docs/design-system-icons.md, "Where Icons Come From").
+const REFRESH_GLYPH =
+  // Lucide `rotate-cw`
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>`;
 const PULL_ROUTE = "/api/plugin/github/pull";
 // The pull route's catalog verdict, which the page reads from its own first read.
 const VERIFIED_HEADER = "x-metabrowser-verified";
@@ -3952,13 +3959,15 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionMessage,
   ]);
   const connectionHelp = h("span", { hidden: "" });
-  const refreshButton = h(
-    "button",
-    { type: "button", class: "btn github-pulls-refresh", "aria-disabled": "true" },
-    ["Refresh"],
-  );
-  refreshButton.addEventListener("click", () => void refreshAll());
-  filters.append(refreshButton);
+  // The tab's Refresh is the shell's icon button at the top of the navigation, beside the
+  // Metabrowser menu, there and waiting from the first paint (`refresh` in pulls-nav.js):
+  // the list gives it its glyph, says when it waits, and wires its click and number below.
+  const refreshButton = nav.refresh ?? null;
+  const refreshShape = new DOMParser().parseFromString(REFRESH_GLYPH, "text/html").body
+    .firstElementChild;
+  if (refreshButton !== null && refreshShape !== null) {
+    refreshButton.replaceChildren(document.importNode(refreshShape, true));
+  }
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
@@ -3982,11 +3991,11 @@ export function mountPullsPanel(container, ctx, mb) {
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
   // at the slot's height, so the list starts where the Files tree does. There they are a
-  // toolbar row, which wraps between its controls in a narrow pane, Refresh last and at the
-  // line's end (`.nav-toolbar-row` in the shell's styles.css). The count and connection lines
-  // go in the band under the slot when the host has one (`.nav-metadata-band`), outside the
-  // scroller that holds the list, so their rule runs the pane's width and they stay in view
-  // while the list scrolls, as the Files totals do.
+  // toolbar row, which wraps between its controls in a narrow pane (`.nav-toolbar-row` in
+  // the shell's styles.css). The count and connection lines go in the band under the slot
+  // when the host has one (`.nav-metadata-band`), outside the scroller that holds the list,
+  // so their rule runs the pane's width and they stay in view while the list scrolls, as
+  // the Files totals do.
   const toolbar = nav.toolbar ?? null;
   const band = nav.metadata ?? null;
   const lines = band ? [] : [status, connection];
@@ -4212,8 +4221,8 @@ export function mountPullsPanel(container, ctx, mb) {
   let fileFollowEpoch = 0;
   // The one Refresh (mb-ablv): the tab's Refresh refreshes the pull request page beside it,
   // as the page's own Refresh did, and then the list, so a reader asks once for both. It
-  // waits, `aria-disabled`, only while neither can refresh, and its number runs what its
-  // click runs.
+  // waits, `aria-disabled`, only while neither can refresh, its glyph dimmed in its place
+  // (`.icon-btn[aria-disabled="true"]`), and its number runs what its click runs.
   /** Whether the list can refresh, as the last paint said. */
   let listCanRefresh = false;
   /** @type {{canRefresh: () => boolean, refresh: () => void, onRefreshChange: (listener: () => void) => () => void} | null} */
@@ -4222,7 +4231,7 @@ export function mountPullsPanel(container, ctx, mb) {
   let unwatchRefreshPage = null;
   function paintRefresh() {
     const can = listCanRefresh || refreshPage?.canRefresh() === true;
-    refreshButton.setAttribute("aria-disabled", String(!can));
+    refreshButton?.setAttribute("aria-disabled", String(!can));
   }
   /** A press of Refresh: the page beside the tab first, then the list. */
   function refreshAll() {
@@ -5488,7 +5497,7 @@ export function mountPullsPanel(container, ctx, mb) {
     spinner.hidden = !working && !retrying;
     // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
     connectionMessage.classList.toggle("mb-refreshing", refreshing);
-    // Busy is said of the status text, never of the row's Refresh or help link.
+    // Busy is said of the status text, never of Refresh or the line's help link.
     if (working || retrying || refreshing) {
       connectionText.setAttribute("aria-busy", "true");
     } else {
@@ -5793,8 +5802,9 @@ export function mountPullsPanel(container, ctx, mb) {
   // no digit, and a hidden panel's controls hold none (docs/design-system.md, "Keyboard
   // Shortcuts"). A number runs what a click runs. A chip's number then focuses the chip, as
   // the group's arrow keys do, since the list it replaces may have held focus; a waiting
-  // Refresh keeps its place and does nothing, as its click does. Each lasts until disposal
-  // aborts `signal`.
+  // Refresh keeps its place and does nothing, as its click does. Refresh, at the top of the
+  // navigation, comes first in reading order. Each lasts until disposal aborts `signal`.
+  refreshButton?.addEventListener("click", () => void refreshAll(), { signal });
   if (typeof mb.shortcuts?.attach === "function") {
     for (const { chip, value } of tallies) {
       mb.shortcuts.attach(chip, {
@@ -5807,12 +5817,14 @@ export function mountPullsPanel(container, ctx, mb) {
         signal,
       });
     }
-    mb.shortcuts.attach(refreshButton, {
-      activate: () => void refreshAll(),
-      id: "github.pulls.refresh",
-      numbered: true,
-      signal,
-    });
+    if (refreshButton !== null) {
+      mb.shortcuts.attach(refreshButton, {
+        activate: () => void refreshAll(),
+        id: "github.pulls.refresh",
+        numbered: true,
+        signal,
+      });
+    }
   }
 
   /**
@@ -6278,11 +6290,14 @@ export function mountPullsPanel(container, ctx, mb) {
       paintedStacks.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();
-      // What it put in the toolbar slot and the band under it, outside the container.
+      // What it put in the toolbar slot and the band under it, outside the container, and
+      // the header's Refresh as the shell drew it: empty, and waiting.
       filters.remove();
       status.remove();
       connection.remove();
       outsideNote.remove();
+      refreshButton?.replaceChildren();
+      refreshButton?.setAttribute("aria-disabled", "true");
     },
   });
 }
