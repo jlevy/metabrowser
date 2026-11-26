@@ -322,7 +322,12 @@ request loaded the page again, which lost the shell’s state.
   tab controller’s whole over the shell’s tabs: each address it opens, what each part of
   the shell is asked, and the addresses it leaves to the browser;
   `cli-ui-nav-reveal.tryscript.md` pins it, and parity row `navigation.route-open`
-  credits it.
+  credits it. It opens a stack’s page, the list, and a changed file twice each, and the
+  second open pushes nothing.
+- `tests/dom/nav-reveal-chrome.mjs` (step 16, run by `tests/test_nav_reveal_chrome.py`)
+  clicks a document’s links to a commit, a pull request, and the list in a real Chrome,
+  and waits for the tab, the row, the address, and the reading pane, claimed by its
+  owner and showing what the address names, with the page not loaded again.
 - `cli-github-guided-review.tryscript.md` keeps pinning the server’s render, which does
   not change; the browser side is the sessions above.
 - A real-browser check of a fixture checkout and the GitHub pull request fixture: the
