@@ -3,9 +3,9 @@ type: is
 id: is-01m7wysdnvzch4gb5zvqwvn04e
 title: "Markdown and structured-text rendering: front matter, diagrams, untrusted content"
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 39
+version: 41
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/511
@@ -31,6 +31,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/644
     at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/874
+    at: 2026-11-26T07:52:54.894Z
 labels:
   - linear
   - Feature
@@ -71,7 +74,7 @@ child_order_hints:
   - is-01m7tnaxethq70h5dxyhfdzz8r
   - is-01m8bat4973h1bjzvpkwd8qjdy
 created_at: 2026-11-20T17:06:42.489Z
-updated_at: 2026-11-26T07:06:10.598Z
+updated_at: 2026-11-26T07:52:55.319Z
 extensions:
   linear:
     id: c23452d1-8d76-491e-86d9-3278c87bdb31
