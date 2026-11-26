@@ -543,9 +543,9 @@
       anchor.removeAttribute("rel");
       anchor.setAttribute("data-metabrowser-github-localization", resolved.localization);
       if (resolved.kind === "view" && resolved.localization === "working-tree") {
-        if (!anchor.hasAttribute("title")) {
-          anchor.setAttribute("title", WORKING_TREE_TITLE);
-        }
+        // The app's own tooltip (devtools/check_tooltips.py), which an inert text, keeping no
+        // attribute of its own, cannot have set.
+        anchor.setAttribute("data-tip-text", WORKING_TREE_TITLE);
       }
       const listening = opens.has(anchor);
       opens.set(anchor, { resolved, mb, open: options.open });
