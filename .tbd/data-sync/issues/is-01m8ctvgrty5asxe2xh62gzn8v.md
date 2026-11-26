@@ -5,7 +5,7 @@ title: Shared YAML and JSON views in Metabrowser
 kind: epic
 status: in_progress
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
 delegate: codex@spud10.local
 labels:
@@ -21,7 +21,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T21:05:47.799Z
-updated_at: 2026-11-26T21:12:18.363Z
+updated_at: 2026-11-26T21:13:29.022Z
 started_at: 2026-11-26T21:12:15.641Z
+extensions:
+  linear:
+    id: 7acc64fa-fd5d-4b37-b24d-9f321abb3ea6
+    linked_at: 2026-11-26T21:13:28.989Z
 ---
 Deliver schema-free Table, Tree and exact Source for equivalent YAML and JSON in the main app and its built-in consumers. Ship in phases and exercise the same data across hosts.
