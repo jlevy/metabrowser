@@ -158,7 +158,7 @@ status: 200
   },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
-  "generation": "00000000000000000000000000000001:1",
+  "generation": "00000000000000000000000000000001:2",
   "fetched": 102,
   "complete": true,
   "truncated": false,
