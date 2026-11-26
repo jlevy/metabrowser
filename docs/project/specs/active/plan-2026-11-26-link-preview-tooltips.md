@@ -113,8 +113,9 @@ It uses the tooltip’s existing content classes (`.tip-name`, `.tip-detail` in
    request’s mark is its state icon only when its metadata says so: the address alone
    never establishes a state (External GitHub Links).
 3. **Where it opens**, in `.tip-detail`: “Opens here in Metabrowser”, or, for a link to
-   a branch that opens whatever is served, “Opens in the served working tree”, which
-   replaces `WORKING_TREE_TITLE`. A commit the repository lacks says “Not in this
+   a branch that opens whatever is served, “Opens in the served working tree” on a
+   folder’s page and “Opens at the served revision” on a pin’s or a mirror’s, which
+   replace `WORKING_TREE_TITLE`. A commit the repository lacks says “Not in this
    repository” instead, and the card makes no fetch for it.
 
 As built, a line that is the link’s own text, in any case and spacing, or a line above

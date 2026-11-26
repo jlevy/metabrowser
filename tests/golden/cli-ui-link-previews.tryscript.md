@@ -27,17 +27,20 @@ the session read the `tooltip` the reader would see.
 - `subjects` is what `subject` reads from the resolver’s answers: a pull request, its
   Changes and Checks, a changed file of a pull request’s text and of a stack’s note, a
   commit, the pull request list, a file or folder by a branch’s link, which opens in the
-  served working tree, or by the served commit’s, and the root.
-  A pin’s GitPath wire decodes to the same path, by the page’s source kind, and so does
-  a rendered diff’s head link; a name that is not text, an anchor that does not decode,
-  another site, and a malformed route name nothing.
+  served working tree, or at the served revision on a pin, or by the served commit’s,
+  and the root. A pin’s GitPath wire decodes to the same path, by the page’s source kind,
+  and so does a rendered diff’s head link; a name that is not text, an anchor that does
+  not decode, another site, and a malformed route name nothing.
   A file’s or folder’s subject keeps the navigation target as the address spelled it,
   the resolver’s own or a head link’s wire path with its fragment decoded, for a
   provider to look up and open.
 - `cards` is what `card` draws for each kind with and without a provider’s data.
   A line that is the link’s own text, in any case and spacing, or a line above is left
   out, and the first line kept leads with the mark.
-  The last line says where the link opens, or what the provider says is missing.
+  The last line says where the link opens, in the module’s own words (`opens`), or what
+  the provider says is missing.
+  The root is named by the served folder, or the repository, and is `/` only on a page
+  with no repository identity.
   A provider’s text is escaped, and an answer that is not data is none.
 - `states`: a pull request’s state glyph is drawn only where its summary gives the
   state, once the github plugin’s glyphs have loaded, which the first such summary asks
@@ -64,6 +67,11 @@ the session read the `tooltip` the reader would see.
 ```console
 $ node tests/dom/link-previews-session.js
 {
+ "opens": {
+  "here": "Opens here in Metabrowser",
+  "working-tree": "Opens in the served working tree",
+  "served-revision": "Opens at the served revision"
+ },
  "subjects": [
   {
    "label": "a pull request",
@@ -200,6 +208,17 @@ $ node tests/dom/link-previews-session.js
     "kind": "file",
     "path": "docs/guide.md",
     "opens": "here",
+    "target": {
+     "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
+    }
+   }
+  },
+  {
+   "label": "a file on the served branch, on a pin",
+   "subject": {
+    "kind": "file",
+    "path": "docs/guide.md",
+    "opens": "served-revision",
     "target": {
      "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ"
     }
@@ -391,13 +410,19 @@ $ node tests/dom/link-previews-session.js
    "label": "the root, from a branch's link",
    "linkText": "the repository",
    "preview": null,
-   "html": "<div class=\"tip-name\">/</div><div class=\"tip-detail\">Opens in the served working tree</div>"
+   "html": "<div class=\"tip-name\">docs/</div><div class=\"tip-detail\">Opens in the served working tree</div>"
   },
   {
    "label": "the pull request list",
    "linkText": "open pull requests",
    "preview": null,
    "html": "<div class=\"tip-name\">Pull requests</div><div class=\"tip-detail\">Opens here in Metabrowser</div>"
+  },
+  {
+   "label": "a file on the served branch, on a pin",
+   "linkText": "the guide",
+   "preview": null,
+   "html": "<div class=\"tip-name link-card-name\"><span class=\"link-card-mark file-identity-icon ft-md\" aria-hidden=\"true\"><svg data-glyph=\"md\"></svg></span><span>docs/guide.md</span></div><div class=\"tip-detail\">Opens at the served revision</div>"
   },
   {
    "label": "a title with markup",
@@ -412,6 +437,18 @@ $ node tests/dom/link-previews-session.js
    "linkText": "#12",
    "preview": "<b>bold</b>",
    "html": "<div class=\"tip-name link-card-name\"><span class=\"link-card-mark\" aria-hidden=\"true\"><svg data-glyph=\"pull\"></svg></span><span>Pull request #12</span></div><div class=\"tip-detail\">Opens here in Metabrowser</div>"
+  },
+  {
+   "label": "the root of a served folder",
+   "linkText": "the start",
+   "preview": null,
+   "html": "<div class=\"tip-name\">notes/</div><div class=\"tip-detail\">Opens in the served working tree</div>"
+  },
+  {
+   "label": "the root, on a page with no repository identity",
+   "linkText": "the start",
+   "preview": null,
+   "html": "<div class=\"tip-name\">/</div><div class=\"tip-detail\">Opens in the served working tree</div>"
   },
   {
    "label": "an author's title, no object title",

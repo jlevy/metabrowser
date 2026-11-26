@@ -135,6 +135,7 @@ _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")
 LINK_CARD_OWNERS = ("static/link-previews.js", "static/styles.css")
 _LINK_CARD = re.compile(
     r"\blink-card-[a-z]|Opens here in Metabrowser|Opens in the served working tree"
+    r"|Opens at the served revision"
 )
 
 

@@ -7035,17 +7035,20 @@ tooltip does:
 
 1. **What it is**, in `.tip-name`: “Pull request #12”, “Stack #3”, “Commit a1b2c3d” (the
    short commit ID, [Short Commit IDs](#short-commit-ids)), the path of a file or
-   folder, a folder’s ending in `/` and the root’s `/`, or “Pull requests”.
+   folder, a folder’s ending in `/`, the root by the served folder’s name or the
+   repository’s, as its view header’s title names it, or “Pull requests”.
    A link to a tab or a changed file names it after the identity: “Pull request #12 ·
    Changes · docs/guide.md”.
 2. **Its title**, when the app knows it: a pull request’s title, a commit’s subject, a
    stack’s top member’s title, drawn as every title is ([Titles](#titles)).
 3. **The author’s title**, when the author gave the link one.
 4. **A detail**, in `.tip-detail`, when its data has one.
-5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, “Opens in
-   the served working tree” for a link to a branch, which opens whatever the page serves
-   rather than what it named, or what its data says is missing, such as “Not in this
-   repository”.
+5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, or, for a
+   link to a branch, which opens whatever the page serves rather than what it named,
+   what that is: “Opens in the served working tree” on a folder’s page and “Opens at the
+   served revision” on a pin’s or a mirror’s; or what its data says is missing, such as
+   “Not in this repository”.
+   The words are `OPENS` in `static/link-previews.js`.
 
 A line that is the link’s own text, in any case and spacing, or a line above it, is left
 out: a card never says its link’s words again, as a Files row’s tooltip leaves out the

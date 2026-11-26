@@ -42,7 +42,7 @@
    * @typedef {{kind: "stack", number: number, file: string}} StackSubject
    * @typedef {{kind: "commit", revision: string}} CommitSubject
    * @typedef {{
-   *   kind: "file" | "folder", path: string, opens: "here" | "working-tree",
+   *   kind: "file" | "folder", path: string, opens: "here" | "working-tree" | "served-revision",
    *   target: {path: string, query?: string, fragment?: string},
    * }} PathSubject
    * @typedef {{kind: "pulls"}} PullsSubject

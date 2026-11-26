@@ -4037,8 +4037,9 @@ declare global {
         kind: "file" | "folder";
         /** The path from the served root, decoded for display; "" for the root. */
         path: string;
-        /** "working-tree" for a link to a branch, which opens whatever is served. */
-        opens: "here" | "working-tree";
+        /** For a link to a branch, which opens whatever is served: "working-tree" on a
+         *  folder's page, "served-revision" on a pin's or a mirror's. */
+        opens: "here" | "working-tree" | "served-revision";
         /** The navigation target as the address spelled it: a view target's own, or a head
          *  link's GitPath wire path and decoded fragment. `card` does not read it. */
         target: MetabrowserNavigationTarget;
@@ -4080,6 +4081,8 @@ declare global {
   type MetabrowserLinkPreviewsRuntime = Readonly<{
     /** How long the pointer rests on a link before its summary and prefetch start. */
     INTENT_MS: number;
+    /** A card's words for where its link opens, by its subject's `opens`. */
+    OPENS: Readonly<Record<"here" | "working-tree" | "served-revision", string>>;
     register(
       root: Element,
       anchor: Element,

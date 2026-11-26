@@ -51,9 +51,17 @@
 
   // ── Words ──────────────────────────────────────────────────────
 
-  const OPENS_HERE = "Opens here in Metabrowser";
-  // A link to a branch, which opens whatever the page serves rather than what it named.
-  const OPENS_WORKING_TREE = "Opens in the served working tree";
+  /**
+   * Where a link opens, by its subject's `opens`: here, for a page that names what it shows;
+   * and, for a link to the served branch, which opens whatever the page serves rather than
+   * what it named, the served working tree on a folder's page, or the served revision on a
+   * pin's or a mirror's, which serve a revision read from Git objects.
+   */
+  const OPENS = Object.freeze({
+    here: "Opens here in Metabrowser",
+    "working-tree": "Opens in the served working tree",
+    "served-revision": "Opens at the served revision",
+  });
   /** A pull request's tabs, as its page names them (builtin_plugins/github/pull-page.js). */
   const TAB_NAMES = Object.freeze({ files: "Changes", checks: "Checks" });
   const SEPARATOR = " · ";
@@ -174,8 +182,13 @@
       return routeSubject(target);
     }
     if (target.kind === "view") {
-      const opens = target.localization === "working-tree" ? "working-tree" : "here";
-      return pathSubject(target.target, sourceKind === "git_revision", opens);
+      const pinned = sourceKind === "git_revision";
+      /** @type {"here" | "working-tree" | "served-revision"} */
+      let opens = "here";
+      if (target.localization === "working-tree") {
+        opens = pinned ? "served-revision" : "working-tree";
+      }
+      return pathSubject(target.target, pinned, opens);
     }
     if (target.kind === "view-head" && typeof target.href === "string") {
       if (!target.href.startsWith(VIEW_PREFIX)) {
@@ -245,7 +258,7 @@
    *
    * @param {Extract<Target, {kind: "view"}>["target"] | undefined} address
    * @param {boolean} wire Whether the path is in the GitPath wire.
-   * @param {"here" | "working-tree"} opens
+   * @param {"here" | "working-tree" | "served-revision"} opens
    * @returns {Subject | null}
    */
   function pathSubject(address, wire, opens) {
@@ -392,8 +405,7 @@
     } else if (target.kind === "pulls") {
       parts = ["Pull requests"];
     } else if (target.kind === "folder") {
-      // The root is `/`, as its view header's Up names it (static/view-header.js).
-      parts = [target.path === "" ? "/" : `${target.path}/`];
+      parts = [`${target.path === "" ? rootName() : target.path}/`];
     } else {
       parts = [target.path];
     }
@@ -401,9 +413,26 @@
     return { text, html: escapeHtml(text) };
   }
 
+  /**
+   * The served root's name, as a folder's card names it: the served folder's, the last of
+   * the served prefix, or else the repository's, as its view header's title names the root
+   * by its folder (static/view-header.js). Empty, so the card says `/`, on a page with no
+   * repository identity.
+   */
+  function rootName() {
+    const repository = window.metabrowser?.repository;
+    if (!repository) {
+      return "";
+    }
+    const prefix = String(repository.served_prefix ?? "").replace(/\/+$/, "");
+    return prefix === ""
+      ? String(repository.name ?? "")
+      : prefix.slice(prefix.lastIndexOf("/") + 1);
+  }
+
   /** @param {Subject} target */
   function opensHere(target) {
-    return "opens" in target && target.opens === "working-tree" ? OPENS_WORKING_TREE : OPENS_HERE;
+    return "opens" in target ? OPENS[target.opens] : OPENS.here;
   }
 
   /**
@@ -514,10 +543,7 @@
         return typeof target.revision === "string" && /^[0-9a-f]{40}$/.test(target.revision);
       case "file":
       case "folder":
-        return (
-          typeof target.path === "string" &&
-          (target.opens === "here" || target.opens === "working-tree")
-        );
+        return typeof target.path === "string" && Object.hasOwn(OPENS, String(target.opens));
       case "pulls":
         return true;
       default:
@@ -976,6 +1002,7 @@
 
   window.MetabrowserLinkPreviews = Object.freeze({
     INTENT_MS,
+    OPENS,
     register,
     forget,
     dispose,

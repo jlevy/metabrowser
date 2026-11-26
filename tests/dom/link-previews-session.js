@@ -455,6 +455,13 @@ function subjects() {
   const pinned = local(`/blob/${PINNED}/docs/guide.md`, pin, { sourceKind: "git_revision" });
   rows.push({ label: "a pin's address for it", path: pinned.target.path });
   read("the same file on the pin", pinned, "git_revision");
+  // A link to the served branch on a pin opens the path at the pinned revision, which is
+  // what the pin serves: not a working tree.
+  read(
+    "a file on the served branch, on a pin",
+    local("/blob/main/docs/guide.md", pin, { sourceKind: "git_revision" }),
+    "git_revision",
+  );
   const pinFolder = local(`/tree/${PINNED}/docs`, pin, { sourceKind: "git_revision" });
   read("a pin's folder", pinFolder, "git_revision");
   // Read as a folder's inventory spells a path, a pin's address is its wire, never a name:
@@ -559,6 +566,19 @@ function cards(page) {
     ["a folder", docs, { detail: "12 files · 3.4 KB" }, "the docs"],
     ["the root, from a branch's link", root, null, "the repository"],
     ["the pull request list", pulls, null, "open pull requests"],
+    [
+      "a file on the served branch, on a pin",
+      previews.subject(
+        {
+          kind: "view",
+          target: { path: page.sandbox.MetabrowserGitPath.wire("docs/guide.md") },
+          localization: "working-tree",
+        },
+        "git_revision",
+      ),
+      null,
+      "the guide",
+    ],
     ["a title with markup", pull, { title: `<img src=x onerror="go()"> & 'q'` }, "#12"],
     ["an answer that is not data", pull, "<b>bold</b>", "#12"],
   ].map(([name, subject, preview, linkText]) => {
@@ -566,6 +586,19 @@ function cards(page) {
     checkCard(html, linkText, preview);
     return { label: name, linkText, preview, html };
   });
+  // The root is named by the served folder's name, the last of the served prefix, or else
+  // by the repository's, and is `/` only on a page with no repository identity.
+  const { repository } = page.mb;
+  for (const [name, context] of [
+    ["the root of a served folder", { ...repository, served_prefix: "guides/notes" }],
+    ["the root, on a page with no repository identity", null],
+  ]) {
+    page.mb.repository = context;
+    const html = previews.card(root, null, { linkText: "the start" });
+    checkCard(html, "the start", null);
+    rows.push({ label: name, linkText: "the start", preview: null, html });
+  }
+  page.mb.repository = repository;
   // An author's title: in place of an object's, beside it, and never twice.
   for (const [name, preview, authorTitle] of [
     ["an author's title, no object title", null, "Read this first"],
@@ -888,6 +921,8 @@ async function main() {
   await glyphsPage.point(0, anchors.twelve);
   await glyphsPage.look(600);
   const transcript = {
+    // The words a card says for where its link opens, by its subject's `opens`.
+    opens: glyphsPage.previews.OPENS,
     subjects: subjects(),
     cards: cards(glyphsPage),
     states: await states(),

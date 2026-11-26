@@ -27,7 +27,6 @@ from tests.required_tools import require_node
 ROOT = Path(__file__).resolve().parents[1]
 SESSION_JS = ROOT / "tests" / "dom" / "link-previews-session.js"
 APP_JS = ROOT / "src" / "metabrowser" / "static" / "app.js"
-OPENS = ("Opens here in Metabrowser", "Opens in the served working tree")
 STATES = ("open", "closed", "merged", "draft")
 
 
@@ -71,6 +70,12 @@ def _lines(html: str) -> list[str]:
     ]
 
 
+def _opens() -> dict[str, str]:
+    """The module's own words for where a link opens, by its subject's `opens`."""
+
+    return _session()["opens"]
+
+
 def _drawn_cards() -> list[dict[str, Any]]:
     return [row for row in _session()["cards"] if row.get("html")]
 
@@ -95,7 +100,7 @@ def test_a_card_ends_with_where_its_link_opens() -> None:
         last = _lines(row["html"])[-1]
         preview = row["preview"] if isinstance(row["preview"], dict) else {}
         missing = preview.get("missing")
-        assert last == missing if missing else last in OPENS, row["label"]
+        assert last == missing if missing else last in _opens().values(), row["label"]
 
 
 def test_a_card_claims_a_state_only_its_data_gives() -> None:
@@ -243,6 +248,30 @@ def test_a_surface_puts_away_only_its_own_card() -> None:
     own = next(index for index, entry in enumerate(log) if entry.get("hide") == "readme")
     assert log[other + 1]["tooltip"], "another root's dispose put the card away"
     assert log[own + 1]["tooltip"] is None, "the root's dispose left its card"
+
+
+def test_a_branch_link_says_what_the_page_serves() -> None:
+    """A link to the served branch opens whatever the page serves: its working tree on a
+    folder's page, and the pinned revision on a pin's or a mirror's, never a working tree."""
+
+    subjects = {row["label"]: row.get("subject") for row in _session()["subjects"]}
+    assert subjects["a file on the served branch"]["opens"] == "working-tree"
+    assert subjects["a file on the served branch, on a pin"]["opens"] == "served-revision"
+    cards = {row["label"]: row for row in _drawn_cards()}
+    assert _lines(cards["a file on the served branch"]["html"])[-1] == _opens()["working-tree"]
+    pinned = _lines(cards["a file on the served branch, on a pin"]["html"])[-1]
+    assert pinned == _opens()["served-revision"]
+    assert "working tree" not in pinned
+
+
+def test_the_root_is_named_by_its_folder() -> None:
+    """The root's card names the served folder, or the repository, as its header does, and
+    is `/` only where the page has no repository identity."""
+
+    cards = {row["label"]: _lines(row["html"])[0] for row in _drawn_cards()}
+    assert cards["the root, from a branch's link"] == "docs/"
+    assert cards["the root of a served folder"] == "notes/"
+    assert cards["the root, on a page with no repository identity"] == "/"
 
 
 def test_a_pins_address_reads_as_the_same_path() -> None:
