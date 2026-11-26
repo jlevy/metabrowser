@@ -40,6 +40,15 @@ document with the Docs tab's drawing of the same file, and a YAML document with 
 tab's, on a stand-in whose pull request 7's guide ends on a step that cites both whole
 (``--guided-documents``).
 
+Whether anything in the guide moves while a step lands is paint too, so
+``tests/dom/github-guided-review-motion-chrome.mjs`` samples the guide every frame from a
+press, or a page load, to the step it settles on, and holds that nothing moves from the
+first frame a step shows and that the step the reader leaves stays as it was until then:
+cold, on a page loaded on Guided Review and a step not read ahead, and warm, on a step read
+ahead or kept, where no loading state shows either; on pull request 7's guide, which ends
+on documents (``--guided-documents``), and on stack 70's (``--guided-stack``, with the
+stack page's native stacks).
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process
 leads a process group of its own, which Chrome joins (tests/process_group.py).

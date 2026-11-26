@@ -13,12 +13,13 @@ A step that cites no such file never loads the rendered layer, and a document lo
 File type filter and asks for no type counts.
 A range of the same file, a file the route answers with its hunks, and a file past the
 step’s budget draw as before.
-Moving to another step disposes every view the step drew; a document’s read still on its
-way when the reader moves on is aborted, and its late answer draws nothing.
-A document shows its progress mark while its read is on its way, and not once it is
-drawn. A step read at another merge base or another head than the page’s says the file’s
-diff is unavailable, and a comparison that names no rendered route draws the document
-without the rendered layer.
+A step shows only once its documents are drawn: while a document’s read is on its way,
+the step waits out of sight, and the step shown before it stays, every view it drew with
+it. Moving on again before the read answers withdraws the waiting step, which aborts its
+read, whose late answer draws nothing, and the next step replaces the shown one, which
+disposes its views. A step read at another merge base or another head than the page’s
+says the file’s diff is unavailable, and a comparison that names no rendered route draws
+the document without the rendered layer.
 A document of another pull request is drawn from that pull request’s own comparison,
 whose routes the step’s answer names: its one-file read and its Rendered go to that pull
 request’s routes, and it draws in a step read at another comparison than the page’s. A
@@ -27,8 +28,9 @@ shows the guide’s bar for it, with its name and its Open full diff, above the 
 notice, and the page’s end removes the notice.
 A stale guide’s changed document says so above the document’s own view, and the page’s
 end disposes it. The Docs tab draws its documents with every option a step’s Markdown
-document has, and adds only the sentence it says when it has no document; Changes draws
-its files with exactly the options a step’s YAML document has.
+document has but how long Rendered waits, which for a step’s document is as long as the
+rendered route can take, and adds only the sentence it says when it has no document;
+Changes draws its files with exactly the options a step’s YAML document has.
 
 ```console
 $ node tests/dom/github-guided-review-documents-behavior.js

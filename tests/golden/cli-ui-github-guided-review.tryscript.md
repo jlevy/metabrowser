@@ -20,6 +20,10 @@ answer. A stack’s guide, under `stack`, has no overview: it opens on step 1, a
 goes before it. A step read while the stack is pending, or cannot be paired, is refused
 before the guide is found, with no revision: that step’s refusal, never a new guide, so
 the steps stay and the step is read again when chosen again.
+Read through the document’s keep (`guide-reads.js`), as the page reads, a shown step’s
+neighbors are read ahead, a move to one shows it at once with no loading state, and a
+guide mounted again over the same keep moves through what it kept, reading nothing; a
+new revision shows none of what the old one kept.
 
 ```console
 $ node tests/dom/github-guided-review-session.js
@@ -169,8 +173,9 @@ $ node tests/dom/github-guided-review-session.js
 
 # Guided Review on the pull page
 
-The production page imports and mounts the guide only when its tab first paints, so
-Conversation never reads it.
+The production page imports and mounts the guide only when its tab first paints, and
+asks for its first step as the import starts; Conversation reads the guide only when the
+page is idle, which this session never is.
 A pull request whose description has a guide opens on it, and Conversation, at its own
 address, shows a card where the description had its guided-review block.
 The guide opens on its overview, the description’s card as Conversation draws it, under
@@ -180,12 +185,15 @@ A stale guide still shows its steps, read at the current head, under one warning
 remedy at the top of the page, with the steps and files that changed since marked; the
 commits, heads, merge bases, and paths behind it stay in the route’s answer.
 A tab left while the import is on its way mounts nothing, and neither does a page that
-ends there. A new record revision asks again for the step on screen and aborts the read
-still on its way, whose late answer paints nothing, and a poll of the same record asks
-for nothing. Leaving the tab, or ending the page, disposes the view and aborts its read.
-A step’s title is inserted as text, so markup in it stays markup, and so is a note whose
-render was refused, and each row is the diff plugin’s, its code a span, which the
-shell’s highlighter, which takes `pre code`, skips.
+ends there, though its first step was asked for.
+A new record revision asks again for the step on screen and drops the read still on its
+way, whose late answer paints nothing, and a poll of the same record asks for nothing.
+Next leaves the step shown, its diff with it, until the next one is in hand.
+Leaving the tab disposes the view; a read on its way goes on for the document’s keep,
+and the tab opened again shows the overview and the steps read before at once, reading
+nothing. A step’s title is inserted as text, so markup in it stays markup, and so is a
+note whose render was refused, and each row is the diff plugin’s, its code a span, which
+the shell’s highlighter, which takes `pre code`, skips.
 Open full diff reaches the page’s own `openChangedFile`, which asks the route for the
 file’s Changes address.
 A guide stale only because GitHub reports a newer head says nothing, since the page’s
