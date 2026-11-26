@@ -127,7 +127,8 @@ gives the reasons.
 
 ## Classification
 
-`api_file` in `server.py` decides a file’s kind in this order:
+`_api_file_impl` in `server.py`, behind the `/api/file` route `api_file`, decides a
+file’s kind in this order:
 
 1. A directory is `folder`. A folder view that declares `offer` is served only where its
    predicate accepts the folder, off the event loop, and an offered default becomes the

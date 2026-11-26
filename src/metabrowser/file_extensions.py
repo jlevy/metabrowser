@@ -35,7 +35,8 @@ from types import MappingProxyType
 from typing import Final
 
 # Logical extension to a language in the exact vendored Highlight.js registry: the
-# common build plus the grammars vendored beside it (TOML, Lean). Keep aliases here rather than in individual renderers; settings.py
+# common build, the grammars vendored beside it (TOML), and the first-party ports in
+# static/syntax/ (Lean). Keep aliases here rather than in individual renderers; settings.py
 # injects one serialized copy into every browser surface.
 SYNTAX_LANGUAGE_BY_EXTENSION: Final[Mapping[str, str]] = MappingProxyType(
     {

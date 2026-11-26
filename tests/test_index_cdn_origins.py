@@ -93,13 +93,13 @@ def test_optional_libraries_are_served_from_local_vendor() -> None:
         "vendor/mustache.min.js",
         "vendor/highlight.min.js",
         "vendor/highlight-toml.min.js",
-        "vendor/highlight-lean.min.js",
+        "syntax/lean.js",
         "vendor/chart.umd.min.js",
         "vendor/chartjs-plugin-annotation.min.js",
         "vendor/chartjs-adapter-date-fns.bundle.min.js",
     ):
         assert name in html, f"vendored asset missing from index template: {name}"
-        assert (VENDOR_DIR / Path(name).name).is_file(), f"vendored file missing: {name}"
+        assert (VENDOR_DIR.parent / name).is_file(), f"vendored file missing: {name}"
 
 
 def test_highlight_theme_stylesheet_is_not_shipped() -> None:
