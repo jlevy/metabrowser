@@ -825,16 +825,29 @@ try {
   // same order, and the press opens no page.
   const SUMMARY_ROWS = `[...document.querySelectorAll(".github-pull-stack-page .github-pull-summary .changed-file-row[data-id]")].map((row) => row.dataset.id)`;
   const NAV_ROWS = `[...document.querySelectorAll('#tab-pulls .github-pulls-whole-item[data-level="2"] > .github-pull-files .changed-file-row[data-id]')].map((row) => row.dataset.id)`;
-  if ((await evaluate(SUMMARY_ROWS)).length === 0) {
-    await click(".github-pull-stack-page .github-pull-summary .diff-summary-toggle");
-  }
-  await waitFor(`${SUMMARY_ROWS}.length > 0`);
   await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-change');
   await waitFor(`${NAV_ROWS}.length > 0`);
+  // The page was opened again by the walk above, so its Diff summary is drawn, closed, once
+  // its comparison is read, and may be drawn again as the page settles: it is opened
+  // wherever it is found closed, and the two lists are read in the one task that finds
+  // both drawn.
+  const SUMMARY_TOGGLE = ".github-pull-stack-page .github-pull-summary .diff-summary-toggle";
+  await waitFor(
+    `(() => {
+      const summary = ${SUMMARY_ROWS};
+      const nav = ${NAV_ROWS};
+      if (summary.length > 0 && nav.length > 0) {
+        window.__stackFiles = { summary, nav };
+        return true;
+      }
+      const toggle = document.querySelector(${JSON.stringify(SUMMARY_TOGGLE)});
+      if (toggle?.classList.contains("collapsed")) toggle.click();
+      return false;
+    })()`,
+  );
   await frames();
   const stackFiles = {
-    summary: await evaluate(SUMMARY_ROWS),
-    nav: await evaluate(NAV_ROWS),
+    ...(await evaluate("window.__stackFiles")),
     address: await evaluate("location.pathname"),
     expanded: await evaluate(`${WHOLE}.getAttribute("aria-expanded")`),
     // The files hang under the Whole stack row's item, a level in from it.
