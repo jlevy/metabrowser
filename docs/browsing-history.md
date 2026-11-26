@@ -67,12 +67,12 @@ Below it is the diff against the commit’s first parent, one section per file w
 Click a file’s bar to collapse it.
 The diff draws **Split** or **Unified**; press `L` or use the layout control to switch,
 and a pane too narrow for Split draws Unified until there is room.
-**Diff** | **Current**, before the layout control, or `N`, switches between what changed
-and the new version alone, as in a pull request
-([Diff or Current](reviewing-pull-requests.md#diff-or-current)). A commit that changes
-more than one file has a **File type** menu ahead of the Diff | Current and layout
-choosers, the same menu as the Files tab’s, which counts the commit’s changed files by
-group, family, and extension.
+**Diff** | **Excerpt** | **Full** chooses how much of the comparison to show.
+Press `N` to switch between Diff and Excerpt.
+See [Comparison View](reviewing-pull-requests.md#comparison-view).
+A commit that changes more than one file has a **File type** menu ahead of the
+comparison and layout choosers, the same menu as the Files tab’s, which counts the
+commit’s changed files by group, family, and extension.
 Choose types in it (`Y` opens it) to show only the changed files of those types; the
 toolbar then says how many of the commit’s files it shows, with **Clear**. A renamed
 file counts under its old type and its new one, the summary at the top still describes

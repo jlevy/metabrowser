@@ -2361,7 +2361,7 @@ export function mountStackPage(container, ctx, mb) {
         ]),
       loadDrawPatch: async () => {
         const diff = await mb.plugins.load("diff");
-        return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+        return diff.guidePatchDrawer();
       },
       loadDrawDocument: async () => {
         const diff = await mb.plugins.load("diff");
@@ -2376,6 +2376,15 @@ export function mountStackPage(container, ctx, mb) {
             : null);
         return {
           draws: (pins) => at(pins) !== null,
+          source(path, pins) {
+            const shown = at(pins);
+            return shown === null
+              ? null
+              : {
+                  path,
+                  load: (signal) => diff.loadFullSource(shown, path, signal),
+                };
+          },
           mount(body, path, format, pins) {
             const shown = at(pins);
             if (shown === null) {

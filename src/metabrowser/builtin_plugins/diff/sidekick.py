@@ -69,7 +69,7 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.diff.side_lines import side_lines, side_lines_before
+from metabrowser.diff.side_lines import MAX_LINES_ANSWER_BYTES, side_lines, side_lines_before
 from metabrowser.file_type_match import (
     change_in_type_group,
     change_matches_types,
@@ -685,6 +685,13 @@ def _lines_ask(request: Request) -> tuple[str, str, str] | str:
 
     if not request.query_params.get("file", ""):
         return "view=lines names a file."
+    whole = request.query_params.get("whole", "")
+    if whole:
+        if whole != "1" or any(
+            request.query_params.get(key, "") for key in ("start", "end", "count")
+        ):
+            return "whole=1 asks for the complete new side without line parameters."
+        return "whole", "1", str(DIFF_GAP_LINES)
     named = [key for key in ("start", "end") if request.query_params.get(key, "")]
     if len(named) != 1:
         return "view=lines names a start or an end, not both."
@@ -736,7 +743,8 @@ async def _lines_answer(
         refused = ("textconv", "this file is diffed through a textconv driver")
     if refused is None and entry is not None:
         try:
-            content = await source.side_bytes(entry, max_bytes=MAX_LINES_SIDE_BYTES)
+            limit = MAX_LINES_ANSWER_BYTES if ask[0] == "whole" else MAX_LINES_SIDE_BYTES
+            content = await source.side_bytes(entry, max_bytes=limit)
         except DiffSourceError as exc:
             refused = (exc.code or "no_content", str(exc))
         else:
@@ -756,7 +764,7 @@ def _lines_body(head: dict[str, str], content: bytes, ask: tuple[str, str, str])
     """
 
     anchor, line, count = ask
-    cut = (side_lines if anchor == "start" else side_lines_before)(content, int(line), int(count))
+    cut = (side_lines_before if anchor == "end" else side_lines)(content, int(line), int(count))
     return bytes(
         JSONResponse(
             {

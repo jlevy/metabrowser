@@ -34,6 +34,7 @@ registerHooks({
         source: [
           "export const setChangeLoader = () => {};",
           "export const setGapLoader = () => {};",
+          "export const mountExcerptDisclosure = () => {}; export const presentationControlHtml = () => '';",
           "export const mountDiffSummary = () => ({ dispose() {} });",
           "export const mountDiffView = (...args) => globalThis.diffViewRecorder.mountDiffView(...args);",
           "export const mountFilePatch = (...args) => globalThis.diffViewRecorder.mountFilePatch(...args);",
@@ -254,7 +255,7 @@ async function harness() {
       sourceKind: () => "git_revision",
       // The File type menu a page with Changes has, so a diff of more than one file would
       // load its filter.
-      filterControls: { typeMenu: {} },
+      filterControls: { typeMenu: {}, bind: () => () => {} },
       loadChangedFilesTree: async () =>
         require("./changed-files-tree-fixture.js").changedFilesTree(),
       async fetchPluginData(plugin, hook, params, options) {

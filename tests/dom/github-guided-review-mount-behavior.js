@@ -170,8 +170,10 @@ function host({ allowlist = true } = {}) {
    * the diff draws a row, its text a span. The diff plugin's own drawing (hunk bars, folds,
    * syntax) is its own, pinned by its tests and painted in the Chrome check. */
   const diff = {
-    mountFilePatch(body, change, patch, api) {
-      assert.equal(typeof api.ensureKindAssets, "function", "the diff draws with the SDK");
+    guidePatchDrawer() {
+      return (body, change, patch) => this.mountFilePatch(body, change, patch);
+    },
+    mountFilePatch(body, change, patch) {
       const drawn = { path: change.new.path, patch, disposed: false };
       patches.push(drawn);
       for (const hunk of patch.hunks) {

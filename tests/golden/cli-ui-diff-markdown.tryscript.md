@@ -8,9 +8,10 @@ patterns:
 ---
 # Golden Test: Rendered Markdown in a Pull Request’s Changes
 
-A pull request’s Changes opens each changed Markdown file in **Concise** when the server
-can map its Git hunks to the document, and every changed Markdown file has the **Full**
-| **Concise** | **Source** chooser, whatever its size and whatever the server answers.
+A pull request’s Changes opens changed Markdown files in **Rendered** when the server
+can map their Git hunks to the document.
+**Rendered | Source** belongs to each file.
+The comparison’s presentation sets the rendered coverage.
 The comparison names the route that answers a file’s rendered redline,
 `GET github/pull-rendered-diff`, and the route its images load from,
 `GET github/pull-image`; the diff plugin spells neither.
@@ -23,16 +24,14 @@ Source in view; past it, Source shows and the rendering replaces it when it arri
 A file is asked for when it comes within a viewport of the screen, one request at a
 time, and its progress mark counts down to visible only while its request waits.
 A busy server is transient: the file keeps its view and asks again after 100 ms,
-doubling to 1.6 s. A file the server refuses shows Source and keeps its chooser, with
-Full and Concise unavailable: each chip says why, as its tooltip and in its accessible
-name, in the words of the reason the refusal names or, where it names none, of its
-status. Choosing one changes nothing and asks for nothing.
-A file whose changes did not load has the chooser too, with Full and Concise unavailable
-for the reason its Source body gives, and no projection is asked for it.
+doubling to 1.6 s. A file the server refuses shows Source and keeps its chooser.
+Rendered is unavailable and gives the reason in its tooltip and accessible name.
+A file whose changes did not load has the chooser too, with Rendered unavailable for the
+reason its Source body gives, and no projection is asked for it.
 A failed request leaves the file in Source with its views to choose, which asks again.
 None of these writes anything in the body: nothing but the rendered body is drawn beside
-Source. An answer that arrives after the reader chose Source is kept, and choosing
-Concise again shows it without asking.
+Source. An answer that arrives after the reader chose Source is kept for the next time
+they choose Rendered.
 
 Front matter is the Document view’s Frontmatter disclosure, keys sorted as it sorts
 them: open, with each changed key removed and added, when the front matter changed;
@@ -49,16 +48,17 @@ view does, except that the `<details>` in an added row is open.
 A block whose source changed in a way its render does not show, here an HTML comment, is
 drawn like any other and never folds, and nothing is drawn to say that Source shows
 more: each row is its label and its content, and the session fails on anything else.
-Concise folds each long run of unchanged blocks behind the diff’s own fold bar, which
+In Diff, each long run of unchanged blocks folds behind the diff’s own fold bar, which
 builds its blocks when it opens.
 A fold of fewer than `INLINE_FOLD_MAX_LINES` source lines comes with the answer, so
 opening it asks for nothing; a longer fold’s blocks are withheld, and asked for
 (`blocks=`) when it opens or a link goes to a heading inside it, which the page goes to
 once they are drawn; the file’s progress mark counts down while they are asked for.
 A fold whose blocks do not load closes again, and its bar says so and that a press asks
-again. Full draws every block, asking for the withheld ones first and showing Concise
-meanwhile; Full that fails after the reader chose Source leaves Source chosen, and
-choosing Full again asks again.
+again. Full draws the new document, asking for any withheld blocks while still showing
+the available excerpt.
+A failed Full request leaves Source chosen if the reader switched formats.
+Returning to Full can retry the request.
 Switching back asks for nothing, and the folds the reader opened stay open.
 A document past `WHOLE_UNITS` blocks is drawn a chunk at a time: a chunk not drawn yet
 keeps the place of its estimated height, and is drawn when the reader comes near it,
@@ -139,43 +139,43 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f2 docs/renamed.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f3 docs/deep.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f4 README.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f6 docs/notes.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f7 docs/plain.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f8 docs/huge.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f9 docs/unread.md": {
-          "chooser": "Full (unavailable: This change is too large to show inline.) | Concise (unavailable: This change is too large to show inline.) | *Source",
+          "chooser": "Rendered (unavailable: This change is too large to show inline.) | *Source",
           "shows": "source"
         },
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
         "f11 docs/book.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing"
         }
       }
@@ -187,36 +187,36 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing",
           "progress": "counting"
         },
         "f3 docs/deep.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         },
         "f4 README.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         },
         "f6 docs/notes.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         },
         "f7 docs/plain.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         },
         "f8 docs/huge.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         },
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         },
         "f11 docs/book.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source"
         }
       }
@@ -228,7 +228,7 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",
@@ -248,7 +248,7 @@ $ node tests/dom/diff-markdown-session.js
           ]
         },
         "f2 docs/renamed.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "nothing",
           "progress": "counting"
         }
@@ -259,7 +259,7 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f2 docs/renamed.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source",
           "progress": "counting"
         }
@@ -270,7 +270,7 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f2 docs/renamed.md": {
-          "chooser": "Full (unavailable: This file's content did not change.) | Concise (unavailable: This file's content did not change.) | *Source",
+          "chooser": "Rendered (unavailable: This file's content did not change.) | *Source",
           "shows": "source"
         }
       }
@@ -294,7 +294,7 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f3 docs/deep.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "source",
           "progress": "counting"
         }
@@ -307,11 +307,11 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f3 docs/deep.md": {
-          "chooser": "Full (unavailable: This file is nested too deeply to show rendered.) | Concise (unavailable: This file is nested too deeply to show rendered.) | *Source",
+          "chooser": "Rendered (unavailable: This file is nested too deeply to show rendered.) | *Source",
           "shows": "source"
         },
         "f4 README.md": {
-          "chooser": "Full | Concise | *Source",
+          "chooser": "Rendered | *Source",
           "shows": "source"
         }
       }
@@ -322,11 +322,11 @@ $ node tests/dom/diff-markdown-session.js
       "files": {}
     },
     {
-      "step": "choosing Concise again shows the kept answer without asking",
+      "step": "choosing Rendered again shows the kept answer without asking",
       "requests": [],
       "files": {
         "f4 README.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "added: <p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
@@ -342,7 +342,7 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",
@@ -374,11 +374,11 @@ $ node tests/dom/diff-markdown-session.js
       "files": {}
     },
     {
-      "step": "Full draws every block, and asks for nothing when the answer holds them",
+      "step": "expanding unchanged sections draws every block already held",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Full | Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",
@@ -411,7 +411,7 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f6 docs/notes.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter]",
@@ -422,7 +422,7 @@ $ node tests/dom/diff-markdown-session.js
           ]
         },
         "f7 docs/plain.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open, removed]",
@@ -442,7 +442,7 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f8 docs/huge.md": {
-          "chooser": "Full (unavailable: This file is too large to show rendered.) | Concise (unavailable: This file is too large to show rendered.) | *Source",
+          "chooser": "Rendered (unavailable: This file is too large to show rendered.) | *Source",
           "shows": "source"
         }
       }
@@ -457,13 +457,13 @@ $ node tests/dom/diff-markdown-session.js long
 {
   "steps": [
     {
-      "step": "Concise folds a short run with its blocks and withholds the long runs' blocks",
+      "step": "Rendered Diff folds a short run with its blocks and withholds the long runs' blocks",
       "requests": [
         "f10 view=concise"
       ],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
@@ -499,7 +499,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
@@ -539,7 +539,7 @@ $ node tests/dom/diff-markdown-session.js long
       ],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "progress": "counting",
           "folds": [
@@ -555,7 +555,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "folds": [
             "Hide 2 blocks, open",
@@ -578,7 +578,7 @@ $ node tests/dom/diff-markdown-session.js long
       ],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "progress": "counting",
           "folds": [
@@ -600,7 +600,7 @@ $ node tests/dom/diff-markdown-session.js long
       ],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "progress": "counting",
           "rows": [
@@ -639,7 +639,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
@@ -684,13 +684,13 @@ $ node tests/dom/diff-markdown-session.js long
       ]
     },
     {
-      "step": "Full asks for the blocks still withheld, showing Concise meanwhile",
+      "step": "expanding unchanged sections asks for the blocks still withheld",
       "requests": [
         "f10 view=full"
       ],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "*Full | Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "progress": "counting",
           "rows": [
@@ -731,7 +731,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | Concise | *Source",
+          "chooser": "Rendered | *Source",
           "shows": "source",
           "folds": [
             "Hide 2 blocks, open",
@@ -748,13 +748,13 @@ $ node tests/dom/diff-markdown-session.js long
       ]
     },
     {
-      "step": "choosing Full again asks for it again",
+      "step": "expanding unchanged sections again retries the request",
       "requests": [
         "f10 view=full"
       ],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "*Full | Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "progress": "counting",
           "folds": [
@@ -770,7 +770,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "*Full | Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
@@ -805,11 +805,11 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
-      "step": "back to Concise, asking nothing, the folds the reader opened still open",
+      "step": "collapsing unchanged sections keeps the folds the reader opened",
       "requests": [],
       "files": {
         "f10 docs/long.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
@@ -851,7 +851,7 @@ $ node tests/dom/diff-markdown-session.js long
       ],
       "files": {
         "f11 docs/book.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
@@ -872,7 +872,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f11 docs/book.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
@@ -893,7 +893,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f11 docs/book.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
@@ -918,7 +918,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f11 docs/book.md": {
-          "chooser": "Full | *Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "added: <p>See <a href=\"#user-content-551f72faeefec8bfd215686a-new-the-last-part\">the last part</a>.</p>",
@@ -939,7 +939,7 @@ $ node tests/dom/diff-markdown-session.js long
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Full | Concise | Source",
+          "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",

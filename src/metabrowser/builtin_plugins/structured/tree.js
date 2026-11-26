@@ -260,6 +260,8 @@
     } else if (row.kind === "kv" || row.kind === "item") {
       var fv = pv.formatValue(row.value);
       bodyHtml = `<span class="${fv.colorClass}">${escHtml(fv.text)}</span>`;
+    } else if (row.kind === "removed") {
+      bodyHtml = '<span class="tok-meta">removed</span>';
     } else if (row.kind === "more") {
       // Chrome metadata, not content, as a preview's "(N more)" is.
       var changed = row.changed ? `, ${escHtml(row.changed)} changed` : "";

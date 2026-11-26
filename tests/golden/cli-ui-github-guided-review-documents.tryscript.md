@@ -42,8 +42,8 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "its one-file reads: pull-comparison file=docs/guide.md, pull-comparison file=config/settings.yaml",
   "its documents load the rendered layer true, the File type filter false",
   "its documents' other reads: none",
-  "a Markdown document's view is drawn with: changedFiles: object, layout: \"unified\", markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, show: \"current\", showPreference: \"github.docs.show\", showSummary: false, summaryHost: null, unfold: true, viewFile: null",
-  "a YAML document's view is drawn with: changedFiles: object, markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, showSummary: false, summaryHost: null, viewFile: null",
+  "a Markdown document's view is drawn with: changedFiles: object, embedded: true, layout: \"unified\", markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, show: \"full\", showPreference: \"github.docs.show\", showSummary: false, summaryHost: null, unfold: true, viewFile: null",
+  "a YAML document's view is drawn with: changedFiles: object, embedded: true, layout: \"unified\", markdownHoldMs: 6000, markdownTargets: function, markdownViews: object, renderMarkdown: function, showSummary: false, summaryHost: null, viewFile: null",
   "its Rendered is asked of: pull-rendered-diff file=id-docs/guide.md",
   "step 2 waits for its document: a step waits out of sight true, the arrows' mark shows true; step 1's disposed: 0 of 2 documents, 0 of 2 patches",
   "on screen meanwhile: docs/guide.md: document | docs/guide.md: patch | src/app.py: patch | config/settings.yaml: document | notes.md: says This file's diff is too large to show in this step.",
@@ -61,9 +61,9 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "a changed document of a stale guide: docs/guide.md: document (This file changed after the guide was written.)",
   "the page ends: its document disposed true",
   "Docs has, and a step's docs/guide.md has not: emptyText",
-  "a step's docs/guide.md has, and Docs has not: nothing",
+  "a step's docs/guide.md has, and Docs has not: embedded",
   "Changes has, and a step's config/settings.yaml has not: nothing",
-  "a step's config/settings.yaml has, and Changes has not: nothing"
+  "a step's config/settings.yaml has, and Changes has not: embedded, layout"
 ]
 ? 0
 ```

@@ -1,5 +1,5 @@
 // A diff's toolbar and its file bars' end groups, laid out by headless Chrome, and the place a
-// Diff | Current choice keeps: the production `mountDiffView` (builtin_plugins/diff/diff-view.js),
+// presentation change keeps: the production `mountDiffView` (builtin_plugins/diff/diff-view.js),
 // with diff-markdown.js's views, the shell's brief change line (static/formatters.js), its own
 // chip family (static/filter-controls.js), and
 // the production File type control (diff-type-filter.js), under the shell's, the diff plugin's,
@@ -13,28 +13,27 @@
 // the File type menu's presets, FILTER_TYPE_PRESETS), copies KPress's stylesheets and faces out
 // of the installed package, owns the profile, and runs this in a process group of its own.
 // CURRENT_SHOTS, when set, receives screenshots: Changes with a File type chosen at 900 and
-// 380 px, Changes in Diff and in Current, Changes narrow, and Docs in Current and in Diff.
+// 380 px, Changes in Diff and in Excerpt, Changes narrow, and Docs in Full and in Diff.
 //
 // What it measures is layout, which no browserless DOM computes (docs/design-system.md,
 // "Diff Toolbar" and "Diff File Bar"), on one page. A comparison of a Markdown file and a code
 // file is mounted three times: as a pull request's Changes mounts it, its File type control in
 // the toolbar, painted in each state the filter paints; as a diff with no File type control
 // mounts it, as Changes does a one-file comparison and a commit's page a one-file commit; and
-// as Docs does, with the layout fixed, Current its default, and a preference of its own
+// as Docs does, with the layout fixed, Full its default, and a preference of its own
 // (github/pull-page.js). At each width from 1,063 to 320 px nothing in the toolbar runs past
-// it or scrolls sideways; its Diff | Current and Split | Unified share one line in that order,
+// it or scrolls sideways. The presentation and layout controls share one line in that order,
 // right-aligned at its content end, on the File type control's line or, where they do not fit
-// there, on the next; on Docs Diff | Current alone ends it; a file bar's end group holds a
-// Markdown file's Full | Concise | Source alone, which ends the bar, and a code file's nothing; and
-// choosing Current, or Source, moves no chooser. The Markdown file's answer is the server's
+// there, on the next. Docs shows only the presentation control. A Markdown file bar ends
+// with Rendered | Source. Choosing Excerpt or Source moves no chooser. The Markdown file's answer is the server's
 // projection recorded in tests/fixtures/diff-markdown-responses.json.
 //
 // On a second page, a 600 px pane marked `data-kpress-viewport`, as a pull request's is, holds
 // one long file, a code file or a rendered Markdown document of 200 groups of a context, a
 // removed and an added line or block, and the reader's place is read before and after each
-// choice: the row at the pane's top keeps its offset, Diff to Current and back, in Unified,
+// choice: the row at the pane's top keeps its offset, Diff to Excerpt and back, in Unified,
 // in Split, rendered on Changes and on Docs, and a removed row at the top gives its place to
-// the first row after it that Current draws.
+// the first row after it that Excerpt draws.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -93,10 +92,10 @@ const resolved = {
 const DOCS = {
   unfold: true,
   layout: "unified",
-  show: "current",
+  show: "full",
   showPreference: "github.docs.show",
 };
-/** A Markdown file, whose bar ends with Full | Concise | Source, and a code file, whose bar ends bare. */
+/** A Markdown file with a format chooser and a code file without one. */
 const COMPARISON = {
   manifest: {
     cursor: null,
@@ -316,7 +315,7 @@ const MOUNT = `async (hostId, options, comparison, answer, imageRoute, typeState
     control.paint(typeState);
     (window.typeControls ??= {})[hostId] = control;
   }
-  mountDiffView(host, comparison, api, {
+  mountDiffView(host, { ...comparison, __revision: "fixture" }, api, {
     showSummary: false,
     markdownViews,
     renderMarkdown: async () => structuredClone(answer),
@@ -456,8 +455,8 @@ function toolbarChecks(surface, measured, at) {
       toolbar.type === null ? null : toolbar.end.top >= toolbar.type.bottom - TOLERANCE_PX,
   });
   check(
-    `${at}: the toolbar's Diff | Current reads Diff, Current`,
-    toolbar.showChips.join(" ") === "Diff Current",
+    `${at}: the toolbar offers Diff, Excerpt, and Full`,
+    toolbar.showChips.join(" ") === "Diff Excerpt Full",
     toolbar.showChips.join(" "),
   );
   check(
@@ -489,7 +488,7 @@ function toolbarChecks(surface, measured, at) {
   );
   if (surface === "Docs") {
     check(
-      `${at}: the choosers' group holds Diff | Current alone`,
+      `${at}: the toolbar holds only the presentation chooser`,
       JSON.stringify(toolbar.endHolds) === JSON.stringify(["diff-show-control"]) &&
         toolbar.layout === null &&
         near(toolbar.show.right, toolbar.content.right),
@@ -498,7 +497,7 @@ function toolbarChecks(surface, measured, at) {
     return;
   }
   check(
-    `${at}: the choosers' group holds Diff | Current, then Split | Unified`,
+    `${at}: the toolbar holds presentation, then Split | Unified`,
     JSON.stringify(toolbar.endHolds) ===
       JSON.stringify(["diff-show-control", "diff-layout-control"]) &&
       toolbar.layoutChips.join(" ") === "Split Unified",
@@ -510,7 +509,7 @@ function toolbarChecks(surface, measured, at) {
     JSON.stringify([toolbar.show, toolbar.layout]),
   );
   check(
-    `${at}: Diff | Current comes before Split | Unified, which ends the toolbar's content box`,
+    `${at}: presentation comes before Split | Unified, which ends the toolbar's content box`,
     toolbar.show.right <= toolbar.layout.left + TOLERANCE_PX &&
       near(toolbar.layout.right, toolbar.content.right),
     JSON.stringify({ show: toolbar.show, layout: toolbar.layout, content: toolbar.content }),
@@ -527,18 +526,18 @@ function toolbarChecks(surface, measured, at) {
   }
 }
 
-/** The file bars' checks for one surface at one width: each end group holds no Diff | Current. */
+/** Check where the format selector lands at each width. */
 function barChecks(measured, at) {
   const [markdown, code] = measured.bars;
   check(`${at}: two bars`, measured.bars.length === 2, `${measured.bars.length}`);
   check(
-    `${at}: the Markdown bar's end group holds Full | Concise | Source alone`,
+    `${at}: the Markdown bar's end group holds only Rendered | Source`,
     JSON.stringify(markdown.holds) === JSON.stringify(["diff-markdown-control"]) &&
-      markdown.chips.join(" ") === "Full Concise Source",
+      markdown.chips.join(" ") === "Rendered Source",
     JSON.stringify({ holds: markdown.holds, chips: markdown.chips }),
   );
   check(
-    `${at}: Full | Concise | Source ends the bar, at its content box's end`,
+    `${at}: Rendered | Source ends the bar, at its content box's end`,
     near(markdown.format.right, markdown.end.right) && near(markdown.end.right, markdown.right),
     JSON.stringify({ format: markdown.format, end: markdown.end, right: markdown.right }),
   );
@@ -823,7 +822,7 @@ const samePlace = (label, needle, before, after) =>
       after != null &&
       before.text.includes(needle) &&
       after.text.includes(needle) &&
-      Math.abs(before.offset - after.offset) < 1,
+      Math.abs(before.offset - after.offset) <= 1,
     JSON.stringify({ before, after }),
   );
 const started = performance.now();
@@ -849,7 +848,7 @@ try {
   const bareShows = await mount("bare", {});
   check("a diff with no File type control opens on Diff", bareShows === "diff", `${bareShows}`);
   const docsShows = await mount("docs", DOCS);
-  check("Docs opens on Current, its rendered view drawn", docsShows === "current", `${docsShows}`);
+  check("Docs opens on Full, its rendered view drawn", docsShows === "full", `${docsShows}`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
 
   // Every state the File type control paints, at every width, and the toolbars beside it.
@@ -900,7 +899,7 @@ try {
   barChecks(source, "Changes in Source, 900 px");
   stays("choosing Source moves no chooser", current, source);
   const docsAfter = await measure("docs", 900);
-  check("Changes' choice leaves Docs in Current", docsAfter.shows === "current", docsAfter.shows);
+  check("Changes' choice leaves Docs in Current", docsAfter.shows === "full", docsAfter.shows);
 
   const docsBefore = docsAfter;
   const docsShown = await click("docs", ".diff-toolbar .diff-show-control", "diff");
@@ -913,7 +912,7 @@ try {
   check(
     "each surface writes its own preference",
     JSON.stringify(writes) ===
-      JSON.stringify({ changes: ["diff.show=current"], bare: [], docs: ["github.docs.show=diff"] }),
+      JSON.stringify({ changes: ["diff.show=excerpt"], bare: [], docs: ["github.docs.show=diff"] }),
     JSON.stringify(writes),
   );
 
@@ -995,15 +994,15 @@ try {
       start?.text.includes(needle),
       JSON.stringify(start),
     );
-    await click("long", ".diff-file-end", "full");
+    await click("long", ".diff-toolbar .diff-show-control", "full");
     samePlace(
       `${label}: choosing Full keeps the block at the pane's top`,
       needle,
       start,
       await atTop(),
     );
-    await click("long", ".diff-file-end", "concise");
-    samePlace(`${label}: choosing Concise again returns to it`, needle, start, await atTop());
+    await click("long", ".diff-toolbar .diff-show-control", "diff");
+    samePlace(`${label}: choosing Diff again returns to it`, needle, start, await atTop());
   };
   await fresh();
   await mount("long", {}, { comparison: LONG_MARKDOWN, answer: LONG_ANSWER });

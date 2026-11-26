@@ -11,9 +11,12 @@
 // reason the helper gives its `close`; a press inside it, a drag from a field in it let go
 // outside, a second press of its trigger, focus that goes nowhere, an Escape a surface
 // above took first, and an Escape held with a modifier do not close it from outside;
-// opening one closes another; a menu opened with focus outside it, where WebKit leaves
-// focus on a press, takes focus to its trigger, so a rebuild that puts focus back where it
-// was does not close it; and the document is listened to only while a menu is open.
+// opening one closes another; a menu opened with focus outside it, as WebKit's press on
+// its trigger leaves it, takes focus to its trigger, so a rebuild that puts focus back
+// where it was does not close it; a menu in a pane a press can focus, as every view's
+// menu is in the preview pane, stays open through WebKit's press in it, which gives the
+// pane focus, and that press's click reaches what it landed on; and the document is
+// listened to only while a menu is open.
 //
 // `filesBar` is the Files tab's filter bar as app.js draws it with the same renderers and
 // `bind`, its consumer rebuilding the bar on every change: Group by and the drawer's
@@ -21,14 +24,18 @@
 // ignored, on another dropdown's trigger, and outside the bar; what each press landed on
 // still acts; Escape gives focus back to the trigger; and a consumer that binds the bar
 // again with a dropdown drawn open, as the Agents list does on every load, keeps it
-// closing.
+// closing; and a container bound around the bar, as a diff's Markdown layer binds the diff
+// that holds its File type control, leaves the bar's open dropdown to the bar.
 //
 // `early` is menus opened before the shell's tools arrive: they ask for them, and once
 // they land the one still open closes as every menu does, while one closed or disposed
 // meanwhile, and a bar's binding replaced meanwhile, stay out of it.
 //
 // A press is a browser's: `pointerdown`, then focus for a button, as Chrome gives it, then
-// `click`; WebKit's moves no focus. Exits 1 on a failed invariant.
+// `click`. WebKit's focuses no button: it gives focus to the nearest ancestor a press can
+// focus, one with a `tabindex`, or takes it off the page's focused element where there is
+// none, as measured in the macOS app's web view on 2026-11-25 (mb-iwfs). Exits 1 on a
+// failed invariant.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -108,10 +115,22 @@ function press(node, { check = false } = {}) {
   }
 }
 
-/** A press as WebKit delivers one on a button: down and the click, with focus left alone. */
-function webkitPress(node) {
+/**
+ * A press as WebKit delivers one on a button: down, then focus to the nearest ancestor a
+ * press can focus, or off the focused element where there is none, then the click, unless
+ * the press is let go with none (`click: false`).
+ */
+function webkitPress(node, { click = true } = {}) {
   node.dispatchEvent({ type: "pointerdown", target: node, button: 0 });
-  node.dispatchEvent({ type: "click", target: node, button: 0 });
+  const focusable = node.parentElement?.closest("[tabindex]");
+  if (focusable) {
+    focusable.focus();
+  } else {
+    node.ownerDocument.activeElement?.blur();
+  }
+  if (click) {
+    node.dispatchEvent({ type: "click", target: node, button: 0 });
+  }
 }
 
 /** A key at the focused element, bubbling to the document; whether it was prevented. */
@@ -178,6 +197,13 @@ function menuSession() {
   const a = makeMenu("A");
   const b = makeMenu("B");
   const g = makeMenu("G", { focusPanel: false });
+  // A menu in a pane a press can focus, as the preview pane is for every view's menu.
+  const p = makeMenu("P");
+  const pane = element(doc, "div", { "data-name": "the pane", tabindex: "-1" });
+  doc.body.append(pane);
+  pane.append(p.trigger.parentNode);
+  const picked = [];
+  p.first.addEventListener("click", () => picked.push("P first item"));
   const outside = element(doc, "button", { "data-name": "a button outside" });
   const text = element(doc, "p", {}, "text outside");
   let row = element(doc, "button", { "data-name": "a tree row" });
@@ -187,7 +213,7 @@ function menuSession() {
   const step = (label, extra = {}) => {
     steps.push({
       step: label,
-      open: [a, b, g].filter((menu) => !menu.panel.hidden).map((menu) => menu.name),
+      open: [a, b, g, p].filter((menu) => !menu.panel.hidden).map((menu) => menu.name),
       closed: closes.splice(0),
       focus: focusName(doc),
       listening: listening(doc),
@@ -252,7 +278,7 @@ function menuSession() {
   closes.splice(0);
   row.focus();
   webkitPress(g.trigger);
-  step("G opened by WebKit's press, which leaves focus on a tree row, takes focus to G");
+  step("G opened by WebKit's press, which takes focus off a tree row, takes focus to G");
   // The tree rebuilt, as a refresh rebuilds it: a new row, focused again only if the row it
   // replaces had focus.
   const hadFocus = doc.activeElement === row;
@@ -264,12 +290,28 @@ function menuSession() {
   }
   step("a tree rebuild that keeps its focused row's focus leaves G open");
   key(doc, "Escape");
+  webkitPress(p.trigger);
+  closes.splice(0);
+  webkitPress(p.first);
+  step("WebKit's press on an item of P, in a pane it gives focus to, leaves P open", {
+    picked: picked.splice(0),
+  });
+  webkitPress(p.trigger);
+  step("and its second press on P's trigger closes P");
+  webkitPress(p.trigger);
+  closes.splice(0);
+  webkitPress(p.first, { click: false });
+  step("its press on an item let go with no click leaves P open");
+  key(doc, "Tab");
+  outside.focus();
+  step("then Tab, taking focus outside, closes P");
   open(b);
   b.dismissal.dispose();
   step("a menu disposed open, as when its view goes, lets the document go", { disposed: "B" });
   b.panel.hidden = true;
   a.dismissal.dispose();
   g.dismissal.dispose();
+  p.dismissal.dispose();
   return steps;
 }
 
@@ -433,6 +475,17 @@ function filesBarSession() {
   rebind();
   key(doc, "Escape");
   step("and, bound again twice, Escape closes it and gives focus back to its trigger");
+  // A container bound around the bar while a dropdown is open, as each diff a File type
+  // choice mounts binds itself around the File type control in its toolbar.
+  open("types");
+  const around = element(doc, "div", { "data-name": "a container around the bar" });
+  doc.body.append(around);
+  around.append(bar);
+  const unbindAround = fc.bind(around, {});
+  step("a container bound around the bar with File type open leaves it open");
+  press(treeRow);
+  step("and a press outside both closes it");
+  unbindAround();
   open("group");
   unbind();
   step("unbinding the bar with Group by drawn open lets the document go", { unbound: true });
@@ -574,6 +627,14 @@ async function main() {
     const open = Array.isArray(step.open) ? step.open.length > 0 : step.open !== "none";
     assert.equal(step.listening > 0, open && step.loaded, step.step);
   }
+  // WebKit's press in a menu, which gives the pane around it focus, is the menu's own: the
+  // menu is open after it and its click reached the item. A menu closed by that focus is
+  // rebuilt under the press in the page, and the choice is lost (mb-iwfs).
+  const pressed = told.menu.find((each) => "picked" in each);
+  assert.deepEqual([pressed?.open, pressed?.picked], [["P"], ["P first item"]], pressed?.step);
+  // A dropdown its own container holds open stays open as a container around it binds.
+  const around = told.filesBar.find((each) => each.step.startsWith("a container bound around"));
+  assert.equal(around?.open, "types", around?.step);
   process.stdout.write(`${JSON.stringify(told, null, 2)}\n`);
 }
 
