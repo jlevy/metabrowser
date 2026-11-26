@@ -5,7 +5,7 @@ title: Improve measured post-load navigation and provider fetch bottlenecks
 kind: task
 status: in_progress
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 delegate: codex@spud10.local
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m8cs8jdw8yh0hvdy6449jm9j
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:38:28.747Z
-updated_at: 2026-11-26T21:14:58.191Z
+updated_at: 2026-11-26T21:17:44.299Z
 started_at: 2026-11-26T20:55:40.744Z
 ---
-Initial image continuity fix is committed. Headless preparation made the first later Git history and comparison reads much shorter in diagnostic samples. The next judged passes cover app-start history and PR preparation, demand-first provider ordering, and end-to-end Chrome and WKWebView validation. No GitHub concurrency or rate policy was tuned from the pilot.
+Highest-priority diagnostic: on the fresh Pulls journey, a checkout-store Git fetch began before the click and ended 15.1 s after it. The selected PR job's first gh account check began 0.28 s after that, and the description appeared around 18.3 s after click. Catalog refresh accounted for half of overlapping gh spans. Test whether a selected description read can publish while Git acquisition is in flight, without invalidating account, generation, or cache ownership. Then test startup history preparation and prefetch priority. Initial image continuity fix and headless preparation and HTTP probes are committed. Judged timing and native WKWebView remain.
