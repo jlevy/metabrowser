@@ -1951,8 +1951,10 @@ async def index(
             origin_address = read_mirror.mirror.display.origin
             local_origin = origin_address.lower().startswith(("file://", "/", "~"))
             mode = "local-mirror" if local_origin else "cloud-mirror"
-            location = html_escape(abbreviate_origin(origin_address, home=None), quote=True)
-            view_attrs = f' data-source-mode="{mode}" data-source-origin="{location}"'
+            view_attrs = f' data-source-mode="{mode}"'
+            if not local_origin:
+                location = html_escape(abbreviate_origin(origin_address, home=None), quote=True)
+                view_attrs += f' data-source-origin="{location}"'
             if (synced_at := read_mirror.last_fetch_at()) is not None:
                 view_attrs += f' data-source-synced-at="{html_escape(synced_at, quote=True)}"'
         elif checkout is not None:
