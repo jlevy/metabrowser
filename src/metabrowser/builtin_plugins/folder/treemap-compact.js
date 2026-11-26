@@ -86,7 +86,7 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
   // Keep the live region mounted and give it the notice's box only when it has a message.
   const status = document.createElement("div");
   status.setAttribute("role", "status");
-  status.dataset.severity = "warning";
+  status.setAttribute("data-severity", "warning");
   container.append(viewport, status);
 
   const map = createTreemapMap(mb, palette, viewport, {

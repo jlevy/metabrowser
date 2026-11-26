@@ -894,7 +894,7 @@ async function main() {
   assert.ok(notice?.classList.contains("notice"), "a failed refresh shows a notice");
   assert.equal(notice.textContent, "Could not refresh the treemap. Showing the previous data.");
   assert.equal(notice.getAttribute("role"), "status", "the notice can be announced");
-  assert.equal(notice.dataset.severity, "warning");
+  assert.equal(notice.getAttribute("data-severity"), "warning");
   steps.push({
     step: "a refresh fails after a complete answer",
     notice: notice.textContent,
