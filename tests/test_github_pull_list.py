@@ -230,6 +230,62 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
     assert "refresh_timing" not in pull_list_envelope(view, window)
 
 
+def test_catalog_refresh_job_records_a_typed_failure(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _provider(monkeypatch, [generated_item(1)])
+    asyncio.run(refresh_pull_list(repository, "open"))
+    view = ListView(repository, None, False)
+    window = ListWindow("open", limit=1)
+    previous_timing = pull_list_envelope(view, window)["refresh_timing"]
+    elapsed_ms = 0
+    unavailable = gh.GhServerError(503)
+    monkeypatch.setattr(pull_list_refresh, "monotonic_ns", lambda: elapsed_ms * 1_000_000)
+
+    async def unavailable_page(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal elapsed_ms
+        elapsed_ms += 315
+        raise unavailable
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", unavailable_page)
+
+    async def exercise() -> None:
+        coordinator = RefreshCoordinator()
+        try:
+            running = ListView(repository, coordinator, False)
+            ask = RefreshRequest("open", retry=True)
+            assert pull_list_route.start_refresh(running, ask, wanted=True) == "started"
+            task = coordinator.job(pull_list_route.catalog_job_key(repository.source))
+            assert task is not None
+            await task
+        finally:
+            await coordinator.aclose()
+
+    home = repository.home
+    ensure_private_directory(home, event_log.EVENTS_DIRECTORY)
+    sink = event_log.EventLog(home / event_log.EVENTS_DIRECTORY, home)
+    with contextlib.closing(sink), event_log.installed(sink):
+        asyncio.run(exercise())
+
+    assert sink.path is not None
+    records = [json.loads(line) for line in sink.path.read_text(encoding="utf-8").splitlines()]
+    failure = next(
+        record
+        for record in records
+        if record["event"] == "end" and record["name"] == "pull_list_route._run_refresh"
+    )
+    assert failure["outcome"] == "failed"
+    assert failure["attrs"]["failure"] == "github_unavailable"
+    assert failure["attrs"]["failure_message"] == str(unavailable)
+    assert failure["attrs"]["refresh_duration_ms"] == 315
+    assert failure["attrs"]["refresh_pages"] == 0
+    envelope = pull_list_envelope(view, window)
+    assert envelope["refresh_timing"] == previous_timing
+    assert [row["number"] for row in envelope["rows"]] == [1]
+    stamp = envelope["last_refresh"]
+    assert stamp is not None and stamp["outcome"] == "github_unavailable"
+
+
 def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
