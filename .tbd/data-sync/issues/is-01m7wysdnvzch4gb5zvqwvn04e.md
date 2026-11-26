@@ -5,7 +5,7 @@ title: "Markdown and structured-text rendering: front matter, diagrams, untruste
 kind: epic
 status: open
 priority: 2
-version: 38
+version: 39
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/511
@@ -69,8 +69,9 @@ child_order_hints:
   - is-01m7vrbj7pcmfdv8tabbb57wpe
   - is-01m7v62n9f3y3qh0qxe9m6ap2y
   - is-01m7tnaxethq70h5dxyhfdzz8r
+  - is-01m8bat4973h1bjzvpkwd8qjdy
 created_at: 2026-11-20T17:06:42.489Z
-updated_at: 2026-11-20T19:16:51.775Z
+updated_at: 2026-11-26T07:06:10.598Z
 extensions:
   linear:
     id: c23452d1-8d76-491e-86d9-3278c87bdb31
