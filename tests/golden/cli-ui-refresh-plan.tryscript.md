@@ -478,9 +478,9 @@ $ node tests/dom/refresh-plan-session.js
     },
     {
       "step": "the Refresh tooltip follows the tab and a quick press shows a spinner",
-      "pullsHint": "Click to refresh. Refreshed 2 min ago in 300ms",
+      "pullsHint": "Refreshed 2 min ago in 300ms",
       "spokenHint": "Refreshed 2 min ago in 300ms",
-      "filesHint": "Click to refresh.",
+      "filesHint": "Refresh",
       "waitingForSource": true,
       "spinner": {
         "immediate": true,

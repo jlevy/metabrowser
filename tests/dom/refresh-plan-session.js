@@ -314,12 +314,12 @@ async function feedbackStep() {
   const release = plan.provideTooltip("pulls", () => "Refreshed 2 min ago in 300ms");
   const pullsHint = button.dataset.tipText;
   const spokenHint = button.getAttribute("aria-description");
-  assert.equal(pullsHint, "Click to refresh. Refreshed 2 min ago in 300ms");
+  assert.equal(pullsHint, "Refreshed 2 min ago in 300ms");
   assert.equal(spokenHint, "Refreshed 2 min ago in 300ms");
   tab.setAttribute("data-tab", "files");
   button.dispatch("pointerover");
   const filesHint = button.dataset.tipText;
-  assert.equal(filesHint, "Click to refresh.");
+  assert.equal(filesHint, "Refresh");
   tab.setAttribute("data-tab", "pulls");
   button.dispatch("focus");
   assert.equal(button.dataset.tipText, pullsHint);
