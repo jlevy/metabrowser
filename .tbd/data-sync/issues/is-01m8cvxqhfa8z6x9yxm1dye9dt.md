@@ -1,0 +1,20 @@
+---
+type: is
+id: is-01m8cvxqhfa8z6x9yxm1dye9dt
+title: Extend the performance experiment ledger with chartable softschema records
+kind: task
+status: in_progress
+priority: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
+delegate: codex@spud10.local
+labels: []
+dependencies: []
+parent_id: is-01m8cs8jdw8yh0hvdy6449jm9j
+hold: null
+hold_until: null
+created_at: 2026-11-26T21:24:28.842Z
+updated_at: 2026-11-26T21:25:26.189Z
+started_at: 2026-11-26T21:25:26.184Z
+---
+Keep the existing judged experiment contract, add honest diagnostic observations and annotations, and export machine-readable records for charting. Populate a record from the current survey.
