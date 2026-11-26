@@ -21,6 +21,7 @@ from metabrowser.mirror_refresh import (
     MirrorDisplay,
     MirrorRef,
     MirrorSession,
+    NetworkSlots,
     RecordedFreshness,
     RefKind,
     RefreshCoordinator,
@@ -971,6 +972,20 @@ def test_a_readers_request_promotes_the_background_job_it_joins() -> None:
         return stand.events
 
     assert asyncio.run(scenario()) == ["pull 8", "pull 9"]
+
+
+def test_network_slots_preserve_the_default_and_keyword_capacity() -> None:
+    async def scenario() -> None:
+        for slots, capacity in [(NetworkSlots(), 1), (NetworkSlots(value=2), 2)]:
+            for _ in range(capacity):
+                assert not slots.locked()
+                assert await slots.acquire() is True
+            assert slots.locked()
+            for _ in range(capacity):
+                slots.release()
+            assert not slots.locked()
+
+    asyncio.run(scenario())
 
 
 def test_selected_provider_slots_leave_room_for_ordinary_waiters() -> None:

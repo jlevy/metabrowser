@@ -973,10 +973,10 @@ class StoreTurn:
 class NetworkSlots:
     """Record waits for a shared provider slot, with bounded priority at handoff."""
 
-    def __init__(self, limit: int) -> None:
-        if limit < 0:
+    def __init__(self, value: int = 1) -> None:
+        if value < 0:
             raise ValueError("the refresh concurrency limit must be nonnegative")
-        self._value = limit
+        self._value = value
         self._ordinary: deque[asyncio.Future[None]] = deque()
         self._selected: deque[asyncio.Future[None]] = deque()
         self._selected_ahead = 0
