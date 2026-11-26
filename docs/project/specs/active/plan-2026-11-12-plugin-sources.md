@@ -736,7 +736,7 @@ Three children on `main` each start their own way:
 | --- | --- | --- | --- |
 | Where | `builtin_plugins/pdf/preview.py`, `preview_isolation.py`, `render_child.py` | `sqlite_readers.py` | `diff/markdown_projection_worker.py` |
 | Lifetime | One per render | A pool of two | One, long-lived |
-| Interpreter | `-I -B` | `-I -c` bootstrap | the server’s |
+| Interpreter | The server’s, `-I -B` | The server’s, `-I -c` with a bootstrap | The server’s, `-I -m` |
 | Environment | Three variables | Inherited | Inherited |
 | Working directory | `/` | `/` | Its module’s folder |
 | Process group | Its own session | The server’s | Its own group |
@@ -840,7 +840,7 @@ The Linux column was observed in `confine_probe.py` and `probes.py confined` on 
 | Read a file outside the grants | Refused | Refused (observed); kernel 5.13 | Allowed |
 | Learn that a path exists | Allowed | Allowed | Allowed |
 | Write outside the write grants | Refused | Refused (observed) | Allowed |
-| Open a TCP connection | Refused | Refused (observed); by seccomp on any kernel, by Landlock from 6.7 | Allowed |
+| Open a TCP connection | Refused | Refused (observed); by the seccomp filter, and by Landlock from 6.7 | Allowed |
 | Open any other socket, a Unix one included | Refused | Refused (observed), by seccomp | Allowed |
 | Start a program inside the grants | Refused for the PDF child; allowed with `tools` | Allowed, and the program is confined too (observed) | Allowed |
 | Signal a process outside | Refused | Refused (observed); kernel 6.12, allowed before it | Allowed |
@@ -907,10 +907,12 @@ default grants, and what it declares is shown before anything beyond them is gra
   `sandbox-exec` is the system’s, and the worker is the plugin environment’s
   interpreter, a separate executable the app’s hardened runtime and library validation
   do not cover (inferred; servers and the PDF child run the same way).
-- **A sandboxed `metab`.** A server started inside an agent’s sandbox cannot nest
-  another, so its probe finds no backend and a clone trusted as `confined` loads no
-  plugin Python there.
+- **A sandboxed `metab`.** On macOS a server started inside an agent’s sandbox may not
+  be able to nest another, which the PDF probe already allows for; its probe then finds
+  no backend and a clone trusted as `confined` loads no plugin Python there.
   That is the safe answer, and `--doctor` says why.
+  On Linux both mechanisms stack, so a worker confined inside an agent’s sandbox is
+  narrower still (inferred from the kernel’s documentation, not run).
 
 ### Sources and Scopes
 
