@@ -125,7 +125,10 @@ def test_equivalence_requires_equal_inventory_populations() -> None:
         validate_equivalence([{"files_indexed": 2}, {"files_indexed": 3}])
 
 
-def test_tiny_real_server_workload_is_read_only_and_complete(tmp_path: Path) -> None:
+@pytest.mark.parametrize("api_only", [False, True])
+def test_tiny_real_server_workload_is_read_only_and_complete(
+    tmp_path: Path, api_only: bool
+) -> None:
     root = tmp_path / "corpus"
     build_corpus(root, 1)
     (root / "a.txt").write_text("hello")
@@ -153,12 +156,13 @@ def test_tiny_real_server_workload_is_read_only_and_complete(tmp_path: Path) -> 
         root,
         resolve_metab_build("metab"),
         tmp_path / "server.log",
-        [Route("file:a.txt", "/api/file?path=a.txt")],
+        [] if api_only else [Route("file:a.txt", "/api/file?path=a.txt")],
         rounds=1,
         render_file=None,
         api_routes=tuple(load_api_cases(manifest)),
         prepare_api=frozenset({"api:file"}),
         cache_seed=seed,
+        api_only=api_only,
     )
     validate_equivalence([result])
     assert result["phases"]["revalidate"][0]["status"] == 304
@@ -172,6 +176,12 @@ def test_tiny_real_server_workload_is_read_only_and_complete(tmp_path: Path) -> 
         sample = next(row for row in result["phases"][phase] if row["label"] == "api:file")
         assert sample["status"] == status
         assert bool(sample.get("content_sha256")) == (status == 200)
-    assert any(row["label"] == "recent" for row in result["phases"]["with_recent"])
-    assert all(row["label"] != "recent" for row in result["phases"]["without_recent"])
+    if api_only:
+        assert set(result["phases"]) == {"startup_preparation", "first", "warm", "revalidate"}
+        assert all(
+            row["label"] == "api:file" for phase in result["phases"].values() for row in phase
+        )
+    else:
+        assert any(row["label"] == "recent" for row in result["phases"]["with_recent"])
+        assert all(row["label"] != "recent" for row in result["phases"]["without_recent"])
     assert before == {path.relative_to(root): path.stat().st_mtime_ns for path in root.rglob("*")}

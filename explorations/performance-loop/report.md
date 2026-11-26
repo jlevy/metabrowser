@@ -126,6 +126,7 @@ against one that did.
 | exp-103 | [Post-Load Navigation and Preparation Diagnostics](experiments/exp-103-post-load-diagnostics.md) | H88, H104, H106, H114, H117 | `first useful destination after startup` | diagnostic |
 | exp-104 | [Prepare the First Commit History Page During Startup](experiments/exp-104-history-startup.md) | H125 | `first Commits history HTTP read after startup` | diagnostic |
 | exp-105 | [Selected PR Conversation During Checkout Acquisition](experiments/exp-105-conversation-during-acquisition.md) | H126 | `verified Conversation before acquisition release` | diagnostic |
+| exp-106 | [Focused HTTP Loop for Named API Cases](experiments/exp-106-focused-http-loop.md) | H129 | `requests recorded for the short API iteration` | diagnostic |
 
 ## Absolute numbers, per condition
 

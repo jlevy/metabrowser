@@ -1,0 +1,10 @@
+Exp-106 — the short HTTP loop
+Registered 2026-11-26 before reading measurements.
+
+H129: the narrow driver skips unrelated inventory, Files and Recent traffic
+while retaining the same HTTP checks and readiness boundaries for named routes.
+Run wide and focused on the same candidate binary and pinned public Metabrowser
+corpus, with one round and the same committed first-history API case. Compare the
+first checked hash, status and revalidation. Count the requests retained after
+readiness. Record whole invocation elapsed as diagnostic only, since the workload
+and unrelated host activity differ. Keep the wide mode for its inventory guards.

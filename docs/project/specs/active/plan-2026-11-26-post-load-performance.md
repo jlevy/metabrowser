@@ -136,6 +136,7 @@ both without assigning a verdict to an unjudged run.
 | H126 | Let the selected Conversation fetch its validated metadata while the checkout store is still acquiring Git objects. | On a held acquisition, the selected header and description arrive before the store is released, with the correct viewer, one core query, and normal Changes afterwards. |
 | H127 | Reuse the exact first Changes payload at the slowest observed stage. | Split acquisition, comparison, and browser hydration first. Advance the one stage that dominates time to the first visible hunk. |
 | H128 | Give the selected pull priority over optional GitHub reads. | With equal responses and request budgets, measure whether withholding optional reads still helps after H126. Record refusal and retry behavior. |
+| H129 | Make a short HTTP invocation run only the chosen golden-backed cases. | The recorded read set shrinks and preserves checked responses, validators, and startup clocks. |
 
 Run one hypothesis per round and record results on its owning branch.
 Measure a small, exact read first.

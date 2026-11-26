@@ -198,6 +198,9 @@ Omit `--baseline-metab` for a single-build survey.
 `--api-cases` takes a JSON array of named GET cases.
 Use paths from the CLI API golden transcripts, such as the Git history in
 [cli-api-git.tryscript.md](../tests/golden/cli-api-git.tryscript.md).
+The
+[ready-to-run history case](../explorations/performance-loop/cases/commit-history.json)
+works on a pinned checkout with at least one commit.
 
 ```json
 [
@@ -213,7 +216,9 @@ Use paths from the CLI API golden transcripts, such as the Git history in
 
 ```shell
 uv --config-file uv.toml run --frozen python -m devtools.bench_navigation \
-  --root "$CORPUS" --api-cases "$CASES" --rounds 5 --json "$RESULT"
+  --root "$CORPUS" --candidate-metab .venv/bin/metab --api-only \
+  --api-cases explorations/performance-loop/cases/commit-history.json \
+  --rounds 2 --json "$RESULT"
 ```
 
 `expect` checks golden-derived field values, and `compare` hashes named fields for
@@ -226,6 +231,8 @@ The recorded times cover real HTTP requests through the running server, includin
 response-body transfer and server phases.
 Startup until HTTP and inventory readiness, first requests, and repeated requests are
 reported separately.
+`--api-only` skips the default inventory, Files, and Recent test traffic after
+readiness. Add `--baseline-metab` for the interleaved two-build comparison.
 Use `--prepare-api NAME` to time a case in the startup preparation phase before
 measuring the first user read.
 Set the same preparation for both builds in a code comparison.

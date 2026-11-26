@@ -62,6 +62,40 @@ paired results or acceptance decision.
 Its protocol states which runs, builds, and cache regimes were observed, and names any
 limit on comparison.
 
+### Short HTTP rounds
+
+Use the development guide’s
+[single-build command](../../docs/development.md#comparing-file-navigation-without-a-browser)
+for a short diagnostic.
+Run it against a clean, pinned checkout with a commit history.
+The committed case exercises the same first page as the Commits tab.
+Copy the case to scratch and change the route and checked fields when studying another
+destination.
+With `--baseline-metab`, the harness interleaves fresh control and candidate
+servers. It still waits for inventory readiness, then times only the named GETs with
+`--api-only`. Run the ordinary inventory and Files workload separately when it is a
+guard.
+
+Keep the protocol, both builds, and raw output for each round.
+Start with a short diagnostic to prove the response and locate the bottleneck.
+Take timings to the browser when the hypothesis is about useful paint or continuity, and
+run the acceptance series when the relevant guards can pass.
+If a retry cannot change a refusal, log the reason and advance to the next independent
+hypothesis. Hosted checks can run while that experiment proceeds on its own branch.
+
+A short diagnostic can start with the first checked response:
+
+```shell
+jq '.runs[] | {condition: .build, sample: .phases.first[]}' "$RESULT"
+```
+
+If the result passes the response checks, record the selected metrics as diagnostic
+observations with their actual sample counts and units.
+Keep the protocol and any limits under `method` and `annotations`. If the run fails a
+guard, record the refusal before moving on.
+For a worked record that separates preparation from later reads, see
+[exp-104](experiments/exp-104-history-startup.md).
+
 ### Exporting the Ledger
 
 ```shell
@@ -669,7 +703,9 @@ Releases containing the current recorder can be measured directly.
 
 **`probe-server`** samples one route every second from the moment the socket answers
 until the walk ends, then again once settled.
-Use it for anything server-side.
+Use it when the question is about a route while the inventory is walking.
+Use the [short HTTP driver](#short-http-rounds) for golden-backed first and repeated
+requests after readiness.
 It exists because the browser cannot measure a server-side hypothesis honestly: the pane
 takes seconds to start, so whether a page load lands inside the walk or after it is
 luck, and a route that costs 1,500 ms scanning and 15 ms settled will report whichever
@@ -686,8 +722,7 @@ visible page rather than retyping it.
 **`server-time.mjs`** reports the time the server was busy over one landing, by phase,
 to the end of every body, and a warm serial time for its assets; see
 [Server Time over a Landing](#server-time-over-a-landing).
-Use it to say where a landing’s server time went before choosing which of the two above
-to time.
+Use it to say where a landing’s server time went before choosing the next measurement.
 
 Most rounds want both.
 exp-003 is the worked example of why: the route got 40% faster server-side and time to

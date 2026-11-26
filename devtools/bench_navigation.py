@@ -29,7 +29,8 @@ during the run. It reports success only when status, indexed population, text co
 kind and path, catalog membership and extensions, and Recent membership and counts
 agree: a file ageing out of the Recent window, or a Recent population above the
 provider's display cap, fails the comparison. Finish in a browser for rendering and
-interaction costs HTTP cannot see.
+interaction costs HTTP cannot see. Use ``--api-only`` to time just the named GET
+cases once ready, skipping the standard file and inventory burst workload.
 """
 
 from __future__ import annotations
@@ -329,6 +330,7 @@ def run_build(
     api_routes: tuple[Route, ...] = (),
     prepare_api: frozenset[str] = frozenset(),
     cache_seed: Path | None = None,
+    api_only: bool = False,
 ) -> dict[str, Any]:
     inventory = [
         Route("navigation", "/api/tree?depth=0"),
@@ -341,12 +343,24 @@ def run_build(
     inventory = [replace(route, native_paths=native_paths) for route in inventory]
     recent = replace(recent, native_paths=native_paths)
     file_routes = [replace(route, native_paths=native_paths) for route in file_routes]
-    routes = [*file_routes, cheap, *inventory, recent, *api_routes]
+    routes = (
+        list(api_routes) if api_only else [*file_routes, cheap, *inventory, recent, *api_routes]
+    )
     if render_file is not None:
         render_path = render_file if native_paths else canonical_inventory_path(render_file)
         routes.append(
             Route("render", "/api/kpress/render?path=" + urllib.parse.quote(render_path, safe=""))
         )
+    serial_routes = (
+        routes
+        if api_only
+        else [
+            *file_routes,
+            cheap,
+            *[route for route in routes if route.label == "render"],
+            *api_routes,
+        ]
+    )
     result: dict[str, Any] = {"load_before": os.getloadavg()}
     phases: dict[str, list[dict[str, Any]]] = {}
     state_root = Path(tempfile.mkdtemp(prefix=f"{log.stem}-state-", dir=log.parent))
@@ -383,12 +397,7 @@ def run_build(
         for phase in ("warm", "revalidate"):
             samples: list[dict[str, Any]] = []
             for _ in range(rounds):
-                for route in [
-                    *file_routes,
-                    cheap,
-                    *[r for r in routes if r.label == "render"],
-                    *api_routes,
-                ]:
+                for route in serial_routes:
                     conditional = phase == "revalidate" and (
                         route in file_routes or route.revalidate
                     )
@@ -398,24 +407,25 @@ def run_build(
                     samples.append(request(server.base_url, route, etag=etag).sample)
                 time.sleep(SERIAL_PAUSE_S)
             phases[phase] = samples
-        for phase, extra in (("without_recent", []), ("with_recent", [recent])):
-            burst = [*file_routes, cheap, *inventory, *extra]
-            samples = []
-            before = server.diagnostics()["process"]
-            with ThreadPoolExecutor(max_workers=len(burst)) as pool:
-                for _ in range(rounds):
-                    barrier = threading.Barrier(len(burst))
-                    futures = [
-                        pool.submit(request, server.base_url, route, barrier=barrier)
-                        for route in burst
-                    ]
-                    samples.extend(future.result().sample for future in futures)
-                    time.sleep(BURST_PAUSE_S)
-            phases[phase] = samples
-            result[f"{phase}_process"] = {
-                "before": before,
-                "after": server.diagnostics()["process"],
-            }
+        if not api_only:
+            for phase, extra in (("without_recent", []), ("with_recent", [recent])):
+                burst = [*file_routes, cheap, *inventory, *extra]
+                samples = []
+                before = server.diagnostics()["process"]
+                with ThreadPoolExecutor(max_workers=len(burst)) as pool:
+                    for _ in range(rounds):
+                        barrier = threading.Barrier(len(burst))
+                        futures = [
+                            pool.submit(request, server.base_url, route, barrier=barrier)
+                            for route in burst
+                        ]
+                        samples.extend(future.result().sample for future in futures)
+                        time.sleep(BURST_PAUSE_S)
+                phases[phase] = samples
+                result[f"{phase}_process"] = {
+                    "before": before,
+                    "after": server.diagnostics()["process"],
+                }
         result["process_after"] = server.diagnostics()["process"]
     result["load_after"] = os.getloadavg()
     result["phases"] = phases
@@ -470,6 +480,11 @@ def main() -> None:
     parser.add_argument("--file", action="append", default=[], dest="files")
     parser.add_argument("--api-cases", type=Path, help="JSON cases for golden-backed GET routes")
     parser.add_argument(
+        "--api-only",
+        action="store_true",
+        help="time only the named GET cases after inventory readiness",
+    )
+    parser.add_argument(
         "--prepare-api",
         action="append",
         default=[],
@@ -493,6 +508,8 @@ def main() -> None:
     os.environ["PYTHONHASHSEED"] = "0"
     if not (args.files or args.api_cases):
         parser.error("supply --file or --api-cases")
+    if args.api_only and (not args.api_cases or args.files or args.render_file):
+        parser.error("--api-only requires --api-cases and excludes --file and --render-file")
     try:
         api_routes = tuple(load_api_cases(args.api_cases)) if args.api_cases else ()
     except (OSError, ValueError) as error:
@@ -516,7 +533,8 @@ def main() -> None:
     files = cast("list[str]", args.files)
     result: dict[str, Any] = {
         "schema": 1,
-        "method": "settled read-only root; gzip; 24h Recent; Python hash seed 0",
+        "method": "settled read-only root; gzip; Python hash seed 0",
+        "api_only": bool(args.api_only),
         "order": order,
         "seeded_cache": cache_seed is not None,
         "started_at": datetime.now(UTC).isoformat(),
@@ -564,6 +582,7 @@ def main() -> None:
             api_routes=api_routes,
             prepare_api=prepare_api,
             cache_seed=cache_seed,
+            api_only=bool(args.api_only),
         )
         result["runs"].append({"build": label, **run})
         atomic_write_text(output, json.dumps(result, indent=2) + "\n")
