@@ -5,10 +5,12 @@ title: Keep the Files source label and sync status accurate
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 8
 delegate: codex@spud10.local
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m8ctzfrjpx5gv1hgxn56zh2h
 child_order_hints:
   - is-01m8cq63ngbx81fcv93fspfp5j
   - is-01m8cq6cb94avdqk1pm9mtxmmb
@@ -17,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:01:29.458Z
-updated_at: 2026-11-26T21:05:23.679Z
+updated_at: 2026-11-26T21:07:57.835Z
 started_at: 2026-11-26T20:01:37.612Z
 closed_at: 2026-11-26T21:05:23.596Z
 close_reason: "Implemented and independently reviewed in merged Metabrowser PR #892. Exact-head CI passed."
