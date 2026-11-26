@@ -293,6 +293,48 @@ def block(
     return text
 
 
+# A pull envelope's operational status, its verdict, and its checks, each as the CLI
+# prints it: the key, then the object up to the brace at the key's own indentation. Each
+# is told from another object under the same key, such as a record's combined status or
+# a status's summary of its checks, by a field only it has.
+_OPERATIONAL: Final = re.compile(
+    r'^( *)"(status|readiness|checks)": (\{\n.*?\n\1\})', re.MULTILINE | re.DOTALL
+)
+_OPERATIONAL_FIELD: Final = {"status": "observed_by", "readiness": "verdict", "checks": "items"}
+
+
+def operational_once(text: str) -> str:
+    """*text* with each pull envelope's status, verdict, and checks printed in full once.
+
+    A pull request is read many times in a transcript, and its envelope carries the
+    same operational status each time. After it is printed in full, one equal to the
+    last printed in full for the same pull request is ``"<STATUS n>"``,
+    ``"<READINESS n>"``, or ``"<CHECKS n>"``, *n* its number, or a verdict's head; one
+    that differs is printed in full again, so a read that changed it shows as the whole
+    object where the label was.
+    """
+
+    printed: dict[tuple[str, object], str] = {}
+
+    def once(found: re.Match[str]) -> str:
+        key = found.group(2)
+        try:
+            value = json.loads(found.group(3))
+        except ValueError:
+            return found.group(0)
+        if not isinstance(value, dict) or _OPERATIONAL_FIELD[key] not in value:
+            return found.group(0)
+        fields: dict[str, Any] = value  # pyright: ignore[reportUnknownVariableType]
+        identity = fields.get("number", fields.get("head"))
+        whole = json.dumps(fields)
+        if printed.get((key, identity)) == whole:
+            return f'{found.group(1)}"{key}": "<{key.upper()} {identity}>"'
+        printed[(key, identity)] = whole
+        return found.group(0)
+
+    return _OPERATIONAL.sub(once, text)
+
+
 def quoted(argument: str) -> str:
     """*argument* as a shell would need it typed, for a transcript's command line."""
 

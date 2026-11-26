@@ -69,10 +69,23 @@ after them, such as **+1,234 −567 ›**, so walking the list shows the size of
 change, and the age, such as **3d**, is at that line’s right end, where every row’s age
 lines up. At the Pulls tab’s default width most rows take four lines, and a short title
 three; a wider tab fits more rows in three.
-The lines sum the same list of changed files the row’s tree shows, as a stack’s heading
-sums its pull requests’, and ask GitHub for nothing: the lists come from what the Pulls
-tab already reads behind you for the rows in view and from trees you open, and a gray
-placeholder holds their place until one arrives.
+Between the lines and the age, an open pull request shows whether it can merge, as its
+page does: the verdict’s icon, such as a green check for **Ready to merge**, a yellow
+clock for **Checks pending**, or a red warning for **Merge conflicts**, in a column of
+its own, so the icons down the list read as a checks column.
+In a wider tab the verdict’s words follow the icon, such as **✓ Ready to merge**; a
+screen reader hears them after the row’s state in either width.
+A closed or merged pull request shows none, and neither does one Metabrowser has not yet
+asked GitHub about, or one pushed, or marked a draft or ready, since: GitHub is asked
+about every open pull request while the Pulls tab is visible, behind you, and the icon
+fills in when it answers.
+A pull request whose page you have open shows what its page shows, the row following the
+page’s own read.
+The lines may give way to an ellipsis in the narrowest tab; the icon and
+the age stay. The lines sum the same list of changed files the row’s tree shows, as a
+stack’s heading sums its pull requests’, and ask GitHub for nothing: the lists come from
+what the Pulls tab already reads behind you for the rows in view and from trees you
+open, and a gray placeholder holds their place until one arrives.
 
 Click a row anywhere to open its pull request; its files stay as they were.
 The lines and the chevron after them show and hide the files, which start collapsed:
@@ -103,7 +116,8 @@ requests, **Whole stack** shows the lines the whole stack changes; press that li
 the chevron after it to list every file the stack changes, as the stack’s page does, and
 press anywhere else on the row to open that page.
 A member’s row shows its place after its title and before its number, such as **Fix the
-reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
+reader · 1/6 · #455 · jlevy**, and its readiness as any row does; a pull request in no
+stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
@@ -112,9 +126,10 @@ position, and a pull request in two stacks has a button for each, which names it
 such as **⧉300 2/2**. The button opens a menu of the stack’s members, from top to base,
 each on one line: its state and its title, then its position, its number, and its author
 at the line’s end, such as **Fix the reader 1/6 · #455 · jlevy**, the order a row in the
-Pulls tab has. On macOS, Control-N goes to the next member toward the top and Control-P
-to the previous one toward the base; on Windows and Linux, where those keys are the
-browser’s, use the menu.
+Pulls tab has, and last the icon of whether it can merge, the one a Pulls row shows, for
+each open member. On macOS, Control-N goes to the next member toward the top and
+Control-P to the previous one toward the base; on Windows and Linux, where those keys
+are the browser’s, use the menu.
 Without the extension, or when GitHub cannot answer, pull requests read as usual and the
 list stays flat, unless stacks are cached.
 
@@ -135,9 +150,21 @@ page, as they open a pull request’s. Metabrowser reads stacks and never change
 ## The Pull Request Page
 
 The header gives the title and number; the state and dates, with any stack button at the
-end of their line; the author’s sentence, such as “octo wants to merge 2 commits”; the
-head and base branches on a line of their own, head → base; and the labels, each in the
-color GitHub gives it, with its description, if any, shown on hover.
+end of their line, and for an open pull request, right after its state, whether it can
+merge, in GitHub’s words, such as **Merge conflicts**, **Checks pending**, or **Ready to
+merge** (**Ready for review** for a draft); the author’s sentence, such as “octo wants
+to merge 2 commits”; the head and base branches on a line of their own, head → base; and
+the labels, each in the color GitHub gives it, with its description, if any, shown on
+hover.
+The verdict is green when nothing stands in the way, yellow while the pull request
+waits on a check, a reviewer, the merge queue, or GitHub itself, and red when its author
+must change something.
+In a narrow pane it is its icon alone, in the same color.
+Hovering it lists what stands in the way, and clicking it opens **Checks**. Until GitHub
+has answered for the head shown it says **Checking**; a closed or merged pull request
+shows its state alone.
+Where the Pulls tab learned of a merge, a close, or a draft before the page’s own copy
+did, the page shows the new state, and no verdict until it reads one for that state.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
 where GitHub gave none, as on a commit’s page; a Pulls row shows none.
 **View on GitHub**, in the page’s upper right as on a file’s, a folder’s, and a commit’s
@@ -187,7 +214,17 @@ The page has up to five tabs:
   ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
-- **Checks** (`E`): the check runs and commit statuses, with links to their details.
+- **Checks** (`E`): **Merge status** first, the verdict and what heads it, then a row
+  for each thing GitHub weighs, merge conflicts, checks, reviews, being up to date with
+  the base branch, the base branch’s rules, and the merge queue, each as met, waiting,
+  unmet, or unknown, with a link to where you can act on it: GitHub’s conflict page, the
+  first failing or running check below, **Conversation** when a review there asked for
+  changes, or the pull request on GitHub; and a row saying so while auto-merge is on.
+  Then the check runs and commit statuses, with links to their details, failing first
+  and then pending, each marked as GitHub’s CLI marks it, under GitHub’s summary of
+  them, and **Required** beside each one a rule on the base branch requires.
+  Until the page has read the list itself, as after the Pulls tab counted a pull
+  request’s checks, it shows the summary and says it is reading the list.
 
 ### Links in a Pull Request’s Text
 
@@ -600,8 +637,13 @@ A record counts as current for 60 seconds after its fetch, the freshness window,
 as long after that as the list says GitHub has not changed the pull request; the page
 still reads `Fetched 3 h ago via GitHub CLI`, one time and never two, since a check that
 found nothing changed makes what is shown no newer.
-The list does not track checks, statuses, or mergeability, so an open pull request’s
-page reads those again on their own once a window.
+The list also asks GitHub whether each open pull request can merge, for the icon on its
+row: one request reads a page of the newest open pull requests’ checks, reviews,
+conflicts, and merge state together, when the list’s check finds a change, when a base
+branch moves, and otherwise as often as the list’s full refresh while the tab is
+visible, less often as your rate limit runs low.
+An open pull request’s page reads its own status again too, once a window, with each
+check listed for **Checks**.
 
 A visible page refreshes a record that has gone stale, and the Pulls tab also fetches,
 behind you, the pull requests you are likely to open next, within hourly limits and

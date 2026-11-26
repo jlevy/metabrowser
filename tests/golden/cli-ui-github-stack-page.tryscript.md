@@ -880,7 +880,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+        "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
       }
     },
     {
@@ -893,7 +893,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+        "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
       }
     },
     {
@@ -906,7 +906,7 @@ $ node tests/dom/github-stack-page-session.js
       "route": "/api/plugin/github/pull-refresh",
       "body": {
         "number": 10,
-        "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+        "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
       }
     }
   ],

@@ -9,6 +9,9 @@ env:
 A pull request’s page at `/pull/<n>` renders the cached record the GitHub plugin’s pull
 route answers: header, state, merge status, labels, the conversation with review states,
 review comments with their file, line, and diff hunk, checks, and notes.
+Each paint’s `readiness` is the header’s readiness badge, its tone and the server’s
+label; `cli-ui-github-pull-readiness.tryscript.md` draws the badge and the Checks tab’s
+Merge status section in full, and which checks a rule requires.
 It polls that route while the page is visible, quickly while a refresh runs or the
 record is pending and slowly otherwise, with `If-None-Match` so an unchanged answer is a
 304 and repaints nothing.
@@ -105,7 +108,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": null,
         "labels": [],
-        "merge": null,
+        "readiness": null,
         "timeline": [],
         "reviewComments": [],
         "checks": null,
@@ -131,7 +134,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": null,
         "labels": [],
-        "merge": null,
+        "readiness": null,
         "timeline": [],
         "reviewComments": [],
         "checks": null,
@@ -169,7 +172,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -180,14 +183,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -280,7 +280,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -291,14 +291,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -340,7 +337,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -351,14 +348,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -393,7 +387,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -404,14 +398,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -437,7 +428,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -448,14 +439,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -485,7 +473,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -496,14 +484,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -516,7 +501,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: the page asks for a refresh by itself",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -532,7 +517,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -543,14 +528,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -588,7 +570,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -599,14 +581,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -645,7 +624,7 @@ $ node tests/dom/github-pull-page-session.js
         "labels": [
           "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
-        "merge": "No conflicts with the base branch.",
+        "readiness": "[attention: Checks pending]",
         "timeline": [
           "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -657,14 +636,11 @@ $ node tests/dom/github-pull-page-session.js
           "src/app.txt:2 forker (reply) +hunk"
         ],
         "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
+          "summary": "Some checks are still pending: 2 successful · 1 pending",
           "items": [
-            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
+            "[pending: in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[pass: success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[pass: success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -749,7 +725,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: it asks",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -878,7 +854,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": null,
         "labels": [],
-        "merge": null,
+        "readiness": null,
         "timeline": [],
         "reviewComments": [],
         "checks": null,
@@ -900,28 +876,28 @@ $ node tests/dom/github-pull-page-session.js
     "open": {
       "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "pending": 1
       }
     },
     "merged": {
       "header": "Say more in the guide #8 [Merged] octo merged 1 commit: guide-more → topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "skipped": 1
       }
     },
     "closed": {
       "header": "spam #9 [Closed] ghost wants to merge 1 commit: spam (deleted fork) → octo:topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "pending": 1
       }
     },
     "merged_unattributed": {
       "header": "Say more in the guide #8 [Merged] merged 1 commit: guide-more → topic",
       "checks": {
-        "success": 2,
+        "successful": 2,
         "skipped": 1
       }
     }
@@ -993,7 +969,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a page left open asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1050,7 +1026,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "it asks for the next refresh at once",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1071,7 +1047,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a current page asks once the reader stays, and a probe answers",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1081,7 +1057,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "its interval later it asks again, and the probe vouches",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1101,7 +1077,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a probe ask the server does not answer is reported",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1120,7 +1096,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "the next probe ask that answers clears it",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1139,7 +1115,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "an answer slower than the interval is followed by a short gap",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1157,7 +1133,7 @@ $ node tests/dom/github-pull-page-second-session.js
       "step": "shown again past its interval it asks at once, and a probe that found a change refreshes",
       "requests": [
         "GET /api/plugin/github/pull?number=7 (If-None-Match)",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f\"}"
       ],
       "timer": "fast",
       "paints": 2,
@@ -1178,7 +1154,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks once, and its refresh is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"be661cdd190c7d2665ed14d96f20d2059d0ff58522a15e34924d7ba4d2271701\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1233,7 +1209,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "that ask is sent with no wait, and is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"be661cdd190c7d2665ed14d96f20d2059d0ff58522a15e34924d7ba4d2271701\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1272,7 +1248,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1346,7 +1322,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "and sends that ask with no wait",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1365,6 +1341,16 @@ $ node tests/dom/github-pull-page-second-session.js
   ],
   "checkActions": [
     {
+      "name": "docs",
+      "detail": null,
+      "action": {
+        "kind": "actions",
+        "href": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "label": "View action on GitHub",
+        "name": "View action on GitHub: docs"
+      }
+    },
+    {
       "name": "tests (3.13)",
       "detail": null,
       "action": {
@@ -1375,13 +1361,13 @@ $ node tests/dom/github-pull-page-second-session.js
       }
     },
     {
-      "name": "docs",
-      "detail": null,
+      "name": "docs/readthedocs.org:demo",
+      "detail": "Read the Docs build succeeded!",
       "action": {
-        "kind": "actions",
-        "href": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "label": "View action on GitHub",
-        "name": "View action on GitHub: docs"
+        "kind": "external",
+        "href": "https://demo--7.org.readthedocs.build/en/7/",
+        "label": "View details",
+        "name": "View details: docs/readthedocs.org:demo"
       }
     },
     {
@@ -1432,16 +1418,6 @@ $ node tests/dom/github-pull-page-second-session.js
         "href": "https://bot@github.com/octo/demo/runs/5",
         "label": "View details",
         "name": "View details: credentialed"
-      }
-    },
-    {
-      "name": "docs/readthedocs.org:demo",
-      "detail": "Read the Docs build succeeded!",
-      "action": {
-        "kind": "external",
-        "href": "https://demo--7.org.readthedocs.build/en/7/",
-        "label": "View details",
-        "name": "View details: docs/readthedocs.org:demo"
       }
     },
     {
@@ -1879,7 +1855,7 @@ to a minute after, and with no reporter the panel says the event log is not avai
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head is followed: its diff reads the comparison: the summary","the reader goes back: the earlier diff reads none again: the summary","the reader takes the newer changes, their diff not yet read: the summary","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","a record of a list that only adds lines: the brief line \"1 A, 2 M · +3,893\"; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown","no Pulls row in hand, mounted with no record in hand: title \"Pull request #7\", plain","its Pulls row in hand, mounted with no record in hand: title \"Count to two in the app #7\", the record's shape","its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","two repositories' rows for its number, mounted with no record in hand: title \"Pull request #7\", plain"],"counterpart":["mounted with no record in hand: the corner after the title \"Pull request #7\"; asked /pull/7","its record lands: the corner after the title \"Count to two in the app\", the same corner; asked /pull/7","a poll brings a new title: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7","the route shows Checks: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7/checks","an SDK with no button: the corner after the title \"Count to two in the app\"; asked for none"],"tabKeys":["before the record, the tab column in the page: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","numbered: 1 Browse code","1: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 Browse code","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 Browse code","1: navigation.open /view/","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: none","1: not handled","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code on the head: 1 Browse code","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","while that refresh runs, the page can refresh: false","the navigation's Refresh, the page not offering one: nothing asked","once the refresh ends, the page can refresh: true","on Conversation once the refresh ends, the page can refresh: false","numbered on Conversation once the refresh ends: 1 Browse code","2: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Docs none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Docs D, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","G: showed Changes","no block in the description: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","R: not handled","a block in the description: Guided Review R, Conversation C, Docs D, Changes G, Checks E; live conversation docs files guided checks","R: showed Guided Review","the route arrives: Guided Review","the block leaves while its tab is shown: Guided Review R, Conversation C, Docs D, Changes G, Checks E; Guided Review","back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled","the block returns while Shift is held: badges Guided Review R, Conversation C, Docs D, Changes G, Checks E","R: showed Guided Review","an example of the block inside another fence: Guided Review R, Conversation C, Docs D, Changes G, Checks E","the guide, with no diff plugin or allowlist here, said: metabrowser github: the diff plugin did not load for the guide; metabrowser github: the guide's notes will show as typed","disposed: keys none"],"guideIntroduction":["asked: pull-files-summary, stacks, guided-review, pull-markdown, pull","the guide answered, its description's Markdown not yet: the notice hidden; the description hidden; a step waits out of sight true","the Markdown is inserted: the notice says This pull request has no guide.; the description shows Counts to two, rendered.; a step waits out of sight false","warned: 2"],"guideIntroductionBound":["asked: pull-files-summary, stacks, guided-review, pull-markdown, pull","the guide answered, its description's Markdown not yet: the notice hidden; the description hidden; a step waits out of sight true","its Markdown never comes, and the bound runs out: the notice says This pull request has no guide.; the description shows its placeholder; a step waits out of sight false","warned: 2"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took too long to render, so it is shown as written.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took too long to render, so it is shown as written., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: This text could not be rendered, so it is shown as written. Reload the page to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"textLinks":["served at the head: the changed guide → /view/g1-ZG9jcw/g1-Y2hhbmdlZC5tZA; an unchanged file → /view/g1-ZG9jcw/g1-c2FtZS5tZA; the Changes tab → /pull/7/files","  click the changed guide: /view/g1-ZG9jcw/g1-Y2hhbmdlZC5tZA","  the comparison read: the changed guide → /view/g1-ZG9jcw/g1-Y2hhbmdlZC5tZA; an unchanged file → /view/g1-ZG9jcw/g1-c2FtZS5tZA; the Changes tab → /pull/7/files","  after the served revision moves: the changed guide → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files","served away from the head: the changed guide → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files; the renamed file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/before.md","  click the changed guide: the browser follows it","  click the Changes tab: {\"number\":7,\"tab\":\"files\"}","  the comparison read on Checks, 2 texts read again: the changed guide → /pull/7/files/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files; the renamed file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/before.md","  back on Conversation, 0 texts read again: the changed guide → /pull/7/files/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files","  click the changed guide: {\"number\":7,\"tab\":\"files\",\"file\":\"docs/changed.md\"}","  click an unchanged file: the browser follows it","  click the Changes tab: {\"number\":7,\"tab\":\"files\"}","  click the renamed file: the browser follows it","  click listeners: the changed guide 1, an unchanged file 0, the Changes tab 1, the renamed file 0"],"textDiagrams":["a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; asked nothing; bindings none","the same with Mermaid blocks, on a folder's page: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a description and a comment each with a Mermaid block: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a poll of the same record: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","Changes and back to Conversation: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","the description edited, the comment not: 2 blocks, 2 in a figure; asked markdown plugin, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's","the description's block taken out: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","a block whose text is replaced before the Markdown plugin arrives: 1 block, 1 in a figure; asked markdown plugin; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","the page ends: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"],"eventLogDetails":["mounted, the comparison not yet read: the pending placeholder; githubPull:diffSummary {\"number\":7} timed from its start running","still waiting at the late threshold: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","Details opened: expanded true; the panel says \"Still running: checkout._pull_job for 61.0 s\"","Details closed: expanded false; panel in the header false","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","the page left: panel in the header false; expanded false; githubPull:diffSummary {\"number\":7} timed from its start ended never_completed","another page, late: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","its comparison read, its Details open: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","the late line's Details: expanded false; panel in the header false","a page whose comparison is read at once: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","a failed refresh, ended 2026-09-17T12:30:00Z: \"Could not reach GitHub.Details\"","Details asked for {\"client\":\"k3v9q2zx\",\"since\":\"2026-09-17T11:30:00Z\",\"until\":\"2026-09-17T12:31:00Z\"}, abortable true","no reporter: \"The event log is not available here.\""],"statusRemedies":["a current record whose last refresh failed: status \"Could not reach GitHub.DetailsRetry\"; remedy Retry; note shown; asked nothing; Refresh may refresh it","Retry pressed, its refresh not yet started: status \"Could not reach GitHub.DetailsRetry\"; remedy Retry (waiting); note shown; asked POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}; Refresh has nothing to refresh","Retry pressed again while it waits: status \"Could not reach GitHub.DetailsRetry\"; remedy Retry (waiting); note shown; asked nothing; Refresh has nothing to refresh","the refresh runs: status none; remedy none; note shown; asked nothing; Refresh has nothing to refresh","a direct link to a pull request whose fetch failed: status \"This pull request has not been fetched yet.Could not reach GitHub.DetailsFetch\"; remedy Fetch; note none; asked nothing; Refresh may refresh it","Fetch pressed: status \"Fetching the pull request…Could not reach GitHub.Details\"; remedy none; note none; asked POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}; Refresh has nothing to refresh","a direct link to a copy saved by another version: status \"The saved copy of this pull request is from another version.Fetch\"; remedy Fetch; note none; asked nothing; Refresh may refresh it"]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"mergeStatus":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head is followed: its diff reads the comparison: the summary","the reader goes back: the earlier diff reads none again: the summary","the reader takes the newer changes, their diff not yet read: the summary","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","a record of a list that only adds lines: the brief line \"1 A, 2 M · +3,893\"; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown","no Pulls row in hand, mounted with no record in hand: title \"Pull request #7\", plain","its Pulls row in hand, mounted with no record in hand: title \"Count to two in the app #7\", the record's shape","its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","two repositories' rows for its number, mounted with no record in hand: title \"Pull request #7\", plain"],"counterpart":["mounted with no record in hand: the corner after the title \"Pull request #7\"; asked /pull/7","its record lands: the corner after the title \"Count to two in the app\", the same corner; asked /pull/7","a poll brings a new title: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7","the route shows Checks: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7/checks","an SDK with no button: the corner after the title \"Count to two in the app\"; asked for none"],"tabKeys":["before the record, the tab column in the page: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","numbered: 1 Browse code","1: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 Browse code","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 Browse code","1: navigation.open /view/","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: none","1: not handled","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code on the head: 1 Browse code","the navigation's Refresh, the page offering one: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","while that refresh runs, the page can refresh: false","the navigation's Refresh, the page not offering one: nothing asked","once the refresh ends, the page can refresh: true","on Conversation once the refresh ends, the page can refresh: false","numbered on Conversation once the refresh ends: 1 Browse code","2: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Docs none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Docs D, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","G: showed Changes","no block in the description: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","R: not handled","a block in the description: Guided Review R, Conversation C, Docs D, Changes G, Checks E; live conversation docs files guided checks","R: showed Guided Review","the route arrives: Guided Review","the block leaves while its tab is shown: Guided Review R, Conversation C, Docs D, Changes G, Checks E; Guided Review","back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled","the block returns while Shift is held: badges Guided Review R, Conversation C, Docs D, Changes G, Checks E","R: showed Guided Review","an example of the block inside another fence: Guided Review R, Conversation C, Docs D, Changes G, Checks E","the guide, with no diff plugin or allowlist here, said: metabrowser github: the diff plugin did not load for the guide; metabrowser github: the guide's notes will show as typed","disposed: keys none"],"guideIntroduction":["asked: pull-files-summary, stacks, guided-review, pull-markdown, pull","the guide answered, its description's Markdown not yet: the notice hidden; the description hidden; a step waits out of sight true","the Markdown is inserted: the notice says This pull request has no guide.; the description shows Counts to two, rendered.; a step waits out of sight false","warned: 2"],"guideIntroductionBound":["asked: pull-files-summary, stacks, guided-review, pull-markdown, pull","the guide answered, its description's Markdown not yet: the notice hidden; the description hidden; a step waits out of sight true","its Markdown never comes, and the bound runs out: the notice says This pull request has no guide.; the description shows its placeholder; a step waits out of sight false","warned: 2"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took too long to render, so it is shown as written.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took too long to render, so it is shown as written., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: This text could not be rendered, so it is shown as written. Reload the page to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"textLinks":["served at the head: the changed guide → /view/g1-ZG9jcw/g1-Y2hhbmdlZC5tZA; an unchanged file → /view/g1-ZG9jcw/g1-c2FtZS5tZA; the Changes tab → /pull/7/files","  click the changed guide: /view/g1-ZG9jcw/g1-Y2hhbmdlZC5tZA","  the comparison read: the changed guide → /view/g1-ZG9jcw/g1-Y2hhbmdlZC5tZA; an unchanged file → /view/g1-ZG9jcw/g1-c2FtZS5tZA; the Changes tab → /pull/7/files","  after the served revision moves: the changed guide → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files","served away from the head: the changed guide → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files; the renamed file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/before.md","  click the changed guide: the browser follows it","  click the Changes tab: {\"number\":7,\"tab\":\"files\"}","  the comparison read on Checks, 2 texts read again: the changed guide → /pull/7/files/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files; the renamed file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/before.md","  back on Conversation, 0 texts read again: the changed guide → /pull/7/files/docs/changed.md; an unchanged file → https://github.com/octo/demo/blob/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/docs/same.md; the Changes tab → /pull/7/files","  click the changed guide: {\"number\":7,\"tab\":\"files\",\"file\":\"docs/changed.md\"}","  click an unchanged file: the browser follows it","  click the Changes tab: {\"number\":7,\"tab\":\"files\"}","  click the renamed file: the browser follows it","  click listeners: the changed guide 1, an unchanged file 0, the Changes tab 1, the renamed file 0"],"textDiagrams":["a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; asked nothing; bindings none","the same with Mermaid blocks, on a folder's page: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a description and a comment each with a Mermaid block: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a poll of the same record: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","Changes and back to Conversation: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","the description edited, the comment not: 2 blocks, 2 in a figure; asked markdown plugin, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's","the description's block taken out: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","a block whose text is replaced before the Markdown plugin arrives: 1 block, 1 in a figure; asked markdown plugin; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","the page ends: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"],"eventLogDetails":["mounted, the comparison not yet read: the pending placeholder; githubPull:diffSummary {\"number\":7} timed from its start running","still waiting at the late threshold: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","Details opened: expanded true; the panel says \"Still running: checkout._pull_job for 61.0 s\"","Details closed: expanded false; panel in the header false","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","the page left: panel in the header false; expanded false; githubPull:diffSummary {\"number\":7} timed from its start ended never_completed","another page, late: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","its comparison read, its Details open: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","the late line's Details: expanded false; panel in the header false","a page whose comparison is read at once: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","a failed refresh, ended 2026-09-17T12:30:00Z: \"Could not reach GitHub.Details\"","Details asked for {\"client\":\"k3v9q2zx\",\"since\":\"2026-09-17T11:30:00Z\",\"until\":\"2026-09-17T12:31:00Z\"}, abortable true","no reporter: \"The event log is not available here.\""],"statusRemedies":["a current record whose last refresh failed: status \"Could not reach GitHub.DetailsRetry\"; remedy Retry; note shown; asked nothing; Refresh may refresh it","Retry pressed, its refresh not yet started: status \"Could not reach GitHub.DetailsRetry\"; remedy Retry (waiting); note shown; asked POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}; Refresh has nothing to refresh","Retry pressed again while it waits: status \"Could not reach GitHub.DetailsRetry\"; remedy Retry (waiting); note shown; asked nothing; Refresh has nothing to refresh","the refresh runs: status none; remedy none; note shown; asked nothing; Refresh has nothing to refresh","a direct link to a pull request whose fetch failed: status \"This pull request has not been fetched yet.Could not reach GitHub.DetailsFetch\"; remedy Fetch; note none; asked nothing; Refresh may refresh it","Fetch pressed: status \"Fetching the pull request…Could not reach GitHub.Details\"; remedy none; note none; asked POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}; Refresh has nothing to refresh","a direct link to a copy saved by another version: status \"The saved copy of this pull request is from another version.Fetch\"; remedy Fetch; note none; asked nothing; Refresh may refresh it"]}
 ? 0
 ```
 

@@ -1,172 +1,3 @@
-## A member the top's head lacks: 7's fork head is in no history of 10's, so it adds no file and is named in `lacking`.
-# metab https://github.com/octo/demo/pull/7 --no-serve
-exit: 0
---- stdout ---
-acquired: https://github.com/octo/demo
-slug: github-com-octo-demo-9vhngza0oa1
-store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
-revision: <topic>
-selection: pull_request
-pin: <fork_head> (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
---- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
---- gh ---
-gh api user
-gh api repos/octo/demo/pulls/7
-gh api repos/octo/demo/commits/<fork_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<fork_head>/status?per_page=100&page=1
-gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh api user (If-None-Match)
-# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=71'
-exit: 0
---- stdout ---
-api: /api/plugin/github/stack?number=71
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "number": 71,
-  "base_ref": "topic",
-  "head_ref": "wip",
-  "open": true,
-  "members": [
-    {
-      "number": 8,
-      "place": 1,
-      "title": "Say more in the guide",
-      "state": "merged",
-      "author": "maintainer",
-      "avatar": null,
-      "base": "<base>",
-      "head": "<merged_head>",
-      "in_top": true,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 7,
-      "place": 2,
-      "title": "Count to two in the app",
-      "state": "open",
-      "author": "forker",
-      "avatar": null,
-      "base": "<base>",
-      "head": "<fork_head>",
-      "in_top": false,
-      "pending": false,
-      "fetching": false
-    },
-    {
-      "number": 10,
-      "place": 3,
-      "title": "WIP: draft the next page",
-      "state": "draft",
-      "author": "maintainer",
-      "avatar": null,
-      "base": "<topic>",
-      "head": "<draft_head>",
-      "in_top": true,
-      "pending": false,
-      "fetching": false
-    }
-  ],
-  "pending": [],
-  "lacking": [
-    7
-  ],
-  "states": {
-    "open": 1,
-    "draft": 1,
-    "merged": 1,
-    "closed": 0
-  },
-  "opened_at": "2026-09-16T10:57:23Z",
-  "updated_at": "2026-09-16T17:39:01Z",
-  "authors": [
-    {
-      "login": "maintainer",
-      "avatar": null
-    },
-    {
-      "login": "forker",
-      "avatar": null
-    }
-  ],
-  "mergers": [
-    {
-      "login": "octo",
-      "avatar": null
-    }
-  ],
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "labels": [
-    {
-      "name": "bugfix",
-      "color": "d73a4a",
-      "description": null
-    },
-    {
-      "name": "shared design",
-      "color": "0e8a16",
-      "description": null
-    },
-    {
-      "name": "enhancement",
-      "color": "2700af",
-      "description": "A label's description is its chip's tooltip"
-    },
-    {
-      "name": "earnings analysis",
-      "color": "5319e7",
-      "description": null
-    }
-  ],
-  "commits": 2,
-  "size": null,
-  "comparison": {
-    "left": "<base>",
-    "right": "<draft_head>",
-    "key": "4477f6ee951f57617055456af12caf4e",
-    "route": "/api/plugin/github/stack-comparison?number=71&left=<base>&right=<draft_head>&base_policy=direct&key=4477f6ee951f57617055456af12caf4e&build=<BUILD>&store=<STORE>",
-    "image_route": "/api/plugin/github/pull-image?stack=71&left=<base>&right=<draft_head>&store=<STORE>",
-    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=71&left=<base>&right=<draft_head>&store=<STORE>"
-  },
-  "totals": {
-    "files": 1,
-    "additions": 1,
-    "deletions": 0,
-    "exact": true
-  },
-  "truncated": false,
-  "files": [
-    {
-      "path": "docs/draft.md",
-      "layers": [
-        {
-          "number": 10,
-          "place": 3,
-          "path": "docs/draft.md"
-        }
-      ]
-    }
-  ],
-  "guide": {
-    "number": 10,
-    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
-  },
-  "github_url": "https://github.com/octo/demo/pull/10",
-  "probe": {
-    "number": 10,
-    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
-    "every_s": 5.0
-  },
-  "moved": null
-}
---- stderr ---
---- gh ---
 ## Not linear: 10's merge base is not in 8's history.
 # metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=72'
 exit: 0
@@ -373,7 +204,11 @@ status: 200
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -410,7 +245,11 @@ status: 202
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -428,7 +267,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
+  "record_revision": "5c011c3a5b821c19776edbdfa483a6ec9360c8295d279a5527cd55fbe14b7766",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -443,7 +282,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=<base>&right=<closed_head>&store=<STORE>",
   "size_route": "/api/plugin/github/pull-size?number=9&left=<base>&right=<closed_head>&store=<STORE>",
   "record": {
-    "schema_version": 2,
+    "schema_version": 3,
     "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 9,
@@ -453,9 +292,7 @@ status: 200
       "repos/octo/demo/pulls/9": "W/\"bd0a1535019ba33ca5d652f1e47b79467f9530f4108d8188308766a528b0938a\"",
       "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
       "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
-      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
-      "repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
-      "repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\""
     },
     "pull": {
       "number": 9,
@@ -469,7 +306,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 1,
       "merge_commit_sha": null,
-      "mergeable": "unknown",
       "labels": [
         {
           "name": "invalid",
@@ -498,35 +334,6 @@ status: 200
     "issue_comments": [],
     "reviews": [],
     "review_comments": [],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
     "comparison": {
       "base": "<base>",
       "head": "<closed_head>",
@@ -537,26 +344,93 @@ status: 200
       "issue_comments": false,
       "reviews": false,
       "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
       "text": false
     },
     "unavailable": {}
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": {
+    "number": 9,
+    "head": "<closed_head>",
+    "base_ref": "topic",
+    "base": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "read",
+    "conflicts": "unknown",
+    "merge_state": "unknown",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": 0,
+      "required_pending": 1,
+      "listed_at": "2026-09-17T12:00:00Z",
+      "moved_at": null
+    },
+    "auto_merge": null,
+    "queue": null
+  },
+  "readiness": null,
+  "checks": {
+    "number": 9,
+    "head": "<closed_head>",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "items": [
+      {
+        "name": "tests (3.13)",
+        "kind": "run",
+        "bucket": "pass",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs",
+        "kind": "run",
+        "bucket": "pending",
+        "status": "IN_PROGRESS",
+        "conclusion": null,
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs/readthedocs.org:demo",
+        "kind": "status",
+        "bucket": "pass",
+        "status": null,
+        "conclusion": "SUCCESS",
+        "required": false,
+        "details_url": "https://demo--7.org.readthedocs.build/en/7/",
+        "app": null,
+        "description": "Read the Docs build succeeded!"
+      }
+    ],
+    "truncated": false
+  },
+  "status_unavailable": null
 }
 --- stderr ---
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/9
-gh api repos/octo/demo/commits/<closed_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<closed_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=9 cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=73'
 exit: 0
 --- stdout ---
@@ -673,12 +547,12 @@ status: 200
   ],
   "guide": {
     "number": 8,
-    "revision": "75235de61fd188022fc7e82702d008534cd793a81deaafb9e6dc4bd2b7fab55c"
+    "revision": "f4e61e54ea6acf066c241e6ffb434eadd7188c3de9848c1d4dc3ed3166ba4b25"
   },
   "github_url": "https://github.com/octo/demo/pull/9",
   "probe": {
     "number": 9,
-    "held": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
+    "held": "5c011c3a5b821c19776edbdfa483a6ec9360c8295d279a5527cd55fbe14b7766",
     "every_s": 5.0
   },
   "moved": null
@@ -1151,12 +1025,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+    "revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+    "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
     "every_s": 5.0
   },
   "moved": {
@@ -1507,12 +1381,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": null
@@ -1606,12 +1480,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c"
+    "revision": "925c6a3e91bbc24ddb81c526c1103d8aee9a06f09fb1744396091bff8afabf40"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "a908ac4efc1ac7242364966202d8587c32c72c0e68c1f651913d2d6c5f74357c",
+    "held": "925c6a3e91bbc24ddb81c526c1103d8aee9a06f09fb1744396091bff8afabf40",
     "every_s": 5.0
   },
   "moved": {
@@ -1723,12 +1597,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": {
@@ -1840,12 +1714,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": null
@@ -1948,12 +1822,12 @@ status: 200
   ],
   "guide": {
     "number": 7,
-    "revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5"
+    "revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672"
   },
   "github_url": "https://github.com/octo/demo/pull/7",
   "probe": {
     "number": 7,
-    "held": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+    "held": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
     "every_s": 5.0
   },
   "moved": null

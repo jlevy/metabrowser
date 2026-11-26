@@ -23,7 +23,7 @@ status: 200
   "stack": 70,
   "carrier": 10,
   "carrier_url": "https://github.com/octo/demo/pull/10",
-  "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+  "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
   "state": "ready",
   "comparison": {
     "merge_base": "<base>",
@@ -248,7 +248,7 @@ status: 200
   "stack": 70,
   "carrier": 10,
   "carrier_url": "https://github.com/octo/demo/pull/10",
-  "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+  "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
   "state": "ready",
   "comparison": {
     "merge_base": "<base>",
@@ -448,7 +448,7 @@ status: 200
   "stack": 70,
   "carrier": 10,
   "carrier_url": "https://github.com/octo/demo/pull/10",
-  "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+  "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
   "state": "step_not_found"
 }
 --- stderr ---
@@ -462,7 +462,7 @@ status: 200
 {
   "number": 10,
   "fetched_at": "2026-09-17T12:00:00Z",
-  "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+  "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
   "part": "body",
   "html": "\n<div><div><p>Not ready.</p></div></div>",
   "assets": {
@@ -632,7 +632,7 @@ status: 200
   "stack": 73,
   "carrier": 8,
   "carrier_url": "https://github.com/octo/demo/pull/8",
-  "record_revision": "75235de61fd188022fc7e82702d008534cd793a81deaafb9e6dc4bd2b7fab55c",
+  "record_revision": "f4e61e54ea6acf066c241e6ffb434eadd7188c3de9848c1d4dc3ed3166ba4b25",
   "state": "stale",
   "stale": {
     "guide": {
@@ -886,7 +886,7 @@ status: 200
   "stack": 70,
   "carrier": 10,
   "carrier_url": "https://github.com/octo/demo/pull/10",
-  "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+  "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
   "state": "ready",
   "comparison": {
     "merge_base": "<base>",
@@ -1073,7 +1073,7 @@ status: 200
   "stack": 70,
   "carrier": 10,
   "carrier_url": "https://github.com/octo/demo/pull/10",
-  "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+  "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
   "state": "stack_moved"
 }
 --- stderr ---
@@ -1098,7 +1098,7 @@ status: 202
     "verified_by": "fetch",
     "head_moved": false,
     "checks_pending": false,
-    "record_revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+    "record_revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
     "fresh_for_s": 60.0,
     "probe_every_s": 5.0,
     "refreshing": true,
@@ -1113,7 +1113,7 @@ status: 202
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=<topic>&right=<draft_head>&store=<STORE>",
     "size_route": "/api/plugin/github/pull-size?number=10&left=<topic>&right=<draft_head>&store=<STORE>",
     "record": {
-      "schema_version": 2,
+      "schema_version": 3,
       "projection_version": 2,
       "source": "https://github.com/octo/demo",
       "number": 10,
@@ -1123,9 +1123,7 @@ status: 202
         "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
         "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
         "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
-        "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
-        "repos/octo/demo/commits/<draft_head>/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
-        "repos/octo/demo/commits/<draft_head>/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+        "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\""
       },
       "pull": {
         "number": 10,
@@ -1139,7 +1137,6 @@ status: 202
         "merged_by_avatar_url": null,
         "commits": 1,
         "merge_commit_sha": null,
-        "mergeable": "conflicting",
         "labels": [
           {
             "name": "bugfix",
@@ -1173,11 +1170,6 @@ status: 202
       "issue_comments": [],
       "reviews": [],
       "review_comments": [],
-      "check_runs": [],
-      "status": {
-        "state": "pending",
-        "statuses": []
-      },
       "comparison": {
         "base": "<topic>",
         "head": "<draft_head>",
@@ -1188,15 +1180,71 @@ status: 202
         "issue_comments": false,
         "reviews": false,
         "review_comments": false,
-        "check_runs": false,
-        "statuses": false,
         "text": false
       },
       "unavailable": {}
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": {
+      "number": 10,
+      "head": "<draft_head>",
+      "base_ref": "topic",
+      "base": "<topic>",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "observed_by": "read",
+      "conflicts": "conflicting",
+      "merge_state": "dirty",
+      "review_decision": null,
+      "checks": {
+        "state": "none",
+        "counts": {
+          "pass": 0,
+          "fail": 0,
+          "pending": 0,
+          "skipping": 0,
+          "cancel": 0
+        },
+        "required_failing": 0,
+        "required_pending": 0,
+        "listed_at": "2026-09-17T12:00:00Z",
+        "moved_at": null
+      },
+      "auto_merge": null,
+      "queue": null
+    },
+    "readiness": {
+      "verdict": "conflicts",
+      "tone": "danger",
+      "label": "Merge conflicts",
+      "head": "<draft_head>",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "requirements": [
+        {
+          "kind": "conflicts",
+          "status": "unmet",
+          "summary": "Merge conflicts with topic must be resolved.",
+          "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+        },
+        {
+          "kind": "checks",
+          "status": "met",
+          "summary": "No checks.",
+          "github_url": null
+        }
+      ],
+      "auto_merge": null,
+      "auto_merge_summary": null
+    },
+    "checks": {
+      "number": 10,
+      "head": "<draft_head>",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "items": [],
+      "truncated": false
+    },
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1214,7 +1262,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "24212f09a722f42ec7c5cf1c483cf6d3964ef65828a12d5dc8bb22785dde2a51",
+  "record_revision": "1df47b5d9e740f6661b862bba5b5dd1800cf45808fa1d70962db322b9563a9f4",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -1229,7 +1277,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=<topic>&right=<draft_head>&store=<STORE>",
   "size_route": "/api/plugin/github/pull-size?number=10&left=<topic>&right=<draft_head>&store=<STORE>",
   "record": {
-    "schema_version": 2,
+    "schema_version": 3,
     "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
@@ -1239,9 +1287,7 @@ status: 200
       "repos/octo/demo/pulls/10": "W/\"2caaa065222c02b5e649ed89f3238bdc52e577a301ad9bbad21fcaa75210ad4d\"",
       "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
       "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
-      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
-      "repos/octo/demo/commits/<draft_head>/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
-      "repos/octo/demo/commits/<draft_head>/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\""
     },
     "pull": {
       "number": 10,
@@ -1255,7 +1301,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 1,
       "merge_commit_sha": null,
-      "mergeable": "conflicting",
       "labels": [
         {
           "name": "bugfix",
@@ -1289,11 +1334,6 @@ status: 200
     "issue_comments": [],
     "reviews": [],
     "review_comments": [],
-    "check_runs": [],
-    "status": {
-      "state": "pending",
-      "statuses": []
-    },
     "comparison": {
       "base": "<topic>",
       "head": "<draft_head>",
@@ -1304,26 +1344,27 @@ status: 200
       "issue_comments": false,
       "reviews": false,
       "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
       "text": false
     },
     "unavailable": {}
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": "<STATUS 10>",
+  "readiness": "<READINESS <draft_head>>",
+  "checks": "<CHECKS 10>",
+  "status_unavailable": null
 }
 --- stderr ---
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/10 (If-None-Match)
-gh api repos/octo/demo/commits/<draft_head>/check-runs?per_page=100&page=1 (If-None-Match)
-gh api repos/octo/demo/commits/<draft_head>/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
+gh api graphql status number=10 cursor=start
 ## Its guide, asked at the comparison a page still draws, is pinned past it, so it says the stack has moved, as a comparison the route never gave does.
 # metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70&step=2&left=<base>&right=<draft_head>&key=ebfe45cd812c6d00f8d4a921576b31d7'
 exit: 0
@@ -1334,7 +1375,7 @@ status: 200
   "stack": 70,
   "carrier": 10,
   "carrier_url": "https://github.com/octo/demo/pull/10",
-  "record_revision": "24212f09a722f42ec7c5cf1c483cf6d3964ef65828a12d5dc8bb22785dde2a51",
+  "record_revision": "1df47b5d9e740f6661b862bba5b5dd1800cf45808fa1d70962db322b9563a9f4",
   "state": "stack_moved"
 }
 --- stderr ---
@@ -1687,7 +1728,7 @@ status: 200
   "stack": 74,
   "carrier": 7,
   "carrier_url": "https://github.com/octo/demo/pull/7",
-  "record_revision": "3922ecfd5ace1e3af12e90eb36f9f4c6a9fce6a397fadb1abf3d5cf7e8f1e1b5",
+  "record_revision": "f704a54a7f7540c879d8976e123b50e4a04323c03bd76a38e993e6c912d84672",
   "state": "invalid",
   "message": "Use one stack-review block in the pull request description."
 }

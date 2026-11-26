@@ -54,8 +54,11 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 # the SDK draws the button (mb-4wqh), and this page has none to draw it with.
                 # The size line's row, its placeholder, and the placeholder's block are three
                 # (docs/design-system.md, "Change Size Line"). The page has no Refresh of its
-                # own (mb-ablv), which a hidden button in the row of ages was.
-                "built": 54,
+                # own (mb-ablv), which a hidden button in the row of ages was. The readiness's
+                # slot after the state's is seventeen: the slot, its link, the verdict's badge,
+                # its glyph for a narrow row and the glyph's drawing, and a sizer for each of
+                # the server's twelve labels (mb-io36).
+                "built": 71,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

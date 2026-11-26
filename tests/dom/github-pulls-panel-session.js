@@ -1430,6 +1430,7 @@ async function paintStory(panel, selection = false) {
       JSON.stringify(order) ===
         JSON.stringify([
           "github-pull-state-icon",
+          "github-pull-readiness-said",
           "github-pulls-title",
           "github-pulls-place",
           "github-pulls-sep",
@@ -1437,7 +1438,7 @@ async function paintStory(panel, selection = false) {
           "github-pulls-sep",
           "github-pulls-by",
         ]),
-      `the run is the state icon, the title, the place, a dot and the number, and a dot and the author: ${order}`,
+      `the run is the state icon, its readiness's words, the title, the place, a dot and the number, and a dot and the author: ${order}`,
     );
     // The author is its identity alone, hidden, since the link's name says it.
     assert(
@@ -1446,14 +1447,15 @@ async function paintStory(panel, selection = false) {
       `the author is its identity: ${classesOf(by)}`,
     );
     // The number holds its text alone, and the last line is the toggle, the lines, then the
-    // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), and the age
-    // at the row's end, hidden, since the link's name says it (mb-rb3n).
+    // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), then the
+    // readiness's column (mb-3n21), and the age at the row's end, hidden, since the link's
+    // name says it (mb-rb3n).
     const toggle = child(tail, "github-pulls-change");
     const tailAge = child(tail, "github-pulls-age");
     assert(
       classesOf(numberLabel).length === 0 &&
         JSON.stringify(classesOf(tail)) ===
-          JSON.stringify(["github-pulls-change", "github-pulls-age"]) &&
+          JSON.stringify(["github-pulls-change", "github-pulls-readiness", "github-pulls-age"]) &&
         tailAge.getAttribute("aria-hidden") === "true" &&
         JSON.stringify(classesOf(toggle)) ===
           JSON.stringify([
@@ -1476,7 +1478,7 @@ async function paintStory(panel, selection = false) {
       "one zone, the link: its run ends with the author, and its last line is the toggle, the lines, the chevron after them, and their words, which describe the row, and the age",
     );
     assert(
-      heading.childNodes[2].hidden && heading.childNodes[2].textContent === "",
+      heading.childNodes[3].hidden && heading.childNodes[3].textContent === "",
       "the place, after the title, is empty and hidden while no stack holds the row",
     );
     assert(
@@ -1495,8 +1497,8 @@ async function paintStory(panel, selection = false) {
       "the link says the number, the author, and the age, which its run shows hidden",
     );
     assert(
-      heading.childNodes[3].classList.contains("github-pulls-sep") &&
-        heading.childNodes[3].textContent === "\u00a0· ",
+      heading.childNodes[4].classList.contains("github-pulls-sep") &&
+        heading.childNodes[4].textContent === "\u00a0· ",
       "a part after the title carries the dot before it, kept to the part before by a no-break space",
     );
     const identity = child(by, "github-pull-identity");

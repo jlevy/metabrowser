@@ -107,7 +107,9 @@ status: 200
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=closed&limit=0",
+  "status_scan": "not_due",
+  "status_scan_at": null
 }
 --- stderr ---
 --- body ---
@@ -172,7 +174,9 @@ status: 200
       "duration_ms": 300
     }
   },
-  "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=closed&limit=0",
+  "status_scan": "not_due",
+  "status_scan_at": null
 }
 --- stderr ---
 --- body ---
@@ -204,6 +208,10 @@ gh api graphql catalog state=all cursor=all-900
 gh api graphql catalog state=all cursor=all-1000
 gh api graphql catalog state=all cursor=all-1100
 gh api graphql catalog state=all cursor=all-1200
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 ## Closed pages through every row in bounded windows, past 500, 600, and the 1,000-row window alike.
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed&limit=1000'
 exit: 0

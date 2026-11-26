@@ -342,7 +342,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "a619ab340be40ab8fd05eb4905d2177ec7594b9a4aa6c3806baa7d70b397ea4a",
+  "record_revision": "08db68b486accb2241b515c607e6cd7b6467fb35ecf76f957a802715c2bf4858",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -357,7 +357,7 @@ status: 200
   "rendered_route": null,
   "size_route": null,
   "record": {
-    "schema_version": 2,
+    "schema_version": 3,
     "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 1,
@@ -367,9 +367,7 @@ status: 200
       "repos/octo/demo/pulls/1": "W/\"be1470595a6128d72ae596f8a3c82aeaf42e40a434826ed7420b4fd06702aabd\"",
       "repos/octo/demo/issues/1/comments?per_page=100&page=1": "W/\"bd0a3bbed985060704932aa5f94799ce1984041953fa6bceca70fcdfca07da0d\"",
       "repos/octo/demo/pulls/1/reviews?per_page=100&page=1": "W/\"b29824a2b64c489c7be4fce170608fb273df404b41aadcbee5817247f896cc5b\"",
-      "repos/octo/demo/pulls/1/comments?per_page=100&page=1": "W/\"5a360c97d34af3baf109ab34e0de37f425d3c28b1ae7494bbe7f24fb075f268b\"",
-      "repos/octo/demo/commits/59f44dac07a12a7c3907fbbcda78e35721c9013b/check-runs?per_page=100&page=1": "W/\"119acbe009379eebdd2f1c562803b99048e80519be37ee26838a22ac961de729\"",
-      "repos/octo/demo/commits/59f44dac07a12a7c3907fbbcda78e35721c9013b/status?per_page=100&page=1": "W/\"ef0a199f8989dc60eb0725a0597a47145b89f91c0cf6c7f445dd5a84b3f3241e\""
+      "repos/octo/demo/pulls/1/comments?per_page=100&page=1": "W/\"5a360c97d34af3baf109ab34e0de37f425d3c28b1ae7494bbe7f24fb075f268b\""
     },
     "pull": {
       "number": 1,
@@ -383,7 +381,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
-      "mergeable": "mergeable",
       "labels": [
         {
           "name": "enhancement",
@@ -486,42 +483,11 @@ status: 200
         "updated_at": "2026-09-16T17:30:11Z"
       }
     ],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
     "comparison": null,
     "truncated": {
       "issue_comments": false,
       "reviews": false,
       "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
       "text": false
     },
     "unavailable": {
@@ -530,7 +496,113 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": {
+    "number": 1,
+    "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+    "base_ref": "trunk",
+    "base": "3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "read",
+    "conflicts": "mergeable",
+    "merge_state": "blocked",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": 0,
+      "required_pending": 1,
+      "listed_at": "2026-09-17T12:00:00Z",
+      "moved_at": null
+    },
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "queue": null
+  },
+  "readiness": {
+    "verdict": "checks_pending",
+    "tone": "attention",
+    "label": "Checks pending",
+    "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "requirements": [
+      {
+        "kind": "conflicts",
+        "status": "met",
+        "summary": "No merge conflicts with trunk.",
+        "github_url": null
+      },
+      {
+        "kind": "checks",
+        "status": "waiting",
+        "summary": "Some checks are still pending: 2 successful, and 1 pending.",
+        "github_url": "https://github.com/octo/demo/pull/1/checks"
+      },
+      {
+        "kind": "reviews",
+        "status": "waiting",
+        "summary": "Review required.",
+        "github_url": "https://github.com/octo/demo/pull/1"
+      }
+    ],
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "auto_merge_summary": "Auto-merge enabled (squash)."
+  },
+  "checks": {
+    "number": 1,
+    "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "items": [
+      {
+        "name": "tests (3.13)",
+        "kind": "run",
+        "bucket": "pass",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs",
+        "kind": "run",
+        "bucket": "pending",
+        "status": "IN_PROGRESS",
+        "conclusion": null,
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs/readthedocs.org:demo",
+        "kind": "status",
+        "bucket": "pass",
+        "status": null,
+        "conclusion": "SUCCESS",
+        "required": false,
+        "details_url": "https://demo--7.org.readthedocs.build/en/7/",
+        "app": null,
+        "description": "Read the Docs build succeeded!"
+      }
+    ],
+    "truncated": false
+  },
+  "status_unavailable": null
 }
 ? 0
 ```

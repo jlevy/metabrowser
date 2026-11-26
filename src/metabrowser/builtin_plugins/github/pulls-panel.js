@@ -28,6 +28,12 @@
 // is the pointer's alone: hidden from assistive technology, it leaves the tree its items and
 // groups, and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
+// An open pull request's last line has a readiness column between its change line and its age
+// (row-readiness.js, mb-3n21): the verdict's glyph in its tone, and its label after it where
+// the list is wide enough, "+1,234 −567 › ⊗ 3d", so the glyphs down the list read as a checks
+// column. A closed or merged row, and one the server has no status of, keeps the column's width
+// empty. The link's name says the verdict after the state, as the state icon says the state.
+//
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
 // repository modes; the visible panel also drives the foreground catalog watch. The server
@@ -88,6 +94,7 @@ import {
   rowLineHint,
   rowLineInput,
 } from "./row-lines.js";
+import { createRowReadiness, PULL_STATUSES_ROUTE } from "./row-readiness.js";
 import { createStackFileList } from "./stack-files.js";
 import { createStackLines, STACK_CHANGE_ROUTE, stackLineInput } from "./stack-lines.js";
 import { PULLS_RUN, stackMemberRow } from "./stack-member-row.js";
@@ -711,6 +718,7 @@ function pinChanged(response) {
  *   filesListed?(number: number): void,
  *   listingFiles?(numbers: number[]): void,
  *   listedFiles?(numbers: number[], idle: boolean): void,
+ *   statusScan?(scan: unknown, endedAt: unknown): void,
  * }} PullsDependencies
  */
 
@@ -2617,6 +2625,11 @@ export function createPullsController(deps, options = {}) {
         if (request >= shownRequest) {
           holdEnvelope(list, answer.pulls, request);
         }
+        // Whether the ask started the scan of every open pull request's status, or found one
+        // running, and when the latest one ended, for the rows' readiness (row-readiness.js,
+        // `scanned`).
+        const scan = /** @type {{status_scan?: unknown, status_scan_at?: unknown}} */ (answer);
+        deps.statusScan?.(scan.status_scan, scan.status_scan_at);
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
           list.etag = null;
@@ -4110,6 +4123,7 @@ export function mountPullsPanel(container, ctx, mb) {
    *   changeWords: HTMLElement,
    *   changePending: HTMLElement | null,
    *   changeKey: string,
+   *   readinessKey: string,
    *   info: PullRow,
    *   key: string,
    *   at: number | null,
@@ -4633,6 +4647,8 @@ export function mountPullsPanel(container, ctx, mb) {
       title: row.title,
       state: row.state,
       author: { login: row.author, avatar: row.avatar },
+      // The readiness is the lane's to say (`paintReadiness`): what the row showed last.
+      readiness: shown?.readiness ?? null,
     };
   }
 
@@ -4703,10 +4719,6 @@ export function mountPullsPanel(container, ctx, mb) {
     const updated = mb.ageLabel(at, { className: "github-pulls-age" });
     updated.setAttribute("aria-hidden", "true");
     const label = updated.textContent ?? "";
-    // The row's last line, the lines and the chevron in the text column under the run, and the
-    // age at its end: one line tall whether the lines are shown, waited for, or cannot be had,
-    // so nothing moves when they arrive (github/styles.css, `.github-pulls-tail`).
-    const tail = h("span", { class: "github-pulls-tail" }, [change, updated]);
     // The row's run: the state icon, then the title, the place, the number, and the author,
     // in the one order every row of a pull request's fields has, drawn by the one builder that
     // draws a stack's members too (stack-member-row.js), a dot before each field after the
@@ -4720,6 +4732,12 @@ export function mountPullsPanel(container, ctx, mb) {
     const run = stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN);
     const line = runLine(row, null);
     run.show(line);
+    // The row's last line, the lines and the chevron in the text column under the run, then the
+    // readiness's column, its glyph and its label, hidden, since the run says the verdict after
+    // the state (stack-member-row.js), and the age at its end: one line tall whether the lines
+    // are shown, waited for, or cannot be had, so nothing moves when they or the readiness
+    // arrive (github/styles.css, `.github-pulls-tail`).
+    const tail = h("span", { class: "github-pulls-tail" }, [change, run.readiness, updated]);
     const said = h("span", { class: "sr-only" }, [rowSaid(row, label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
@@ -4772,11 +4790,37 @@ export function mountPullsPanel(container, ctx, mb) {
       changeWords,
       changePending: null,
       changeKey: "",
+      readinessKey: "",
       info: row,
       key,
       at,
       label,
     };
+  }
+
+  /**
+   * A row's readiness as it is now (row-readiness.js): the verdict's glyph in its tone in the
+   * last line's readiness column, its label after it where the list is wide enough, and its
+   * words after the state in the link's name; or the column empty, at its width, for a closed
+   * or merged pull request, one the server has no status of, and one not read yet, so the
+   * glyphs and the ages down the list stay in their columns.
+   *
+   * @param {PaintedRow} entry
+   */
+  function paintReadiness(entry) {
+    const readiness =
+      rowReadiness?.readiness(
+        { number: entry.info.number, head: entry.info.head, state: entry.info.state },
+        stackIdentity?.source ?? null,
+      ) ?? null;
+    const key =
+      readiness === null ? "none" : `${readiness.verdict}:${readiness.tone}:${readiness.label}`;
+    if (entry.readinessKey === key) {
+      return;
+    }
+    entry.readinessKey = key;
+    entry.line = { ...entry.line, readiness };
+    entry.run.show(entry.line);
   }
 
   /**
@@ -5443,6 +5487,7 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.row.setAttribute("aria-posinset", String(placed.posinset ?? part.index + 1));
       entry.row.setAttribute("aria-setsize", String(placed.setsize ?? placedSize));
       paintChange(entry);
+      paintReadiness(entry);
       nodes.push(entry.item);
     }
     for (const [key, gap] of gaps) {
@@ -5479,13 +5524,23 @@ export function mountPullsPanel(container, ctx, mb) {
         : [],
       stackIdentity?.source ?? null,
     );
-    // The pull requests drawn, in the list's order, whose runs read their change lines.
+    // The pull requests drawn, in the list's order, whose runs read their change lines and
+    // their readiness.
+    const drawnPulls = panelShown
+      ? [...painted.entries()].sort(
+          ([left], [right]) => (rowIndices.get(left) ?? 0) - (rowIndices.get(right) ?? 0),
+        )
+      : [];
     rowLines?.want(
-      panelShown
-        ? [...painted.entries()]
-            .sort(([left], [right]) => (rowIndices.get(left) ?? 0) - (rowIndices.get(right) ?? 0))
-            .map(([number, entry]) => ({ number, head: entry.info.head }))
-        : [],
+      drawnPulls.map(([number, entry]) => ({ number, head: entry.info.head })),
+      stackIdentity?.source ?? null,
+    );
+    rowReadiness?.want(
+      drawnPulls.map(([number, entry]) => ({
+        number,
+        head: entry.info.head,
+        state: entry.info.state,
+      })),
       stackIdentity?.source ?? null,
     );
     if (builtRefreshing) {
@@ -5807,6 +5862,8 @@ export function mountPullsPanel(container, ctx, mb) {
   let stackLines = null;
   /** @type {ReturnType<typeof createRowLines> | null} */
   let rowLines = null;
+  /** @type {ReturnType<typeof createRowReadiness> | null} */
+  let rowReadiness = null;
 
   const controller = createPullsController(
     {
@@ -5924,6 +5981,9 @@ export function mountPullsPanel(container, ctx, mb) {
       // (row-lines.js).
       listingFiles: (numbers) => rowLines?.listing(numbers),
       listedFiles: (numbers, idle) => rowLines?.listed(numbers, { idle }),
+      // What the list's ask said of the scan of every open pull request's status, for the
+      // rows' readiness (row-readiness.js).
+      statusScan: (scan, endedAt) => rowReadiness?.scanned(scan, endedAt),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
@@ -6000,6 +6060,28 @@ export function mountPullsPanel(container, ctx, mb) {
       : createRowLines({
           read: (numbers, readSignal) =>
             request(mb.perf, "GET", `${PULL_FILES_SUMMARY_ROUTE}?numbers=${numbers.join(",")}`, {
+              signal: readSignal,
+            }),
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          settle: settleWindow,
+          isVisible: () => document.visibilityState === "visible" && panelShown,
+          now: () => Date.now(),
+          changed: () => queueWindow(),
+        });
+
+  // Each open row's readiness, the server's verdict on its operational status
+  // (row-readiness.js): read for the rows the list draws, in one request, when the browser is
+  // idle, from the cache alone, and again when the list's ask says the scan of every open pull
+  // request's status started or ended, or a row's head or state moves. It is drawn with the
+  // vocabulary's glyph (pull-readiness.js). An SDK without `whenIdle` reads none, and its rows'
+  // columns stay empty.
+  rowReadiness =
+    typeof mb.whenIdle !== "function"
+      ? null
+      : createRowReadiness({
+          read: (numbers, readSignal) =>
+            request(mb.perf, "GET", `${PULL_STATUSES_ROUTE}?numbers=${numbers.join(",")}`, {
               signal: readSignal,
             }),
           schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
@@ -6541,6 +6623,7 @@ export function mountPullsPanel(container, ctx, mb) {
       warmer?.dispose();
       stackLines?.dispose();
       rowLines?.dispose();
+      rowReadiness?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }

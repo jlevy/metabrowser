@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github.pull_catalog import read_pull_status
 from metabrowser.builtin_plugins.github.pull_freshness import (
     checks_settling,
     mergeability_pending,
@@ -51,6 +52,14 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRequest,
     read_pull_record,
 )
+from metabrowser.builtin_plugins.github.pull_status_store import (
+    CheckProbes,
+    read_check_probes,
+    read_status_outcome,
+    write_check_probes,
+)
+from metabrowser.cache.locks import run_lock_section
+from metabrowser.home import PrivateStorageError
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 if TYPE_CHECKING:
@@ -59,6 +68,7 @@ if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
     from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
+    from metabrowser.builtin_plugins.github.pull_status import PullStatus
     from metabrowser.cache.acquire import PublishedSource
 
 log = logging.getLogger(__name__)
@@ -94,32 +104,41 @@ ATTENDED_PROBE_S: Final = 5.0
 # the same value an ask at +5 s minus 2 ms was refused and the cadence slipped toward 10 s.
 PROBE_FLOOR_S: Final = 4.0
 # How often an open pull request's settling checks are probed with it: the first pages of
-# its head's check runs and status, two more conditional ``GET``s. While CI runs they
-# change every few seconds, and each change costs a ``checks_only`` read of about 2
-# ``core``; 10 s holds that to about 12 a minute.
+# its head's check runs and status, two more conditional ``GET``s, while its kept status
+# says they settle (:func:`.pull_freshness.checks_settling`). While CI runs they change
+# every few seconds; each change costs, beyond the probe's own ``200``, a status read: one
+# account check and one GraphQL point and no ``core`` (:func:`.pulls.refresh_pull_status`),
+# where reading the checks into the record cost about 2 ``core``. 10 s holds that to about
+# 6 status reads a minute. The status read has no ETag, so the probes keep their
+# own beside the status (:class:`.pull_status_store.CheckProbes`), and the first probe of a
+# head seeds them with one paid ``200`` for each page and one status read.
 # Their ETags move with the head's own checks and not with its repository, so these
 # probes have no bound on paid answers that change nothing, as the list's has
 # (``MAX_PAID_PROBE_S``). Measured 2026-11-23, 06:44 to 07:12 UTC, with gh 2.98.0: of 504
 # conditional reads of both pages for six heads, four with runs in progress, the 56
 # answered ``200`` after a page's first each changed a run's status or conclusion, added
-# a run, or changed the status, all of which a record keeps; and for four pull requests
+# a run, or changed the status, all of which a status keeps; and for four pull requests
 # whose checks had ended, both pages answered ``304`` in all 96 reads of each page over
 # 7 minutes in which the pull's own ETag moved seven times.
 # That is a sample, mostly of GitHub Actions runs. A check app that rewrites a run's
 # output while it stays in progress would answer a paid ``200`` that changes nothing a
-# record keeps, one ``core`` each interval; what bounds those is the checks ending and
-# the process's ceiling (:func:`.gh_budget.over_ceiling`), past which
-# :meth:`ServedPull.probe_due` slows every probe to :data:`FULL_REFRESH_S`.
+# status keeps (:func:`.pulls.checks_digest`), one ``core`` each interval and no status
+# read; what bounds those is the checks ending and the process's ceiling
+# (:func:`.gh_budget.over_ceiling`), past which :meth:`ServedPull.probe_due` slows every
+# probe to :data:`FULL_REFRESH_S`.
 CHECKS_PROBE_S: Final = 10.0
 # How long a record the probes vouch for goes without a full read. A probe cannot see an
 # edited comment, a reaction, a re-run check of a finished head, or a mergeability GitHub
-# recomputes for a record that holds an answer, as when its base moves, so a visible
-# page's record is read in full this often whatever the probes say: the "every minute or
-# two" the plan sets, and an unchanged full read is all ``304``s and its account checks.
+# recomputes for a status that holds an answer, as when its base moves, so a visible
+# page's record, and its status after it, is read in full this often whatever the probes
+# say: the "every minute or two" the plan sets, and an unchanged full read is all
+# ``304``s, its account checks, and the status's one GraphQL point.
 FULL_REFRESH_S: Final = 90.0
-# How long, from the first probe that finds a head's mergeability unknown, the pull itself
-# is asked with each probe (:func:`.pulls.mergeability_probe_path`). GitHub computes
-# ``mergeable`` after the read that first asks: of 12 open NixOS/nixpkgs pull requests
+# How long, from the first probe that finds a head's kept status with its mergeability
+# unknown, its ``conflicts`` or its ``merge_state``, the pull itself is asked with each
+# probe (:func:`.pulls.mergeability_probe_path`), and an answer GitHub has since computed
+# starts a status read. GitHub computes ``mergeable`` after the read that first asks, and
+# ``mergeStateStatus`` with it: of 12 open NixOS/nixpkgs pull requests
 # read cold on 2026-11-23, all 12 answered ``null``, and all 12 an answer on the next
 # read 3 to 4 s later; review A of #726 saw ``null`` on 8 of 10 and an answer on all 10
 # 8 s later. Thirty seconds is six probes, several times the slowest of those. A probe
@@ -127,7 +146,8 @@ FULL_REFRESH_S: Final = 90.0
 # later, at most once a :data:`FULL_REFRESH_S` (:meth:`ServedPull._probe`). That is the
 # bound on what these asks can spend on a pull whose answer never comes; of 10 more read
 # cold that day and then every 5 s, all 10 answered on the next read, and none was a
-# ``200`` that still said ``null``. Past it
+# ``200`` that still said ``null``. Those were REST's ``mergeable``; the status's GraphQL
+# answer is computed by the same background job. Past it
 # the pull is asked no more, since its ETag moves with the whole repository and each move
 # costs a call, and the record is no longer vouched for: the window's read asks again.
 MERGEABLE_SETTLE_S: Final = 30.0
@@ -365,6 +385,23 @@ def cached_comparison_record(
     return record
 
 
+def probe_inputs(
+    published: PublishedSource | ListedRepository, number: int
+) -> tuple[PullStatus | None, CheckProbes | None]:
+    """What a probe of pull request *number* compares with: its kept status, and what the
+    last probe of its checks saw. Blocking and bounded: one catalog row and one small file.
+
+    Read with the record the probe runs beside, off the loop, before :meth:`ServedPull.probe`.
+    A probe that ran meanwhile may keep newer baselines than these, and the next probe
+    then counts a change it already saw once more, a status read at most.
+    """
+
+    return (
+        read_pull_status(published.home, published.slug, number),
+        read_check_probes(published.home, published.slug, number),
+    )
+
+
 @dataclass(eq=False)
 class ServedPull:
     """One pull request: its source, number, record time, and last refresh.
@@ -379,16 +416,25 @@ class ServedPull:
     last: PullRefreshOutcome | None = None
     without_store: bool = False
     # The catalog's newest verdict on the held record (:mod:`.pull_freshness`): when it
-    # last vouched for it, the row that reported a change the record predates, and whether
-    # only its checks are due. `_attempted_row` is the changed row the last attempt saw.
+    # last vouched for it, the row that reported a change the record predates, whether only
+    # its status is due (``checks``), whether no kept status of its head counts a list of
+    # its checks, and when the one kept that counts none was observed, as the Pulls tab's
+    # scan's of a new head is (``unlisted_at``).
+    # `_attempted_row` is the changed row the last attempt saw.
     verified_at: str | None = field(default=None, repr=False)
     changed_row: str | None = field(default=None, repr=False)
     checks_due: bool = field(default=False, repr=False)
+    status_missing: bool = field(default=False, repr=False)
+    unlisted_at: str | None = field(default=None, repr=False)
     _attempted_row: str | None = field(default=None, repr=False)
     # Set when another writer published this job's record first: how a refresh last ended
     # is then the stamp beside the record, read each time, not anything this job kept.
     outcome_on_disk: bool = field(default=False, repr=False)
     _last_attempt: datetime | None = field(default=None, repr=False)
+    # When the status was last read, alone (:func:`.pulls.refresh_pull_status`) or after a
+    # full read: a status due by the clock waits a window after it, so a failing GraphQL
+    # read is asked once a window. A read of the status alone moves no record clock.
+    _status_attempt: datetime | None = field(default=None, repr=False)
     _refreshing: bool = field(default=False, repr=False)
     core_preview: PullCorePreview | None = field(default=None, repr=False)
     display_core: tuple[PullCorePreview, CoreAdmission] | None = field(default=None, repr=False)
@@ -405,9 +451,10 @@ class ServedPull:
     _displayed: tuple[str, str] | None = field(default=None, repr=False)
     # Probes (:func:`.pulls.probe_pull_request`) of the record held: when one last found it
     # unchanged (``probed_at``), when one was last tried, for the pull and for its checks,
-    # and when one last failed. ``_probe_etags`` are newer ETags GitHub sent for checks
-    # the record already holds. ``_probe_saw`` is a change a probe found, ``pull`` or only
-    # ``checks``, and when, which makes the record due until an attempt starts after it.
+    # and when one last failed. ``_probe_etags`` are newer ETags GitHub sent for the pull
+    # whose mergeability the status already holds. ``_probe_saw`` is a change a probe found,
+    # ``pull``, which makes the record due until an attempt starts after it, or only
+    # ``checks``, its status, which makes a read of the status due until one starts after.
     # ``_issue_seen`` is the pull request's issue as the last probe found it, kept across
     # records. ``_probe_saw_updated`` is the issue ``updated_at`` of the change a probe
     # found, and ``_attempted_updated`` the one the last refresh was started for: a read
@@ -427,15 +474,17 @@ class ServedPull:
     # :data:`MERGEABLE_SETTLE_S` is counted from it.
     _mergeability_asked: tuple[str, datetime] | None = field(default=None, repr=False)
     _probe_task: asyncio.Future[None] | None = field(default=None, repr=False)
-    # When the record held was last read in full, not ``checks_only``, and when a full read
-    # was last tried: :data:`FULL_REFRESH_S` is measured from these, since a ``checks_only``
-    # read moves ``fetched_at`` every few seconds while CI runs. A record another writer
-    # published counts as read in full when this server adopts it.
+    # When the record held was last read in full, and when a full read was last tried:
+    # :data:`FULL_REFRESH_S` is measured from these. A read of the status alone moves
+    # neither. A record another writer published counts as read in full when this server
+    # adopts it.
     full_read_at: str | None = field(default=None, repr=False)
     _full_attempt: datetime | None = field(default=None, repr=False)
-    # A visible page's ask found the full read overdue (:meth:`automatic_due`): the next
-    # refresh reads everything, even for a record whose checks alone are due.
-    _full_asked: bool = field(default=False, repr=False)
+    # A visible page's last ask found a read due (:meth:`automatic_due`): the refresh it
+    # starts reads what is due when its turn comes, and nothing if none of it still is
+    # (:meth:`_reads`). Each ask sets it again, so one whose start was refused leaves it at
+    # most until the page asks next.
+    _page_asked: bool = field(default=False, repr=False)
 
     def note_comparison(self, pair: tuple[str, str], *, displayed: bool = False) -> None:
         """Remember a comparison this PR issued; metadata cannot evict the displayed pair."""
@@ -495,6 +544,11 @@ class ServedPull:
         return self.last
 
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
+        """Whether the record (:meth:`record_due`) or its status (:meth:`status_due`) is due."""
+
+        return self.record_due(now, window_s=window_s) or self.status_due(now)
+
+    def record_due(self, now: datetime, *, window_s: float) -> bool:
         """Older than *window_s*, and not tried within it or before GitHub's limit lifts.
 
         A record fetched within the window, or one the catalog vouched for within it
@@ -506,14 +560,13 @@ class ServedPull:
         whatever its age, for its Files changed. A record the catalog says GitHub changed
         since (``changed_row``) is due at once unless an attempt already saw that row, and
         then once a window, so a head that moved is read at once and an answer that lags
-        the catalog cannot loop. One whose checks alone are due (``checks_due``, an open pull
-        request the catalog vouches for but read longer ago than the window) is due once a
-        window.
+        the catalog cannot loop. A change a probe found in the pull request is due until
+        an attempt starts after it.
 
         Below :data:`~.gh_budget.BACKGROUND_FLOOR` (:meth:`below_floor`) only a change is
-        due, one a probe found or the catalog reports: the reads the clock alone asks for,
-        a record's age and an open one's checks, wait until the account's budget is back
-        above it, as background work does. A reader's own action never asks this.
+        due, one a probe found or the catalog reports: the read the clock alone asks for,
+        a record's age, waits until the account's budget is back above it, as background
+        work does. A reader's own action never asks this.
         """
 
         window = timedelta(seconds=window_s)
@@ -521,9 +574,11 @@ class ServedPull:
         last = self.last
         held = self._held(now)
         attempted_within = self._last_attempt is not None and now - self._last_attempt <= window
-        # A probe found GitHub changed since this record: due until an attempt follows.
+        # A probe found GitHub changed the pull request since this record: due until an
+        # attempt follows.
         if (
-            self._probe_saw_at is not None
+            self._probe_saw == "pull"
+            and self._probe_saw_at is not None
             and self.fetched_at is not None
             and not held
             and (self._last_attempt is None or self._last_attempt < self._probe_saw_at)
@@ -532,9 +587,6 @@ class ServedPull:
         if self.changed_row is not None and self.fetched_at is not None:
             # GitHub changed it after this record: due unless an attempt saw that very row.
             return not held and (self._attempted_row != self.changed_row or not attempted_within)
-        spare = not self.below_floor(now)
-        if self.checks_due and not unserved and self.fetched_at is not None:
-            return spare and not held and not attempted_within
         newest = max(
             (stamp for stamp in (self.fetched_at, self.verified_at) if stamp is not None),
             default=None,
@@ -547,7 +599,37 @@ class ServedPull:
             # What succeeded was a server with no store writing that record. This one's
             # refresh, which fetches the head into its store, has not been tried.
             return True
+        spare = not self.below_floor(now)
         return spare and (self._last_attempt is None or now - self._last_attempt > window)
+
+    def status_due(self, now: datetime) -> bool:
+        """Whether a read of the status alone is due at *now* (:func:`.pulls.refresh_pull_status`).
+
+        A change a probe found in the status alone, a check or a mergeability GitHub has
+        since computed (``checks_changed``), is due until a read of the status starts after
+        it, the one after a full read among them; so is a status the Pulls tab's scan kept
+        of the record's head that counts no list of its checks, observed after the last
+        read of the status started (:meth:`_scan_moved_status`). A status the catalog's
+        verdict says is a window old (``checks_due``, an open pull request the catalog
+        vouches for), and a record with no kept status of its head that lists its checks
+        (``status_missing``), as a prefetched one has, are due once a window from the last
+        read of the status, whether or not the record is current. GitHub's limit holds each, and below the GraphQL floor
+        (:meth:`status_below_floor`) the last two wait, as the reads the clock asks for do.
+        Only a held record has a status read, and speculative work never has one due
+        (:func:`.gh_budget.speculating`): a background record reads no operational status,
+        and the prefetch's caps are priced without it (``POINTS_PER_RECORD`` in
+        ``pull_prefetch.py``), so no refresh it starts reads the status alone.
+        """
+
+        if self.fetched_at is None or self._held(now) or gh_budget.speculating():
+            return False
+        if self._status_change_found():
+            return True
+        if not (self.checks_due or self.status_missing):
+            return False
+        attempted = self._status_attempt
+        within = attempted is not None and now - attempted <= timedelta(seconds=FRESHNESS_WINDOW_S)
+        return not within and not self.status_below_floor(now)
 
     def _held(self, now: datetime) -> bool:
         """Whether GitHub's rate limit holds an automatic read of this record at *now*."""
@@ -561,14 +643,49 @@ class ServedPull:
         ) or gh_budget.held_until(now) is not None
 
     def below_floor(self, now: datetime) -> bool:
-        """Whether the account's ``core`` budget is at or below the background floor at *now*.
+        """Whether a budget a refresh spends is at or below the background floor at *now*.
 
-        Then this record's periodic reads stop (:meth:`is_stale`, :meth:`full_read_due`),
-        while its probes go on, since a ``304`` is free, and a change one finds is still
-        read in full: the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring.
+        A refresh spends ``core`` on the record and ``graphql`` on its status
+        (:func:`.pull_status_read.keep_pull_status`). Then this record's periodic reads
+        stop (:meth:`record_due`, :meth:`full_read_due`), while its probes go on, since a
+        ``304`` is free, and a change one finds is still read in full: the owner's rule of
+        2026-11-22, in :mod:`.gh_budget`'s docstring.
         """
 
-        return gh_budget.admission(("core",), now=now).reason == "below_floor"
+        return gh_budget.admission(("core", "graphql"), now=now).reason == "below_floor"
+
+    def _status_change_found(self) -> bool:
+        """Whether a probe, or the Pulls tab's scan, found the status alone changed after
+        its last read started."""
+
+        attempted, saw = self._status_attempt, self._probe_saw_at
+        return (
+            self._probe_saw == "checks"
+            and saw is not None
+            and (attempted is None or attempted < saw)
+        ) or self._scan_moved_status()
+
+    def _scan_moved_status(self) -> bool:
+        """Whether the scan kept a status of the record's head that lists none of its checks
+        after the last read of the status started.
+
+        That is a new head, or checks that moved, which the scan of every open pull request
+        sees without listing them (:func:`.pull_freshness.listing_missing`). The page reads
+        its own at once, once: the read that starts after it is no longer before it. The
+        scan's own spacing (:mod:`.pull_status_scan`) bounds how often that can be.
+        """
+
+        unlisted, attempted = self.unlisted_at, self._status_attempt
+        return unlisted is not None and (attempted is None or attempted < _parse_stamp(unlisted))
+
+    def status_below_floor(self, now: datetime) -> bool:
+        """Whether the GraphQL budget a read of the status alone spends is below the floor.
+
+        That read spends no ``core`` beyond an account check, a ``304`` while the login is
+        the same, so only ``graphql`` holds its clock-driven reads (:meth:`status_due`).
+        """
+
+        return gh_budget.admission(("graphql",), now=now).reason == "below_floor"
 
     def probe_vouches(self, now: datetime) -> bool:
         """Whether a probe found the record held unchanged within a freshness window."""
@@ -580,16 +697,25 @@ class ServedPull:
     def automatic_due(self, now: datetime) -> Literal["full", "probe"] | None:
         """What a visible page's automatic ask is due to start at *now*, if anything.
 
-        ``full`` when the record is stale (:meth:`is_stale`), over a window of
+        ``full`` when the record is stale (:meth:`record_due`), over a window of
         :data:`FULL_REFRESH_S` while probes vouch for it and :data:`FRESHNESS_WINDOW_S`
         otherwise, or when its full read is overdue (:meth:`full_read_due`), so even a
         record the catalog or the probes vouch for is read in full that often while a page
         shows it. ``probe`` when none of that holds and a probe is due (:meth:`probe_due`).
         Below the background floor neither clock asks for a full read, so the ask probes,
         and ``full`` is then only a change a probe or the catalog found.
+
+        When only the status is due (:meth:`status_due`), a change a probe found in it is
+        read at once; one the clock or a missing status asks for is probed for first when
+        a probe is due, so a change the probe finds in the record reads the record and the
+        status after it in one job, and otherwise the next ask reads the status alone.
+        Either is ``full``. The refresh it starts decides again when its turn at the store
+        comes (:meth:`_reads`): it reads what is due then, and nothing if none of it still
+        is, as when a hold is noted or a floor crossed while it waits.
         """
 
-        window = FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
+        self._page_asked = False
+        window = self.record_window(now)
         if (
             gh_budget.over_ceiling(now)
             and self._last_attempt is not None
@@ -599,12 +725,15 @@ class ServedPull:
             # one a probe found a change for, waits five minutes after the last; a change
             # that waits is not probed for again.
             return "probe" if self._probe_saw_at is None and self.probe_due(now) else None
-        if self.full_read_due(now):
-            self._full_asked = True
+        if self.full_read_due(now) or self.record_due(now, window_s=window):
+            self._page_asked = True
             return "full"
-        if self.is_stale(now, window_s=window):
+        if not self.status_due(now):
+            return "probe" if self.probe_due(now) else None
+        if self._status_change_found() or not self.probe_due(now):
+            self._page_asked = True
             return "full"
-        return "probe" if self.probe_due(now) else None
+        return "probe"
 
     def full_read_overdue(self, now: datetime) -> bool:
         """Whether the record held was last read in full longer than FULL_REFRESH_S ago.
@@ -621,7 +750,7 @@ class ServedPull:
         Not while GitHub's limit holds, below the background floor (:meth:`below_floor`),
         within a freshness window of a failed refresh of any kind
         (:meth:`_failed_recently`), nor within :data:`FULL_REFRESH_S` of the last full
-        read tried, so a failing one is not retried on every ask. ``checks_only`` reads,
+        read tried, so a failing one is not retried on every ask. Reads of the status alone,
         which neither count as one nor hold one back, do not move either clock.
         """
 
@@ -679,9 +808,18 @@ class ServedPull:
         )
 
     async def probe(
-        self, record: PullRecord, *, coordinator: RefreshCoordinator | None = None
+        self,
+        record: PullRecord,
+        *,
+        status: PullStatus | None = None,
+        probes: CheckProbes | None = None,
+        coordinator: RefreshCoordinator | None = None,
     ) -> None:
         """Probe *record*, the record held, when :meth:`probe_due` says one may start.
+
+        *status* is the kept status of its number and *probes* what the last probe of its
+        head's checks saw (:func:`probe_inputs`), which the probe compares GitHub's answers
+        with: with neither, it asks the issue alone.
 
         Waits at most :data:`PROBE_WAIT_S` and then raises :class:`TimeoutError`, leaving
         the probe to end on its own; cancelling the wait never cancels the probe.
@@ -697,7 +835,7 @@ class ServedPull:
             raise AssertionError("probe_due holds a second probe while one runs")
         if coordinator is not None and coordinator.closed:
             return
-        work: Callable[[], Awaitable[None]] = partial(self._probe, record)
+        work: Callable[[], Awaitable[None]] = partial(self._probe, record, status, probes)
         task: asyncio.Future[None] | None = None
         if coordinator is not None:
             coordinator.start(self.probe_key, work, network=False)
@@ -720,12 +858,14 @@ class ServedPull:
 
         return self._probe_task is not None and not self._probe_task.done()
 
-    async def _probe(self, record: PullRecord) -> None:
+    async def _probe(
+        self, record: PullRecord, status: PullStatus | None, probes: CheckProbes | None
+    ) -> None:
         now = pulls.utc_now()
         self._probe_attempt = now
-        # A record whose mergeability is unknown has the pull asked too, for
-        # MERGEABLE_SETTLE_S from the first probe that found this head's unknown. A
-        # record that holds an answer ends the wait, so the next unknown has its own, and
+        # A pull request whose status has not settled its mergeability has the pull asked
+        # too, for MERGEABLE_SETTLE_S from the first probe that found this head's unknown. A
+        # status that holds an answer ends the wait, so the next unknown has its own, and
         # so does a new head. A wait that ended unanswered is renewed for a record read
         # after it ended, as a page shown again reads one, and no sooner than
         # FULL_REFRESH_S after it began: that bounds the asks for a pull request GitHub
@@ -733,7 +873,9 @@ class ServedPull:
         asked = self._mergeability_asked
         head = record.pull.head.sha
         settle = timedelta(seconds=MERGEABLE_SETTLE_S)
-        if not mergeability_pending(record):
+        pending = mergeability_pending(record, status)
+        settling = checks_settling(record, status)
+        if not pending:
             asked = self._mergeability_asked = None
         elif (
             asked is None
@@ -745,7 +887,7 @@ class ServedPull:
         ):
             asked = self._mergeability_asked = (head, now)
         mergeability = asked is not None and now - asked[1] <= settle
-        checks = checks_settling(record) and (
+        checks = settling and (
             self._checks_probe_attempt is None
             # Less the slack PROBE_FLOOR_S allows each probe, so jitter does not push
             # the checks to every third probe (review B7 on #709).
@@ -758,8 +900,8 @@ class ServedPull:
         # mergeability still unknown once the pull is asked no more, are read once a
         # freshness window, as without probes, so no probe vouches for the record.
         vouches = not (
-            checks_settling(record) and pulls.checks_probe_paths(self.published, record) is None
-        ) and not (mergeability_pending(record) and not mergeability)
+            settling and pulls.checks_probe_paths(self.published, record, status, probes) is None
+        ) and not (pending and not mergeability)
         try:
             found = await pulls.probe_pull_request(
                 self.published,
@@ -768,6 +910,8 @@ class ServedPull:
                 checks=checks,
                 seen=self._issue_seen,
                 mergeability=mergeability,
+                status=status,
+                probes=probes,
             )
         except Exception as exc:
             # Nothing waits on a probe's result but this record's freshness: any failure,
@@ -784,16 +928,21 @@ class ServedPull:
             else:
                 log.exception("probing pull request %s failed", self.number)
             return
-        # The issue as GitHub has it now, whichever record this probe ran beside.
+        # The issue as GitHub has it now, whichever record this probe ran beside, and the
+        # head's checks as it saw them, whichever record of that head is held.
         self._issue_seen = found.seen
+        if found.checks is not None:
+            await self._keep_check_probes(found.checks)
         if self.fetched_at != record.fetched_at:
             # A newer record arrived while it ran; what it found is about the older one.
             return
         self._probe_failed = None
         self._probe_etags.update(found.etags)
+        if found.outcome in ("unchanged", "checks_changed") and vouches:
+            # The issue is as the record has it, so the record is GitHub's; a change a
+            # probe found in the status alone is the status's to read.
+            self.probed_at = _stamp(now)
         if found.outcome == "unchanged":
-            if vouches:
-                self.probed_at = _stamp(now)
             return
         if found.outcome == "behind":
             # GitHub's issue answer is older than the record: it lags, and a read would
@@ -818,6 +967,16 @@ class ServedPull:
         )
         self._probe_saw_at = now
 
+    async def _keep_check_probes(self, probes: CheckProbes) -> None:
+        """Keep what a probe saw of the head's checks; one that cannot be kept is seeded again."""
+
+        try:
+            await run_lock_section(
+                partial(write_check_probes, self.published.home, self.published.slug, probes)
+            )
+        except (PrivateStorageError, OSError, ValueError) as exc:
+            log.debug("could not keep what probing pull request %s saw: %s", self.number, exc)
+
     def _forget_probes(self) -> None:
         """A newer record is held: what probes found was about the one before it."""
 
@@ -827,7 +986,7 @@ class ServedPull:
         self._probe_saw_updated = None
         self._probe_failed = None
         # ``_checks_probe_attempt`` is kept: the checks probes keep their own cadence across
-        # the checks_only reads they start, rather than starting afresh after each one.
+        # the records read meanwhile, rather than starting afresh after each one.
 
     def saw_record(
         self,
@@ -845,19 +1004,23 @@ class ServedPull:
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
             if not self._refreshing:
-                # Another writer's record, taken as read in full; a refresh of this server's
-                # that is running sets ``full_read_at`` itself when it ends, and may be the
-                # checks_only read that published this record (review B6 on #709).
+                # Another writer's record, taken as read in full. A refresh of this
+                # server's that is running sets ``full_read_at`` itself when it ends: a full
+                # read may be the one that published this record (review B6 on #709), and a
+                # read of the status alone, which publishes none, takes the record adopted
+                # meanwhile as read in full (:meth:`_refresh_status`).
                 self.full_read_at = fetched_at
             self.without_store = without_store
             self._forget_probes()
             self.display_core = None
-            self.verified_at = self.changed_row = None
-            self.checks_due = False
+            self.verified_at = self.changed_row = self.unlisted_at = None
+            self.checks_due = self.status_missing = False
         if freshness is not None and fetched_at is not None and fetched_at == self.fetched_at:
             self.verified_at = freshness.verified_at if freshness.verified_by == "catalog" else None
             self.changed_row = freshness.changed_row
             self.checks_due = freshness.verdict == "checks"
+            self.status_missing = freshness.status_missing
+            self.unlisted_at = freshness.unlisted_at
 
     def request_core_preview(self) -> None:
         """Prepare only a selected missing record, never replace a full cached record."""
@@ -919,19 +1082,97 @@ class ServedPull:
 
         A refresh cancelled before it ended, as a background job a reader's work preempts
         is, forgets its attempt, so the next automatic request is not held for a window.
-        An automatic refresh of a record whose checks alone are due (``checks_due``) reads
-        them on their own (``checks_only`` in :func:`.pulls.refresh_pull_request`), unless
-        a visible page's ask found its full read overdue (:meth:`automatic_due`).
+        What it reads is decided when it starts, after its turn at the store and its slot
+        (:meth:`_reads`): the record and its status after it, the status alone
+        (:func:`.pulls.refresh_pull_status`), which moves none of the record's clocks, or
+        nothing.
         """
         started = pulls.utc_now()
+        page, self._page_asked = self._page_asked, False
+        self._refreshing = True
+        try:
+            reads = self._reads(started, page=page)
+            if reads is None:
+                return
+            if reads == "status":
+                await self._refresh_status(started)
+                if not self._recoveries:
+                    return
+                # A reader's own refresh joined while the status was read: it reads all.
+                started = pulls.utc_now()
+            await self._refresh_record(started)
+        finally:
+            self.display_core = None
+            self._clear_core_preview()
+            self._core_requested = False
+            self._core_ready.set()
+            self._refreshing = False
+
+    def record_window(self, now: datetime) -> float:
+        """How old the record held may be before the clock asks for it: :data:`FULL_REFRESH_S`
+        while a probe vouches for it (:meth:`probe_vouches`), and a freshness window otherwise."""
+
+        return FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
+
+    def _reads(self, now: datetime, *, page: bool) -> Literal["record", "status"] | None:
+        """What a refresh that starts at *now* reads: ``record``, the record and its status
+        after it; ``status``, the status alone; or nothing.
+
+        A reader's own action (a recovery) reads the record. Otherwise the record when it
+        is due (:meth:`record_due`), or, for a visible page's ask (*page*), when its full
+        read is (:meth:`full_read_due`), so a record whose status alone is due is read in
+        full that often; the status alone when only it is (:meth:`status_due`), which
+        speculative work never has. When nothing is due, a page's ask and speculative work
+        read nothing: each asked for what was due, and a hold noted, a floor crossed, or a
+        record adopted while the job waited its turn has made none of it due. Any other
+        caller's ask is for a read of its own, as a reader's retry of a commit fetch, a
+        commit the mirror lacks, or a comparison that needs the record is, and reads the
+        record.
+        """
+
+        if self._recoveries or (page and self.full_read_due(now)):
+            return "record"
+        if self.record_due(now, window_s=self.record_window(now)):
+            return "record"
+        if self.status_due(now):
+            return "status"
+        return None if page or gh_budget.speculating() else "record"
+
+    async def _refresh_status(self, started: datetime) -> None:
+        """Read and keep the status alone; a failure is the status's, kept beside it.
+
+        The read publishes no record, so one adopted while it ran (:meth:`saw_record`) is
+        another writer's, and is taken as read in full when it ends, as one adopted while no
+        refresh runs is: :data:`FULL_REFRESH_S` counts from it.
+        """
+
+        previous, self._status_attempt = self._status_attempt, started
+        held = self.fetched_at
+        try:
+            await pulls.refresh_pull_status(self.published, self.number)
+        except asyncio.CancelledError:
+            self._status_attempt = previous
+            raise
+        except pulls.PullDataError as exc:
+            log.debug("reading the status of pull request %s failed: %s", self.number, exc)
+        finally:
+            if self.fetched_at != held:
+                self.full_read_at = self.fetched_at
+
+    async def _refresh_record(self, started: datetime) -> None:
+        """Read the record, and its status after it, consuming each recovery request."""
+
         previous_attempt, self._last_attempt = self._last_attempt, started
-        previous_full, previous_asked = self._full_attempt, self._full_asked
+        previous_full = self._full_attempt
         previous_row, self._attempted_row = self._attempted_row, self.changed_row
         previous_updated, self._attempted_updated = (
             self._attempted_updated,
             self._probe_saw_updated,
         )
-        self._refreshing = True
+        previous_status = self._status_attempt
+        if not gh_budget.speculating():
+            # The status is read after the record (the prefetch's records read none).
+            self._status_attempt = started
         try:
             while True:
                 recover = bool(self._recoveries)
@@ -987,16 +1228,7 @@ class ServedPull:
                     self._core_ready.set()
 
                 progress = stage_core if self._core_requested and self.fetched_at is None else None
-                checks_only = (
-                    (self.checks_due or self._probe_saw == "checks")
-                    and not recover
-                    and self.changed_row is None
-                    and self._probe_saw != "pull"
-                    and not self._full_asked
-                )
-                if not checks_only:
-                    self._full_attempt = started
-                    self._full_asked = False
+                self._full_attempt = started
                 try:
                     if progress is not None or self._source_pulls is not None:
                         record = await pulls.refresh_pull_request(
@@ -1007,11 +1239,6 @@ class ServedPull:
                             on_core=progress,
                             observe_reader=observe_reader,
                             adopt_current=False,
-                            checks_only=checks_only,
-                        )
-                    elif checks_only:
-                        record = await pulls.refresh_pull_request(
-                            published, self.number, adopt_current=False, checks_only=True
                         )
                     else:
                         record = (
@@ -1036,7 +1263,7 @@ class ServedPull:
                     self.without_store = written_without_store(exc.current)
                     self._forget_probes()
                     self.verified_at = self.changed_row = None
-                    self.checks_due = False
+                    self.checks_due = self.status_missing = False
                     self.outcome_on_disk = True
                 except pulls.PullDataError as exc:
                     self.outcome_on_disk = False
@@ -1048,15 +1275,11 @@ class ServedPull:
                     )
                 else:
                     self.outcome_on_disk = False
-                    # A checks_only read keeps the clock of the full read before it.
-                    self.full_read_at = (
-                        (self.full_read_at or self.fetched_at) if checks_only else record.fetched_at
-                    )
-                    self.fetched_at = record.fetched_at
+                    self.full_read_at = self.fetched_at = record.fetched_at
                     self.without_store = written_without_store(record)
                     self._forget_probes()
                     self.verified_at = self.changed_row = None
-                    self.checks_due = False
+                    self.checks_due = self.status_missing = False
                     if record.comparison is not None:
                         self.note_comparison((record.comparison.base, record.comparison.head))
                     self.last = PullRefreshOutcome(
@@ -1067,21 +1290,16 @@ class ServedPull:
         except asyncio.CancelledError:
             self._last_attempt, self._attempted_row = previous_attempt, previous_row
             self._attempted_updated = previous_updated
-            self._full_attempt, self._full_asked = previous_full, previous_asked
+            self._full_attempt = previous_full
+            self._status_attempt = previous_status
             raise
-        finally:
-            self.display_core = None
-            self._clear_core_preview()
-            self._core_requested = False
-            self._core_ready.set()
-            self._refreshing = False
 
 
 def served_pull(published: PublishedSource | ListedRepository, number: int) -> ServedPull:
     """One pull request, knowing when its cached record was fetched, if it was.
 
-    Blocking and bounded: it reads the record and the last refresh's stamp once. Call it
-    off the event loop.
+    Blocking and bounded: it reads the record and the stamps of its last refresh and its
+    status's last read once. Call it off the event loop.
     """
 
     record = read_pull_record(published.home, published.slug, number)
@@ -1091,12 +1309,16 @@ def served_pull(published: PublishedSource | ListedRepository, number: int) -> S
     issued = OrderedDict[tuple[str, str], None]()
     if isinstance(record, PullRecord) and record.comparison is not None:
         issued[(record.comparison.base, record.comparison.head)] = None
+    # How the status's last read ended, in any process, so a failing one waits its window.
+    read = read_status_outcome(published.home, published.slug, number)
+    status_attempt = None if read is None else _parse_stamp(read.at)
     if last is None:
         return ServedPull(
             published=published,
             number=number,
             fetched_at=fetched_at,
             without_store=without_store,
+            _status_attempt=status_attempt,
             _issued=issued,
         )
     return ServedPull(
@@ -1106,6 +1328,7 @@ def served_pull(published: PublishedSource | ListedRepository, number: int) -> S
         last=last,
         without_store=without_store,
         _last_attempt=_parse_stamp(last["at"]),
+        _status_attempt=status_attempt,
         _issued=issued,
     )
 
@@ -1303,6 +1526,7 @@ __all__ = [
     "forget_probes",
     "last_refresh",
     "may_probe",
+    "probe_inputs",
     "probes_in_flight",
     "record_revision",
     "served_pull",

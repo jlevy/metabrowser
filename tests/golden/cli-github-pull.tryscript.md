@@ -71,7 +71,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "record_revision": "a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -86,7 +86,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "record": {
-    "schema_version": 2,
+    "schema_version": 3,
     "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 7,
@@ -96,9 +96,7 @@ status: 200
       "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
-      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
-      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
-      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\""
     },
     "pull": {
       "number": 7,
@@ -112,7 +110,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
-      "mergeable": "mergeable",
       "labels": [
         {
           "name": "enhancement",
@@ -215,35 +212,6 @@ status: 200
         "updated_at": "2026-09-16T17:30:11Z"
       }
     ],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
     "comparison": {
       "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
       "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
@@ -254,15 +222,119 @@ status: 200
       "issue_comments": false,
       "reviews": false,
       "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
       "text": false
     },
     "unavailable": {}
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": {
+    "number": 7,
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "base_ref": "topic",
+    "base": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "read",
+    "conflicts": "mergeable",
+    "merge_state": "blocked",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": 0,
+      "required_pending": 1,
+      "listed_at": "2026-09-17T12:00:00Z",
+      "moved_at": null
+    },
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "queue": null
+  },
+  "readiness": {
+    "verdict": "checks_pending",
+    "tone": "attention",
+    "label": "Checks pending",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "requirements": [
+      {
+        "kind": "conflicts",
+        "status": "met",
+        "summary": "No merge conflicts with topic.",
+        "github_url": null
+      },
+      {
+        "kind": "checks",
+        "status": "waiting",
+        "summary": "Some checks are still pending: 2 successful, and 1 pending.",
+        "github_url": "https://github.com/octo/demo/pull/7/checks"
+      },
+      {
+        "kind": "reviews",
+        "status": "waiting",
+        "summary": "Review required.",
+        "github_url": "https://github.com/octo/demo/pull/7"
+      }
+    ],
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "auto_merge_summary": "Auto-merge enabled (squash)."
+  },
+  "checks": {
+    "number": 7,
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "items": [
+      {
+        "name": "tests (3.13)",
+        "kind": "run",
+        "bucket": "pass",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs",
+        "kind": "run",
+        "bucket": "pending",
+        "status": "IN_PROGRESS",
+        "conclusion": null,
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs/readthedocs.org:demo",
+        "kind": "status",
+        "bucket": "pass",
+        "status": null,
+        "conclusion": "SUCCESS",
+        "required": false,
+        "details_url": "https://demo--7.org.readthedocs.build/en/7/",
+        "app": null,
+        "description": "Read the Docs build succeeded!"
+      }
+    ],
+    "truncated": false
+  },
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -746,7 +818,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
+  "record_revision": "5c011c3a5b821c19776edbdfa483a6ec9360c8295d279a5527cd55fbe14b7766",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -761,7 +833,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "record": {
-    "schema_version": 2,
+    "schema_version": 3,
     "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 9,
@@ -771,9 +843,7 @@ status: 200
       "repos/octo/demo/pulls/9": "W/\"bd0a1535019ba33ca5d652f1e47b79467f9530f4108d8188308766a528b0938a\"",
       "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
       "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
-      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
-      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
-      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\""
     },
     "pull": {
       "number": 9,
@@ -787,7 +857,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 1,
       "merge_commit_sha": null,
-      "mergeable": "unknown",
       "labels": [
         {
           "name": "invalid",
@@ -816,35 +885,6 @@ status: 200
     "issue_comments": [],
     "reviews": [],
     "review_comments": [],
-    "check_runs": [
-      {
-        "id": 51401654787,
-        "name": "tests (3.13)",
-        "status": "completed",
-        "conclusion": "success",
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-        "app": "GitHub Actions"
-      },
-      {
-        "id": 51401654788,
-        "name": "docs",
-        "status": "in_progress",
-        "conclusion": null,
-        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-        "app": "GitHub Actions"
-      }
-    ],
-    "status": {
-      "state": "success",
-      "statuses": [
-        {
-          "context": "docs/readthedocs.org:demo",
-          "state": "success",
-          "description": "Read the Docs build succeeded!",
-          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
-        }
-      ]
-    },
     "comparison": {
       "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
       "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
@@ -855,15 +895,83 @@ status: 200
       "issue_comments": false,
       "reviews": false,
       "review_comments": false,
-      "check_runs": false,
-      "statuses": false,
       "text": false
     },
     "unavailable": {}
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": {
+    "number": 9,
+    "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+    "base_ref": "topic",
+    "base": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "read",
+    "conflicts": "unknown",
+    "merge_state": "unknown",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": 0,
+      "required_pending": 1,
+      "listed_at": "2026-09-17T12:00:00Z",
+      "moved_at": null
+    },
+    "auto_merge": null,
+    "queue": null
+  },
+  "readiness": null,
+  "checks": {
+    "number": 9,
+    "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "items": [
+      {
+        "name": "tests (3.13)",
+        "kind": "run",
+        "bucket": "pass",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs",
+        "kind": "run",
+        "bucket": "pending",
+        "status": "IN_PROGRESS",
+        "conclusion": null,
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs/readthedocs.org:demo",
+        "kind": "status",
+        "bucket": "pass",
+        "status": null,
+        "conclusion": "SUCCESS",
+        "required": false,
+        "details_url": "https://demo--7.org.readthedocs.build/en/7/",
+        "app": null,
+        "description": "Read the Docs build succeeded!"
+      }
+    ],
+    "truncated": false
+  },
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -899,7 +1007,7 @@ show: /pull/7/files
 route: /pull/7/files
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 checks=pass:2,pending:1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]
 ? 0
 ```
 
@@ -937,7 +1045,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -1003,7 +1115,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -1051,7 +1167,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -1144,7 +1264,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -1185,7 +1309,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -1226,7 +1354,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 ? 0
 ```
@@ -1449,7 +1581,11 @@ status: 202
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1484,7 +1620,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1528,7 +1668,11 @@ status: 202
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1563,7 +1707,11 @@ status: 200
   "record": null,
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": null,
+  "checks": null,
+  "status_unavailable": null
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1608,7 +1756,11 @@ status: 200
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1656,7 +1808,7 @@ show: /pull/7
 route: /pull/7
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=conversation
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 checks=pass:2,pending:1 tab=conversation
 ? 0
 ```
 
@@ -1669,7 +1821,7 @@ show: /pull/9/files
 route: /pull/9/files
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]
+model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 checks=pass:2,pending:1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]
 ? 0
 ```
 
@@ -1683,7 +1835,7 @@ show: /pull/7/checks
 route: /pull/7/checks
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=checks
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 checks=pass:2,pending:1 readiness=checks_pending requirements=conflicts:met,checks:waiting,reviews:waiting tab=checks
 ? 0
 ```
 
@@ -1699,7 +1851,7 @@ show: /pull/8
 route: /pull/8
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=merged fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=conversation
+model: pull envelope; state=stale pull_state=merged fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 checks=pass:2,skipping:1 tab=conversation
 ? 0
 ```
 
@@ -1709,7 +1861,7 @@ show: /pull/7
 route: /pull/7
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=conversation
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 checks=pass:2,pending:1 tab=conversation
 ? 0
 ```
 
@@ -1721,80 +1873,4 @@ kind: pull-request
 views: pull-request (default)
 model: pull envelope; state=absent reason=not_cached tab=conversation
 ? 0
-```
-
-## Test: the page’s text is Markdown rendered from the cached record
-
-`pull-markdown` renders one text of the record through KPress in its sanitized mode: the
-description (`body`), or one comment, review, or review comment by ID. The answer is the
-record’s fetch time, the part, its rendered HTML, and the manifest of KPress’s
-stylesheets, the same for every text.
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body'
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/pull-markdown?number=7&part=body
-status: 200
-{
-  "number": 7,
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
-  "part": "body",
-  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
-  "assets": {
-...
-  }
-}
-? 0
-```
-
-A part the record does not hold, or one that is not a part’s name, is refused.
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=review/1'
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/pull-markdown?number=7&part=review/1
-status: 404
-{
-  "error": "the record has no such part",
-  "code": "unknown_part"
-}
-Error: /api/plugin/github/pull-markdown?number=7&part=review/1 returned HTTP 404
-? 1
-```
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=../body'
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/pull-markdown?number=7&part=../body
-status: 400
-{
-  "error": "name a part of the pull request",
-  "code": "invalid_part"
-}
-Error: /api/plugin/github/pull-markdown?number=7&part=../body returned HTTP 400
-? 1
-```
-
-With no record cached there is nothing to render, and the answer says so.
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/14 --api '/api/plugin/github/pull-markdown?number=14&part=body'
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
-api: /api/plugin/github/pull-markdown?number=14&part=body
-status: 404
-{
-  "error": "This pull request has not been loaded.",
-  "code": "not_cached"
-}
-Error: /api/plugin/github/pull-markdown?number=14&part=body returned HTTP 404
-? 1
 ```

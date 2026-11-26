@@ -34,6 +34,7 @@ from tests.golden_harness import (
     check_golden,
     label_home,
     normalize_pull_comparison_scopes,
+    operational_once,
     run_metab,
 )
 from tests.test_cli_github_pull_golden import PULL, ROUTE, _body, _Session
@@ -180,4 +181,4 @@ def test_golden_rendered_markdown_views_fold_and_withhold_unchanged_runs(
     )
     text = _assets_once(_ANCHOR.sub("user-content-<ANCHORS>-", text))
     assert str(tmp_path) not in text
-    check_golden("cli-github-pull-rendered-views.txt", text)
+    check_golden("cli-github-pull-rendered-views.txt", operational_once(text))
