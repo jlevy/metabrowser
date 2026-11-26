@@ -142,24 +142,24 @@ $ node tests/dom/pulls-nav-session.js
       "focus on": "Stack #286",
       "address": "/view/"
     },
-    "Space on a stack's Whole stack row hides the stack's pull requests": {
+    "Space on a stack's Whole stack row opens the stack's changed files": {
       "handled": true,
       "did": [
-        "hid Stack #286's pull requests"
+        "opened Stack #286's files"
       ],
       "focus on": "Whole stack of #286",
       "address": "/view/"
     },
-    "holding Space on it leaves them hidden": {
+    "holding Space on it leaves them open": {
       "handled": true,
       "did": [],
       "focus on": "Whole stack of #286",
       "address": "/view/"
     },
-    "Space again shows them": {
+    "Space again closes them": {
       "handled": true,
       "did": [
-        "showed Stack #286's pull requests"
+        "closed Stack #286's files"
       ],
       "focus on": "Whole stack of #286",
       "address": "/view/"

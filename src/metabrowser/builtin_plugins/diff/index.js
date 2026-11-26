@@ -7,7 +7,7 @@
 //                      point: the renderer only ever sees documents the
 //                      conformance corpus vouches for.
 
-import { validateDocument, validateManifest } from "./diff-model.js";
+import { changeSummaryRow, validateDocument, validateManifest } from "./diff-model.js";
 import {
   mountDiffSummary,
   mountDiffView,
@@ -889,6 +889,27 @@ const diffView = {
       changedFiles,
       openFile: ctx.openFile,
     });
+  },
+  /**
+   * The rows a comparison's Diff summary lists, one for each file of the manifest *raw*
+   * holds, each made as the summary makes its own (`changeSummaryRow`), for a page that
+   * draws the comparison's files in a tree of its own: the Pulls tab draws a native stack's
+   * under its Whole stack row, from the comparison the stack's page draws its Diff summary
+   * of (builtin_plugins/github/stack-files.js). Null for a comparison whose manifest is not
+   * valid, or where the shared changed-files tree, whose display rule the rows take, did not
+   * load.
+   *
+   * @param {unknown} raw
+   * @returns {Promise<MetabrowserChangedFileRow[] | null>}
+   */
+  summaryRows: async (raw) => {
+    const result = validateManifest(raw);
+    const changedFiles = result.ok ? await changedFilesTree() : null;
+    if (!result.ok || changedFiles === null) {
+      return null;
+    }
+    const files = /** @type {Record<string, unknown>[]} */ (result.manifest.files);
+    return files.map((change) => changeSummaryRow(change, changedFiles.displayPath));
   },
   /**
    * Switch the served pin through the page's one switch, which every diff's controls share:

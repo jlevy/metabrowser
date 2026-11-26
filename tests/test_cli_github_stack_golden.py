@@ -707,6 +707,14 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         transcript="cli-ui-github-stack-page.tryscript.md",
     )
     assert json.loads(json.dumps(current)) == current
+    # The comparison `current` names, as its route gave it: what the Pulls tab reads for the
+    # Whole stack row's files, whose rows tests/dom/github-pulls-stack-files-session.js has
+    # the diff view make of it (`summaryRows`).
+    check_recording(
+        "github-stack-comparison-responses.json",
+        json.loads(labels.apply(_scoped(json.dumps({"current": whole})))),
+        transcript="cli-ui-github-pulls-stack-files.tryscript.md",
+    )
 
     # The stack's size is its comparison's, measured where the comparison was built, and only
     # where that is the plain diff of its two commits, so the size and the file count
