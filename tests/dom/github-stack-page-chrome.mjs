@@ -687,18 +687,18 @@ try {
   await frames();
   phase("pulls");
   await shot(`stack-70-with-pulls`);
-  // The Pulls tab's Whole stack row (mb-cm31, mb-tvhs): Stack #70's one row, its members
-  // under it a level further in, the current row while the stack's page is open, and in view.
+  // The Pulls tab's Whole stack row (mb-cm31, mb-odt4): the first of Stack #70's rows, its
+  // members beside it at one level, the current row while the stack's page is open, and in view.
   const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
   const NAV = `(() => {
     const whole = ${WHOLE};
     if (whole === null) return null;
-    // The stack's rows: its Whole stack row, the one second-level item after its stack's
-    // row, then the third-level items after that, its members.
+    // The stack's rows: the second-level items after its stack's row, its Whole stack row
+    // first, then its members, to the next row a level out.
     const members = [];
     const first = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
     const under = first === whole.closest("li") && first.dataset.level === "2";
-    for (let item = first?.nextElementSibling; item?.dataset.level === "3"; item = item.nextElementSibling) {
+    for (let item = first?.nextElementSibling; item?.dataset.level === "2"; item = item.nextElementSibling) {
       members.push(Number(item.dataset.number));
     }
     const view = document.querySelector(".tree-content").getBoundingClientRect();
@@ -720,13 +720,13 @@ try {
   const nav = await evaluate(NAV);
   measured.nav = { open: nav };
   check(
-    "the Pulls tab's Whole stack row is Stack #70's one row, its members under it, and links to its page",
+    "the Pulls tab's Whole stack row is the first of Stack #70's rows, its members beside it, and links to its page",
     nav?.under &&
       nav.text === "Whole stack" &&
       nav.href === "/stack/70" &&
       nav.members.length > 0 &&
       nav.members.every((number) => [10, 8].includes(number)) &&
-      nav.place === "1/1",
+      nav.place === `1/${nav.members.length + 1}`,
     JSON.stringify(nav),
   );
   check(
@@ -773,6 +773,43 @@ try {
     JSON.stringify(measured.nav),
   );
   await shot(`stack-70-whole-row`);
+  // The Whole stack row's change line and the chevron after it open the stack's changed
+  // files under it (mb-odt4): the files the page's Diff summary lists, the same rows in the
+  // same order, and the press opens no page.
+  const SUMMARY_ROWS = `[...document.querySelectorAll(".github-pull-stack-page .github-pull-summary .changed-file-row[data-id]")].map((row) => row.dataset.id)`;
+  const NAV_ROWS = `[...document.querySelectorAll('#tab-pulls .github-pulls-whole-item[data-level="2"] > .github-pull-files .changed-file-row[data-id]')].map((row) => row.dataset.id)`;
+  if ((await evaluate(SUMMARY_ROWS)).length === 0) {
+    await click(".github-pull-stack-page .github-pull-summary .diff-summary-toggle");
+  }
+  await waitFor(`${SUMMARY_ROWS}.length > 0`);
+  await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-change');
+  await waitFor(`${NAV_ROWS}.length > 0`);
+  await frames();
+  const stackFiles = {
+    summary: await evaluate(SUMMARY_ROWS),
+    nav: await evaluate(NAV_ROWS),
+    address: await evaluate("location.pathname"),
+    expanded: await evaluate(`${WHOLE}.getAttribute("aria-expanded")`),
+    // The files hang under the Whole stack row's item, a level in from it.
+    levels: await evaluate(
+      `[${WHOLE}.getAttribute("aria-level"), document.querySelector('#tab-pulls .github-pulls-whole-item > .github-pull-files .changed-file-row')?.getAttribute("aria-level") ?? null]`,
+    ),
+    members: (await evaluate(NAV))?.members ?? null,
+  };
+  measured.nav.files = stackFiles;
+  check(
+    "a press on the Whole stack row's change line lists the stack's files under it, the Diff summary's own, and opens no page",
+    stackFiles.nav.length > 0 &&
+      JSON.stringify(stackFiles.nav) === JSON.stringify(stackFiles.summary) &&
+      stackFiles.address === "/stack/70" &&
+      stackFiles.expanded === "true" &&
+      JSON.stringify(stackFiles.levels) === '["2","3"]' &&
+      JSON.stringify(stackFiles.members) === JSON.stringify(nav?.members),
+    JSON.stringify(stackFiles),
+  );
+  await shot(`stack-70-whole-row-files`);
+  await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-change');
+  await waitFor(`${WHOLE}.getAttribute("aria-expanded") === "false"`);
 
   await send("Page.navigate", { url: `${base}/stack/71` });
   await waitFor(pageReady);

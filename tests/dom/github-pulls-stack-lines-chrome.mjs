@@ -20,8 +20,8 @@
 //
 // - a heading waits only while its own stack's read is on its way: the list draws #290
 //   first, and while its read is held #286's heading, queued behind it, holds no placeholder;
-// - nothing moves when the line arrives: the row, its chevron, its words, and the
-//   placeholder's start, which is the line's; nor anything of the stack's own row, its
+// - nothing moves when the line arrives but the row's chevron, which follows the line: the
+//   row, its words, and the placeholder's start, which is the line's; nor anything of the stack's own row, its
 //   chevron, its label, its count, and its age, which are whole from the first paint;
 // - the heading stays one line: the row is one `--ui-row-height`, and the line, the stack's
 //   line totals alone with no file statuses (mb-lqkb), is either whole on the heading's line
@@ -427,7 +427,9 @@ async function main() {
             was.pending.left >= was.label.right - TOLERANCE_PX,
           );
         }
-        for (const part of ["row", "toggle", "label"]) {
+        // The row and its words stay; its chevron follows the line, as a pull request's
+        // row's does, so it alone moves (mb-odt4).
+        for (const part of ["row", "label"]) {
           check(
             `${at}: #286's ${part} does not move when its line arrives`,
             ["left", "top", "width", "height"].every((side) =>
@@ -497,6 +499,17 @@ async function main() {
           check(
             `${at}: the line starts after the label`,
             now.change.left >= now.label.right - TOLERANCE_PX,
+          );
+          // The chevron after the line, on its line, inside the row: the toggle of the
+          // stack's changed files ends with it (mb-odt4).
+          check(
+            `${at}: the chevron follows the line, on the heading's line`,
+            now.toggle.left >= (now.note ?? now.line).left - TOLERANCE_PX &&
+              now.toggle.left >= now.line.right - TOLERANCE_PX &&
+              now.toggle.top >= now.heading.top - TOLERANCE_PX &&
+              now.toggle.bottom <= now.heading.bottom + TOLERANCE_PX &&
+              now.toggle.right <= now.heading.right + TOLERANCE_PX,
+            JSON.stringify({ toggle: now.toggle, line: now.line, heading: now.heading }),
           );
           check(
             `${at}: its totals are whole and in the row, and start the line`,

@@ -169,6 +169,14 @@
                     return null;
                   }
                 },
+                // A stack's changed file's row links to the stack's Changes at that file.
+                stackFileHref: (/** @type {number} */ stack, /** @type {string} */ path) => {
+                  try {
+                    return deps.routes.stackHref(stack, "changes", path);
+                  } catch {
+                    return null;
+                  }
+                },
                 // The page a file row jumps in, while it is that pull request's.
                 pageFor: (/** @type {number} */ number) => deps.pageFor(number),
                 onPageChange: (listener) => deps.routes.onPageChange(listener),
@@ -401,8 +409,8 @@
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
       /** @param {number} number */
       toggleStack: (number) => handle?.toggleStack(number) ?? false,
-      /** @param {number} number */
-      toggleWhole: (number) => handle?.toggleWhole(number) ?? false,
+      /** @param {number} stack */
+      toggleStackFiles: (stack) => handle?.toggleStackFiles(stack) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -548,10 +556,10 @@
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
           }
-          // A Whole stack row is the folder of its stack's pull requests: Space shows or
-          // hides them, as it does a folder's rows, and Enter opens the stack's page.
+          // A Whole stack row's children are its stack's changed files, as a pull request's
+          // row's are its own: Space opens or closes them, and Enter opens the stack's page.
           if (target.matches(".github-pulls-whole-row")) {
-            return event?.repeat === true || nav.toggleWhole(Number(target.dataset.stack));
+            return event?.repeat === true || nav.toggleStackFiles(Number(target.dataset.stack));
           }
           if (target.matches(".github-pulls-row")) {
             return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));

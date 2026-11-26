@@ -1078,13 +1078,13 @@ function twoTreesPage() {
     "data-tree-id": "Stack #286",
   });
   const stackItem = make("li", { role: "none" }, [stackRow]);
-  // Its Whole stack row, the one row under it: a row link to the stack's own page, and the
-  // folder of the stack's pull requests.
+  // Its Whole stack row, the first under it: a row link to the stack's own page, whose
+  // children are the stack's changed files.
   const wholeRow = make("a", {
     class: "github-pulls-row github-pulls-whole-row",
     role: "treeitem",
     "aria-level": "2",
-    "aria-expanded": "true",
+    "aria-expanded": "false",
     tabindex: "-1",
     href: "/stack/286",
     "data-stack": "286",
@@ -1209,14 +1209,14 @@ function twoTreesPage() {
               log.push(`${open ? "opened" : "closed"} Stack #${number}`);
               return true;
             },
-            toggleWhole(number) {
+            toggleStackFiles(number) {
               const row = container
                 .querySelectorAll(".github-pulls-whole-row")
                 .find((item) => Number(item.dataset.stack) === number);
               assert.ok(row, "Space identifies the focused Whole stack row");
               const open = row.getAttribute("aria-expanded") !== "true";
               row.setAttribute("aria-expanded", String(open));
-              log.push(`${open ? "showed" : "hid"} Stack #${number}'s pull requests`);
+              log.push(`${open ? "opened" : "closed"} Stack #${number}'s files`);
               return true;
             },
             toggleFiles(number) {
@@ -1458,24 +1458,24 @@ async function twoTreesStory() {
     ],
     "Space on a stack's row is the stack's, not a pull request's",
   );
-  // Space on its Whole stack row hides and shows the stack's pull requests, as it closes and
-  // opens a folder, and opens no page: Enter opens the stack's page.
+  // Space on its Whole stack row opens and closes the stack's changed files in place, as it
+  // does a pull request's on its row, and opens no page: Enter opens the stack's page.
   page.wholeRow.focus();
-  story["Space on a stack's Whole stack row hides the stack's pull requests"] = page.press(" ");
-  story["holding Space on it leaves them hidden"] = page.press(" ", { repeat: true });
-  story["Space again shows them"] = page.press(" ");
+  story["Space on a stack's Whole stack row opens the stack's changed files"] = page.press(" ");
+  story["holding Space on it leaves them open"] = page.press(" ", { repeat: true });
+  story["Space again closes them"] = page.press(" ");
   assert.deepEqual(
     [
-      story["Space on a stack's Whole stack row hides the stack's pull requests"],
-      story["holding Space on it leaves them hidden"],
-      story["Space again shows them"],
+      story["Space on a stack's Whole stack row opens the stack's changed files"],
+      story["holding Space on it leaves them open"],
+      story["Space again closes them"],
     ].map((action) => [action.handled, action.did.join()]),
     [
-      [true, "hid Stack #286's pull requests"],
+      [true, "opened Stack #286's files"],
       [true, ""],
-      [true, "showed Stack #286's pull requests"],
+      [true, "closed Stack #286's files"],
     ],
-    "Space on a Whole stack row is its pull requests', and opens no page",
+    "Space on a Whole stack row is its stack's files', and opens no page",
   );
   page.showStack(false);
   firstPull.focus();

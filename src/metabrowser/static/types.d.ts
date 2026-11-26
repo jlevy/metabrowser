@@ -137,6 +137,8 @@ type MetabrowserPullsNavHost = Readonly<{
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */
   fileHref(number: number, path: string): string | null;
+  /** A native stack's changed file's address, on its page's Changes; null as `fileHref`. */
+  stackFileHref(stack: number, path: string): string | null;
   /** The page of that pull request while it holds the pane, else null. */
   pageFor(number: number): unknown;
   onPageChange(listener: () => void): () => void;
@@ -166,14 +168,15 @@ type MetabrowserPullsPanelHandle = Readonly<{
   toggleFiles(number: number): boolean;
   /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
   toggleStack(number: number): boolean;
-  /** Space on a stack's Whole stack row shows or hides the stack's pull requests under it. */
-  toggleWhole(number: number): boolean;
   /**
-   * Right and Left on a pull request's row: its changed files open, or close, and Left from
-   * a closed one goes to the Whole stack row it is under. On a stack's row: it opens, or
-   * Right goes to its one row, Whole stack, and Left closes it. On a Whole stack row: Right
-   * shows the stack's pull requests, or goes to the first, and Left hides them, or goes to
-   * the stack's row.
+   * Space on a stack's Whole stack row toggles the stack's changed files in place, under
+   * it, as `toggleFiles` does a pull request's.
+   */
+  toggleStackFiles(stack: number): boolean;
+  /**
+   * Right and Left on a pull request's row, or a stack's Whole stack row: its changed files
+   * open, or close, and Left from a closed one goes to the stack's row it is under. On a
+   * stack's row: it opens, or Right goes to its first row, Whole stack, and Left closes it.
    */
   expand(): boolean;
   collapse(): boolean;
@@ -244,6 +247,13 @@ type MetabrowserViewSpec = {
     slot: HTMLElement,
     ctx: { raw: unknown; openFile: (path: string) => void },
   ) => Promise<{ dispose: () => void } | null>;
+  /**
+   * The rows a comparison's Diff summary lists, from what `prefetch` or `render` read, for a
+   * page that draws the comparison's files in a tree of its own, as the Pulls tab draws a
+   * stack's under its Whole stack row. The diff view has one; null for a comparison it
+   * cannot read.
+   */
+  summaryRows?: (raw: unknown) => Promise<MetabrowserChangedFileRow[] | null>;
   /**
    * Switch the served pin through the page's one switch, which the diff view's controls
    * share, for a page whose own controls switch it too, as a pull request's Browse code

@@ -2174,7 +2174,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
-        '"github-pulls-row github-pulls-whole-row disclosure-toggle"',
+        '"github-pulls-change github-pulls-whole-change disclosure-toggle collapsed"',
     ),
     "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
     "github/pull-page.js": (
@@ -2244,7 +2244,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "github/pulls-panel.js": (
         ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
         ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
-        ("[chevron()]", '"github-pulls-row github-pulls-whole-row disclosure-toggle"'),
+        (
+            "[chevron()]",
+            '"github-pulls-change github-pulls-whole-change disclosure-toggle collapsed"',
+        ),
     ),
     "github/pull-files-view.js": (
         ("host.chevron()", '"changed-file-row github-pull-folder-row disclosure-toggle"'),
@@ -2293,7 +2296,6 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "diff-summary-folder",
         "github-pulls-row",
         "github-pulls-stack-row",
-        "github-pulls-whole-row",
         "github-pull-folder-row",
         "changed-file-row",
         "btn",
