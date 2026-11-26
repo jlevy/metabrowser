@@ -55,10 +55,15 @@ def probe_a_test_well_within_its_budget() -> None:
 
 def _run(tmp_path: Path, *arguments: str, environ: dict[str, str] | None = None) -> str:
     session = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:sugar"]
+    # Each case supplies its own budget or exercises the repository default.
+    env = os.environ.copy()
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop(TIMEOUT_ENV, None)
+    env.update(environ or {})
     completed = subprocess.run(
         [*session, "-o", "python_functions=probe_*", f"--basetemp={tmp_path}", *arguments, THIS],
         cwd=ROOT,
-        env={**os.environ, **(environ or {})},
+        env=env,
         capture_output=True,
         text=True,
         timeout=MAX_INNER_BOUND_S,
