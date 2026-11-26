@@ -1022,6 +1022,38 @@ async function mountStory() {
     ]);
     activity["partial Open window updates before the stack snapshot"] = updatedGroups;
     fresh.controller.dispose();
+
+    // GitHub lists a stack before another stack containing all of its members.
+    const tied = mount({
+      filter: "open",
+      window: {
+        ...lists.current.body,
+        list: "open",
+        fetched: freshRows.length,
+        rows: freshRows,
+        next_after: 99,
+      },
+    });
+    tied.controller.setStacks(
+      createStackIndex({
+        ...template,
+        stacks: [
+          { ...first, number: 70, pulls: [14], updated_at: shared.updated_at },
+          { ...second, number: 71, pulls: [14, 15], updated_at: shared.updated_at },
+        ],
+      }),
+    );
+    await tied.controller.start({ shown: true });
+    const tiedGroups = tied
+      .model()
+      .stacks.rows.filter((row) => row.kind === "stack")
+      .map((row) => ({ stack: row.stack.number, members: row.members }));
+    assert.deepEqual(tiedGroups, [
+      { stack: 71, members: [15] },
+      { stack: 70, members: [14] },
+    ]);
+    activity["equal snapshot activity keeps the shared row with GitHub’s first stack"] = tiedGroups;
+    tied.controller.dispose();
     process.stdout.write(`${JSON.stringify(activity, null, 2)}\n`);
     return;
   }

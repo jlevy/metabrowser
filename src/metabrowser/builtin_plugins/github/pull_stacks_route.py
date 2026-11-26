@@ -201,9 +201,8 @@ def _assign_leaders(stacks: list[dict[str, Any]], rows: dict[int, PullListRow]) 
     Claim shared members in stack rank order, as the column does. A later stack can
     then be represented by its own highest-ranked member when it shares the first.
     """
-    ranked = sorted(
-        stacks, key=lambda stack: (stack["updated_at"] or "", stack["number"]), reverse=True
-    )
+    # GitHub’s snapshot order breaks equal-activity ties in the column as well.
+    ranked = sorted(stacks, key=lambda stack: stack["updated_at"] or "", reverse=True)
     for name in ("open", "closed", "all"):
         claimed: set[int] = set()
         for stack in ranked:

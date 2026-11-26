@@ -4421,7 +4421,8 @@ when Refresh stood in that toolbar.
   If a higher-ranked stack holds that member, the next available member can represent
   the later stack.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
-  in the stack snapshot’s order, and its place names the other.
+  by the snapshot’s activity, with equal times keeping GitHub’s stack order.
+  Its place names the other.
   A list update can move the headings before the next stack snapshot assigns their
   shared members again.
   A later stack’s row’s accessible name still counts it among the pull requests the list

@@ -1010,6 +1010,20 @@ $ node tests/dom/github-pulls-stack-groups-session.js recency
         14
       ]
     }
+  ],
+  "equal snapshot activity keeps the shared row with GitHub’s first stack": [
+    {
+      "stack": 71,
+      "members": [
+        15
+      ]
+    },
+    {
+      "stack": 70,
+      "members": [
+        14
+      ]
+    }
   ]
 }
 ? 0

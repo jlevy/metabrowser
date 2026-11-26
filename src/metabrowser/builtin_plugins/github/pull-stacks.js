@@ -318,19 +318,12 @@ export function wholeStackOfKey(key) {
 export function groupByStack(numbers, index, identity, options = {}) {
   const collapsed = options.collapsed ?? new Set();
   const listed = new Set(numbers);
-  /** @type {Map<number, {stack: NativeStack, number: number, updated_at: string | null}>} */
-  const order = new Map();
+  /** @type {Map<number, number>} */
+  const firstListed = new Map();
   for (const number of numbers) {
     for (const stack of stackMembership(index, identity, number)) {
-      if (!order.has(stack.number)) {
-        // Match the snapshot that assigned representatives. The list may know a
-        // newer update that can move a heading while its shared rows stay assigned.
-        const updated_at = stack.updated_at ?? null;
-        order.set(stack.number, {
-          stack,
-          number: updated_at === null ? number : stack.number,
-          updated_at,
-        });
+      if (!firstListed.has(stack.number)) {
+        firstListed.set(stack.number, number);
       }
     }
   }
@@ -338,7 +331,12 @@ export function groupByStack(numbers, index, identity, options = {}) {
   const placed = new Map();
   /** @type {Array<{row: StackGroupRow | PullGroupRow, number: number, updated_at: string | null}>} */
   const top = [];
-  for (const { stack, number } of [...order.values()].sort(newerFirst)) {
+  // The server claims representatives in snapshot order for equal activity. New list
+  // timestamps can move the headings while their shared rows keep that assignment.
+  const ranked = index.stacks
+    .filter((stack) => firstListed.has(stack.number))
+    .sort((left, right) => (right.updated_at ?? "").localeCompare(left.updated_at ?? ""));
+  for (const stack of ranked) {
     const listedMembers = stackMenuOrder(stack).filter((number) => listed.has(number));
     const members = listedMembers.filter((number) => !placed.has(number));
     if (members.length === 0) {
@@ -358,7 +356,7 @@ export function groupByStack(numbers, index, identity, options = {}) {
     }
     const updated_at = stackUpdatedAt(stack, options.updatedAt);
     top.push({
-      number: updated_at === null ? number : stack.number,
+      number: updated_at === null ? (firstListed.get(stack.number) ?? stack.number) : stack.number,
       updated_at,
       row: {
         kind: "stack",
