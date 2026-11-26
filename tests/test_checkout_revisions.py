@@ -24,6 +24,7 @@ import re
 import subprocess
 import time
 from collections.abc import Generator
+from html import escape
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -400,7 +401,10 @@ def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
         return re.findall(r"<(\w+)[^>]*? class=\"([^\"]+)\"", outside)
 
     tree = _selector_row(served)
-    assert ' data-working-branch="topic">' in tree
+    assert ' data-working-branch="topic"' in tree
+    assert f' data-working-commit="{SECOND}">' in tree
+    assert 'data-source-mode="working-tree"' in tree
+    assert f'data-source-path="{escape(str(checkout.resolve()))}"' in tree
     assert (
         '<span class="source-ref-selector-label"><span class="source-ref-selector-view">'
         'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
@@ -410,6 +414,9 @@ def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
     _pin(served, ref="refs/heads/topic")
     revision = _selector_row(served)
     assert "data-working-" not in revision
+    assert 'data-source-mode="checkout-revision"' in revision
+    assert f'data-source-path="{escape(str(checkout.resolve()))}"' in revision
+    assert "data-source-synced-at" not in revision
     assert (
         '<span class="source-ref-selector-label">'
         '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
@@ -446,7 +453,8 @@ def test_a_github_checkouts_row_names_its_head_from_the_pages_repository_context
     monkeypatch.setattr(server, "checked_out_head", read_again)
     with TestClient(server.app) as client:
         tree = _selector_row(client)
-        assert ' data-working-branch="topic">' in tree
+        assert ' data-working-branch="topic"' in tree
+        assert f' data-working-commit="{SECOND}">' in tree
         assert '<span class="git-ref-label">topic</span>' in tree
         git(checkout, "checkout", "-q", "--detach", "topic")
         detached = _selector_row(client)

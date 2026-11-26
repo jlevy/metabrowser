@@ -98,7 +98,12 @@ handoff, the app needs `metab` 0.13.0 or later.
 ## Hand the User a Page
 
 Present the page, which opens it where the user prefers, or serve it yourself and give
-the user an address for a browser:
+the user an address for a browser.
+
+Choose a local checkout path for its live working tree.
+The Files row follows the actual checked-out branch and shows the commit when `HEAD` is
+detached. Choose a repository URL for the cloud mirror and its last fetched branch
+revision. A commit URL keeps that exact revision selected.
 
 - **Presenting** takes a folder, a file, or a GitHub URL: a repository, a pull request
   or one of its tabs, a commit, or a file or folder at a branch, tag, or commit.

@@ -14,7 +14,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const { FakeDocument, element, keyEvent } = require("./key-reveal-dom.js");
+const { FakeDocument, FakeElement, element, keyEvent } = require("./key-reveal-dom.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
@@ -22,6 +22,7 @@ const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-ref-selector-responses.json"), "utf8"),
 );
 const failures = [];
+let answer = recorded.branches;
 
 function check(name, condition, detail = "") {
   if (!condition) {
@@ -32,8 +33,15 @@ function check(name, condition, detail = "") {
 const document = new FakeDocument();
 const browserWindow = document.defaultView;
 const requests = [];
+let now = Date.parse("2026-11-26T12:00:00Z");
 const context = {
   AbortController,
+  Date: class extends Date {
+    static now() {
+      return now;
+    }
+  },
+  HTMLElement: FakeElement,
   Error,
   JSON,
   Map,
@@ -48,12 +56,13 @@ const context = {
   metabrowser: {
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     mountRefMenus: () => () => {},
-    refChip: (name) => element(document, "span", { class: "ref-chip" }, name),
+    refChip: (name) => element(document, "span", { class: "ref-chip git-ref" }, name),
+    escapeHtml: (text) =>
+      String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
   },
   METABROWSER_SOURCE_PIN: { ref: recorded.branches.body.ref, ref_name: "topic" },
   async fetch(route, init) {
     requests.push(init?.method === "POST" ? `POST ${route} ${init.body}` : route);
-    const answer = recorded.branches;
     return { status: answer.status, json: async () => answer.body };
   },
   setTimeout: () => 0,
@@ -68,7 +77,13 @@ context.globalThis = context;
 vm.createContext(context);
 // formatters.js gives each row's commit its short ID and age, as the shell's startup
 // scripts do, and menus.js closes the list as every menu closes.
-for (const name of ["formatters.js", "filter-controls.js", "menus.js", "source-ref-selector.js"]) {
+for (const name of [
+  "formatters.js",
+  "filter-controls.js",
+  "menus.js",
+  "source-ref-selector.js",
+  "refresh-plan.js",
+]) {
   vm.runInContext(fs.readFileSync(path.join(staticDir, name), "utf8"), context, {
     filename: path.join(staticDir, name),
   });
@@ -81,7 +96,7 @@ async function settle() {
   }
 }
 
-const host = element(document, "div", { class: "source-ref-selector" });
+const host = element(document, "div", { id: "source-ref-selector", class: "source-ref-selector" });
 const elsewhere = element(document, "button", { type: "button" }, "Elsewhere");
 document.body.append(host, elsewhere);
 
@@ -186,6 +201,127 @@ async function pressRefresh() {
   return { after, pressedElsewhere };
 }
 
+async function checkSourceTips() {
+  let tip = null;
+  const hidden = [];
+  context.MetabrowserTooltip = {
+    show(html, anchor) {
+      tip = { html, anchor };
+    },
+    hide(within) {
+      hidden.push(within);
+      if (tip && within.contains(tip.anchor)) {
+        tip = null;
+      }
+    },
+  };
+  const hover = () => {
+    const label = host.querySelector(".source-ref-selector-label");
+    label?.dispatchEvent({ type: "mouseenter", target: label });
+    return label;
+  };
+  const freshness = element(document, "div", { id: "source-freshness" });
+  document.body.append(freshness);
+  context.METABROWSER_SOURCE_CHECKOUT = false;
+  context.METABROWSER_SOURCE_PIN = {
+    pin: recorded.branches.body.pin,
+    ref: recorded.branches.body.ref,
+  };
+  host.dataset.sourceMode = "cloud-mirror";
+  host.dataset.sourceOrigin = "github.com/owner/repository";
+  host.dataset.sourceSyncedAt = "2026-11-26T11:58:00Z";
+  const selector = context.MetabrowserSourceRefSelector.mount(host);
+  const mirrorLabel = hover();
+  check(
+    "the source chip describes its remote and recorded sync",
+    tip?.anchor === mirrorLabel &&
+      tip.html.includes(
+        '<div class="tip-name">Cloud mirror of github.com/owner/repository</div>',
+      ) &&
+      tip.html.includes('<div class="tip-detail">Last synced 2m ago.</div>') &&
+      !tip.html.includes('class="path"'),
+  );
+  freshness.dataset.lastFetchAt = "2026-11-26T11:59:00Z";
+  now = Date.parse("2026-11-26T12:02:00Z");
+  hover();
+  check(
+    "the tip uses the latest successful sync when it is next hovered",
+    tip?.html.includes("Last synced 3m ago."),
+  );
+  selector.dispose();
+  check("disposal hides only the source tooltip", tip === null && hidden.at(-1) === mirrorLabel);
+  freshness.remove();
+
+  context.METABROWSER_SOURCE_PIN = null;
+  context.METABROWSER_SOURCE_CHECKOUT = true;
+  let watchedHead;
+  let fileRereads = 0;
+  context.MetabrowserShell = {
+    async sourceFreshness() {
+      return null;
+    },
+    async rereadFiles() {
+      fileRereads += 1;
+    },
+  };
+  context.metabrowser.watchFile = (path, options) => {
+    if (path === ".git/HEAD") {
+      watchedHead = options.onChange;
+    }
+    return () => {};
+  };
+  host.dataset.sourceMode = "working-tree";
+  host.dataset.sourcePath = "/absolute/path/to/<checkout>&";
+  host.dataset.workingCommit = recorded.branches.body.pin;
+  const working = context.MetabrowserSourceRefSelector.mount(host);
+  const workingLabel = hover();
+  const detached = context.MetabrowserFormatters.shortCommit(recorded.branches.body.pin);
+  check(
+    "the working tree tip shows a styled escaped path and its detached HEAD before observation",
+    tip?.html.includes(
+      '<span class="path" dir="ltr">/absolute/path/to/<span class="path-base">&lt;checkout&gt;&amp;</span>',
+    ) && tip.html.includes(`HEAD is detached at ${detached}.`),
+  );
+  const checkout = JSON.parse(
+    fs.readFileSync(
+      path.join(repoRoot, "tests/fixtures/source-ref-selector-checkout-responses.json"),
+      "utf8",
+    ),
+  );
+  answer = checkout.working_tree_moved;
+  const refresh = element(document, "button", { id: "nav-refresh", type: "button" });
+  document.body.append(refresh);
+  const plan = context.MetabrowserRefreshPlan.mount();
+  await plan.press();
+  check(
+    "manual Refresh updates the branch and reads Files once",
+    host.querySelector(".source-ref-selector-label .git-ref")?.textContent === "feature" &&
+      fileRereads === 1,
+  );
+  check(
+    "changing the branch hides its old tooltip",
+    tip === null && hidden.at(-1) === workingLabel,
+  );
+  now += 120_000;
+  hover();
+  check(
+    "the checkout read age comes from the successful manual HEAD response",
+    tip?.html.includes("Checkout state read 2m ago."),
+  );
+  answer = checkout.working_tree_detached;
+  watchedHead();
+  await settle();
+  check(
+    "the next external checkout updates the label and reads Files once",
+    host.querySelector(".source-ref-selector-label .git-commit-sha") !== null && fileRereads === 2,
+  );
+  watchedHead();
+  await settle();
+  check("an unchanged HEAD observation leaves the Files view in place", fileRereads === 2);
+  working.dispose();
+  refresh.remove();
+}
+
 async function main() {
   const selector = context.MetabrowserSourceRefSelector.mount(host);
   selector.activate();
@@ -197,7 +333,7 @@ async function main() {
   const opened = {
     open: !panel.hidden,
     focus: describe(document.activeElement),
-    requests,
+    requests: [...requests],
     rows: rows().map(describe),
   };
   check("the list opens on its filter", opened.open && document.activeElement === filter);
@@ -273,6 +409,7 @@ async function main() {
   );
   selector.dispose();
   const workingTreeTab = await pressAndArrow();
+  await checkSourceTips();
 
   process.stdout.write(
     `${JSON.stringify({ opened, chords: Object.keys(chords), chorded, plain, workingTreeTab }, null, 2)}\n`,
