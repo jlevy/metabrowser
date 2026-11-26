@@ -2,7 +2,8 @@
 
 The pull request page reads its own status with the checks listed (:mod:`.pull_status_read`).
 The Pulls tab needs the same verdict for every row it draws, so :func:`scan_statuses` reads
-the repository's open pull requests, newest first, with one GraphQL query a page,
+the repository's open pull requests, last updated first as the tab orders its rows,
+with one GraphQL query a page,
 ``PullStatuses``: each one's head and base, ``mergeable``, ``mergeStateStatus``,
 ``reviewDecision``, auto-merge, the merge queue entry, and its head's ``statusCheckRollup``
 with its counts by state and no check (``contexts(first: 0)``). It builds each status as the
@@ -137,8 +138,11 @@ log = logging.getLogger(__name__)
 # ``mergeStateStatus``: without it 56 rows of cli/cli took 2.8 to 3.3 s, with it 5.8 to
 # 10.1 s. Every page cost 1 point, at every size, and was about 1 KB a row.
 SCAN_ROWS: Final = 25
-# The pages one scan reads: the newest 100 open pull requests, a Pulls tab's first five
-# screens at 20 rows each, and the 100 rows the plan priced. At most four points and, on
+# The pages one scan reads: the 100 open pull requests updated last, a Pulls tab's first
+# five screens at 20 rows each in the tab's order, and the 100 rows the plan priced. The
+# order costs nothing: measured 2026-11-26 on this repository, a page of 25 cost 1 point
+# and the same 25.7 KB by ``UPDATED_AT`` as by ``CREATED_AT``, in 1.4 to 1.6 s against
+# 1.7 to 2.0 s, three reads each. At most four points and, on
 # nixpkgs, about 22 s of pages, each in its own network slot. Rows past them show no
 # readiness until their own page is read: a status the scan kept of one that has fallen
 # past them is ``not_scanned`` once a walk has started after it (:mod:`.pull_statuses_route`).
@@ -167,7 +171,7 @@ _QUERY: Final = f"""query PullStatuses($owner:String!,$name:String!,$cursor:Stri
   rateLimit {{ cost }}
   repository(owner:$owner,name:$name) {{
     id nameWithOwner
-    pullRequests(first:{SCAN_ROWS},after:$cursor,states:OPEN,orderBy:{{field:CREATED_AT,direction:DESC}}) {{
+    pullRequests(first:{SCAN_ROWS},after:$cursor,states:OPEN,orderBy:{{field:UPDATED_AT,direction:DESC}}) {{
       pageInfo {{ hasNextPage endCursor }}
       nodes {{
         number headRefOid baseRefName baseRefOid mergeable mergeStateStatus
@@ -201,7 +205,7 @@ class ScanStamp(BaseModel):
     many statuses GitHub had not finished computing (``mergeable`` or ``mergeStateStatus``
     unknown).
 
-    ``walked_at`` is when the last whole walk from the newest pull request started, which
+    ``walked_at`` is when the last whole walk from the first pull request started, which
     the periodic scan counts from, and ``walked_numbers`` the pull requests it read, which
     the route answers a status kept before it of any other by (``not_scanned``);
     ``next_at`` the earliest a scan the spacing holds may start (:data:`SCAN_POINT_GAP_S`);
@@ -419,7 +423,7 @@ async def scan_statuses(
 ) -> None:
     """Read and keep the open pull requests' statuses as *reader*, a page at a time.
 
-    With *cursors* ``None`` the walk starts at the newest and follows GitHub's cursor for
+    With *cursors* ``None`` the walk starts at the first and follows GitHub's cursor for
     at most :data:`MAX_SCAN_PAGES`; otherwise it reads exactly the page after each cursor,
     ``None`` for the first, once. Each page is read in *slot*, a network slot it yields
     after, and kept in one transaction before the next is asked. *progress* holds what was

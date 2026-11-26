@@ -704,9 +704,10 @@ Only the GraphQL reads write a status, so every status has the same fields.
 page (`PullStatuses`), with the summary fields and no contexts’ nodes.
 Layer 4 measured a page of 100 failing on a repository with many checks, at GitHub’s
 time and resource limits, so a page is `SCAN_ROWS` rows and a scan at most
-`MAX_SCAN_PAGES` pages, the newest open pull requests (`pull_status_scan.py` has the
-measurements). It runs while the tab is visible: when the list’s probe finds a change,
-when a fetch moves a base branch that open pull requests target, and otherwise every
+`MAX_SCAN_PAGES` pages, the open pull requests updated last, as the tab orders them
+(`pull_status_scan.py` has the measurements).
+It runs while the tab is visible: when the list’s probe finds a change, when a fetch
+moves a base branch that open pull requests target, and otherwise every
 `FULL_REFRESH_S`. A page with `unknown` answers is read once more after
 `MERGEABLE_SETTLE_S`, since GitHub computes them after the first ask.
 It is reader work, held by the governor and the `BACKGROUND_FLOOR` as the catalog’s scan

@@ -16,7 +16,7 @@ answer. Anything else is ``absent``, with a ``reason``:
 - ``not_cached``: the catalog has no row of that number, so no lifecycle to judge;
 - ``no_status``: no status is kept for it yet;
 - ``not_scanned``: the status kept is a scan's from before the last whole walk, which did
-  not read it: a pull request that has fallen past the newest the scan reads
+  not read it: a pull request that has fallen past the last updated the scan reads
   (:data:`~.pull_status_scan.MAX_SCAN_PAGES`), or one GitHub no longer lists open, whose
   last verdict nothing keeps current. A status the page's own read kept is answered as it
   is;
@@ -117,7 +117,7 @@ def _row_lifecycle(row: PullListRow) -> DisplayState:
 def unscanned(status: PullStatus, stamp: ScanStamp | None) -> bool:
     """Whether *status* is a scan's that the last whole walk neither read nor came after.
 
-    That walk read the newest open pull requests and kept which (``walked_numbers``); a
+    That walk read the open pull requests updated last and kept which (``walked_numbers``); a
     status a scan kept before it started, of any other, is one nothing has read since. A
     page's read, and a scan's status from after the walk started, a settle re-read's or
     the next walk's, are current as kept.

@@ -169,9 +169,13 @@ def _nodes(items: list[dict[str, Any]], *, settled: bool) -> list[dict[str, Any]
     return nodes
 
 
+def _updated_at(items: list[dict[str, Any]]) -> dict[int, str]:
+    return {item["number"]: item["updated_at"] for item in items}
+
+
 def _answers(items: list[dict[str, Any]]) -> dict[str, Any]:
-    first = statuses_entries(_nodes(items, settled=False))
-    settled = statuses_entries(_nodes(items, settled=True))
+    first = statuses_entries(_nodes(items, settled=False), updated_at=_updated_at(items))
+    settled = statuses_entries(_nodes(items, settled=True), updated_at=_updated_at(items))
     api = {**catalog_entries(items)}
     # Each scan page is answered in turn: GitHub computes the unknown answer after the first
     # ask, so a later read of the page has it.
@@ -378,7 +382,8 @@ def test_golden_pull_statuses_scan_settle_and_refuse(
 
     advance(FRESHNESS_WINDOW_S + 1)
     listed = [node for node in _nodes(items, settled=True) if node["number"] != GONE]
-    answer({**answers, "api": {**answers["api"], **statuses_entries(listed)}})
+    rescanned = statuses_entries(listed, updated_at=_updated_at(items))
+    answer({**answers, "api": {**answers["api"], **rescanned}})
     say(
         f"GitHub no longer lists #{GONE} among the open pull requests. The next periodic walk "
         "does not read it, so the status an older scan kept of it is not_scanned, with no "

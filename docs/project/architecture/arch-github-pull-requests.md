@@ -287,9 +287,9 @@ has the rules.
   repository asked for when its `id` is the catalog’s, or, with no catalog, as GitHub
   names it (`asked_repository` in `gh_lists.py`, which the scan and the cores share).
 - **Scanning every open pull request.** The Pulls tab needs a verdict for every row, so
-  `pull_status_scan.py` reads the repository’s open pull requests, newest first, with
-  one GraphQL query a page, `PullStatuses`: the same fields as the page’s read and the
-  rollup’s counts by state, with no check listed.
+  `pull_status_scan.py` reads the repository’s open pull requests, last updated first as
+  the tab orders its rows, with one GraphQL query a page, `PullStatuses`: the same
+  fields as the page’s read and the rollup’s counts by state, with no check listed.
   It builds each status as the read does (`operational_status`, `observed_by` `scan`)
   and keeps each page in one catalog transaction (`write_pull_statuses`), after the
   network and under the lock.
@@ -375,7 +375,7 @@ has the rules.
   each one’s catalog row, or `absent` with why, `other_base` among the reasons, and how
   the last scan ended (`pull_statuses_route.py`). A scan’s status from before the last
   whole walk, of a pull request that walk did not read, is `not_scanned`: one past the
-  newest the scan reads, or no longer open, whose verdict nothing keeps current.
+  last updated the scan reads, or no longer open, whose verdict nothing keeps current.
 
 ## Serving Pull Requests
 

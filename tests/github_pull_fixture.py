@@ -154,7 +154,9 @@ if args[:1] == ["api"]:
         elif fields.get("query", "").startswith("query PullStatus("):
             path = "graphql:status:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query PullStatuses("):
-            path = "graphql:statuses:" + fields.get("cursor", "start")
+            # Its pages are in the Pulls tab's order, the only order they are answered in.
+            order = "" if "field:UPDATED_AT" in fields["query"] else "unordered-"
+            path = "graphql:statuses:" + order + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query VisiblePullCores("):
             slots = [f"n{{i}}" for i in range(8)]
             path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
@@ -1115,11 +1117,16 @@ def scan_node(
     }
 
 
-def statuses_entries(nodes: list[dict[str, Any]], *, reader: str = READER) -> dict[str, Any]:
-    """The status scan's pages of *nodes*, newest first: graphql:statuses:<cursor|start>."""
+def statuses_entries(
+    nodes: list[dict[str, Any]], *, updated_at: Mapping[int, str], reader: str = READER
+) -> dict[str, Any]:
+    """The status scan's pages of *nodes*, graphql:statuses:<cursor|start>, last updated
+    first as GitHub orders them by ``UPDATED_AT``: by *updated_at*, each number's time."""
 
     entries: dict[str, Any] = {}
-    ordered = sorted(nodes, key=lambda node: node["number"], reverse=True)
+    ordered = sorted(
+        nodes, key=lambda node: (updated_at[node["number"]], node["number"]), reverse=True
+    )
     for offset in range(0, max(1, len(ordered)), STATUS_SCAN_ROWS):
         cursor = f"statuses-{offset}" if offset else "start"
         batch = ordered[offset : offset + STATUS_SCAN_ROWS]
@@ -1530,7 +1537,8 @@ def catalog_entries(
         for item in items
         if item["state"] == "open"
     ]
-    entries.update(statuses_entries(nodes, reader=reader))
+    updated_at = {item["number"]: item["updated_at"] for item in items}
+    entries.update(statuses_entries(nodes, updated_at=updated_at, reader=reader))
     return entries
 
 
