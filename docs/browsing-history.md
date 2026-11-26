@@ -16,11 +16,16 @@ folder is the root of a Git repository or of a linked worktree, and on any repos
 opened by its URL. A folder inside a repository has no Commits tab, because history
 covers files outside what that folder serves.
 
-The graph lists, newest first in topological order:
+The row under the tabs, the same one Files has, names the branch, tag, or commit both
+tabs show, and choosing another there changes both
+([Branches and Tags of a Repository URL](#branches-and-tags-of-a-repository-url) and
+[of a Local Checkout](#branches-and-tags-of-a-local-checkout)). The graph lists, newest
+first in topological order:
 
-- **For a folder:** the commits reachable from `HEAD`, its upstream, and the trunk
-  branches `main` and `master`, locally and on `origin`.
-- **For a repository URL:** the history of the commit the server is pinned to.
+- **For a folder’s working tree:** the commits reachable from `HEAD`, its upstream, and
+  the trunk branches `main` and `master`, locally and on `origin`.
+- **For a branch, tag, or commit chosen in that row, and for a repository URL:** the
+  history of that commit.
 
 Each row is the graph, the commit’s branch and tag chips, its subject, its author, and
 its age. The header counts the commits and says when the first one was made.
@@ -88,8 +93,9 @@ brings it. Otherwise the page says the commit is not in the mirror and offers **
 ## Branches and Tags of a Repository URL
 
 A repository opened by its URL is pinned to one commit, its default branch’s unless the
-URL names another. The row directly below Files names the branch, tag, pull request, or
-commit. Click the branch or tag chip for its actions.
+URL names another. The row directly below the Files and Commits tabs names the branch,
+tag, pull request, or commit.
+Click the branch or tag chip for its actions.
 Click the separate down chevron beside it, or press `W`, to choose another revision.
 
 The chooser lists every one of the mirror’s branches or tags.
@@ -98,7 +104,8 @@ last commit, which its row shows as an age.
 The filter box narrows either list by name.
 Choosing one serves it and reloads the page on the same file or folder when the new
 commit has it, or at the root when it does not.
-The switch lasts until the server stops.
+Chosen on the Commits tab, it reloads the page on Commits, at the newest commit of the
+new history. The switch lasts until the server stops.
 
 The foot of the navigation pane says when the mirror was last fetched from its origin;
 click it to fetch now.
@@ -112,8 +119,8 @@ branch moves on, the foot offers its new commit with **Switch**.
 
 A folder that is a repository’s root opens on **Working tree**, the files on disk with
 whatever you have edited, staged, or not yet added.
-The row under the Files tab says so, then names the branch the files are on, as in
-“Working tree · main”, or the commit when `HEAD` is detached.
+The row under the Files and Commits tabs says so, then names the branch the files are
+on, as in “Working tree · main”, or the commit when `HEAD` is detached.
 If you switch branches in a terminal, the row names the new branch once you open the
 list, or when you reload the page.
 Click the branch’s chip for its actions.
@@ -164,7 +171,8 @@ It has no Recent tab, live updates, ignored files, or Pulls tab; those belong to
 working tree, which gets the folder’s own profile back.
 
 The choice is the server’s, so it holds for every tab until you choose **Working tree**
-again or the server stops.
+again or the server stops: Files shows the branch’s files and Commits its history,
+whichever tab you chose it on.
 `metab <folder>` starts on the working tree, and `metab <folder> --ref <name>` starts on
 that branch or tag
 ([the command line](command-line.md#a-branch-or-tag-of-a-local-checkout)). A tab left on

@@ -81,17 +81,21 @@ const SELECTION_NOTE = sourceString("app.js", /note\.className = "(tree-selectio
 const STALE_NOTE = sourceString("app.js", /note\.className = "(recent-stale-note[^"]*)";/);
 const STALE_TEXT = sourceString("app.js", /"(Recent files may be out of date; retrying…)"/);
 
-// In the page: the visible metadata lines of the tab in front, as one band, with the rule
-// above it (the tab bar's when the band stands in the toolbar slot, the toolbar's when it
-// stands under it) and the rule under its last line.
+// In the page: the visible metadata lines of the tab in front, as one band, with the edge
+// above it and the rule under its last line. The edge above is the toolbar's rule when the
+// band stands under it; in the toolbar slot it is the foot of what stands over the slot:
+// the revision row, which a checkout shows over Files and Commits alike, or else the tab
+// bar's rule.
 const BAND = `(() => {
   const visible = (el) => el.getClientRects().length > 0;
   const lines = [...document.querySelectorAll(".nav-metadata")].filter(visible);
   if (lines.length === 0) return null;
   const toolbar = [...document.querySelectorAll("[data-nav-toolbar]")].find(visible);
-  const tabBar = document.querySelector(".nav-tab-bar").getBoundingClientRect();
+  const over = [document.querySelector(".nav-tab-bar"), document.getElementById("nav-source-ref")]
+    .filter((el) => el && visible(el))
+    .at(-1);
   const inToolbar = lines[0].closest(".nav-toolbar") !== null;
-  const above = inToolbar ? tabBar.bottom : toolbar.getBoundingClientRect().bottom;
+  const above = (inToolbar ? over : toolbar).getBoundingClientRect().bottom;
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
   const px = (value) => parseFloat(value) || 0;
   const described = lines.map((el) => {

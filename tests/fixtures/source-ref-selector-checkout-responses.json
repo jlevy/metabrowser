@@ -384,6 +384,38 @@
       ]
     }
   },
+  "switch_from_commits": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 5,
+        "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref": "refs/heads/feature",
+        "ref_name": "feature",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout"
+    }
+  },
   "not_a_repository": {
     "status": 409,
     "body": {

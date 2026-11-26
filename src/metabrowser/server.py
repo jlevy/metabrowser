@@ -1441,7 +1441,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     A pin with a name is headed by the name alone, where a folder's name stands and with
     the same `.path-base` emphasis: a served mirror by the repository's name, as a
     checkout of it would be called, and a revision a folder's server shows of its own
-    checkout by the folder's name. The ref selector beneath the Files tab names the ref,
+    checkout by the folder's name. The ref selector beneath the tabs names the ref,
     so the heading can stay focused on the name (mb-qq4e).
 
     A pin with no mirror has no origin to take a name from, and no ref selector, so its
@@ -1934,8 +1934,9 @@ async def index(
         if git_pin or (origin_store is not None and origin_store.fetchable)
         else ""
     )
-    # The selector is its own Files row, above the filter bar. Reserve the label, its
-    # chooser button, and a revision's way back at first paint. A checkout's row says
+    # The selector is its own row, under the tabs and above the Files and Commits toolbars,
+    # since both tabs show the revision it chooses. Reserve the label, its chooser button,
+    # and a revision's way back at first paint. A checkout's row says
     # which view the page shows: the working tree, the live files on disk, named with the
     # branch or commit they are on, or a revision chosen from the list, with a button back
     # to the working tree (docs/design-system.md, "The Ref Selector").
@@ -2003,8 +2004,11 @@ async def index(
     # toolbar its script fills later ships the shared pending tally, never an empty slot.
     filter_bar_behind = "" if files_in_front else " hidden"
     pending_tally = '<span class="count tally-pending"></span>'
+    # The served revision's row heads the two tabs that show it, Files and Commits, and hides
+    # under Pulls, which has its own scope (static/main-tabs.js#activateNavPanel).
+    source_ref_behind = "" if files_in_front or commits_in_front else " hidden"
     source_ref_row = (
-        f'<div class="nav-files-ref" id="nav-files-ref"{filter_bar_behind}>'
+        f'<div class="nav-source-ref" id="nav-source-ref"{source_ref_behind}>'
         f"{source_ref_selector}</div>"
         if source_ref_selector
         else ""
