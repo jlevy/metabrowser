@@ -1879,14 +1879,21 @@ export function createPullsController(deps, options = {}) {
    * Open both levels over pull request *number*'s row where the list groups it: its stack, if
    * the reader closed it, and the stack's pull requests, if the reader hid them under its
    * Whole stack row. The one place a reveal unfolds, so a row reveals the same whether the
-   * list held it when its address was named or it arrived later (`revealRow`). Whether
-   * anything opened, and so the rows were drawn again.
+   * list held it when its address was named or it arrived later (`revealRow`).
+   *
+   * Only for the pull request a navigation named and has not revealed yet (*sought*,
+   * *revealPending*): opening the item opens what the reader folded over it. A row shown
+   * again for any other reason, the tab shown again, a filter picked, a tab's landing that
+   * keeps the list's place, is the reader asking for the list, not the item, and what they
+   * folded stays folded (docs/design-system.md, "Navigation Reveals the Item").
+   *
+   * Whether anything opened, and so the rows were drawn again.
    *
    * @param {number | null} number
    */
   function unfoldOver(number) {
     const over =
-      number === null
+      number === null || number !== sought || !revealPending
         ? undefined
         : grouping().rows?.find((row) => row.kind === "stack" && row.members.includes(number));
     if (over?.kind !== "stack") {
@@ -2005,9 +2012,10 @@ export function createPullsController(deps, options = {}) {
    * @param {number} number
    */
   function revealRow(number) {
-    // The row may have arrived under a stack the reader closed, or whose pull requests the
-    // reader hid, after its address was named: the list moved to a filter that holds it, or
-    // read the window it is in (`placeSought`, `chaseCurrent`).
+    // The row a navigation named may have arrived under a stack the reader closed, or whose
+    // pull requests the reader hid, after its address was named: the list moved to a filter
+    // that holds it, or read the window it is in (`placeSought`, `chaseCurrent`). A row
+    // revealed for any other reason unfolds nothing (`unfoldOver`).
     if (unfoldOver(number)) {
       settleAnchor(true);
     }

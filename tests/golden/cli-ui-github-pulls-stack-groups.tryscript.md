@@ -44,6 +44,9 @@ An address that names a pull request opens both levels over it, the stack and it
 requests, and does so too when the list must first move to a filter that holds the pull
 request, as from Open to All for a closed one; one that names the stack’s page opens the
 stack and leaves its pull requests as the reader left them.
+What the reader folded over the open pull request stays folded when the tab is hidden
+and shown again, on a landing that keeps the list’s place, and when a filter is picked:
+only an address that names the pull request again unfolds it.
 Home, the folder’s name or `0`, puts the list back as a fresh load draws it, from the
 rows it holds and with no request: every stack open with its pull requests shown, no
 pull request’s changed files open, and the Tab stop on the first row.
@@ -586,6 +589,121 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ],
       "current": "#8",
       "tabStop": "#8"
+    },
+    {
+      "step": "the reader hides Stack #286's pull requests over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    ▸ Whole stack [1/1]",
+        "#106 [2/99]",
+        "#105 [3/99]",
+        "…",
+        "#5 [99/99]"
+      ],
+      "folded": {
+        "filter": "all",
+        "closed": [],
+        "pull requests hidden": [
+          286
+        ]
+      },
+      "the tab hidden and shown again": {
+        "filter": "all",
+        "closed": [],
+        "pull requests hidden": [
+          286
+        ]
+      },
+      "a landing on #6 that keeps the list's place": {
+        "filter": "all",
+        "closed": [],
+        "pull requests hidden": [
+          286
+        ]
+      },
+      "the Open filter picked": {
+        "filter": "open",
+        "closed": [],
+        "pull requests hidden": [
+          286
+        ]
+      }
+    },
+    {
+      "step": "an address that names #7 again opens both levels over it",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    ▾ Whole stack [1/1]",
+        "        #7 2/3 [1/2]",
+        "        #6 1/3 [2/2]",
+        "#106 [2/99]",
+        "#105 [3/99]",
+        "…",
+        "#5 [99/99]"
+      ],
+      "filter": "open",
+      "closed": [],
+      "pull requests hidden": [],
+      "tabStop": "#7"
+    },
+    {
+      "step": "the reader closes Stack #286 over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded",
+      "grouped": true,
+      "rows": [
+        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "#106 [2/99]",
+        "#105 [3/99]",
+        "…",
+        "#5 [99/99]"
+      ],
+      "folded": {
+        "filter": "all",
+        "closed": [
+          286
+        ],
+        "pull requests hidden": []
+      },
+      "the tab hidden and shown again": {
+        "filter": "all",
+        "closed": [
+          286
+        ],
+        "pull requests hidden": []
+      },
+      "a landing on #6 that keeps the list's place": {
+        "filter": "all",
+        "closed": [
+          286
+        ],
+        "pull requests hidden": []
+      },
+      "the Open filter picked": {
+        "filter": "open",
+        "closed": [
+          286
+        ],
+        "pull requests hidden": []
+      }
+    },
+    {
+      "step": "an address that names #7 again opens both levels over it",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    ▾ Whole stack [1/1]",
+        "        #7 2/3 [1/2]",
+        "        #6 1/3 [2/2]",
+        "#106 [2/99]",
+        "#105 [3/99]",
+        "…",
+        "#5 [99/99]"
+      ],
+      "filter": "open",
+      "closed": [],
+      "pull requests hidden": [],
+      "tabStop": "#7"
     },
     {
       "step": "#8 in two stacks: once, under the first listed, its badge naming the other",

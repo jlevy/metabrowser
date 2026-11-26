@@ -974,6 +974,63 @@ async function mountStory() {
     assert.equal(moved.anchor(), 8, "and takes the Tab stop");
     moved.controller.dispose?.();
   }
+  // ── What the reader folded stays folded until they open the item again. #7 is the open
+  // pull request; the reader hides it under its Whole stack row, or closes its stack. The tab
+  // shown again, a landing that keeps the list's place, and a filter picked all ask for the
+  // list, not the item, and unfold nothing; only an address that names the item again does
+  // (docs/design-system.md, "Navigation Reveals the Item"; final review of #862).
+  for (const [how, fold] of [
+    ["hides Stack #286's pull requests", (panel) => panel.setWholeOpen(286, false)],
+    ["closes Stack #286", (panel) => panel.setStackOpen(286, false)],
+  ]) {
+    const kept = mount({ filter: "all", byState: true });
+    kept.controller.setStacks(current);
+    await kept.controller.start({ shown: true });
+    await settle();
+    kept.controller.setCurrent(7);
+    await settle();
+    fold(kept.controller);
+    await settle();
+    const folded = () => {
+      const { filter, closedStacks, closedWholes } = kept.controller.snapshot();
+      return { filter, closed: closedStacks, "pull requests hidden": closedWholes };
+    };
+    const asFolded = folded();
+    const survived = {};
+    kept.controller.setShown(false);
+    kept.controller.setShown(true);
+    await settle();
+    survived["the tab hidden and shown again"] = folded();
+    kept.controller.setCurrent(6, { preserveScroll: true });
+    await settle();
+    survived["a landing on #6 that keeps the list's place"] = folded();
+    kept.controller.setFilter("open");
+    await settle();
+    await settle();
+    survived["the Open filter picked"] = folded();
+    for (const [what, state] of Object.entries(survived)) {
+      assert.deepEqual(
+        [state.closed, state["pull requests hidden"]],
+        [asFolded.closed, asFolded["pull requests hidden"]],
+        `${what} unfolds nothing`,
+      );
+    }
+    assert.equal(survived["the Open filter picked"].filter, "open");
+    record(
+      `the reader ${how} over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded`,
+      kept,
+      current,
+      { folded: asFolded, ...survived },
+    );
+    kept.controller.setCurrent(7);
+    await settle();
+    record("an address that names #7 again opens both levels over it", kept, current, {
+      ...folded(),
+      tabStop: rowName(kept.anchor()),
+    });
+    assert.deepEqual([folded().closed, folded()["pull requests hidden"]], [[], []]);
+    kept.controller.dispose?.();
+  }
   const shared = index("shared");
   story.controller.setStacks(shared);
   record(

@@ -4437,8 +4437,11 @@ when Refresh stood in that toolbar.
   stack, if the reader closed it, and the stack’s pull requests, if the reader hid them.
   The same holds for a row that arrives after its address was named, when the list moved
   to a filter that holds it or read the window it is in: every reveal unfolds in one
-  place (`unfoldOver`). A pull request that is current while the reader hides it is held
-  by its Whole stack row, which takes the Tab stop.
+  place (`unfoldOver`). Only an address that names the pull request unfolds: the tab
+  shown again, a landing that keeps the list’s place, and a filter picked ask for the
+  list, not the item, and leave what the reader folded as it is.
+  A pull request that is current while the reader hides it is held by its Whole stack
+  row, which takes the Tab stop.
   A grouped list’s Tab stop, until the reader moves it, is its first row.
 - **Scroll.** A grouping that arrives at the top of the list keeps the top, so its first
   stack’s row shows; elsewhere the row the reader is reading keeps its place, and a
