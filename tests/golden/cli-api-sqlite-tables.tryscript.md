@@ -1045,6 +1045,22 @@ $ grep -E '"(note|count)"' answer-16.txt
 ? 0
 ```
 
+The declared field pair names the same rows when it is the table’s only relationship.
+
+```console
+$ metab dbroot --api '/api/plugin/table/rows?path=app.db/orders&ref=users:k.WzFd&via=%5B%5B%22user_id%22%5D%2C%5B%22id%22%5D%5D' > scoped-16.txt
+? 0
+```
+
+```console
+$ grep -E '"(note|count)"' scoped-16.txt
+    "note"
+        "note": "first"
+        "note": null
+  "count": 2,
+? 0
+```
+
 A value past the reader’s length limit is not examined, and the page counts it.
 
 ```console
@@ -1098,6 +1114,7 @@ status: 200
     },
     "bio": null
   },
+  "label": "Ada",
   "referenced_by": [
     {
       "table": "orders",

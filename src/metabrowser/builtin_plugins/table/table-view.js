@@ -1679,7 +1679,7 @@ export function mountTable(container, ctx, host = {}) {
   function drawChips() {
     const made = [];
     if (state.ref) {
-      made.push(chip("ref", `Referencing ${state.ref}`, withRef(state, null)));
+      made.push(referenceChip(state.ref, withRef(state, null)));
     }
     for (const filter of state.filters) {
       made.push(
@@ -1691,6 +1691,45 @@ export function mountTable(container, ctx, host = {}) {
       );
     }
     chips.replaceChildren(...made);
+  }
+
+  /** @param {string} raw @param {TableState} without */
+  function referenceChip(raw, without) {
+    const boundary = raw.lastIndexOf(":");
+    if (boundary < 0) {
+      return chip("ref", `Referencing ${raw}`, without);
+    }
+    const ref = { table: raw.slice(0, boundary), key: raw.slice(boundary + 1) };
+    const target = referenceTarget(ref);
+    const link = el(
+      "a",
+      {
+        class: "table-open-ref",
+        href: sdk.navigation.href(target),
+        "data-path": target.path,
+        "data-query": target.query,
+        "data-tip-text": raw,
+      },
+      raw,
+    );
+    const pill = chip("ref", `Referencing ${raw}`, without);
+    const label = /** @type {HTMLElement} */ (pill.firstChild);
+    const remove = /** @type {HTMLElement} */ (pill.lastChild);
+    label.replaceChildren("Referencing ", link);
+    void getCard(target.path, ref.key).then(
+      (answer) => {
+        if (!pill.isConnected) {
+          return;
+        }
+        const display = presentCell(answer.label, undefined);
+        if (["text", "number"].includes(display.kind) && display.text) {
+          link.textContent = display.text;
+          remove.setAttribute("aria-label", `Remove the filter Referencing ${display.text}`);
+        }
+      },
+      () => {},
+    );
+    return pill;
   }
 
   /**
@@ -2355,6 +2394,7 @@ export function mountTable(container, ctx, host = {}) {
    * @typedef {{
    *   key: string,
    *   positional: boolean,
+   *   label?: string,
    *   generation_moved?: boolean | null,
    *   cells: Record<string, unknown>,
    *   referenced_by: Array<{table: string, fields: string[], to: string[], count: number, count_complete: boolean}>,
@@ -2386,7 +2426,7 @@ export function mountTable(container, ctx, host = {}) {
     const heading = el(
       "h2",
       { class: "table-record-title" },
-      position !== null ? `Row ${formatCount(position)}` : recordLabel(record),
+      record.label || (position !== null ? `Row ${formatCount(position)}` : recordLabel(record)),
     );
     const back = backLink();
     recordControls.set("back", back);
@@ -2395,7 +2435,13 @@ export function mountTable(container, ctx, host = {}) {
     const parts = [head];
     if (record.positional) {
       parts.push(
-        el("p", { class: "table-record-note" }, "This row is named by its position in the table."),
+        el(
+          "p",
+          { class: "table-record-note" },
+          record.label && position !== null
+            ? `Row ${formatCount(position)}. This row is named by its position in the table.`
+            : "This row is named by its position in the table.",
+        ),
       );
     }
     if (record.generation_moved) {
@@ -2506,7 +2552,13 @@ export function mountTable(container, ctx, host = {}) {
         const count = `${ref.count_complete ? "" : "at least "}${formatCount(ref.count)}`;
         const target = {
           path: referenceAddress(path, tableOf(), ref.table),
-          query: stateQuery(withRef(EMPTY_STATE, `${tableOf()}:${record.key}`)),
+          query: stateQuery(
+            withRef(
+              EMPTY_STATE,
+              `${tableOf()}:${record.key}`,
+              JSON.stringify([ref.fields, ref.to]),
+            ),
+          ),
         };
         const open = el(
           "a",
@@ -2606,22 +2658,9 @@ export function mountTable(container, ctx, host = {}) {
   async function showCard(anchor) {
     const ref = { table: anchor.dataset.refTable ?? "", key: anchor.dataset.refKey ?? "" };
     const address = referenceAddress(path, tableOf(), ref.table);
-    const cacheKey = `${address}\n${ref.key}`;
-    let card = cards.get(cacheKey);
-    if (!card) {
-      const asked = sdk.fetchPluginData(
-        "table",
-        "card",
-        { path: address, key: ref.key },
-        { signal: abort.signal },
-      );
-      asked.catch(() => cards.delete(cacheKey));
-      cards.set(cacheKey, asked);
-      card = asked;
-    }
     let answer;
     try {
-      answer = /** @type {{label: unknown, cells: Record<string, unknown>}} */ (await card);
+      answer = await getCard(address, ref.key);
     } catch {
       return;
     }
@@ -2629,6 +2668,24 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     sdk.tooltip?.show(cardHtml(answer), anchor);
+  }
+
+  /** @param {string} address @param {string} key */
+  async function getCard(address, key) {
+    const cacheKey = `${address}\n${key}`;
+    let card = cards.get(cacheKey);
+    if (!card) {
+      const asked = sdk.fetchPluginData(
+        "table",
+        "card",
+        { path: address, key },
+        { signal: abort.signal },
+      );
+      asked.catch(() => cards.delete(cacheKey));
+      cards.set(cacheKey, asked);
+      card = asked;
+    }
+    return /** @type {{label: unknown, cells: Record<string, unknown>}} */ (await card);
   }
 
   /** @param {{label: unknown, cells: Record<string, unknown>}} answer */
