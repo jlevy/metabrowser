@@ -5,13 +5,17 @@ title: "Pulls nav: stack members one level in beside Whole stack; Whole stack's 
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-26T04:38:40.990Z
-updated_at: 2026-11-26T04:38:47.050Z
+updated_at: 2026-11-26T05:23:56.790Z
 started_at: 2026-11-26T04:38:47.035Z
 ---
+
+## Notes
+
+PR https://github.com/jlevy/metabrowser/pull/870 (branch claude/pulls-stack-one-level). Not merged; awaiting review.
