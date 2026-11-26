@@ -3,9 +3,9 @@ type: is
 id: is-01m8ahev7t0174z3a2vhhnpw81
 title: Lean language support and a repeatable language recipe
 kind: epic
-status: in_progress
+status: closed
 priority: 2
-version: 21
+version: 22
 spec_path: docs/project/specs/active/plan-2026-11-25-lean-language-support.md
 refs:
   - kind: pr
@@ -34,7 +34,11 @@ child_order_hints:
   - is-01m8akjdy146agcfsfcf73v201
   - is-01m8atbg2cb0ctsdd9fjmkf4qb
 created_at: 2026-11-25T23:43:06.490Z
-updated_at: 2026-11-26T02:18:33.931Z
+updated_at: 2026-11-26T05:11:53.628Z
+closed_at: 2026-11-26T05:11:53.621Z
+close_reason: "Merged in #860"
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 6f903eec-ab37-494d-8aa0-dde216250a32
