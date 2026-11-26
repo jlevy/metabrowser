@@ -197,7 +197,7 @@ class _Beside:
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
         return self.stale
 
-    async def refresh(self) -> None:
+    async def refresh(self, asks: object) -> None:
         await held_until(self._released, 30)
         self.stale = False
 
@@ -435,7 +435,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             assert session is not None and client.portal is not None
             beside.hold()
             for number in (*range(100, 100 + MAX_PULL_JOBS), 7):
-                assert client.portal.call(session.request_pull_refresh, number) == "started"
+                assert (
+                    client.portal.call(session.request_pull_refresh, number, "record") == "started"
+                )
             client.portal.call(session.attend, 20)
             pulls.others[20].stale = True
             recorded["queue_full_page"] = client.get("/api/source/status").json()

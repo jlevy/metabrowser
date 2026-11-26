@@ -51,6 +51,7 @@ import re
 import subprocess
 import threading
 import time
+from collections.abc import Set as AbstractSet
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -68,7 +69,7 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, RefreshAsk, mirror_session, serve_mirror
 from metabrowser.server import app
 from metabrowser.source import reset_source_session, serve_subject_opener
 from tests.github_pull_fixture import (
@@ -373,10 +374,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             original = served.refresh
             release = threading.Event()
 
-            async def held() -> None:
+            async def held(asks: AbstractSet[RefreshAsk]) -> None:
                 # The test thread sets it; the job is held on the loop until then.
                 await held_until(release, 30)
-                await original()
+                await original(asks)
 
             monkeypatch.setattr(served, "refresh", held)
             recorded["absent"] = _answer(client.get(_PULL, params=read_7))
@@ -541,7 +542,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
             gate = threading.Event()
 
-            async def waiting(_served: ServedPull) -> None:
+            async def waiting(_served: ServedPull, _asks: object) -> None:
                 await held_until(gate, 30)
 
             monkeypatch.setattr(ServedPull, "refresh", waiting)

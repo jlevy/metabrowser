@@ -456,10 +456,18 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   reads it alone and asks the probe first when one is due, so a change it finds reads
   the record and its status in one job; and a [prefetch](#background-prefetch) that
   names it. A failed refresh is tried again after a window, and after `rate_limited` not
-  before `reset_at`. A branch or tag pin never runs `gh`. A job decides what it reads
-  when its turn at the store comes (`ServedPull._reads`): one a page’s ask or a prefetch
-  started reads nothing if nothing is still due then, as when a hold was noted while it
-  waited.
+  before `reset_at`. A branch or tag pin never runs `gh`.
+- **What a job reads:** each start or join names why it asks (`RefreshAsk` in
+  `mirror_refresh.py`): what is due, as the source’s refresh of stale data beside the
+  mirror and a prefetch ask; a visible page’s ask, which adds an overdue full read; or
+  the record, as a reader’s own action, a commit fetch they retry, a commit the mirror
+  lacks, and a link into the pull request ask.
+  The coordinator keeps those asks with the job for exactly as long as it runs
+  (`RefreshCoordinator.asks`), so a start refused `too_many` leaves none behind.
+  The job decides what it reads when its turn at the store comes (`ServedPull._reads`),
+  from every ask it has, whoever started it: one asked only for what was due reads
+  nothing if nothing still is, as when a hold was noted while it waited, and one asked
+  for the record reads it whatever a page’s ask joined it.
 - **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
   current record the server answers with a probe (`ServedPull.probe`), a conditional
   read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`

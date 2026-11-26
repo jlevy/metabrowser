@@ -576,7 +576,7 @@ def _idle_job_stand(
         events.append(f"comparison {companion.number}")
         return "done"
 
-    async def refresh(companion: ServedPull) -> None:
+    async def refresh(companion: ServedPull, _asks: object) -> None:
         events.append(f"refresh {companion.number}")
         await asyncio.sleep(0.01)
 
@@ -603,7 +603,8 @@ def test_a_readers_request_never_waits_for_idle_comparison_work(
     repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     async def run() -> None:
         try:
@@ -660,7 +661,7 @@ def test_a_running_prefetch_does_not_cost_the_open_pull_request_its_idle_compari
     repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
     prefetching = asyncio.Event()
 
-    async def refresh(companion: ServedPull) -> None:
+    async def refresh(companion: ServedPull, _asks: object) -> None:
         events.append(f"refresh {companion.number}")
         prefetching.set()
         try:
@@ -672,7 +673,8 @@ def test_a_running_prefetch_does_not_cost_the_open_pull_request_its_idle_compari
     monkeypatch.setattr(ServedPull, "refresh", refresh)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     async def run() -> None:
         state = checkout_module._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
@@ -726,7 +728,7 @@ def test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job(
     # The first refresh of a prefetched 12 runs until it is told to stop.
     stops = [] if joining == "optional" else [True]
 
-    async def refresh(companion: ServedPull) -> None:
+    async def refresh(companion: ServedPull, _asks: object) -> None:
         events.append(f"refresh {companion.number}")
         if companion.number == 12 and stops:
             stops.pop()
@@ -742,7 +744,8 @@ def test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job(
     monkeypatch.setattr(ServedPull, "refresh", refresh)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     joins: dict[str, dict[str, Any]] = {
         "metadata": {},
@@ -810,7 +813,7 @@ def test_the_restart_of_a_job_a_reader_joined_runs_however_many_reader_jobs_run_
     prefetching = asyncio.Event()
     stops = [True]
 
-    async def refresh(companion: ServedPull) -> None:
+    async def refresh(companion: ServedPull, _asks: object) -> None:
         events.append(f"refresh {companion.number}")
         if companion.number == 12 and stops:
             stops.pop()
@@ -826,7 +829,8 @@ def test_the_restart_of_a_job_a_reader_joined_runs_however_many_reader_jobs_run_
     monkeypatch.setattr(ServedPull, "refresh", refresh)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     others = [11, *range(1, MAX_PULL_JOBS - 1)]
     seen: dict[str, Any] = {}
@@ -889,7 +893,7 @@ def test_a_readers_join_of_a_prefetch_waiting_at_the_turn_stops_a_background_hol
     finish = asyncio.Event()
     twelve_done = asyncio.Event()
 
-    async def refresh(companion: ServedPull) -> None:
+    async def refresh(companion: ServedPull, _asks: object) -> None:
         events.append(f"refresh {companion.number}")
         if companion.number == 13:
             holding.set()
@@ -915,7 +919,8 @@ def test_a_readers_join_of_a_prefetch_waiting_at_the_turn_stops_a_background_hol
     monkeypatch.setattr(checkout_module, "_prepare_foreground", prepare_foreground)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     joins: dict[str, dict[str, Any]] = {
         "metadata": {},
@@ -972,7 +977,7 @@ def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start
     repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
     working = asyncio.Event()
 
-    async def refresh(companion: ServedPull) -> None:
+    async def refresh(companion: ServedPull, _asks: object) -> None:
         events.append(f"refresh {companion.number}")
         if companion.number == 12:
             working.set()
@@ -1002,7 +1007,8 @@ def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start
     monkeypatch.setattr(checkout_module, "_prepare_foreground", prepare_foreground)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     answers: list[str] = []
 
@@ -1054,7 +1060,8 @@ def test_idle_comparison_is_never_queued_with_or_ahead_of_a_readers_job(
     repository, _started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
 
     def start(number: int, **kwargs: Any) -> str:
-        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+        ask = "due" if kwargs.get("background") else "record"
+        return checkout_module.start_pull_refresh(coordinator, repository, number, ask, **kwargs)
 
     async def run() -> None:
         turn = checkout_module._checkout_state(repository).turn  # pyright: ignore[reportPrivateUsage]
@@ -1095,7 +1102,7 @@ def test_idle_comparison_never_starts_without_a_store(
         coordinator = RefreshCoordinator()
         try:
             return checkout_module.start_pull_refresh(
-                coordinator, repository, 10, comparison=True, eager_revision="a" * 64
+                coordinator, repository, 10, "record", comparison=True, eager_revision="a" * 64
             )
         finally:
             await coordinator.aclose()
@@ -1120,7 +1127,7 @@ def test_comparison_fetch_joining_metadata_refresh_is_not_lost(
         coordinator = RefreshCoordinator(limit=1)
         entered, release = asyncio.Event(), asyncio.Event()
 
-        async def held_refresh(self: ServedPull) -> None:
+        async def held_refresh(self: ServedPull, _asks: object) -> None:
             entered.set()
             await release.wait()
 
@@ -1131,10 +1138,15 @@ def test_comparison_fetch_joining_metadata_refresh_is_not_lost(
         monkeypatch.setattr(ServedPull, "refresh", held_refresh)
         monkeypatch.setattr(checkout_module, "_acquire_comparison", refused)
         try:
-            assert checkout_module.start_pull_refresh(coordinator, repository, 10) == "started"
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 10, "record")
+                == "started"
+            )
             await asyncio.wait_for(entered.wait(), timeout=5)
             assert (
-                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                checkout_module.start_pull_refresh(
+                    coordinator, repository, 10, "record", comparison=True
+                )
                 == "joined"
             )
             release.set()
@@ -1391,7 +1403,9 @@ def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
         try:
             assert await held_until(entered, 5)
             assert (
-                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                checkout_module.start_pull_refresh(
+                    coordinator, repository, 10, "record", comparison=True
+                )
                 == "started"
             )
             await coordinator.drain(timeout_s=10)
@@ -1403,7 +1417,7 @@ def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
             for comparison in (False, True):
                 assert (
                     checkout_module.start_pull_refresh(
-                        coordinator, repository, 7, comparison=comparison
+                        coordinator, repository, 7, "record", comparison=comparison
                     )
                     == "started"
                 )
@@ -1619,7 +1633,9 @@ def test_acquisition_keeps_its_active_companion_bound_after_eviction(
         monkeypatch.setattr(checkout_module, "_acquire_comparison", delayed)
         try:
             assert (
-                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                checkout_module.start_pull_refresh(
+                    coordinator, repository, 10, "record", comparison=True
+                )
                 == "started"
             )
             await asyncio.wait_for(entered.wait(), 5)
@@ -2358,6 +2374,7 @@ def test_changes_that_promoted_a_failing_idle_fetch_does_not_repeat_it(
                     coordinator,
                     repository,
                     9,
+                    "record",
                     comparison=True,
                     eager_revision=record["record_revision"],
                 )
@@ -2369,7 +2386,9 @@ def test_changes_that_promoted_a_failing_idle_fetch_does_not_repeat_it(
                 await asyncio.sleep(0.025)
             assert calls.exists(), "the idle fetch never started"
             assert (
-                checkout_module.start_pull_refresh(coordinator, repository, 9, comparison=True)
+                checkout_module.start_pull_refresh(
+                    coordinator, repository, 9, "record", comparison=True
+                )
                 == "joined"
             )
             await coordinator.drain(timeout_s=30)
@@ -2432,7 +2451,9 @@ def test_changes_waits_for_another_process_cold_open_without_a_network_slot(
         coordinator = RefreshCoordinator()
         try:
             assert (
-                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                checkout_module.start_pull_refresh(
+                    coordinator, repository, 10, "record", comparison=True
+                )
                 == "started"
             )
             key = checkout_module.checkout_job_key(repository, 10)
@@ -2477,10 +2498,16 @@ def test_a_due_automatic_refresh_promotes_idle_work_to_a_metadata_read(
             checkout_module.checkout_pulls(repository),
             lambda n: coordinator.running(checkout_module.checkout_job_key(repository, n)),
             partial(checkout_module.start_pull_refresh, coordinator, repository),
-            partial(checkout_module.start_pull_refresh, coordinator, repository, comparison=True),
+            partial(
+                checkout_module.start_pull_refresh,
+                coordinator,
+                repository,
+                ask="record",
+                comparison=True,
+            ),
             coordinator,
             lambda n, rev: checkout_module.start_pull_refresh(
-                coordinator, repository, n, comparison=True, eager_revision=rev
+                coordinator, repository, n, "record", comparison=True, eager_revision=rev
             ),
             partial(checkout_module.comparison_preparing, coordinator, repository),
         )
@@ -2631,7 +2658,9 @@ def test_the_prefetchs_attach_gives_way_to_a_readers_and_binds_one_store(
         try:
             await asyncio.wait_for(entered.wait(), 5)
             assert (
-                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                checkout_module.start_pull_refresh(
+                    coordinator, repository, 10, "record", comparison=True
+                )
                 == "started"
             )
             await asyncio.wait((background,), timeout=5)

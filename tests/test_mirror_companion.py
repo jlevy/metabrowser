@@ -108,7 +108,7 @@ class _Companion:
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
         return self.stale
 
-    async def refresh(self) -> None:
+    async def refresh(self, asks: object) -> None:
         self.events.append("pull start")
         self.started.set()
         if self.gate is not None:
@@ -164,7 +164,7 @@ def test_the_mirror_waits_its_turn_behind_the_pull_requests_fetch() -> None:
         companion = _Companion(events, stale=True)
         companion.gate = asyncio.Event()
         session = await _attending(_Mirror(events), coordinator, companion)
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await companion.started.wait()
         session.request_refresh(for_selection=True)
         for _ in range(10):
@@ -204,8 +204,8 @@ def test_any_pull_requests_refresh_takes_its_turn_and_counts_only_when_attended(
         await session.observe()
         eight = await pulls.companion(8)
         eight.gate = asyncio.Event()
-        assert session.request_pull_refresh(8) == "started"
-        assert session.request_pull_refresh(8) == "joined"
+        assert session.request_pull_refresh(8, "record") == "started"
+        assert session.request_pull_refresh(8, "record") == "joined"
         await eight.started.wait()
         assert session.pull_refreshing(8) is True and session.pull_refreshing(9) is False
         # It is nothing to the session's own state, and to the status built from it.
@@ -305,7 +305,7 @@ def test_a_commit_fetch_joins_the_mirror_fetch_but_not_the_pull_requests() -> No
             _Mirror(events, fetched_at=_now()), coordinator, companion, serving=True
         )
         await session.observe()
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await companion.started.wait()
         beside = session.request_commit_fetch(retry=False).refresh
         assert session.refreshing() is False and session.companion_refreshing() is True
@@ -335,7 +335,7 @@ class _Gated:
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
         return True
 
-    async def refresh(self) -> None:
+    async def refresh(self, asks: object) -> None:
         self.events.append(f"pull {self.number}")
         await self.gate.wait()
         self.gate.clear()
@@ -426,7 +426,7 @@ class _Stand:
                 await _spin()
                 await self.end_mirror()
             else:
-                assert self.session.request_pull_refresh(7) == "started"
+                assert self.session.request_pull_refresh(7, "record") == "started"
                 await _spin()
                 await self.end(7)
         assert not self.session.refreshing() and not self.session.pull_refreshing(7)
@@ -440,7 +440,7 @@ def test_a_job_waiting_its_turn_holds_no_slot_so_a_list_refresh_starts_at_once()
     async def scenario() -> list[str]:
         stand = _Stand()
         for number in (8, 9, 10, 11):
-            assert stand.session.request_pull_refresh(number) == "started"
+            assert stand.session.request_pull_refresh(number, "record") == "started"
         assert stand.session.request_refresh(for_selection=True) == "started"
         await _spin()
         assert stand.events == ["pull 8"]
@@ -478,7 +478,7 @@ def test_a_store_job_with_the_turn_waits_for_a_slot_and_runs_when_one_frees(
         if mirror_first:
             stand.session.request_refresh(for_selection=True)
             await _spin()
-        stand.session.request_pull_refresh(8)
+        stand.session.request_pull_refresh(8, "record")
         if not mirror_first:
             await _spin()
             stand.session.request_refresh(for_selection=True)
@@ -506,7 +506,7 @@ def test_the_mirrors_refresh_goes_ahead_of_every_queued_pull_request() -> None:
     async def scenario() -> list[str]:
         stand = _Stand()
         for number in (8, 9, 10, 11):
-            assert stand.session.request_pull_refresh(number) == "started"
+            assert stand.session.request_pull_refresh(number, "record") == "started"
         await _spin()
         assert stand.session.request_refresh(for_selection=True) == "started"
         await _spin()
@@ -529,14 +529,14 @@ def test_the_attended_pull_request_goes_ahead_of_queued_ones_even_if_attended_la
         stand = _Stand()
         await stand.session.attend(7)
         for number in (8, 9, 10):
-            assert stand.session.request_pull_refresh(number) == "started"
+            assert stand.session.request_pull_refresh(number, "record") == "started"
         await _spin()
-        assert stand.session.request_pull_refresh(7) == "started"
+        assert stand.session.request_pull_refresh(7, "record") == "started"
         await _spin()
         await stand.end(8)
         await stand.end(7)
         # 9 is next, in order. Attending to 11's job, queued behind it, puts it ahead of 10.
-        assert stand.session.request_pull_refresh(11) == "started"
+        assert stand.session.request_pull_refresh(11, "record") == "started"
         await _spin()
         await stand.session.attend(11)
         await stand.end(9)
@@ -552,10 +552,10 @@ def test_a_job_whose_number_stopped_being_attended_waits_its_place() -> None:
     async def scenario() -> list[str]:
         stand = _Stand()
         await stand.session.attend(7)
-        assert stand.session.request_pull_refresh(8) == "started"
+        assert stand.session.request_pull_refresh(8, "record") == "started"
         await _spin()
-        assert stand.session.request_pull_refresh(9) == "started"
-        assert stand.session.request_pull_refresh(7) == "started"
+        assert stand.session.request_pull_refresh(9, "record") == "started"
+        assert stand.session.request_pull_refresh(7, "record") == "started"
         await _spin()
         await stand.session.attend(20)
         await stand.end(8)
@@ -608,7 +608,7 @@ def test_the_mirror_and_the_attended_pull_request_cannot_starve_each_other() -> 
         stand.session.request_refresh(for_selection=True)
         await _spin()
         assert stand.events == ["mirror"]
-        stand.session.request_pull_refresh(7)
+        stand.session.request_pull_refresh(7, "record")
         await _spin()
         for _ in range(3):
             await stand.end_mirror()
@@ -617,7 +617,7 @@ def test_the_mirror_and_the_attended_pull_request_cannot_starve_each_other() -> 
             await _spin()
             await stand.end(7)
             assert stand.events[-1] == "mirror", "the mirror's goes after the attended job"
-            stand.session.request_pull_refresh(7)
+            stand.session.request_pull_refresh(7, "record")
             await _spin()
         await stand.finish()
         return stand.events
@@ -632,12 +632,12 @@ def test_a_queued_pull_request_waits_through_at_most_one_job_of_each_that_goes_f
         stand = _Stand()
         session = stand.session
         await session.attend(7)
-        assert session.request_pull_refresh(8) == "started"
+        assert session.request_pull_refresh(8, "record") == "started"
         await _spin()
         for number in (9, 10):
-            assert session.request_pull_refresh(number) == "started"
+            assert session.request_pull_refresh(number, "record") == "started"
         session.request_refresh(for_selection=True)
-        session.request_pull_refresh(7)
+        session.request_pull_refresh(7, "record")
         await _spin()
         await stand.end(8)
         await stand.end_mirror()
@@ -645,7 +645,7 @@ def test_a_queued_pull_request_waits_through_at_most_one_job_of_each_that_goes_f
         session.request_refresh(for_selection=True)
         await _spin()
         await stand.end(7)
-        session.request_pull_refresh(7)
+        session.request_pull_refresh(7, "record")
         await _spin()
         await stand.end(9)
         await stand.end_mirror()
@@ -685,16 +685,16 @@ def test_jobs_that_went_first_with_nothing_waiting_do_not_hold_back_the_next_fir
         assert session.request_refresh(for_selection=True) == "started"
         await _spin()
         assert stand.events == ["mirror"]
-        assert session.request_pull_refresh(7) == "started"
+        assert session.request_pull_refresh(7, "record") == "started"
         await _spin()
-        assert session.request_pull_refresh(8) == "started"
+        assert session.request_pull_refresh(8, "record") == "started"
         await _spin()
         # Each that goes first asks again as soon as it can; 8 still goes after one of each.
         await stand.end_mirror()
         session.request_refresh(for_selection=True)
         await _spin()
         await stand.end(7)
-        session.request_pull_refresh(7)
+        session.request_pull_refresh(7, "record")
         await _spin()
         await stand.end_mirror()
         seen = list(stand.events)
@@ -793,10 +793,10 @@ async def _fill_the_queue(stand: _Stand) -> None:
 
     await stand.session.attend(7)
     for number in range(8, 16):
-        assert stand.session.request_pull_refresh(number) == "started"
-    assert stand.session.request_pull_refresh(7) == "started"
+        assert stand.session.request_pull_refresh(number, "record") == "started"
+    assert stand.session.request_pull_refresh(7, "record") == "started"
     await stand.session.attend(20)
-    assert stand.session.request_companion_refresh() == "too_many"
+    assert stand.session.request_companion_refresh("due") == "too_many"
 
 
 def test_a_source_refresh_the_queue_has_no_room_for_says_so_and_starts_nothing() -> None:
@@ -920,7 +920,7 @@ def test_attending_changes_the_number_and_its_refresh_together() -> None:
         attending = asyncio.create_task(session.attend(8))
         await _spin()
         assert session.companion is seven
-        assert session.request_companion_refresh() == "started"
+        assert session.request_companion_refresh("due") == "started"
         assert session.pull_refreshing(7) and not session.pull_refreshing(8)
         pulls.read.set()
         await attending
@@ -939,10 +939,10 @@ def test_a_background_job_yields_the_store_to_a_readers_job_at_once() -> None:
     async def scenario() -> list[str]:
         stand = _Stand()
         session = stand.session
-        assert session.request_pull_refresh(8, background=True) == "started"
+        assert session.request_pull_refresh(8, "due", background=True) == "started"
         await _spin()
         assert stand.events == ["pull 8"] and not session._pull_jobs  # pyright: ignore[reportPrivateUsage]
-        assert session.request_pull_refresh(9) == "started"
+        assert session.request_pull_refresh(9, "record") == "started"
         await _spin()
         assert not session.pull_refreshing(8)
         await stand.end(9)
@@ -958,11 +958,11 @@ def test_a_readers_request_promotes_the_background_job_it_joins() -> None:
     async def scenario() -> list[str]:
         stand = _Stand()
         session = stand.session
-        assert session.request_pull_refresh(8, background=True) == "started"
+        assert session.request_pull_refresh(8, "due", background=True) == "started"
         await _spin()
-        assert session.request_pull_refresh(8) == "joined"
+        assert session.request_pull_refresh(8, "record") == "joined"
         assert session._pull_jobs == {"store:pull/8"}  # pyright: ignore[reportPrivateUsage]
-        assert session.request_pull_refresh(9) == "started"
+        assert session.request_pull_refresh(9, "record") == "started"
         await _spin()
         assert session.pull_refreshing(8)
         await stand.end(8)
@@ -977,10 +977,10 @@ def test_a_background_job_waits_behind_every_other_and_holds_no_slot() -> None:
     async def scenario() -> tuple[list[str], int]:
         stand = _Stand()
         session = stand.session
-        assert session.request_pull_refresh(7) == "started"
+        assert session.request_pull_refresh(7, "record") == "started"
         await _spin()
-        assert session.request_pull_refresh(8, background=True) == "started"
-        assert session.request_pull_refresh(9) == "started"
+        assert session.request_pull_refresh(8, "due", background=True) == "started"
+        assert session.request_pull_refresh(9, "record") == "started"
         await _spin()
         await stand.end(7)
         await stand.end(9)
@@ -1011,21 +1011,23 @@ def test_the_restart_of_a_pull_job_a_reader_joined_runs_however_many_reader_jobs
         session = stand.session
         coordinator = stand.coordinator
         key = stand.pulls.key(50)
-        assert session.request_pull_refresh(50, background=True) == "started"
+        assert session.request_pull_refresh(50, "due", background=True) == "started"
         await _spin()
         assert stand.events == ["pull 50"]
         # A reader's job for another pull request arrives: 50's is told to stop.
-        assert session.request_pull_refresh(1) == "started"
+        assert session.request_pull_refresh(1, "record") == "started"
         await asyncio.sleep(0)
         stopped = coordinator.job(key)
         assert stopped is not None and stopped.cancelling()
-        assert session.request_pull_refresh(50) == "joined"
+        assert session.request_pull_refresh(50, "record") == "joined"
         # The reader's other jobs fill the bound with 50's...
-        starts = [session.request_pull_refresh(number) for number in range(2, MAX_PULL_JOBS)]
-        assert session.request_pull_refresh(99) == "too_many"
+        starts = [
+            session.request_pull_refresh(number, "record") for number in range(2, MAX_PULL_JOBS)
+        ]
+        assert session.request_pull_refresh(99, "record") == "too_many"
         # ...and one more joins it, a prefetch a reader opened.
-        assert session.request_pull_refresh(100, background=True) == "started"
-        assert session.request_pull_refresh(100) == "joined"
+        assert session.request_pull_refresh(100, "due", background=True) == "started"
+        assert session.request_pull_refresh(100, "record") == "joined"
         others = len(session._pull_jobs - {key})
         # Its done callbacks, the restart among them, run before this wait's.
         await asyncio.wait({stopped}, timeout=5)
@@ -1049,11 +1051,11 @@ def test_background_jobs_count_toward_no_bound() -> None:
     async def scenario() -> tuple[str, str]:
         stand = _Stand()
         session = stand.session
-        background = session.request_pull_refresh(100, background=True)
+        background = session.request_pull_refresh(100, "due", background=True)
         for number in range(1, MAX_PULL_JOBS + 1):
-            assert session.request_pull_refresh(number) == "started"
+            assert session.request_pull_refresh(number, "record") == "started"
         await _spin()
-        refused = session.request_pull_refresh(MAX_PULL_JOBS + 1)
+        refused = session.request_pull_refresh(MAX_PULL_JOBS + 1, "record")
         await stand.finish()
         return background, refused
 
@@ -1235,7 +1237,7 @@ def test_the_idle_fetch_gives_way_to_a_readers_job_at_the_store() -> None:
         assert session.request_idle_refresh() == "started"
         await mirror.started.wait()
         refreshing = session.refreshing()
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await _settle(coordinator)
         return events, session._last_outcome(), refreshing
 
@@ -1283,7 +1285,7 @@ def test_a_readers_refresh_that_joins_the_idle_fetch_makes_it_theirs() -> None:
         session.request_idle_refresh()
         await mirror.started.wait()
         joined = session.request_refresh(for_selection=True)
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await _spin()
         mirror.gate.set()
         await _settle(coordinator)
@@ -1308,7 +1310,7 @@ async def _stopping_idle_fetch(
     session = await _attending(mirror, coordinator, _Companion(events, stale=True), serving=True)
     assert session.request_idle_refresh() == "started"
     await mirror.started.wait()
-    session.request_companion_refresh()
+    session.request_companion_refresh("due")
     await asyncio.sleep(0)
     return session, mirror
 
@@ -1381,7 +1383,7 @@ def test_a_url_selection_that_joins_an_idle_fetch_being_stopped_is_not_left_pend
         await session.attend(7)
         session.request_idle_refresh()
         await mirror.started.wait()
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await asyncio.sleep(0)
         session.start_pending_selection()
         await _spin()
@@ -1449,10 +1451,10 @@ def test_a_readers_request_that_joins_a_queued_background_pull_stops_background_
 
         task = asyncio.create_task(prefetch())
         await _spin()
-        assert session.request_pull_refresh(7, background=True) == "started"
+        assert session.request_pull_refresh(7, "due", background=True) == "started"
         await _spin()
         assert stopped == []
-        assert session.request_pull_refresh(7) == "joined"
+        assert session.request_pull_refresh(7, "record") == "joined"
         await _spin()
         seen = list(stopped)
         release.set()
@@ -1476,7 +1478,7 @@ def test_a_page_ask_that_joins_the_idle_fetch_keeps_it_running_and_quiet() -> No
         session.request_idle_refresh()
         await mirror.started.wait()
         answer = await session.page_ask()
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await _spin()
         quiet = session._refresh_quiet()
         mirror.gate.set()
@@ -1510,7 +1512,7 @@ def test_an_idle_fetch_a_readers_job_stopped_is_tried_again_only_a_window_later(
         assert session._idle_due_in(clock[0]) <= 0, "a mirror this old is due at once"
         session.request_idle_refresh()
         await mirror.started.wait()
-        session.request_companion_refresh()
+        session.request_companion_refresh("due")
         await _settle(coordinator)
         stopped = session._idle_due_in(clock[0])
         clock[0] += FRESHNESS_WINDOW_S
@@ -1675,7 +1677,7 @@ def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_j
         stops = [True]
 
         class _Stoppable(_Companion):
-            async def refresh(self) -> None:
+            async def refresh(self, asks: object) -> None:
                 events.append("pull start")
                 if stops:
                     stops.pop()
@@ -1689,17 +1691,17 @@ def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_j
         session = await _attending(
             _Mirror(events, fetched_at=_now()), coordinator, _Stoppable(events, stale=True)
         )
-        assert session.request_pull_refresh(7, background=True) == "started"
+        assert session.request_pull_refresh(7, "due", background=True) == "started"
         await _spin()
         # A reader's Refresh of the mirror arrives: the background job is told to stop.
         session.request_refresh(for_selection=True)
         await asyncio.sleep(0)
-        joined = session.request_pull_refresh(7)
+        joined = session.request_pull_refresh(7, "record")
         key = _Companion.key
         assert coordinator.job(key) is not None, "the stopped job has not unwound"
         counted_at_join = key in session._pull_jobs
         # Asked again before the stopped job has unwound: still one job after it.
-        assert session.request_pull_refresh(7) == "joined"
+        assert session.request_pull_refresh(7, "record") == "joined"
         await _spin()
         running = session.pull_refreshing(7)
         counted = key in session._pull_jobs

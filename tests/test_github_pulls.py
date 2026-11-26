@@ -18,7 +18,7 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Awaitable, Callable, Generator, Iterator
+from collections.abc import Awaitable, Callable, Generator, Iterable, Iterator
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
@@ -118,6 +118,7 @@ from tests.github_pull_fixture import (
     graph_core_entry,
     graph_status_entry,
     install_fake_gh,
+    logged_gh_calls,
     ok,
     page,
     pull_bodies,
@@ -1631,7 +1632,7 @@ def test_a_served_pull_request_is_stale_by_its_record_or_its_last_try(
     # record, where the next command reads it.
     monkeypatch.setattr(pulls, "utc_now", lambda: later)
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
-    asyncio.run(served.refresh())
+    asyncio.run(served.refresh({"record"}))
     for tried in (served, served_pull(stand.published, 7)):
         assert tried.last is not None and tried.last["outcome"] == "gh_missing"
         assert tried.fetched_at == "2026-09-17T12:00:00Z"
@@ -1844,7 +1845,7 @@ def test_the_refresh_route_starts_or_joins_one_job(
     release = threading.Event()
     runs: list[int] = []
 
-    async def held() -> None:
+    async def held(_asks: object) -> None:
         runs.append(7)
         # The job stays running until the test thread sets it.
         await held_until(release, 30)
@@ -2403,7 +2404,7 @@ def test_past_the_bound_on_jobs_a_request_is_refused_and_starts_nothing(
     gate = threading.Event()
     ran: list[int] = []
 
-    async def waiting(served: ServedPull) -> None:
+    async def waiting(served: ServedPull, _asks: object) -> None:
         ran.append(served.number)
         await held_until(gate, 30)
 
@@ -2441,7 +2442,7 @@ def test_past_the_bound_on_jobs_a_request_is_refused_and_starts_nothing(
 
 
 async def _attended_refresh(session: Any) -> Any:
-    return session.request_companion_refresh()
+    return session.request_companion_refresh("due")
 
 
 def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_nor_the_attended(
@@ -2454,7 +2455,7 @@ def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_no
     ran: list[object] = []
     release = threading.Semaphore(0)
 
-    async def waiting(served: ServedPull) -> None:
+    async def waiting(served: ServedPull, _asks: object) -> None:
         ran.append(served.number)
         await held_until(release, 30)
 
@@ -2508,7 +2509,7 @@ def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
     gate = threading.Event()
     ran: list[int] = []
 
-    async def waiting(served: ServedPull) -> None:
+    async def waiting(served: ServedPull, _asks: object) -> None:
         ran.append(served.number)
         await held_until(gate, 30)
 
@@ -2550,6 +2551,187 @@ def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
     assert client.portal.call(_attended_refresh, session) == "started", "there is room now"
     while session.pull_refreshing(10):
         time.sleep(0.01)
+
+
+# ── What a job reads, whoever started it (mb-ucnu) ─────────────
+
+
+def _gated_mirror_fetch(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    """Hold the mirror's fetch, and with it the store's turn, until the event is set."""
+
+    release = threading.Event()
+    original = StoreMirror.refresh
+
+    async def gated(self: StoreMirror) -> Any:
+        await held_until(release, 30)
+        return await original(self)
+
+    monkeypatch.setattr(StoreMirror, "refresh", gated)
+    return release
+
+
+def _at(monkeypatch: pytest.MonkeyPatch, seconds: float) -> datetime:
+    """Move the server's clocks, the record's and the mirror's, *seconds* past the fetch."""
+
+    now = FETCHED_AT + timedelta(seconds=seconds)
+    monkeypatch.setattr(pulls, "utc_now", lambda: now)
+    monkeypatch.setattr("metabrowser.mirror_refresh._now_utc", lambda: now)
+    return now
+
+
+def _quiet(session: Any, numbers: Iterable[int] = (7,)) -> None:
+    deadline = time.monotonic() + 30
+    while session.refreshing() or any(session.pull_refreshing(number) for number in numbers):
+        assert time.monotonic() < deadline, "a refresh did not finish"
+        time.sleep(0.01)
+
+
+def _read_the_record(calls: list[str]) -> bool:
+    """Whether pull request 7's record was read: its REST pull, which a read of the status
+    alone never asks for."""
+
+    return any(call.startswith("gh api repos/octo/demo/pulls/7") for call in calls)
+
+
+def test_a_source_refresh_for_a_due_status_reads_nothing_once_a_hold_is_noted_before_its_turn(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The attended pull request's status alone is due, so the source's refresh starts its
+    job beside the mirror's fetch, and the job waits behind that fetch for its turn at the
+    store. A rate-limit hold noted meanwhile holds the status and the record alike. The job
+    was asked for what was due and none of it still is, so it reads nothing; it read the
+    record in full, as an ask for the record would have."""
+
+    stand, client = pinned_pull
+    # Past the status's window, and inside the record's while a probe vouches for it.
+    now = _at(monkeypatch, FRESHNESS_WINDOW_S + 1)
+    session = mirror_session(app)
+    assert session is not None and client.portal is not None
+    companion = session.companion
+    assert isinstance(companion, ServedPull)
+
+    def only_the_status_due() -> tuple[bool, bool]:
+        companion.checks_due = True
+        companion.probed_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return (
+            companion.status_due(now),
+            companion.record_due(now, window_s=companion.record_window(now)),
+        )
+
+    assert client.portal.call(only_the_status_due) == (True, False)
+    release = _gated_mirror_fetch(monkeypatch)
+    logged_gh_calls(stand.tmp_path)
+    answer = client.post("/api/source/refresh", json={}, headers=_JSON)
+    assert answer.status_code == 202, answer.text
+    assert session.pull_refreshing(7), "the status alone was due, so its job started"
+    client.portal.call(partial(gh_budget.hold, "2026-09-17T13:00:00Z", now=now))
+    release.set()
+    _quiet(session)
+    assert logged_gh_calls(stand.tmp_path) == []
+
+
+def test_a_pages_ask_that_joins_a_job_for_the_record_leaves_it_reading_the_record(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A page's ask probes the pull request and finds its checks changed, and by then a
+    reader's retry of a commit fetch has started its job, which waits behind the mirror's
+    fetch for its turn at the store; the page's ask joins it. The retry asked for the
+    record, which is what brings a newer head, so the job reads the record and its status
+    after it, whoever joined. It read the status alone, as the page's ask would have."""
+
+    from metabrowser.builtin_plugins.github import served_pull as served_module
+
+    stand, client = pinned_pull
+    # After the status was last read, so a change a probe finds in it is due.
+    _at(monkeypatch, 5)
+    # The probe is held below for as long as the test takes, not the page's usual wait.
+    monkeypatch.setattr(served_module, "PROBE_WAIT_S", 30)
+    session = mirror_session(app)
+    assert session is not None
+    probing, probed = threading.Event(), threading.Event()
+
+    async def probe(*_args: object, **_kwargs: object) -> pulls.PullProbe:
+        probing.set()
+        await held_until(probed, 30)
+        return pulls.PullProbe("checks_changed", {})
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+    release = _gated_mirror_fetch(monkeypatch)
+    fetch = client.post("/api/source/refresh", json={}, headers=_JSON)
+    assert fetch.status_code == 202, fetch.text
+    assert not session.pull_refreshing(7), "nothing of the pull request was due"
+    logged_gh_calls(stand.tmp_path)
+    answers: list[str] = []
+
+    def page_ask() -> None:
+        answer = client.post(_REFRESH_ROUTE, json={"number": 7}, headers=_JSON)
+        answers.append(answer.json()["refresh"])
+
+    page = threading.Thread(target=page_ask, name="page-ask")
+    page.start()
+    try:
+        assert probing.wait(30), "the page's ask did not probe"
+        retry = client.post(
+            "/api/source/refresh", json={"for": "commit", "retry": True}, headers=_JSON
+        )
+        assert retry.status_code == 202, retry.text
+        assert session.pull_refreshing(7)
+    finally:
+        probed.set()
+        page.join(30)
+    assert answers == ["joined"]
+    release.set()
+    _quiet(session)
+    assert _read_the_record(logged_gh_calls(stand.tmp_path))
+
+
+def test_a_pages_ask_refused_too_many_leaves_nothing_for_the_next_job(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past the bound, a page's ask that found the status alone due is refused and starts
+    nothing, and nothing of it is left for the pull request's next job: the reader's retry
+    of a commit fetch that starts one later reads the record, as it asked. It read the
+    status alone, as the refused ask would have."""
+
+    stand, client = pinned_pull
+    # After the status was last read, so a change a probe finds in it is due.
+    _at(monkeypatch, 5)
+    session = mirror_session(app)
+    assert session is not None and client.portal is not None
+    gate = threading.Event()
+    queued = {*range(100, 100 + MAX_PULL_JOBS), 8}
+    original = ServedPull.refresh
+
+    async def held_or_read(served: ServedPull, *asks: Any) -> None:
+        if served.number in queued:
+            await held_until(gate, 30)
+            return
+        await original(served, *asks)
+
+    async def checks_changed(*_args: object, **_kwargs: object) -> pulls.PullProbe:
+        return pulls.PullProbe("checks_changed", {})
+
+    monkeypatch.setattr(ServedPull, "refresh", held_or_read)
+    monkeypatch.setattr(pulls, "probe_pull_request", checks_changed)
+
+    def ask(number: int, **fields: Any) -> str:
+        answer = client.post(_REFRESH_ROUTE, json={"number": number, **fields}, headers=_JSON)
+        return answer.json()["refresh"]
+
+    for number in range(100, 100 + MAX_PULL_JOBS):
+        assert ask(number, retry=True) == "started"
+    # The attended pull request's one place past the bound is held by an earlier attended.
+    client.portal.call(session.attend, 8)
+    assert ask(8, retry=True) == "started"
+    client.portal.call(session.attend, 7)
+    logged_gh_calls(stand.tmp_path)
+    assert ask(7) == "too_many"
+    gate.set()
+    _quiet(session, queued)
+    retry = client.post("/api/source/refresh", json={"for": "commit", "retry": True}, headers=_JSON)
+    assert retry.status_code == 202, retry.text
+    _quiet(session)
+    assert _read_the_record(logged_gh_calls(stand.tmp_path))
 
 
 def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_it(
@@ -3918,7 +4100,7 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
         gate.accounts = (READER,) if when == "before_preview" else (READER, "changed")
         held = ServedPull(stand.published, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         if when == "after_preview":
             await held.wait_for_core()
             assert held.core_preview is not None
@@ -3951,7 +4133,7 @@ def test_selected_full_wait_does_not_own_the_refresh(
         gate = _core_gate(stand, monkeypatch)
         held = ServedPull(stand.published, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         try:
             await held.wait_for_core()
             preview = held.core_preview
@@ -3986,7 +4168,7 @@ def test_selected_core_does_not_add_auth_or_replace_an_existing_full_record(
     async def run() -> None:
         gate = _core_gate(stand, monkeypatch)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         await gate.parts_started.wait()
         await held.wait_for_core()
         assert not job.done()
@@ -4009,7 +4191,7 @@ def test_selected_core_head_retry_removes_the_old_attempt_before_the_next_core(
         gate.release.set()
         held = ServedPull(stand.published, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         await asyncio.wait_for(gate.second_core.wait(), 5)
         assert held.core_preview is None
         assert stand.record(7) == "not_cached"
@@ -4032,7 +4214,7 @@ def test_selected_core_binding_change_rejects_an_inflight_viewer_checked_core(
         gate.release_core = asyncio.Event()
         held = ServedPull(stand.published, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         await asyncio.wait_for(gate.core_started.wait(), 5)
         held.bind(replace(stand.published, store_id="rebound-store"))
         gate.release_core.set()
@@ -4056,7 +4238,7 @@ def test_selected_core_wait_owns_no_producer_and_has_one_lease(
         gate.release_core = asyncio.Event()
         held = ServedPull(stand.published, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         await asyncio.wait_for(gate.core_started.wait(), 5)
         waiter = asyncio.create_task(held.wait_for_core())
         await asyncio.sleep(0)
@@ -4108,7 +4290,7 @@ def test_selected_checkout_core_has_no_store_or_git_acquisition(
         gate = _core_gate(stand, monkeypatch)
         held = ServedPull(repository, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         await held.wait_for_core()
         assert held.core_preview is not None
         assert held.core_preview["comparison_state"] == "no_store"
@@ -4244,7 +4426,7 @@ def test_h80_full_record_refresh_never_enters_the_graph_path(
     monkeypatch.setattr(pulls, "_get", counted)
     held = served_pull(stand.published, 7)
     held.request_core_preview()
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"record"}))
     assert held.last is not None and held.last["outcome"] == "succeeded"
     assert ("repos/octo/demo/pulls/7", original.etags["repos/octo/demo/pulls/7"]) in calls
     assert held.core_preview is None
@@ -4271,7 +4453,7 @@ def test_h80_cancel_after_verified_core_drains_all_three_parts(
         gate = _core_gate(stand, monkeypatch)
         held = ServedPull(stand.published, 7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         await held.wait_for_core()
         await asyncio.wait_for(gate.parts_started.wait(), 5)
         assert held.core_preview is not None and gate.started == 3
@@ -4301,7 +4483,7 @@ def test_h80_initial_graph_core_then_real_rest_etag_then_304(
     stand.calls()
     held = ServedPull(stand.published, 7)
     held.request_core_preview()
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"record"}))
     first = stand.record(7)
     assert isinstance(first, PullRecord) and path not in first.etags and replies == []
     initial_calls = stand.calls()

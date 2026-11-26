@@ -54,6 +54,7 @@ from metabrowser.mirror_refresh import (
     OriginProbeError,
     RecordedFreshness,
     RefKind,
+    RefreshAsk,
     RefreshCoordinator,
     RefreshResult,
     drain_refreshes,
@@ -1315,6 +1316,45 @@ def test_a_job_joined_as_it_stops_is_started_again_once_and_never_once_the_coord
         "after the close": ["a"],
         "errors": [],
     }
+
+
+def test_a_jobs_asks_last_as_long_as_the_job_and_through_its_restart() -> None:
+    """What a pull request's job reads follows from why it was started or joined, whoever
+    started it (``RefreshCoordinator.asks``, mb-ucnu). An ask for a job that is not running
+    is kept by none, a job that ends leaves none for the next, and the asks that joined a
+    job told to stop are its restart's."""
+
+    async def scenario() -> tuple[list[set[RefreshAsk]], bool]:
+        coordinator = RefreshCoordinator()
+        release = asyncio.Event()
+        seen: list[set[RefreshAsk]] = []
+
+        async def job() -> None:
+            await release.wait()
+            seen.append(set(coordinator.asks("pull")))
+
+        def restart() -> None:
+            coordinator.start("pull", job, network=False)
+
+        try:
+            coordinator.asked("pull", "record")
+            coordinator.start("pull", job, network=False)
+            coordinator.asked("pull", "due")
+            release.set()
+            await coordinator.drain(timeout_s=5)
+            release.clear()
+            coordinator.start("pull", job, network=False)
+            coordinator.asked("pull", "page")
+            coordinator.cancel("pull")
+            assert coordinator.start_again_when_stopped("pull", restart)
+            coordinator.asked("pull", "record")
+            release.set()
+            await coordinator.drain(timeout_s=5)
+            return seen, bool(coordinator.asks("pull"))
+        finally:
+            await coordinator.aclose()
+
+    assert asyncio.run(scenario()) == ([{"due"}, {"page", "record"}], False)
 
 
 class _BusyMirror:

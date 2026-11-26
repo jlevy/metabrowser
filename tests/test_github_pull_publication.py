@@ -84,7 +84,7 @@ def test_the_served_pull_request_adopts_the_winner_and_its_stamp(
     async def run() -> Any:
         served = ServedPulls(stand.published)
         companion = await served.companion(7)
-        await companion.refresh()
+        await companion.refresh({"record"})
         return companion
 
     companion = asyncio.run(run())
@@ -194,7 +194,7 @@ def test_a_comparison_of_an_older_read_does_not_discard_a_newer_refresh(
     async def reader_refresh() -> Any:
         served = ServedPulls(published)
         companion = await served.companion(7)
-        await companion.refresh()
+        await companion.refresh({"record"})
         return companion
 
     companion = asyncio.run(reader_refresh())
