@@ -203,7 +203,7 @@
    in every state: the merge's arrow is text on the row's line, which its chips fit in, so the
    row is a line tall with or without them. A long branch name is cut short, its chip's
    tooltip holding all of it, and never past the merge group's floor (static/styles.css,
-   `.merge-refs`). A chip keeps its one size, slightly smaller than the sentence above it:
+   `.merge-refs`). A chip keeps its one size, the same in every context:
    docs/design-system.md, "Branch Chips". Measured in Chrome 152: 21 px with the merge, and a
    ref chip's strut held an empty row at the chip's 16.78. */
 .github-pull-branches {

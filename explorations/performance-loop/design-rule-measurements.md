@@ -171,16 +171,29 @@ presses changed nothing in either engine, so the app has none.
 
 ## Branch Chip Sizes
 
-For [Branch Chips](../../docs/design-system.md#one-ratio), measured in Chrome, light
-theme: the text each context sets, the chip it gets at `--git-ref-font-scale`, and the
-fixed chip size the ratio replaced.
+For [Branch Chips](../../docs/design-system.md#one-size), recorded on 2026-11-25
+(mb-uokj), when a chip took one size in every context in place of a ratio of the text
+around it. Measured in headless Chrome on macOS against a served checkout, Clean Fonts,
+on a commit’s page with the navigation’s Commits list beside it and on a pull request’s
+page.
 
-| Context | Text around the chip | Chip | Fixed chip |
-| --- | --- | --- | --- |
-| A Git history row | 13px subject | 11.7px | 12px |
-| A commit’s summary and its tooltip | 14px metadata | 12.6px | 12px |
-| A pull request’s header | 14px branch line | 12.6px | 12px |
-| The ref selector’s button and list | 12px | 10.8px | 12px |
+The box was 16px high, its line’s height, in every context before and after.
+The insets are from the box’s edges to the ink of the probe `claude/pg`, an ascender and
+a descender, set in the chip’s face, weight, and size on a canvas and placed on the
+chip’s baseline.
+
+| Context | Text around the chip | Chip, as a ratio | Ink above, below | Chip, one size | Ink above, below |
+| --- | --- | --- | --- | --- | --- |
+| The ref selector’s button | 13px | 11.7px | 2.69px, 2.53px | 11.7px | 2.69px, 2.53px |
+| A Git history row | 13px subject | 11.7px | 2.69px, 2.53px | 11.7px | 2.69px, 2.53px |
+| A commit’s page header | 14px metadata | 12.6px | 3.05px, 1.34px | 11.7px | 2.69px, 2.53px |
+| A pull request’s header | 14px branch line | 12.6px | 3.05px, 1.34px | 11.7px | 2.69px, 2.53px |
+
+The ratio’s chips sat low under larger text because the line stayed 16px while the
+face’s ascent and descent grew with the type: Chrome rounds each to a pixel, so at
+12.6px the baseline fell a pixel lower in the same box than at 11.7px. A pull request’s
+header had the same geometry as a commit’s; a name with no descender, `main`, hid it
+there.
 
 ## Short Commit IDs
 

@@ -43,17 +43,22 @@
   // the Window surface use, so a shape can only be defined once. They
   // mirror the TypedDicts in metabrowser/git/wire.py.
 
-  // Geometry derived from scmHistory.ts, densified: lanes sit at a 9px
-  // pitch (upstream 11) and the vertical midline is decoupled from the
+  // Geometry derived from scmHistory.ts, densified: lanes sit at a 6px
+  // pitch (upstream 11, 9 until 2026-11-25, when histories with many
+  // concurrent branches took too much width). At 6px a dot reaches 4px from
+  // its lane (CIRCLE_RADIUS plus half CIRCLE_STROKE_WIDTH) and a neighbouring
+  // lane's 1px line starts 5.5px away, so they never touch. The curve radius
+  // is half the pitch, the most a turn into the next lane can take without
+  // its horizontal run reversing. The vertical midline is decoupled from the
   // pitch, so tightening lanes cannot move dots off the row's center.
   // SWIMLANE_HEIGHT is also the row height: the SVG is exactly one row
   // tall, which is what lets the graph ride along in an ordinary
   // scrolling list instead of needing a canvas sized to the whole
   // history.
   const SWIMLANE_HEIGHT = 22;
-  const SWIMLANE_WIDTH = 9;
+  const SWIMLANE_WIDTH = 6;
   const SWIMLANE_MIDLINE = SWIMLANE_HEIGHT / 2;
-  const SWIMLANE_CURVE_RADIUS = 5;
+  const SWIMLANE_CURVE_RADIUS = SWIMLANE_WIDTH / 2;
   // Marker geometry deliberately diverges from upstream: topology is
   // expressed by the lanes, and every vertex is the same solid dot.
   const CIRCLE_RADIUS = 3;
