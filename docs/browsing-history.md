@@ -122,12 +122,20 @@ A folder that is a repository’s root opens on **Working tree**, the files on d
 whatever you have edited, staged, or not yet added.
 The row under the Files and Commits tabs says so, then names the branch the files are
 on, as in “Working tree · main”, or the commit when `HEAD` is detached.
-If you switch branches in a terminal, the row names the new branch once you open the
-list, or when you reload the page.
+If you, or an agent, check out another branch in a terminal, the row names the new
+branch within about a second, without a reload.
 Click the branch’s chip for its actions.
 Click the chevron in that row or press `W` to browse the other branches and tags.
+The list has four tabs, and opens on the one that holds what the page shows.
 
-- **Working tree** is the first row, and the only one that shows your live files.
+- **Working tree** is the first tab, and the only one that shows your live files.
+  It has one entry, which names the branch your files are on and the folder’s path.
+  Choosing it shows the files on disk; it never checks anything out, so the branch is
+  whichever one you have checked out.
+  From a page that shows a branch or tag, clicking the tab itself, or pressing Enter or
+  Space on it, does the same in one step.
+  Arrow keys along the tabs only show each tab’s list, so they never leave the page you
+  are on.
 - **Branches** are the checkout’s own, with the one you have checked out first and
   marked “checked out”.
   **Tags** are its tags.
@@ -147,20 +155,25 @@ Click the chevron in that row or press `W` to browse the other branches and tags
   later. On a branch’s or tag’s page, the row at the foot of the navigation pane says
   when the origin was last fetched, and **Refresh** at the top of the navigation pane
   fetches it again; it fetches Metabrowser’s store, never your checkout.
-  The working tree’s page has no such row, and **Refresh** there reads your files and
-  history again without fetching from the origin.
+  The working tree’s page has no such row.
+  **Refresh** there reads your files and history again first, and then fetches the
+  origin in the background, so Remotes and Tags are current the next time you look; an
+  open list updates in place.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
   nothing asks for one.
   Another remote’s branches, and a tag only your checkout has, are read from the
   checkout.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The row then says “Revision” before its name and ends with a **Working tree**
-  button, and the navigation header, still the folder’s name, names its full commit when
-  you hover over it. This includes the checked-out branch: choosing it shows what is
-  committed, without your uncommitted changes, so its row reads “Revision · main” where
-  the working tree’s read “Working tree · main”.
-  The row’s **Working tree** button, or the list’s first row, is the way back to them.
+  objects. The row then names it alone, as in “main”, and the navigation header, still
+  the folder’s name, names its full commit when you hover over it.
+  This includes the checked-out branch: choosing it in Branches shows what is committed,
+  without your uncommitted changes, so its row reads “main” where the working tree’s
+  reads “Working tree · main”.
+  The **Working tree** tab is the way back to them.
+  A branch’s page follows its branch: when you commit to it, the page goes to the new
+  commit by itself within a few seconds.
+  A tag’s page follows its tag the same way, and a commit opened by its ID stays put.
 
 Nothing is checked out, fetched, or written.
 Your working tree, your index, and `HEAD` stay exactly as they are, so it is safe with

@@ -20,7 +20,8 @@ page registers the paths it shows on its own connection (``POST /api/events/watc
 - :func:`watch_generation` is what a poll compares: a table source's own
   ``generation()`` for a path whose kind has one (``table_source.py``), so a database's
   generation is the one its reads sample, and the file's identity, size, and modification
-  time for any other path; None when nothing readable is there.
+  time for any other path; None when nothing readable is there. One path is read for what
+  it says and not where it is: :data:`HEAD_WATCH_PATH`, a checkout's ``HEAD``.
 
 Every path is polled, the ones the inventory delivers too: the inventory's coverage of a
 path (its ignore rules, its watcher's state, a source's sidecars) is not a fact this
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import math
 import time
@@ -41,7 +43,12 @@ from dataclasses import dataclass, field
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.events import FileChanged
-from metabrowser.source import resolve_session_identity
+from metabrowser.repository_context import checked_out_head
+from metabrowser.source import (
+    UnsupportedSourceCapabilityError,
+    resolve_session_identity,
+    session_filesystem_root,
+)
 from metabrowser.table_source import (
     NoTableSourceError,
     TablePathNotFoundError,
@@ -86,6 +93,29 @@ FILE_WATCH_MIN_SPACING_S = 0.25
 # and a flag. Paths are inventory paths, which the inventory bounds far below this.
 FILE_WATCH_MAX_BODY_BYTES = 8 * 1024
 
+# The path a page watches to hear that the served checkout's ``HEAD`` moved: another branch
+# checked out, ``HEAD`` detached, or a commit made on the branch it is on. The ref
+# chooser's row names that branch and asks for it again on each change
+# (static/source-ref-selector.js, `headChanged`). Its generation is what ``HEAD`` names,
+# the branch and the commit (:func:`_head_generation`), not the file's ``stat``: a linked
+# worktree's ``.git`` is a file and its ``HEAD`` is in the repository's own directory,
+# where no path under the served root reaches it, and a commit moves the branch's ref and
+# leaves ``HEAD`` as it was.
+#
+# Reading it is two or three small files, with no Git process. Measured 2026-11-25 on an
+# M1 Pro so loaded that its load average was over 200, 1,000 reads each: a median 0.19 ms
+# and 0.50 ms at the 95th percentile for this repository in a linked worktree, 0.11 and
+# 0.22 ms for a three-branch repository's main worktree, and 0.20 and 0.58 ms for a
+# linked worktree of that one. So a page's watch adds that to each poll, once a second.
+#
+# How soon a page names a branch checked out in a terminal: measured the same day and at
+# the same load, in a browser on a served three-branch checkout, from the moment
+# ``git checkout`` returned to the row's new text, six checkouts took 96, 216, 494, 796,
+# 844, and 1,131 ms. That is the poll's interval, :data:`FILE_WATCH_POLL_INTERVAL_S`, and
+# then one request of ``/api/source/refs?kind=working_tree``; the spread says nothing
+# woke the poll early, as an inventory change at a watched path does for a file.
+HEAD_WATCH_PATH = ".git/HEAD"
+
 WatchGeneration = Callable[[str], Awaitable[str | None]]
 Send = Callable[[str, FileChanged], None]
 
@@ -108,8 +138,15 @@ async def watch_generation(path: str) -> str | None:
     A path whose kind has a table source answers that source's ``generation()``, the
     token its reads sample; any other path, a folder included, answers
     :func:`~metabrowser.table_source.stat_generation` of what is there.
+    :data:`HEAD_WATCH_PATH` answers what the served checkout's ``HEAD`` names.
     """
 
+    if path == HEAD_WATCH_PATH:
+        named = await asyncio.to_thread(_head_generation)
+        if named is not None:
+            return named
+        # No checkout, or a `HEAD` its files do not spell (a reftable repository): the
+        # file itself, as any other path.
     try:
         opened = await open_table_source(path)
     except (NoTableSourceError, TablePathNotFoundError):
@@ -120,6 +157,21 @@ async def watch_generation(path: str) -> str | None:
         return await asyncio.to_thread(opened.source.generation)
     except (TableSourceError, OSError):
         return None
+
+
+def _head_generation() -> str | None:
+    """What the served checkout's ``HEAD`` names, as a generation, or None when the served
+    root is no checkout or its ``HEAD`` cannot be read from its files."""
+
+    try:
+        root = session_filesystem_root()
+    except UnsupportedSourceCapabilityError:
+        return None
+    head = checked_out_head(root)
+    if head is None:
+        return None
+    material = f"{head.branch or ''}\0{head.revision}"
+    return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
 async def _stat_generation(path: str) -> str | None:
@@ -355,6 +407,7 @@ __all__ = [
     "FILE_WATCH_MAX_PATHS",
     "FILE_WATCH_MIN_SPACING_S",
     "FILE_WATCH_POLL_INTERVAL_S",
+    "HEAD_WATCH_PATH",
     "FileWatches",
     "TooManyWatchesError",
     "UnknownConnectionError",

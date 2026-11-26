@@ -163,7 +163,7 @@ def _live_tree(client: TestClient) -> list[str]:
 
 def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, checkout: Path) -> None:
     branches = _refs(served)
-    assert branches["kinds"] == ["branch", "tag", "remote"]
+    assert branches["kinds"] == ["working_tree", "branch", "remote", "tag"]
     # The working tree is what a folder opens on, and is no ref: no row is served. It is
     # named as the folder's page names it, the folder and its path, which is not under the
     # test's home directory and so is shown whole.
@@ -171,6 +171,7 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
         "current": True,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "head_commit": SECOND,
         "name": "checkout",
         "location": str(checkout),
     }
@@ -210,13 +211,15 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
 def test_a_kept_listing_follows_head_to_another_branch(
     served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A listing is kept under the branch ``HEAD`` is on as well as the refs' state.
+    """A listing names the branch ``HEAD`` is on now, however lately it moved.
 
     The listing reads ``HEAD`` through ``repo_info``, which keeps it for
     ``GIT_REPO_INFO_TTL_S``, while the refs' state reads it afresh. Keyed on the state
     alone, the listing made within the TTL of a switch, from the ``HEAD`` kept before it,
     was kept under the new state and served past the TTL, until some ref moved (review A
-    of #614). Here the identity cache's clock stands still until it is moved past the TTL.
+    of #614). A page now asks for a listing the moment its watch says ``HEAD`` moved, so
+    the listing reads ``HEAD`` from the checkout's files too, and drops an identity they
+    contradict. Here the identity cache's clock stands still, well inside the TTL.
     """
 
     standing = time.monotonic()
@@ -229,13 +232,18 @@ def test_a_kept_listing_follows_head_to_another_branch(
     git_repo.clear_repo_cache()
     assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
     git(checkout, "symbolic-ref", "HEAD", "refs/heads/feature")
-    # Within the TTL the listing names the HEAD repo_info kept, as /api/git/refs does.
-    assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
-    clock["offset"] = GIT_REPO_INFO_TTL_S + 1
+    # Within the TTL, with the clock where it was: the working tree's own list, which
+    # runs no Git, and the list of branches, which marks and lists first the one checked
+    # out, both name the branch HEAD is on now.
+    tree = _refs(served, kind="working_tree")
+    assert (tree["refs"], tree["working_tree"]["head"]) == ([], "refs/heads/feature")
     after = _refs(served)
-    assert after["working_tree"]["head"] == "refs/heads/feature"
+    assert after["working_tree"] == tree["working_tree"]
     assert _names(after)[0] == "feature"
     assert [row["name"] for row in after["refs"] if row["checked_out"]] == ["feature"]
+    # Past the TTL it says the same.
+    clock["offset"] = GIT_REPO_INFO_TTL_S + 1
+    assert _refs(served) == after
 
 
 def test_a_detached_head_is_on_no_branch(checkout: Path) -> None:
@@ -249,6 +257,7 @@ def test_a_detached_head_is_on_no_branch(checkout: Path) -> None:
         "current": True,
         "head": None,
         "head_name": None,
+        "head_commit": FIRST,
         "name": "checkout",
         "location": str(checkout),
     }
@@ -375,43 +384,50 @@ def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
 ) -> None:
     """The working tree and its branch's own revision never read the same (mb-cxpq).
 
-    Both name the branch topic, so the row says which view it is in words first, and a
-    revision has a button back to the working tree; the working tree has none, since it is
-    where the button goes. ``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins
-    what the mounted selector then paints from the same attributes.
+    Both name the branch topic, so the working tree's row says "Working tree" first, and
+    the revision's names the branch alone. The row is otherwise the same on both: its
+    label and the chooser's button, and nothing else, so it is one shape whatever the
+    page shows. ``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins what the
+    mounted selector then paints from the same attributes.
     """
 
+    def shape(row: str) -> list[str]:
+        """The row's elements outside its label: what could move it."""
+
+        outside = re.sub(
+            r'<span class="source-ref-selector-label">.*?</span>(?=<button)', "", row, flags=re.S
+        )
+        return re.findall(r"<(\w+)[^>]*? class=\"([^\"]+)\"", outside)
+
     tree = _selector_row(served)
-    assert ' data-view="working-tree" data-working-branch="topic">' in tree
+    assert ' data-working-branch="topic">' in tree
     assert (
         '<span class="source-ref-selector-label"><span class="source-ref-selector-view">'
         'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
         '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
         "</span>"
     ) in tree
-    assert "source-ref-selector-back" not in tree
     _pin(served, ref="refs/heads/topic")
     revision = _selector_row(served)
-    assert ' data-view="revision">' in revision and "data-working-" not in revision
+    assert "data-working-" not in revision
     assert (
-        '<span class="source-ref-selector-view">Revision</span>'
-        '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        '<span class="source-ref-selector-label">'
         '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
+        "</span>"
     ) in revision
-    assert (
-        '<button type="button" class="btn source-ref-selector-back"'
-        ' aria-label="Back to the working tree"'
-    ) in revision
+    assert revision != tree and shape(revision) == shape(tree)
+    assert len(shape(tree)) == 3, "the row, its button's host, and the chooser's button"
     _pin(served, working_tree=True)
     assert _selector_row(served) == tree
     # A detached HEAD's working tree names its commit, in the commit-ID face.
     git(checkout, "checkout", "-q", "--detach", "topic")
     detached = _selector_row(served)
-    assert f' data-view="working-tree" data-working-commit="{SECOND}">' in detached
+    assert f' data-working-commit="{SECOND}">' in detached
     assert (
         'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
         f'<span class="git-commit-sha">{short_commit(SECOND)}</span></span>'
     ) in detached
+    assert shape(detached) == shape(tree)
 
 
 def test_a_github_checkouts_row_names_its_head_from_the_pages_repository_context(
@@ -430,11 +446,11 @@ def test_a_github_checkouts_row_names_its_head_from_the_pages_repository_context
     monkeypatch.setattr(server, "checked_out_head", read_again)
     with TestClient(server.app) as client:
         tree = _selector_row(client)
-        assert ' data-view="working-tree" data-working-branch="topic">' in tree
+        assert ' data-working-branch="topic">' in tree
         assert '<span class="git-ref-label">topic</span>' in tree
         git(checkout, "checkout", "-q", "--detach", "topic")
         detached = _selector_row(client)
-        assert f' data-view="working-tree" data-working-commit="{SECOND}">' in detached
+        assert f' data-working-commit="{SECOND}">' in detached
         assert f'<span class="git-commit-sha">{short_commit(SECOND)}</span>' in detached
 
 
