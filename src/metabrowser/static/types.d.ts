@@ -340,7 +340,21 @@ type MetabrowserViewCompositionRuntime = Readonly<{
     getRegisteredView(kind: string, viewId: string): MetabrowserViewSpec | null | undefined;
     isCurrent?: () => boolean;
   }): Promise<MetabrowserPreparedViewComposition>;
-  refresh(container: HTMLElement, context: MetabrowserRenderContext): Promise<boolean>;
+  /** Remember a committed layout and the context its lazy views will read. */
+  retain(
+    host: HTMLElement,
+    installed: {
+      views: MetabrowserPreparedViewComposition["views"];
+      context: { current: MetabrowserRenderContext };
+    },
+  ): () => void;
+  /** Refresh a matching committed layout when all its mounted views support it. */
+  refresh(
+    host: HTMLElement,
+    views: MetabrowserPreparedViewComposition["views"],
+    context: MetabrowserRenderContext,
+    isCurrent: () => boolean,
+  ): Promise<boolean>;
 }>;
 
 type MetabrowserNavigationOpenOptions = {

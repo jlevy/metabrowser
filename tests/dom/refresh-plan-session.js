@@ -294,9 +294,14 @@ async function feedbackStep() {
   let now = 0;
   const timers = new Map();
   let nextTimer = 1;
+  let releaseSource;
+  const sourceReady = new Promise((resolve) => {
+    releaseSource = resolve;
+  });
   const context = load({
     document,
     HTMLElement,
+    MetabrowserShell: { sourceFreshness: () => sourceReady, rereadFiles() {} },
     performance: { now: () => now },
     setTimeout: (finish, delay) => {
       const timer = nextTimer++;
@@ -323,6 +328,10 @@ async function feedbackStep() {
   const press = plan.press();
   const immediate = button.dataset.refreshing === "true";
   assert(immediate);
+  const waitingForSource = button.getAttribute("aria-disabled") === "true";
+  assert(waitingForSource, "the control is disabled while preparation waits for its source");
+  assert.equal(await plan.press(), false, "preparation does not admit a second press");
+  releaseSource(null);
   await press;
   assert.equal(button.getAttribute("aria-disabled"), null);
   const briefly = button.dataset.refreshing === "true";
@@ -344,6 +353,7 @@ async function feedbackStep() {
     pullsHint,
     spokenHint,
     filesHint,
+    waitingForSource,
     spinner: { immediate, briefly, ended },
   };
 }

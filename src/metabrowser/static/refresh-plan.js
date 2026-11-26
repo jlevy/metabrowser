@@ -259,9 +259,7 @@
     const plan = createPlan({
       shown: (id) => isShown(id, view()),
       waiting(on) {
-        if (on) {
-          button.setAttribute("aria-disabled", "true");
-        } else {
+        if (!on) {
           button.removeAttribute("aria-disabled");
           finishFeedback();
         }
@@ -308,6 +306,7 @@
         return false;
       }
       preparing = true;
+      button.setAttribute("aria-disabled", "true");
       if (feedbackTimer !== null) {
         window.clearTimeout(feedbackTimer);
         feedbackTimer = null;
@@ -318,6 +317,7 @@
       try {
         await askSource();
       } catch (error) {
+        button.removeAttribute("aria-disabled");
         finishFeedback();
         throw error;
       } finally {

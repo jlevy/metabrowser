@@ -34,6 +34,9 @@ where they differ, each is listed.
   staged is the shown file’s alone, and the other arrives whole in its own first view.
 - `rereadMountedTreemap`: the shown Treemap stays mounted while Refresh reads new data
   and paints the answer in the same view.
+  A lazy tab mounts with the updated context.
+- `rereadWithIncompatibleViews`: changes to the view descriptors or a mounted view that
+  cannot refresh in place use a staged replacement.
 
 ```console
 $ node tests/dom/view-tab-hold-session.js
@@ -144,6 +147,27 @@ $ node tests/dom/view-tab-hold-session.js
       "staged": null,
       "pane": "src in treemap",
       "mounts": "treemap 1"
+    },
+    "lazyContent": "updated map"
+  },
+  "rereadWithIncompatibleViews": {
+    "changedDescriptor": {
+      "label": "Folder map",
+      "content": "fresh folder",
+      "after": {
+        "staged": null,
+        "pane": "src in overview",
+        "mounts": "treemap 2, overview 1"
+      }
+    },
+    "unsupportedHidden": {
+      "label": "Treemap",
+      "content": "fresh folder",
+      "after": {
+        "staged": null,
+        "pane": "src in overview",
+        "mounts": "treemap 2, overview 2"
+      }
     }
   }
 }

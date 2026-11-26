@@ -145,9 +145,78 @@
   /** @type {WeakMap<HTMLElement, NonNullable<MetabrowserPublicViewRenderHandle["refresh"]>>} */
   const refreshers = new WeakMap();
 
-  /** @param {HTMLElement} container @param {MetabrowserPublicRenderContext} context */
-  async function refresh(container, context) {
-    return (await refreshers.get(container)?.(context)) === true;
+  /**
+   * @typedef {{
+   *   views: MetabrowserPublicPreparedViewComposition["views"],
+   *   context: {current: MetabrowserPublicRenderContext},
+   * }} InstalledViews
+   */
+  /** @type {WeakMap<HTMLElement, InstalledViews>} */
+  const installedViews = new WeakMap();
+
+  /** @param {HTMLElement} host @param {InstalledViews} installed */
+  function retain(host, installed) {
+    installedViews.set(host, installed);
+    return () => {
+      if (installedViews.get(host) === installed) {
+        installedViews.delete(host);
+      }
+    };
+  }
+
+  /**
+   * Check the tab descriptors and every mounted view before reusing the layout.
+   * A lazy view uses the retained context when its mount eventually starts.
+   *
+   * @param {HTMLElement} host
+   * @param {MetabrowserPublicPreparedViewComposition["views"]} views
+   * @param {MetabrowserPublicRenderContext} context
+   * @param {() => boolean} isCurrent
+   */
+  async function refresh(host, views, context, isCurrent) {
+    const installed = installedViews.get(host);
+    if (
+      !installed ||
+      views.length !== installed.views.length ||
+      !views.every(({ renderer, view }, index) => {
+        const before = installed.views[index];
+        return (
+          renderer === before.renderer &&
+          Object.keys(view).length === Object.keys(before.view).length &&
+          Object.entries(view).every(
+            ([key, value]) =>
+              Object.hasOwn(before.view, key) && Object.is(Reflect.get(before.view, key), value),
+          )
+        );
+      })
+    ) {
+      return false;
+    }
+    const active = host.querySelector(':scope > [data-active-view="true"]');
+    if (!(active instanceof HTMLElement) || !refreshers.has(active)) {
+      return false;
+    }
+    /** @type {Array<NonNullable<MetabrowserPublicViewRenderHandle["refresh"]>>} */
+    const mounted = [];
+    for (const container of host.querySelectorAll(":scope > [data-plugin-view]")) {
+      if (
+        !(container instanceof HTMLElement) ||
+        typeof container._metabrowserMount === "function"
+      ) {
+        continue;
+      }
+      const reread = refreshers.get(container);
+      if (reread === undefined) {
+        return false;
+      }
+      mounted.push(reread);
+    }
+    if (!isCurrent()) {
+      return false;
+    }
+    installed.context.current = context;
+    const outcomes = await Promise.all(mounted.map((reread) => isCurrent() && reread(context)));
+    return isCurrent() && outcomes.every((outcome) => outcome === true);
   }
 
   /**
@@ -512,6 +581,7 @@
     mount,
     prepare,
     refresh,
+    retain,
     selectTab,
     setActiveView,
     settleFaces,

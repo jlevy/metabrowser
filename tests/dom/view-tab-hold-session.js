@@ -102,9 +102,11 @@ function createShell() {
   let hold = true;
   let releaseRefresh;
   const renderer = (viewId) => ({
-    render(container) {
+    render(container, context) {
       mounts[viewId] = (mounts[viewId] ?? 0) + 1;
-      container.textContent = `${viewId} of ${container.closest("[data-rendered-path]")?.dataset.renderedPath}`;
+      container.textContent =
+        context.raw.content ??
+        `${viewId} of ${container.closest("[data-rendered-path]")?.dataset.renderedPath}`;
       if (viewId === "treemap") {
         return {
           async refresh(context) {
@@ -235,6 +237,8 @@ function createShell() {
     },
     releaseRefresh: () => releaseRefresh(),
     mountedView: () => preview.querySelector(':scope > [data-active-view="true"]'),
+    tabLabel: (viewId) =>
+      preview.querySelector(`:scope > .tab-bar > .tab-btn[data-tab="${viewId}"]`)?.textContent,
     /** The selection settled with content, as openedFileOutcome records it. */
     opened(claim) {
       sandbox.previewPane.settle(claim, "content");
@@ -397,7 +401,59 @@ async function rereadMountedTreemap() {
   shell.releaseRefresh();
   assert.equal(await pending, true);
   assert.equal(shell.mountedView(), before, "the same map receives the changed data");
-  return { held, oldContent, newContent: before.textContent, after: shell.state() };
+  const after = shell.state();
+  shell.holdFirstPaint(false);
+  shell.click("pane", "overview");
+  await settle();
+  const lazyContent = shell.mountedView().textContent;
+  assert.equal(lazyContent, "updated map", "a lazy tab mounts from the latest folder context");
+  return { held, oldContent, newContent: before.textContent, after, lazyContent };
+}
+
+async function rereadWithIncompatibleViews() {
+  const run = async (mountedSibling) => {
+    const shell = createShell();
+    shell.holdFirstPaint(false);
+    const first = shell.claim("src");
+    await shell.render(folder("src"), first, "treemap");
+    shell.opened(first);
+    if (mountedSibling) {
+      shell.click("pane", "overview");
+      await settle();
+      shell.click("pane", "treemap");
+      await settle();
+    }
+    const before = shell.mountedView();
+    const views = mountedSibling
+      ? VIEWS
+      : VIEWS.map((view) => (view.id === "treemap" ? { ...view, label: "Folder map" } : view));
+    const reread = shell.claim("src");
+    let committed = false;
+    void shell
+      .render({ ...folder("src"), content: "fresh folder", views }, reread, "treemap", true)
+      .then((result) => {
+        committed = result;
+      });
+    await settle();
+    assert.equal(committed, true, "an incompatible view uses the staged path");
+    assert.notEqual(
+      shell.mountedView(),
+      before,
+      "the staged commit replaces the incompatible layout",
+    );
+    assert.equal(shell.mountedView().textContent, "fresh folder");
+    const label = shell.tabLabel("treemap");
+    assert.equal(label, mountedSibling ? "Treemap" : "Folder map");
+    shell.click("pane", "overview");
+    await settle();
+    assert.equal(
+      shell.mountedView().textContent,
+      "fresh folder",
+      "a stale hidden view is remounted on demand",
+    );
+    return { label, content: shell.mountedView().textContent, after: shell.state() };
+  };
+  return { changedDescriptor: await run(false), unsupportedHidden: await run(true) };
 }
 
 async function main() {
@@ -410,6 +466,7 @@ async function main() {
     choiceWhileStagedAgain: await choiceWhileStagedAgain(),
     choiceWhileAnotherFileIsStaged: await choiceWhileAnotherFileIsStaged(),
     rereadMountedTreemap: await rereadMountedTreemap(),
+    rereadWithIncompatibleViews: await rereadWithIncompatibleViews(),
   };
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

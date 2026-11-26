@@ -7018,38 +7018,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         raw: data,
         fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
       };
-      if (
-        options.refreshMounted &&
-        compositionKind === "folder" &&
-        preview.dataset.renderedPath === data.path
-      ) {
-        const active = preview.querySelector(':scope > [data-active-view="true"]');
-        if (
-          active instanceof HTMLElement &&
-          (await viewComposition.composition.refresh(active, ctx))
-        ) {
-          if (!renderIsCurrent()) {
-            return false;
-          }
-          for (const hidden of preview.querySelectorAll(":scope > [data-plugin-view]")) {
-            if (hidden !== active && hidden instanceof HTMLElement) {
-              await viewComposition.composition.refresh(hidden, ctx);
-              if (!renderIsCurrent()) {
-                return false;
-              }
-            }
-          }
-          window.metabrowser.folderContext.seed(
-            data.path,
-            /** @type {Parameters<Window["metabrowser"]["folderContext"]["seed"]>[1]} */ (data),
-          );
-          options.onCommit?.();
-          return true;
-        }
-        if (!renderIsCurrent()) {
-          return false;
-        }
-      }
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
@@ -7071,6 +7039,31 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       if (composition.status === "cancelled") {
         return false;
       }
+      const refreshingFolder =
+        options.refreshMounted &&
+        compositionKind === "folder" &&
+        preview.dataset.renderedPath === data.path;
+      if (refreshingFolder) {
+        const refreshed = await viewComposition.composition.refresh(
+          preview,
+          composition.views,
+          ctx,
+          renderIsCurrent,
+        );
+        if (!renderIsCurrent()) {
+          return false;
+        }
+        if (refreshed) {
+          window.metabrowser.folderContext.seed(
+            data.path,
+            /** @type {Parameters<Window["metabrowser"]["folderContext"]["seed"]>[1]} */ (data),
+          );
+          options.onCommit?.();
+          return true;
+        }
+      }
+      /** @type {{current: MetabrowserPublicRenderContext}} */
+      const viewContext = { current: ctx };
       const stage = createFilePreviewStage(preview);
       const stagedPluginLifecycle = viewComposition.lifecycle.begin();
       const stagedPluginDisposers = stagedPluginLifecycle.disposers;
@@ -7107,7 +7100,10 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         var views = preparedViews.map((prepared) => prepared.view);
         // Plugin navigation can preserve a working mode across resources. An
         // unavailable preference falls through to the server default.
-        var initialActiveView = composition.initialView;
+        var initialActiveView =
+          (refreshingFolder
+            ? views.find((view) => view.id === preview.dataset.activeView)
+            : undefined) ?? composition.initialView;
         var pluginRenders = [];
         if (views && views.length > 0) {
           // One view gets the bar too, so content starts at one height in every file.
@@ -7225,12 +7221,18 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
             }
             const mount = (
               (target, pluginView) => () =>
-                viewComposition.composition.mount(target, pluginView, ctx, stagedPluginDisposers, {
-                  afterMount: scheduleHighlightCode,
-                  onError(error) {
-                    console.error("plugin render error:", error);
+                viewComposition.composition.mount(
+                  target,
+                  pluginView,
+                  viewContext.current,
+                  stagedPluginDisposers,
+                  {
+                    afterMount: scheduleHighlightCode,
+                    onError(error) {
+                      console.error("plugin render error:", error);
+                    },
                   },
-                })
+                )
             )(container, pr.view);
             if (initialActiveView && pr.tabId === initialActiveView.id) {
               mountInitialView = mount;
@@ -7290,6 +7292,12 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         preview.dataset.renderedPath = data.path || "";
         viewComposition.composition.setActiveView(preview, frontViewId);
         if (data.kind === "folder") {
+          stagedPluginDisposers.push(
+            viewComposition.composition.retain(preview, {
+              views: composition.views,
+              context: viewContext,
+            }),
+          );
           startFolderHeaderSubscription(data.path);
         }
         scheduleHighlightCode(preview);
