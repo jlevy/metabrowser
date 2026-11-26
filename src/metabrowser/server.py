@@ -2268,9 +2268,18 @@ async def index(
     # PREFETCH_IDLE_TIMEOUT_MS so a busy main thread cannot defer them
     # indefinitely. See docs/project/architecture/arch-browser-shell.md,
     # "Asset Loading Tiers".
+    #
+    # A grammar here is fetched on every page for a language few folders hold, so
+    # it stays only while it is small beside the 121,727-byte runtime it extends.
+    # Measured 2026-11-26: highlight-toml.min.js is 1,044 bytes (644 gzipped) and
+    # syntax/lean.js 12,750 (4,824 gzipped); evaluating lean.js takes 0.3 ms in
+    # Node 24, since registering a language compiles nothing until the first
+    # highlight, which then takes about 1 ms more. When the grammars together stop
+    # being small beside the runtime, load each on demand by language instead.
     optional_script_assets = [
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
+        {"src": _static_asset_url("syntax/lean.js"), "requires": "hljs"},
     ]
     # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
     # Chart.js and its two plugins are 297,531 bytes read by one view, and
@@ -2732,7 +2741,8 @@ async def index(
        the async enhancement loader below so they cannot block initial
        tree/readme rendering. TOML support comes from the official
        highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
-       highlight-toml.min.js. -->
+       highlight-toml.min.js; Lean's from syntax/lean.js, a port of
+       the official Lean 4 grammar. -->
   {settings_block}
   {repository_context_block}
   {initial_tree_block}

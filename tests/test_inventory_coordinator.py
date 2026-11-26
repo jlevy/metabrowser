@@ -68,7 +68,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     assemble_grouped_tree,
     assemble_tree_pages,
 )
-from tests.inventory_harness import inventory_harness
+from tests.inventory_harness import inventory_harness, next_registry_revision
 
 
 def _state() -> IndexState:
@@ -796,11 +796,7 @@ def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
         pending = asyncio.create_task(anext(changes))
         await asyncio.sleep(0)
 
-        changed_registry = handle.config.registry_document.replace(
-            "registry_revision = 4",
-            "registry_revision = 5",
-            1,
-        )
+        changed_registry = next_registry_revision(handle.config.registry_document)
         handle.config = InventoryConfig(registry_document=changed_registry)
         handle.emit(dirty_paths=("changed",))
         reset = await asyncio.wait_for(pending, timeout=1)

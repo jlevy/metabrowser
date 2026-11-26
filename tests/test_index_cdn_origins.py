@@ -18,6 +18,7 @@ These tests assert:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from pathlib import Path
 from unittest.mock import Mock
@@ -92,12 +93,13 @@ def test_optional_libraries_are_served_from_local_vendor() -> None:
         "vendor/mustache.min.js",
         "vendor/highlight.min.js",
         "vendor/highlight-toml.min.js",
+        "syntax/lean.js",
         "vendor/chart.umd.min.js",
         "vendor/chartjs-plugin-annotation.min.js",
         "vendor/chartjs-adapter-date-fns.bundle.min.js",
     ):
         assert name in html, f"vendored asset missing from index template: {name}"
-        assert (VENDOR_DIR / Path(name).name).is_file(), f"vendored file missing: {name}"
+        assert (VENDOR_DIR.parent / name).is_file(), f"vendored file missing: {name}"
 
 
 def test_highlight_theme_stylesheet_is_not_shipped() -> None:
@@ -117,6 +119,21 @@ def test_vendored_toml_is_the_official_hljs_ini_grammar() -> None:
     assert "Highlight.js 11.9.0" in text or "`ini` grammar compiled for Highlight.js 11.9.0" in text
     assert 'aliases:["toml"]' in text
     assert 'hljs.registerLanguage("ini"' in text
+
+
+def test_vendored_grammars_target_the_vendored_highlight_js() -> None:
+    """Every grammar vendored beside Highlight.js was compiled for that same release.
+
+    A grammar compiled for another release can register and still break on the vendored
+    runtime's mode API, so a new language's grammar is held to the runtime's version.
+    """
+    manifest = json.loads((VENDOR_DIR / "manifest.json").read_text(encoding="utf-8"))
+    runtime = manifest["highlight.min.js"]["version"]
+    grammars = sorted(VENDOR_DIR.glob("highlight-*.min.js"))
+    assert grammars, "no vendored Highlight.js grammars found"
+    for grammar in grammars:
+        banner = grammar.read_text(encoding="utf-8").splitlines()[0]
+        assert f"compiled for Highlight.js {runtime}" in banner, (grammar.name, banner)
 
 
 def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
