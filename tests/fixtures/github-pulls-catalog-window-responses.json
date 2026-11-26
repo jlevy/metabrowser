@@ -1429,7 +1429,7 @@
     "rows": []
    },
    "status_route": "/api/plugin/github/pulls?state=closed&limit=0",
-   "status_scan": "joined"
+   "status_scan": "started"
   }
  },
  "large_progress": {

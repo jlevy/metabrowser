@@ -219,14 +219,22 @@ def _record(
                     assert time.monotonic() < deadline, "the catalog job did not finish"
                     time.sleep(0.01)
 
-            def calls() -> list[str]:
-                """What gh was asked, once the scan of the open pull requests' statuses a list
-                ask starts beside the list's job has ended: its pages are this step's."""
+            def scan_ended() -> None:
+                """Wait for the scan of the open pull requests' statuses a list ask starts
+                beside the list's job, so the next recorded ask finds none running: whether it
+                answers ``joined`` or what the scan's schedule says is then the story's, and
+                not the race of that scan's end with the test thread (mb-3n21)."""
 
                 deadline = time.monotonic() + 50
                 while client.get(_STATUSES, params={"numbers": "1"}).json()["scanning"]:
                     assert time.monotonic() < deadline, "the status scan did not finish"
                     time.sleep(0.01)
+
+            def calls() -> list[str]:
+                """What gh was asked, once the scan a list ask starts has ended: its pages are
+                this step's."""
+
+                scan_ended()
                 return logged_gh_calls(tmp_path)
 
             repository = ListedRepository(home, published.slug, "octo", "demo")
@@ -377,6 +385,8 @@ def _record(
                 write_list_refresh(home, published.slug, "all", stamp)
                 recorded[f"failed {name}"] = read()
             recorded["rate_limit_holds"] = ask(state="all", target=500, retry=True)
+            # The Refresh starts the scan, which the next recorded ask must not find running.
+            scan_ended()
 
             # The following account story is independent of the saved network hold.
             clock[0] = FETCHED_AT + timedelta(days=2)
@@ -447,6 +457,8 @@ def _record(
 
             gate.set()
             settled()
+            # The resumed job's ask may have started a scan; it ends before the next ask.
+            scan_ended()
             seed_catalog(repository, [], repository_id="R_empty", fetched_at=utc_stamp(clock[0]))
             write_list_refresh(
                 home,
