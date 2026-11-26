@@ -6,10 +6,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from metabrowser.builtin_plugins.softschema import indexer
 from metabrowser.plugin_loader.static_assets import build_plugin_routes
 
 
@@ -45,7 +47,9 @@ def _record(root: Path, folder: str, name: str, key: str, values: dict[str, Any]
     )
 
 
-def test_folder_tables_link_across_scopes_and_keep_current_generation(tmp_path: Path) -> None:
+def test_folder_tables_link_across_scopes_and_keep_current_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     server._set_root_dir(tmp_path)
     contracts = tmp_path / "contracts"
     contracts.mkdir()
@@ -93,3 +97,17 @@ def test_folder_tables_link_across_scopes_and_keep_current_generation(tmp_path: 
         assert (
             incoming.json()["generation"] == detail["generation"] == overview.json()["generation"]
         )
+
+        monkeypatch.setattr(indexer, "_REFRESH_SECONDS", 0)
+        unchanged = client.get(
+            "/api/plugin/softschema/collection", params={"path": "people", "wait": "1"}
+        ).json()
+        assert unchanged["generation"] == overview.json()["generation"]
+
+        _record(tmp_path, "people", "Person", "ada", {"name": "Ada Byron"})
+        refresh = client.get(
+            "/api/plugin/softschema/collection", params={"path": "people", "wait": "1"}
+        ).json()
+        assert refresh["generation"] != unchanged["generation"]
+        updated = client.get("/api/plugin/table/record", params={**person, "key": ada["key"]})
+        assert updated.json()["label"] == "Ada Byron"

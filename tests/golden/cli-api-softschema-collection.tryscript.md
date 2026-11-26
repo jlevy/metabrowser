@@ -22,6 +22,12 @@ The contract table and linked record are read by the shared table routes.
 ## Test: index a collection and keep the opened folder as the table scope
 
 ```console
+$ metab library --show people --format json | jq -c '{kind,views:[.views[]|{id,default}]}'
+{"kind":"folder","views":[{"id":"overview","default":true},{"id":"treemap","default":false},{"id":"table","default":false}]}
+? 0
+```
+
+```console
 $ metab library --api '/api/plugin/softschema/collection?path=people&wait=1' --format json > summary.json && jq -c '{root,state,complete,tables}' summary.json
 {"root":"","state":"ready","complete":true,"tables":[{"id":"example:Person/v1","label":"Person/v1","count":1}]}
 ? 0
