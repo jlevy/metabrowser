@@ -6315,7 +6315,7 @@ export function mountPullsPanel(container, ctx, mb) {
         clearArrivalFlashes();
       }
       for (const [number, tree] of trees) {
-        tree.controller.setShown(visible && painted.has(number));
+        tree.controller.setShown(visible && treeOwner(number) !== undefined);
       }
     },
     /**

@@ -33,9 +33,11 @@ import { diffComparison, STACK_ROUTE } from "./stack-page.js";
 
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 // How long a stack's list read whole is taken as fresh before the open tree reads the stack
-// again: the pull routes' own freshness window (`FRESHNESS_WINDOW_S`, pull_freshness.py),
-// which a pull request's list answers in `fresh_for_s`. A read is `GET stack`, cached
-// parses and no Git once the comparison is listed (pull_stack.py, "What a read runs").
+// again: the pull routes' own freshness window (`FRESHNESS_WINDOW_S`, mirror_refresh.py),
+// which a pull request's list answers in `fresh_for_s` and the `stack` route does not
+// answer, so it is stated here, and tests/test_github_stack_design.py holds it to the
+// server's value. A read is `GET stack`, cached parses and no Git once the comparison is
+// listed (pull_stack.py, "What a read runs").
 export const STACK_FILES_FRESH_S = 60;
 // How many reads must find a member still pending, with no fetch of it running, after the
 // server took the ask for it, before its fetch is taken as failed: the first may have been

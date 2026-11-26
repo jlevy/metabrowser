@@ -4532,12 +4532,13 @@ Right, Left, and a press open and close with no pull request hidden and no page 
 an address that names a member opening a stack the reader closed, the heading’s time the
 newest of its listed members’, and its accessible name saying the count it shows.
 `tests/dom/github-pulls-stack-files-session.js` runs the stack’s list of files against
-the production tree on the `stack` route’s recorded answers: what each read asks for,
-that a comparison is read once, and what a pending stack and one that is no single
-comparison show. `tests/test_github_stack_page_chrome.py` holds in headless Chrome that
-the row is the current row and in view on the stack’s page, that a press on it and `J`
-onto it from the stack’s row open the page, and that a press on its change line lists
-under it the files the page’s Diff summary lists, the same rows in the same order.
+the production tree on the `stack` route’s recorded answers, with the diff view’s own
+`summaryRows` on the recorded comparison: what each read asks for, that a comparison is
+read once, and what a pending stack and one that is no single comparison show.
+`tests/test_github_stack_page_chrome.py` holds in headless Chrome that the row is the
+current row and in view on the stack’s page, that a press on it and `J` onto it from the
+stack’s row open the page, and that a press on its change line lists under it the files
+the page’s Diff summary lists, the same rows in the same order.
 `tests/dom/github-pulls-stack-lines-session.js` runs what each stack shows of its change
 line, and when it is read, against the production code on the route’s recorded answers,
 and mounts the panel to print a Whole stack row waiting, with its line, with none, and

@@ -9,11 +9,18 @@
 // list) draws them. This session mounts that controller on a stack's list.
 //
 // The stack's answers are the `stack` route's own, recorded in
-// tests/fixtures/github-stack-responses.json by tests/test_cli_github_stack_golden.py. The
-// comparison's rows are the diff view's in the browser (`summaryRows`); here each file an
-// answer names stands in as a modified one with no counts, so the session holds which
-// files are listed and when each read is made, not their line counts. Each step prints
-// what was asked, which comparisons were read, and what the tree shows.
+// tests/fixtures/github-stack-responses.json by tests/test_cli_github_stack_golden.py, which
+// records the comparison its `current` answer names too, as `stack-comparison` gave it
+// (tests/fixtures/github-stack-comparison-responses.json). The rows of that comparison are
+// made here as the Pulls tab makes them, by the diff view's own `summaryRows`
+// (builtin_plugins/diff/index.js), loaded whole, so they are the Diff summary's rows of it,
+// counts and statuses included. No comparison is recorded for the answer the stack moves
+// to, `grown`: each file that answer names stands in as a modified one with no counts, so
+// that step holds which files are listed and when each read is made, not their counts.
+// The panel's own path from the view to the tree (`comparisonRows` in pulls-panel.js) runs
+// only in a browser: tests/test_github_stack_page_chrome.py holds there that a press lists
+// the rows the stack page's Diff summary lists. Each step prints what was asked, which
+// comparisons were read, and what the tree shows.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -22,22 +29,68 @@ const { pathToFileURL } = require("node:url");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const GITHUB = path.join(repoRoot, "src/metabrowser/builtin_plugins/github");
+const DIFF_VIEW = "src/metabrowser/builtin_plugins/diff/index.js";
 // The shared tree, as the `changed-files-tree` bundle installs it.
 const shared = require("./changed-files-tree-fixture.js").changedFilesTree();
 
-/** A row as drawn: a folder "v" open or ">" closed with its file count, a file its badge. */
+// The comparison the recorded `current` answer names, as its route gave it.
+const recordedComparisons = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "tests/fixtures/github-stack-comparison-responses.json"),
+    "utf8",
+  ),
+);
+
+/** A row as drawn: a folder "v" open or ">" closed with its file count, a file its badge,
+ * each with its counts as its row writes them (`changeStats`). */
 function line(row) {
   const indent = "  ".repeat(row.depth);
+  const stats = shared.changeStats(row, String);
+  const counts = stats === null ? "" : ` ${stats.text}`;
   return row.kind === "folder"
-    ? `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files})`
-    : `${indent}${row.badge} ${row.name}`;
+    ? `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files})${counts}`
+    : `${indent}${row.badge} ${row.name}${counts}`;
+}
+
+/**
+ * The diff plugin's view, as the page registers it: its module loaded whole over a stand-in
+ * for the SDK that hands it the shared changed-files tree, which is all `summaryRows` asks
+ * of it.
+ */
+async function loadDiffView() {
+  let view = null;
+  const sdk = new Proxy(
+    {
+      registerView: (_kind, _name, spec) => {
+        view = spec;
+      },
+      loadChangedFilesTree: async () => shared,
+    },
+    { get: (target, name) => target[name] ?? (() => undefined) },
+  );
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    value: { metabrowser: sdk },
+    configurable: true,
+    writable: true,
+  });
+  try {
+    await import(pathToFileURL(path.join(repoRoot, DIFF_VIEW)).href);
+  } finally {
+    if (saved === undefined) {
+      delete globalThis.window;
+    } else {
+      Object.defineProperty(globalThis, "window", saved);
+    }
+  }
+  assert.equal(typeof view?.summaryRows, "function", "the diff view has summaryRows");
+  return view;
 }
 
 async function main() {
   const tree = await import(pathToFileURL(path.join(GITHUB, "pull-files-tree.js")).href);
-  const stackFiles = await import(
-    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/github/stack-files.js")).href
-  );
+  const stackFiles = await import(pathToFileURL(path.join(GITHUB, "stack-files.js")).href);
+  const view = await loadDiffView();
   const answers = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-stack-responses.json"), "utf8"),
   );
@@ -73,6 +126,10 @@ async function main() {
         request,
         rows: async (comparison) => {
           comparisons.push(`${comparison.left.slice(0, 7)}..${comparison.right.slice(0, 7)}`);
+          if (last === answers.current) {
+            // The comparison this answer names, read as the panel reads it.
+            return view.summaryRows(recordedComparisons.current);
+          }
           return last.files.map((file) => ({
             path: file.path,
             previous_path: null,

@@ -825,29 +825,25 @@ try {
   // same order, and the press opens no page.
   const SUMMARY_ROWS = `[...document.querySelectorAll(".github-pull-stack-page .github-pull-summary .changed-file-row[data-id]")].map((row) => row.dataset.id)`;
   const NAV_ROWS = `[...document.querySelectorAll('#tab-pulls .github-pulls-whole-item[data-level="2"] > .github-pull-files .changed-file-row[data-id]')].map((row) => row.dataset.id)`;
+  // The walk above opened the stack's page again. The address and the row's mark move at
+  // once, but the pane holds the outgoing page while the incoming one mounts in its stage
+  // (`beginPreviewNavigation` in static/app.js, `preview-navigation-pending`), so for a
+  // moment the document holds two stack pages, and `pageReady` alone would find the
+  // outgoing one, whose Diff summary is about to go with it. Once the navigation commits
+  // there is one page, which draws its Diff summary once, closed.
+  await waitFor(
+    `!document.getElementById("preview-pane").classList.contains("preview-navigation-pending") &&
+      document.querySelectorAll(".github-pull-stack-page").length === 1 &&
+      ${pageReady}`,
+  );
+  await click(".github-pull-stack-page .github-pull-summary .diff-summary-toggle");
+  await waitFor(`${SUMMARY_ROWS}.length > 0`);
   await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-change');
   await waitFor(`${NAV_ROWS}.length > 0`);
-  // The page was opened again by the walk above, so its Diff summary is drawn, closed, once
-  // its comparison is read, and may be drawn again as the page settles: it is opened
-  // wherever it is found closed, and the two lists are read in the one task that finds
-  // both drawn.
-  const SUMMARY_TOGGLE = ".github-pull-stack-page .github-pull-summary .diff-summary-toggle";
-  await waitFor(
-    `(() => {
-      const summary = ${SUMMARY_ROWS};
-      const nav = ${NAV_ROWS};
-      if (summary.length > 0 && nav.length > 0) {
-        window.__stackFiles = { summary, nav };
-        return true;
-      }
-      const toggle = document.querySelector(${JSON.stringify(SUMMARY_TOGGLE)});
-      if (toggle?.classList.contains("collapsed")) toggle.click();
-      return false;
-    })()`,
-  );
   await frames();
   const stackFiles = {
-    ...(await evaluate("window.__stackFiles")),
+    summary: await evaluate(SUMMARY_ROWS),
+    nav: await evaluate(NAV_ROWS),
     address: await evaluate("location.pathname"),
     expanded: await evaluate(`${WHOLE}.getAttribute("aria-expanded")`),
     // The files hang under the Whole stack row's item, a level in from it.

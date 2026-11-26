@@ -15,9 +15,15 @@ then the stack’s comparison, once for each comparison.
 This browserless session mounts the production tree controller
 (`builtin_plugins/github/pull-files-tree.js`) on that list.
 The stack’s answers are the route’s own, recorded in
-`tests/fixtures/github-stack-responses.json`; each file an answer names stands in for
-its row of the comparison, so the session holds which files are listed and when each
-read is made, not their line counts.
+`tests/fixtures/github-stack-responses.json`, and so is the comparison its `current`
+answer names (`tests/fixtures/github-stack-comparison-responses.json`), whose rows the
+diff view’s own `summaryRows` makes here, as it makes them for the panel: the Diff
+summary’s rows of it, with their statuses and counts.
+No comparison is recorded for the answer the stack moves to, so there each file the
+answer names stands in for its row, with no counts.
+The panel’s own step from the diff view to the tree runs only in a browser, where
+`tests/test_github_stack_page_chrome.py` holds that the rows listed are the stack page’s
+Diff summary’s.
 
 `a stack's files` opens the tree on a stack whose members are not fetched yet: it asks
 for each member and waits on its loading line; draws the stack’s files once the
@@ -61,8 +67,8 @@ $ node tests/dom/github-pulls-stack-files-session.js
       "notice": null,
       "line": null,
       "rows": [
-        "v docs/ (1)",
-        "  M draft.md"
+        "v docs/ (1) +1",
+        "  A draft.md +1"
       ],
       "next poll in": [
         60000
@@ -79,8 +85,8 @@ $ node tests/dom/github-pulls-stack-files-session.js
       "notice": null,
       "line": null,
       "rows": [
-        "v docs/ (1)",
-        "  M draft.md"
+        "v docs/ (1) +1",
+        "  A draft.md +1"
       ],
       "next poll in": [
         60000
