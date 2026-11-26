@@ -93,6 +93,46 @@ async function run() {
   await page.answer(recording.remotes_fetched);
   steps.push(page.observe("the fetch ended: the origin's branch moved, and nothing more is asked"));
 
+  // The navigation's Refresh, on this working tree's page: the reader asked, so the
+  // store is fetched whatever its age (`fetchOrigin`), the open list is asked for again
+  // in place and follows the fetch to its end. Read again with nothing moved, the list
+  // draws nothing.
+  const drawn = page.renders();
+  const rereading = selector.reread();
+  await page.answer(recording.remotes_fetched);
+  await rereading;
+  steps.push({
+    ...page.observe("Refresh reads the open list again, and one that says the same is not drawn"),
+    drawnAgain: page.renders() - drawn,
+  });
+  const fetching = selector.fetchOrigin();
+  steps.push(page.observe("Refresh asks for the origin's fetch, as the reader's own"));
+  await page.answer(recording.refresh_started);
+  steps.push(page.observe("the fetch started, so the open list is asked for again"));
+  await page.answer(recording.remotes_fetching);
+  await fetching;
+  steps.push(page.observe("the list says the fetch runs, and waits to ask again"));
+  await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
+  await page.answer(recording.remotes_fetched);
+  steps.push(page.observe("the fetch ended, and the list is the origin's as just fetched"));
+  // A closed list asks for the fetch and reads nothing: it lists when it next opens.
+  selector.close();
+  page.observe("closed");
+  const behind = selector.fetchOrigin();
+  await page.answer(recording.refresh_started);
+  await behind;
+  await selector.reread();
+  steps.push(page.observe("with the list closed, Refresh fetches and lists nothing"));
+  const reopening = selector.open();
+  await page.answer(recording.working_tree);
+  await reopening;
+  const remotesAgain = selector.setKind("remote");
+  await page.answer(recording.remotes_fetched);
+  await remotesAgain;
+  await settle();
+  await page.answer(recording.ask_fresh);
+  page.observe("opened on the remote-tracking list again");
+
   const choosing = selector.choose("refs/remotes/origin/trunk");
   steps.push(page.observe("an origin branch is asked for by its ref"));
   await page.answer(recording.switch_origin_branch);

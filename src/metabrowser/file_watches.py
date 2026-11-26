@@ -96,16 +96,24 @@ FILE_WATCH_MAX_BODY_BYTES = 8 * 1024
 # The path a page watches to hear that the served checkout's ``HEAD`` moved: another branch
 # checked out, ``HEAD`` detached, or a commit made on the branch it is on. The ref
 # chooser's row names that branch and asks for it again on each change
-# (static/source-ref-selector.js). Its generation is what ``HEAD`` names, the branch and
-# the commit (:func:`_head_generation`), not the file's ``stat``: a linked worktree's
-# ``.git`` is a file and its ``HEAD`` is in the repository's own directory, where no path
-# under the served root reaches it, and a commit moves the branch's ref and leaves
-# ``HEAD`` as it was. Reading it is two small files, with no Git process. Measured
-# 2026-11-25 on an M1 Pro at a load average near 9, this repository in a linked worktree,
-# 1,000 reads: a median 0.11 ms, 0.07 ms where the branch's ref is loose
-# (``attic/chooser-tab/measure_head_read.py``). The inventory does not report changes
-# under ``.git``, so nothing wakes the poll early, and a page hears of a checkout within
-# :data:`FILE_WATCH_POLL_INTERVAL_S`.
+# (static/source-ref-selector.js, `headChanged`). Its generation is what ``HEAD`` names,
+# the branch and the commit (:func:`_head_generation`), not the file's ``stat``: a linked
+# worktree's ``.git`` is a file and its ``HEAD`` is in the repository's own directory,
+# where no path under the served root reaches it, and a commit moves the branch's ref and
+# leaves ``HEAD`` as it was.
+#
+# Reading it is two or three small files, with no Git process. Measured 2026-11-25 on an
+# M1 Pro so loaded that its load average was over 200, 1,000 reads each: a median 0.19 ms
+# and 0.50 ms at the 95th percentile for this repository in a linked worktree, 0.11 and
+# 0.22 ms for a three-branch repository's main worktree, and 0.20 and 0.58 ms for a
+# linked worktree of that one. So a page's watch adds that to each poll, once a second.
+#
+# How soon a page names a branch checked out in a terminal: measured the same day and at
+# the same load, in a browser on a served three-branch checkout, from the moment
+# ``git checkout`` returned to the row's new text, six checkouts took 96, 216, 494, 796,
+# 844, and 1,131 ms. That is the poll's interval, :data:`FILE_WATCH_POLL_INTERVAL_S`, and
+# then one request of ``/api/source/refs?kind=working_tree``; the spread says nothing
+# woke the poll early, as an inventory change at a watched path does for a file.
 HEAD_WATCH_PATH = ".git/HEAD"
 
 WatchGeneration = Callable[[str], Awaitable[str | None]]

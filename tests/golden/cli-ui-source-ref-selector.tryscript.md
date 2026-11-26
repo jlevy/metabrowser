@@ -33,11 +33,11 @@ draws about as many rows for every ref as for a few; before a row is measured, t
 rows. The row that takes Tab is drawn too wherever the list is scrolled, since focus may
 be on it and Tab from the filter box goes to it.
 
-The session prints its transcript in two parts, a served mirror’s here and a served
-checkout’s below, so each is small enough to match.
+A served checkout’s conversation is a session of its own, below: one transcript of both
+is more than a golden can match.
 
 ```console
-$ node tests/dom/source-ref-selector-session.js mirror
+$ node tests/dom/source-ref-selector-session.js
 {
   "steps": [
     {
@@ -397,9 +397,10 @@ $ node tests/dom/source-ref-selector-session.js mirror
 
 ## A Served Checkout
 
-The same module is a served checkout’s selector: a folder that is a repository’s root,
-recorded in `tests/fixtures/source-ref-selector-checkout-responses.json` from the
-checkout `tests/source_checkout_fixture.py` builds.
+The same module is a served checkout’s selector: a folder that is a repository’s root.
+`tests/dom/source-ref-selector-checkout-session.js` plays it, on what the application
+answered for the checkout `tests/source_checkout_fixture.py` builds, recorded in
+`tests/fixtures/source-ref-selector-checkout-responses.json`.
 
 Its tabs begin with **Working tree**, which is what a folder opens on and the one choice
 that is not a ref, and it has a list more, the remote-tracking branches.
@@ -453,7 +454,7 @@ hold’s bound, which runs from the ask; an earlier switch’s bound does not en
 hold, and a request given up while it is held settles at once and is not sent.
 
 ```console
-$ node tests/dom/source-ref-selector-session.js checkout
+$ node tests/dom/source-ref-selector-checkout-session.js
 {
   "checkout": {
     "steps": [

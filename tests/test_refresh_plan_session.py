@@ -24,7 +24,7 @@ SESSION = ROOT / "tests" / "dom" / "refresh-plan-session.js"
 # The session runs in well under a second; the bound leaves room for a loaded CI runner,
 # under the suite's own timeout (tests/test_suite_gates.py, MAX_INNER_BOUND_S).
 SESSION_TIMEOUT_S = 30
-PARTS = ["source", "page", "files", "pulls", "git"]
+PARTS = ["source", "refs", "page", "files", "pulls", "git", "origin"]
 
 
 @pytest.fixture(scope="module")
@@ -73,6 +73,7 @@ def test_each_screen_refreshes_what_it_shows_first(steps: dict[str, dict[str, An
         "Pulls in front, a file still in the pane": ["source", "files", "pulls"],
         "Commits in front, a commit in the pane": ["source", "git"],
         "Commits in front, a file still in the pane": ["source", "files", "git"],
+        "Files in front, the chooser's list open": ["source", "refs", "files"],
     }
     assert {screen["screen"]: screen["visible"] for screen in order["screens"]} == expected
     for screen in order["screens"]:
@@ -88,7 +89,7 @@ def test_a_press_refreshes_the_visible_parts_before_the_hidden(
     press = steps["a press runs the parts on screen while the button waits, then the rest"]
     events = press["events"]
     assert _visible_first(events, "waits", "offered") == ["source", "page", "pulls"]
-    assert _starts(events) == ["source", "page", "pulls", "files", "git"]
+    assert _starts(events) == ["source", "page", "pulls", "refs", "files", "git", "origin"]
     assert events.count("waits") == events.count("offered") == 1
     assert press["a second press while it waits"] is False
     assert press["the first press"] is True
@@ -98,12 +99,12 @@ def test_a_press_refreshes_the_visible_parts_before_the_hidden(
 def test_a_failing_part_leaves_the_rest(steps: dict[str, dict[str, Any]]) -> None:
     events = steps["a part that fails leaves the rest to run"]["events"]
     assert "source failed: source could not be read" in events
-    assert _starts(events) == ["source", "files", "page", "pulls", "git"]
+    assert _starts(events) == ["source", "files", "refs", "page", "pulls", "git", "origin"]
 
 
 def test_a_released_part_is_not_run(steps: dict[str, dict[str, Any]]) -> None:
     released = steps["a released part is not run, and a stale release keeps the newer refresh"]
-    assert released["parts"] == "source, files, git"
+    assert released["parts"] == "source, refs, files, git, origin"
     assert "git, provided again, starts" in released["events"]
     assert not any(event.startswith(("page", "pulls")) for event in released["events"])
 
@@ -113,9 +114,10 @@ def test_a_later_press_supersedes_the_rest_of_an_earlier(
 ) -> None:
     events = steps["a press while the hidden parts run supersedes the rest of the first"]["events"]
     # Each part ran once for the second press, and the first stopped behind the tabs at the
-    # part it was running when the second began.
-    assert _starts(events).count("page") == 2
-    assert _starts(events).count("pulls") == _starts(events).count("git") == 1
+    # part it was running when the second began, the first of them.
+    behind = [part for part in PARTS if part not in ("source", "files")]
+    assert _starts(events).count(behind[0]) == 2
+    assert all(_starts(events).count(part) == 1 for part in behind[1:])
 
 
 @pytest.mark.parametrize(
@@ -139,6 +141,63 @@ def test_a_click_on_the_page_runs_the_shells_parts_in_order(
     assert sorted(_starts(asked)) == sorted(click["parts"])
     if not store:
         assert click["parts"] == ["files", "git"]
+
+
+@pytest.mark.parametrize(
+    ("front", "owner", "page", "visible", "then"),
+    [
+        # A revision's page: the fetch, then the open list, then the files.
+        (
+            "files",
+            "file",
+            "a revision with the chooser's list open",
+            ["source", "refs", "files"],
+            ["page", "pulls", "git"],
+        ),
+        # A closed list is behind, and reads nothing the reader waits for.
+        (
+            "files",
+            "file",
+            "a revision with the chooser's list closed",
+            ["source", "files"],
+            ["refs", "page", "pulls", "git"],
+        ),
+        # A working tree's page has no fetch to wait for: the open list and the disk are
+        # read, then the history, and the origin is fetched last of all.
+        (
+            "files",
+            "file",
+            "a checkout's working tree with the chooser's list open",
+            ["refs", "files"],
+            ["git", "origin"],
+        ),
+        ("git", "git", "a checkout's working tree with the chooser's list closed", ["git"], None),
+    ],
+)
+def test_the_chooser_and_a_working_trees_origin_take_their_place_in_a_click(
+    steps: dict[str, dict[str, Any]],
+    front: str,
+    owner: str,
+    page: str,
+    visible: list[str],
+    then: list[str] | None,
+) -> None:
+    click = steps[f'a click with {front} in front and the pane\'s owner "{owner}", {page}']
+    asked = click["asked"]
+    waits, offered = "the button: aria-disabled=true", "the button: no aria-disabled"
+    assert _visible_first(asked, waits, offered) == visible
+    behind = _starts(asked[asked.index(offered) :])
+    if then is not None:
+        assert behind == then
+    if "working tree" in page:
+        # No fetch is waited for, and the origin's is the last thing asked: it starts
+        # only once everything read from the disk has settled.
+        assert "source" not in click["parts"] and behind[-1] == "origin"
+        origin = asked.index("origin: the chooser's fetchOrigin starts")
+        assert all("settles" in event for event in asked[asked.index(offered) + 1 : origin][1::2])
+        assert not any(event.endswith(" starts") for event in asked[origin + 1 :])
+    else:
+        assert "origin" not in click["parts"]
 
 
 def test_a_freshness_row_that_failed_to_load_is_asked_for_again(

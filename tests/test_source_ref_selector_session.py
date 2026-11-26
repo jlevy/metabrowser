@@ -18,7 +18,8 @@ every commit ID is the same on every machine, and its last fetch is recorded at 
 fixture's fixed time, so every status envelope is literal. ``make golden-update``
 rewrites the recording and then the transcript.
 
-The same module is a served checkout's selector. Its conversation is recorded the same
+The same module is a served checkout's selector
+(``tests/dom/source-ref-selector-checkout-session.js``). Its conversation is recorded the same
 way, from ``tests/source_checkout_fixture.py``'s checkout served as a folder, in
 ``tests/fixtures/source-ref-selector-checkout-responses.json``: the listings on the working
 tree and on a revision, a branch, the checked-out branch, and the working tree again.
@@ -327,7 +328,7 @@ def test_recording_is_what_a_served_checkout_answers(
 
 
 def test_the_session_runs_a_checkout_on_its_recording() -> None:
-    checkout = run_session("source-ref-selector-session.js")["checkout"]
+    checkout = run_session("source-ref-selector-checkout-session.js")["checkout"]
     by_name = {step["step"]: step for step in checkout["steps"]}
     recording = read_recording(CHECKOUT_RECORDING)
     # The row says it shows the working tree, and which branch the files on disk are on.

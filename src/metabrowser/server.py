@@ -89,7 +89,7 @@ from metabrowser.capabilities import (
     untrusted_shell_csp,
 )
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
-from metabrowser.checkout_store import checkout_store, lifespan_checkout_store
+from metabrowser.checkout_store import lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
 from metabrowser.content_errors import ContentReadError
@@ -1919,15 +1919,15 @@ async def index(
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
-    # A pin's freshness row, filled by static/source-freshness.js. A plain folder has
-    # none. A checkout that keeps a store of its origin has one on every page, its
-    # working tree's too, saying when that store was fetched and offering Refresh.
-    origin_store = checkout_store(request.app) if checkout is not None else None
+    # A pin's freshness row, filled by static/source-freshness.js, which mounts on a
+    # pinned revision only (app.js, `startSourceFreshness`). A plain folder has none, and
+    # neither has a checkout's working tree: it shows the disk, and the store of its origin
+    # is fetched from there by the navigation's Refresh (static/refresh-plan.js, `origin`).
     # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
     # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
-        if git_pin or (origin_store is not None and origin_store.fetchable)
+        if git_pin
         else ""
     )
     # The selector is its own row, under the tabs and above the Files and Commits toolbars,

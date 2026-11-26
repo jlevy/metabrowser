@@ -4330,6 +4330,11 @@ declare global {
     chooseWorkingTree(): Promise<void>;
     /** The checkout's `HEAD` moved: ask where it is and name it in place. */
     headChanged(): Promise<void>;
+    /** Read an open list again, in place; a closed one reads when it next opens. */
+    reread(): Promise<void>;
+    /** Fetch the store of a checkout's origin, as the reader's Refresh asks; an open list
+     * follows the fetch to its end. Does nothing on a mirror. */
+    fetchOrigin(): Promise<void>;
     /** The server serves *served*, a commit or "" for the working tree, not this page. */
     servedChanged(served: string): void;
     dispose(): void;
@@ -4513,7 +4518,7 @@ declare global {
   };
 
   /** A part of the page the navigation's Refresh refreshes (static/refresh-plan.js). */
-  type MetabrowserRefreshPart = "source" | "page" | "files" | "pulls" | "git";
+  type MetabrowserRefreshPart = "source" | "refs" | "page" | "files" | "pulls" | "git" | "origin";
 
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
@@ -4538,7 +4543,10 @@ declare global {
       ids: readonly MetabrowserRefreshPart[],
       shown: (id: MetabrowserRefreshPart) => boolean,
     ): { visible: MetabrowserRefreshPart[]; hidden: MetabrowserRefreshPart[] };
-    isShown(id: MetabrowserRefreshPart, view: { front: string; owner: string }): boolean;
+    isShown(
+      id: MetabrowserRefreshPart,
+      view: { front: string; owner: string; chooser?: boolean },
+    ): boolean;
     mount(): MetabrowserRefreshPlan | null;
     plan(): MetabrowserRefreshPlan | null;
   }>;

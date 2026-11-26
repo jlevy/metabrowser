@@ -794,8 +794,9 @@
     let pullsTimer = null;
     // Whether the visible page's own ask went out since the list was opened.
     let askedForOrigin = false;
-    // Whether `HEAD` moved while a list the reader waits on was loading: that answer may
-    // have read `HEAD` before it moved, so the list is asked for once more after it.
+    // Whether something the list shows moved while a list the reader waits on was loading,
+    // `HEAD` or the origin's store: that answer may have been read before it moved, so the
+    // list is asked for once more after it.
     let headMoved = false;
     let disposed = false;
 
@@ -1116,13 +1117,7 @@
         return;
       }
       if (state.open) {
-        // A quiet ask never replaces the one the reader waits on, which says why it
-        // failed; it follows it.
-        if (state.loading) {
-          headMoved = true;
-          return;
-        }
-        await load(true);
+        await reread();
         return;
       }
       headInflight?.abort();
@@ -1230,6 +1225,53 @@
     }
 
     /**
+     * Read an open list again, in place: its rows are patched where they are, so its
+     * scroll and focus stay (`paintRows`), and an answer that says the same draws
+     * nothing. What the navigation's Refresh does to the list (static/refresh-plan.js,
+     * `refs`), and what a moved `HEAD` does. A closed list reads when it next opens.
+     */
+    async function reread() {
+      if (disposed || !state.open) {
+        return;
+      }
+      // A quiet ask never replaces the one the reader waits on, which says why it failed;
+      // it follows it.
+      if (state.loading) {
+        headMoved = true;
+        return;
+      }
+      await load(true);
+    }
+
+    /**
+     * Fetch the store Metabrowser keeps of the checkout's origin, as the reader's Refresh
+     * asks on a working tree's page (static/refresh-plan.js, `origin`): the fetch the
+     * list's own ask makes only for a store older than the server's window, made now
+     * whatever its age. It is not waited for. An open list is asked for again, sees the
+     * fetch running, and follows it to its end (`watchPulls`), so its Remotes and Tags
+     * come to be the origin's as just fetched; a closed one reads them when it opens. A
+     * checkout that keeps no store is refused, and that says nothing: there is nothing to
+     * fetch.
+     */
+    async function fetchOrigin() {
+      if (disposed || !checkout) {
+        return;
+      }
+      try {
+        const response = await deps.request("POST", REFRESH_ROUTE, {});
+        const answer = /** @type {{refresh?: unknown} | null} */ (
+          response.body !== null && typeof response.body === "object" ? response.body : null
+        );
+        const started = answer?.refresh === "started" || answer?.refresh === "joined";
+        if (response.status === 202 && started) {
+          await reread();
+        }
+      } catch {
+        // The list is the server's as it was; the list's own ask is made when it opens.
+      }
+    }
+
+    /**
      * A data request of this page was refused: the server serves something else.
      * *served* is the commit it serves, or "" for the working tree. Only a checkout's
      * page says so here; a mirror's freshness row does.
@@ -1262,6 +1304,8 @@
       choose,
       chooseWorkingTree,
       headChanged,
+      reread,
+      fetchOrigin,
       servedChanged,
       dispose,
       snapshot: () => ({ ...state, filterPending: filterTimer !== null }),
@@ -2007,7 +2051,7 @@
    * Build the selector's elements inside *element*. Browser only.
    *
    * @param {HTMLElement} element
-   * @param {boolean} checkout Whether the page is a checkout's, with its third list.
+   * @param {boolean} checkout Whether the page is a checkout's, with its four tabs.
    * @param {(ref: string) => void} choose What a press on a row does.
    * @returns {MetabrowserSourceRefSelectorParts}
    */
@@ -2288,10 +2332,25 @@
     };
     // The list closes as every menu does (docs/design-system.md, "Every Menu Closes
     // Alike"), and opening it, by its button or its key, closes any other.
+    // A press on the navigation's Refresh is not a press away from the list: Refresh reads
+    // what is on screen again, the open list with it (`reread`), so the list stays open
+    // to be read, where any other press beside it closes it.
+    const refreshButton = document.getElementById("nav-refresh");
+    // What last had focus in the list, which a pointer's press on Refresh takes: it is
+    // given back once the list is read again, so the reader goes on from where they were.
+    /** @type {HTMLElement | null} */
+    let lastFocused = null;
+    parts.panel.addEventListener(
+      "focusin",
+      (event) => {
+        lastFocused = /** @type {HTMLElement} */ (event.target);
+      },
+      { signal },
+    );
     const dismissal = menus().dismissible({
       name: "source-ref-selector-panel",
       trigger: parts.toggle,
-      inside: (node) => parts.panel.contains(node),
+      inside: (node) => parts.panel.contains(node) || refreshButton?.contains(node) === true,
       isOpen: () => !parts.panel.hidden,
       close: () => mounted.close(),
     });
@@ -2408,6 +2467,19 @@
         closeActionMenu();
         mounted.close();
         dismissal.closed();
+      },
+      async reread() {
+        await mounted.reread();
+        if (parts.panel.hidden || refreshButton?.contains(document.activeElement) !== true) {
+          return;
+        }
+        const back =
+          lastFocused?.isConnected && !lastFocused.hidden && parts.panel.contains(lastFocused)
+            ? lastFocused
+            : parts.filter.hidden
+              ? parts.workingTree
+              : parts.filter;
+        back.focus({ preventScroll: true });
       },
       dispose() {
         closeActionMenu();

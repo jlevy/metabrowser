@@ -1104,9 +1104,12 @@ def test_each_context_assigns_its_chip_kind() -> None:
     # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
-    assert len(chips) == 2, "the selector draws a chip for the source and for each list row"
+    assert len(chips) == 3, (
+        "the selector draws a chip for the source, for the working tree's branch,"
+        " and for each list row"
+    )
     for chip in chips:
-        assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
+        assert re.search(r'kind: (?:model\.selectedRef\.kind|row\.chip|"local"),', chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
     squeezed = re.sub(r"\s+", " ", selector)
     # The chooser's rows by list kind and the source row by the currently viewed ref.

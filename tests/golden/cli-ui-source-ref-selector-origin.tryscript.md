@@ -22,6 +22,11 @@ where its last fetch left it, and the origin has moved on.
 - The list of remote-tracking branches, and the list of tags, say the origin’s are as
   Metabrowser last fetched them, and when.
   The checkout’s own branches read no store.
+- The navigation’s Refresh reads an open list again in place (`reread`), and one that
+  says the same is not drawn again (`drawnAgain`). On the working tree’s page it also
+  asks for the origin’s fetch as the reader’s own (`fetchOrigin`), whatever the store’s
+  age, and the open list follows that fetch to its end; a closed list is fetched for and
+  reads nothing until it opens.
 - An origin branch is chosen by its ref and is named as the checkout names it.
 - A row of the origin’s branches says where the reader’s own `origin/<branch>` is not
   where the origin’s is: “yours differs”, with the checkout’s commit in the row’s
@@ -286,6 +291,187 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
         "error": null
+      }
+    },
+    {
+      "step": "Refresh reads the open list again, and one that says the same is not drawn",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "working_tree",
+          "branch",
+          "remote",
+          "tag"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at another commit. This row is the origin's, as last fetched.",
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as last fetched."
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      },
+      "drawnAgain": 0
+    },
+    {
+      "step": "Refresh asks for the origin's fetch, as the reader's own",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "working_tree",
+          "branch",
+          "remote",
+          "tag"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at another commit. This row is the origin's, as last fetched.",
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as last fetched."
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "the fetch started, so the open list is asked for again",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "working_tree",
+          "branch",
+          "remote",
+          "tag"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at another commit. This row is the origin's, as last fetched.",
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as last fetched."
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "the list says the fetch runs, and waits to ask again",
+      "requests": [],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "working_tree",
+          "branch",
+          "remote",
+          "tag"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at another commit. This row is the origin's, as last fetched.",
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as last fetched."
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
+        "error": null
+      },
+      "pullsPending": true
+    },
+    {
+      "step": "the fetch ended, and the list is the origin's as just fetched",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "working_tree",
+          "branch",
+          "remote",
+          "tag"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at another commit. This row is the origin's, as last fetched.",
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as last fetched."
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "with the list closed, Refresh fetches and lists nothing",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": false
       }
     },
     {

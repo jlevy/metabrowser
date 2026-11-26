@@ -6,15 +6,26 @@
 // and Reload Page"). Each part refreshes through the path it already had; this module adds
 // no route and no refresh of its own:
 //
-// - `source`: the mirror or origin the page reads, through its freshness row's controller
-//   (static/source-freshness.js, `refreshNow`), which asks `/api/source/refresh` and
-//   settles once nothing is fetching. A page with no fetchable store has no such part.
+// - `source`: the mirror or origin a pinned revision's page reads, through its freshness
+//   row's controller (static/source-freshness.js, `refreshNow`), which asks
+//   `/api/source/refresh` and settles once nothing is fetching. A page with no fetchable
+//   store has no such part, and neither has a checkout's working tree's, which reads the
+//   disk and has no freshness row: its fetch is `origin`, below.
+// - `refs`: the branch and tag chooser's list, read again in place while it is open, with
+//   its scroll and focus kept (static/source-ref-selector.js, `reread`). It is on screen
+//   only then, and after the source, so it lists what the fetch brought.
 // - `page`: the pull request's page in the main pane, its own refresh (pull-page.js).
 // - `files`: the tree and the file or folder the pane holds, read again (app.js,
 //   `rereadFiles`, as when a revision's file ages land).
 // - `pulls`: the Pulls tab's list (pulls-panel.js), once it is mounted.
 // - `git`: the Commits tab's history, read again from the routes that follow the served
 //   revision (git-panel.js, `refresh`), once the tab has read it.
+// - `origin`: on a checkout's working tree's page, the fetch of the store Metabrowser
+//   keeps of the checkout's origin, which its Remotes and Tags are listed from
+//   (static/source-ref-selector.js, `fetchOrigin`). Nothing the page shows waits for it:
+//   the files are on disk and the history is the checkout's own. So it is never on screen
+//   and runs last, after the disk and the history are read again and the button is
+//   offered again, and an open chooser list then follows the fetch to its end.
 //
 // A press runs the parts one at a time, awaiting each, so what reads the mirror reads what
 // its fetch brought. The button waits, `aria-disabled` and dimmed in its place, while the
@@ -24,27 +35,35 @@
 (() => {
   /**
    * Every part a press refreshes, in the order it runs them within each half: the source
-   * first, since every other part reads what its fetch brings; then the main pane's pull
-   * request page; then the tabs, in tab order (static/main-tabs.js, `MAIN_TABS`).
+   * first, since every other part reads what its fetch brings, and the chooser's list
+   * straight after it; then the main pane's pull request page; then the tabs, in tab
+   * order (static/main-tabs.js, `MAIN_TABS`); and last a working tree's fetch of its
+   * origin, which no other part reads.
    *
    * @type {readonly MetabrowserRefreshPart[]}
    */
-  const PARTS = Object.freeze(["source", "page", "files", "pulls", "git"]);
+  const PARTS = Object.freeze(["source", "refs", "page", "files", "pulls", "git", "origin"]);
 
   /**
    * Whether a part is on screen, from the tab in front and what holds the main pane
    * (`data-preview-owner`, app.js `claimPreview`). The source's freshness row is at the
    * foot of the navigation on every tab. The Files and Commits parts are on screen while
    * their tab is in front, and also while the pane shows a file or folder, or a commit.
+   * The chooser's list is on screen while it is open (*view.chooser*). A working tree's
+   * fetch of its origin never is: it changes nothing the page shows but that list.
    *
    * @param {MetabrowserRefreshPart} id
-   * @param {{front: string, owner: string}} view
+   * @param {{front: string, owner: string, chooser?: boolean}} view
    * @returns {boolean}
    */
   function isShown(id, view) {
     switch (id) {
       case "source":
         return true;
+      case "refs":
+        return view.chooser === true;
+      case "origin":
+        return false;
       case "page":
         return view.owner === "pull-request";
       case "files":
@@ -184,6 +203,8 @@
       front:
         document.querySelector(".nav-tab-bar .tab-btn.active")?.getAttribute("data-tab") ?? "files",
       owner: preview?.dataset.previewOwner ?? "",
+      // The chooser's root says whether its list is open (source-ref-selector.js, `paint`).
+      chooser: document.getElementById("source-ref-selector")?.dataset.open === "true",
     });
     const plan = createPlan({
       shown: (id) => isShown(id, view()),
@@ -223,6 +244,14 @@
     }
     void askSource();
     plan.provide("git", () => window.MetabrowserGitPanel?.refresh());
+    // The chooser mounts after the first tree, so its parts ask for it at each press.
+    const chooser = () => window.MetabrowserSourceRefSelector?.mounted() ?? null;
+    if (document.getElementById("source-ref-selector") !== null) {
+      plan.provide("refs", () => chooser()?.reread());
+      if (window.METABROWSER_SOURCE_CHECKOUT?.working_tree === true) {
+        plan.provide("origin", () => chooser()?.fetchOrigin());
+      }
+    }
     const press = async () => {
       await askSource();
       return plan.press();

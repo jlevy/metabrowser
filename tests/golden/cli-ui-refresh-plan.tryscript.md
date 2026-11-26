@@ -12,13 +12,18 @@ refreshes every part of the page that can be read again, through the path each p
 already had, in one order (`static/refresh-plan.js`): the parts on screen first, then
 the parts behind other tabs, so a tab the reader turns to next is already fresh.
 Within each half the order is the plan’s: the mirror’s fetch first, since every other
-part reads what it brings, then the pull request’s page in the main pane, then the tabs,
-Files, Pulls, and Commits.
+part reads what it brings, then the branch and tag chooser’s list, then the pull
+request’s page in the main pane, then the tabs, Files, Pulls, and Commits, and last a
+checkout’s working tree’s fetch of its origin.
 
 What is on screen is read from the tab in front and from what holds the main pane: the
 mirror’s freshness row is at the foot of the navigation on every tab; the pull request’s
 page while it holds the pane; and a tab’s part while it is in front, or, for Files and
 Commits, while the pane shows its file, folder, or commit.
+The chooser’s list is on screen while it is open.
+A working tree’s fetch of its origin never is, since nothing its page shows waits for
+it: the page has no freshness row, so its press reads the disk and the history again and
+only then, with the button offered again, asks for that fetch.
 
 The button waits, `aria-disabled` and dimmed in its place, while the parts on screen
 refresh, and only then; a press while it waits does nothing.
@@ -26,7 +31,8 @@ A part that fails says so where it is drawn, and the rest still run.
 A later press supersedes what an earlier one had not reached behind the other tabs.
 The last steps run the module’s browser glue on a stand-in page, with the shell’s parts
 as app.js, the freshness row, and the Commits panel lend them, and the Pulls list’s two
-as pulls-panel.js does.
+as pulls-panel.js does; the last four on a page with the chooser, a revision’s and a
+working tree’s, with its list open and closed.
 
 `tests/test_refresh_plan_session.py` holds the record to these invariants;
 `cli-ui-key-reveal.tryscript.md` shows the button numbered 1 on every screen.
@@ -39,10 +45,12 @@ $ node tests/dom/refresh-plan-session.js
       "step": "each screen's order: the parts on screen, then the rest, each half in plan order",
       "parts": [
         "source",
+        "refs",
         "page",
         "files",
         "pulls",
-        "git"
+        "git",
+        "origin"
       ],
       "screens": [
         {
@@ -52,9 +60,11 @@ $ node tests/dom/refresh-plan-session.js
             "files"
           ],
           "hidden": [
+            "refs",
             "page",
             "pulls",
-            "git"
+            "git",
+            "origin"
           ]
         },
         {
@@ -64,9 +74,11 @@ $ node tests/dom/refresh-plan-session.js
             "files"
           ],
           "hidden": [
+            "refs",
             "page",
             "pulls",
-            "git"
+            "git",
+            "origin"
           ]
         },
         {
@@ -77,8 +89,10 @@ $ node tests/dom/refresh-plan-session.js
             "files"
           ],
           "hidden": [
+            "refs",
             "pulls",
-            "git"
+            "git",
+            "origin"
           ]
         },
         {
@@ -89,8 +103,10 @@ $ node tests/dom/refresh-plan-session.js
             "pulls"
           ],
           "hidden": [
+            "refs",
             "files",
-            "git"
+            "git",
+            "origin"
           ]
         },
         {
@@ -101,8 +117,10 @@ $ node tests/dom/refresh-plan-session.js
             "pulls"
           ],
           "hidden": [
+            "refs",
             "page",
-            "git"
+            "git",
+            "origin"
           ]
         },
         {
@@ -112,9 +130,11 @@ $ node tests/dom/refresh-plan-session.js
             "git"
           ],
           "hidden": [
+            "refs",
             "page",
             "files",
-            "pulls"
+            "pulls",
+            "origin"
           ]
         },
         {
@@ -125,8 +145,24 @@ $ node tests/dom/refresh-plan-session.js
             "git"
           ],
           "hidden": [
+            "refs",
             "page",
-            "pulls"
+            "pulls",
+            "origin"
+          ]
+        },
+        {
+          "screen": "Files in front, the chooser's list open",
+          "visible": [
+            "source",
+            "refs",
+            "files"
+          ],
+          "hidden": [
+            "page",
+            "pulls",
+            "git",
+            "origin"
           ]
         }
       ]
@@ -142,10 +178,14 @@ $ node tests/dom/refresh-plan-session.js
         "pulls starts",
         "pulls settles",
         "offered",
+        "refs starts",
+        "refs settles",
         "files starts",
         "files settles",
         "git starts",
-        "git settles"
+        "git settles",
+        "origin starts",
+        "origin settles"
       ],
       "a second press while it waits": false,
       "the first press": true,
@@ -160,17 +200,21 @@ $ node tests/dom/refresh-plan-session.js
         "files starts",
         "files settles",
         "offered",
+        "refs starts",
+        "refs settles",
         "page starts",
         "page settles",
         "pulls starts",
         "pulls settles",
         "git starts",
-        "git settles"
+        "git settles",
+        "origin starts",
+        "origin settles"
       ]
     },
     {
       "step": "a released part is not run, and a stale release keeps the newer refresh",
-      "parts": "source, files, git",
+      "parts": "source, refs, files, git, origin",
       "events": [
         "waits",
         "source starts",
@@ -178,9 +222,13 @@ $ node tests/dom/refresh-plan-session.js
         "files starts",
         "files settles",
         "offered",
+        "refs starts",
+        "refs settles",
         "git, provided again, starts",
         "git starts",
-        "git settles"
+        "git settles",
+        "origin starts",
+        "origin settles"
       ]
     },
     {
@@ -192,20 +240,24 @@ $ node tests/dom/refresh-plan-session.js
         "files starts",
         "files settles",
         "offered",
-        "page starts",
+        "refs starts",
         "waits",
         "source starts",
-        "page settles",
+        "refs settles",
         "source settles",
         "files starts",
         "files settles",
         "offered",
+        "refs starts",
+        "refs settles",
         "page starts",
         "page settles",
         "pulls starts",
         "pulls settles",
         "git starts",
-        "git settles"
+        "git settles",
+        "origin starts",
+        "origin settles"
       ]
     },
     {
@@ -323,6 +375,102 @@ $ node tests/dom/refresh-plan-session.js
         "pulls: the part the Pulls list lends for itself settles",
         "git: the Commits panel's refresh starts",
         "git: the Commits panel's refresh settles"
+      ]
+    },
+    {
+      "step": "a click with files in front and the pane's owner \"file\", a revision with the chooser's list open",
+      "parts": [
+        "source",
+        "refs",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "source: the freshness row's refreshNow starts",
+        "source: the freshness row's refreshNow settles",
+        "refs: the chooser's reread starts",
+        "refs: the chooser's reread settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "the button: no aria-disabled",
+        "page: the part the Pulls list lends for the page beside it starts",
+        "page: the part the Pulls list lends for the page beside it settles",
+        "pulls: the part the Pulls list lends for itself starts",
+        "pulls: the part the Pulls list lends for itself settles",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles"
+      ]
+    },
+    {
+      "step": "a click with files in front and the pane's owner \"file\", a revision with the chooser's list closed",
+      "parts": [
+        "source",
+        "refs",
+        "page",
+        "files",
+        "pulls",
+        "git"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "source: the freshness row's refreshNow starts",
+        "source: the freshness row's refreshNow settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "the button: no aria-disabled",
+        "refs: the chooser's reread starts",
+        "refs: the chooser's reread settles",
+        "page: the part the Pulls list lends for the page beside it starts",
+        "page: the part the Pulls list lends for the page beside it settles",
+        "pulls: the part the Pulls list lends for itself starts",
+        "pulls: the part the Pulls list lends for itself settles",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles"
+      ]
+    },
+    {
+      "step": "a click with files in front and the pane's owner \"file\", a checkout's working tree with the chooser's list open",
+      "parts": [
+        "refs",
+        "files",
+        "git",
+        "origin"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "refs: the chooser's reread starts",
+        "refs: the chooser's reread settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "the button: no aria-disabled",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles",
+        "origin: the chooser's fetchOrigin starts",
+        "origin: the chooser's fetchOrigin settles"
+      ]
+    },
+    {
+      "step": "a click with git in front and the pane's owner \"git\", a checkout's working tree with the chooser's list closed",
+      "parts": [
+        "refs",
+        "files",
+        "git",
+        "origin"
+      ],
+      "asked": [
+        "the button: aria-disabled=true",
+        "git: the Commits panel's refresh starts",
+        "git: the Commits panel's refresh settles",
+        "the button: no aria-disabled",
+        "refs: the chooser's reread starts",
+        "refs: the chooser's reread settles",
+        "files: the shell's rereadFiles starts",
+        "files: the shell's rereadFiles settles",
+        "origin: the chooser's fetchOrigin starts",
+        "origin: the chooser's fetchOrigin settles"
       ]
     }
   ]
