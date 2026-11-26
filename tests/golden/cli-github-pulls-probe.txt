@@ -55,7 +55,11 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
@@ -134,7 +138,11 @@ status: 200
       "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:30Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---

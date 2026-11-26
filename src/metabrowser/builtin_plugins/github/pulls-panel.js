@@ -234,6 +234,7 @@ const CHECKOUT_NOT_LISTED =
 
 /**
  * @typedef {{outcome: string, message: string | null, reset_at: string | null, at: string}} LastRefresh
+ * @typedef {{finished_at: string, duration_ms: number}} RefreshTiming
  * @typedef {Record<keyof typeof LIST_LABELS, number>} PullFilterTotals
  * @typedef {{
  *   state: "absent" | "pending" | "current" | "stale",
@@ -247,6 +248,7 @@ const CHECKOUT_NOT_LISTED =
  *   probe_every_s?: number | null,
  *   refreshing: boolean,
  *   last_refresh: LastRefresh | null,
+ *   refresh_timing?: RefreshTiming | null,
  *   fetched: number,
  *   complete: boolean,
  *   truncated: boolean,
@@ -410,6 +412,23 @@ function rateHoldMs(envelope, nowMs) {
   return Number.isFinite(deadline) ? Math.max(0, deadline - nowMs) : 0;
 }
 
+/** @param {RefreshTiming | null | undefined} timing @param {number} nowMs */
+function refreshDetail(timing, nowMs) {
+  if (
+    timing === undefined ||
+    timing === null ||
+    typeof timing.finished_at !== "string" ||
+    !Number.isFinite(Date.parse(timing.finished_at)) ||
+    !Number.isFinite(timing.duration_ms) ||
+    timing.duration_ms < 0
+  ) {
+    return null;
+  }
+  const ms = timing.duration_ms;
+  const duration = ms < 1000 ? `${Math.round(ms)}ms` : `${Math.round(ms / 100) / 10}s`;
+  return `Refreshed ${relativeAge(timing.finished_at, nowMs)} in ${duration}`;
+}
+
 /** @param {PullsEnvelope | null} envelope */
 function watchPaused(envelope) {
   return WATCH_PAUSED.has(envelope?.last_refresh?.outcome ?? "");
@@ -421,11 +440,9 @@ function watchPaused(envelope) {
  * *rows* are the rows held so far, already described; the envelope is the last answer, whose
  * own `rows` are only a window.
  *
- * Rows already shown are never covered by progress. While a refresh runs with rows held, the
- * connection row keeps the plain age, "Updated 3 min ago", marked `refreshing`, which the paint
- * breathes; `working`, with the shared spinner and "Fetching pull requests…", is only for a list
- * with no rows yet. A stale list says nothing of being stale: it is being refreshed, or the
- * row says why it cannot be (offline, a failure, a rate limit). *refreshingRows* are the rows
+ * Rows already shown are never covered by progress. The navigation's Refresh gives the
+ * latest completed refresh in its tooltip. The connection row explains first load,
+ * incomplete results, and failures. *refreshingRows* are the rows
  * whose own data GitHub is being read for now, whose titles breathe too.
  *
  * The list never says how many rows it holds. Below the last row held, `progress` is the
@@ -533,12 +550,9 @@ export function describePulls(envelope, page) {
   } else if ((working || page.more) && !holding) {
     model.connection = { state: "working", text: FETCHING, canRefresh: false };
   } else {
-    // Rows are shown: their age stays, and a refresh running breathes it.
-    const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-    const note = envelope.truncated ? " · some pull requests are not listed" : "";
     model.connection = {
       state: "connected",
-      text: `Updated ${age}${note}`,
+      text: envelope.truncated ? "Some pull requests are not listed." : "",
       canRefresh: !working,
       ...(working ? { refreshing: true } : {}),
     };
@@ -691,6 +705,7 @@ function pinChanged(response) {
  *   }): unknown,
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
+ *   retellAges?(): void,
  *   warmComparisons?(numbers: number[]): void,
  *   stackFiles?(): number[],
  *   filesListed?(number: number): void,
@@ -1679,6 +1694,8 @@ export function createPullsController(deps, options = {}) {
     if (key !== painted || arrivals.length > 0) {
       painted = key;
       deps.render(next, identity, arrivals);
+    } else {
+      deps.retellAges?.();
     }
     noteOutside();
   }
@@ -3813,6 +3830,33 @@ export function createPullsController(deps, options = {}) {
       held().error = null;
       return ask({ state: filter, target: held().displayLimit, retry: true });
     },
+    refreshDetail() {
+      const envelope = held().envelope;
+      const identity = envelope === null ? null : coreCatalogIdentity(envelope);
+      if (identity === null) {
+        return null;
+      }
+      // The endpoint reports the repository's last refresh. A retained filter may
+      // still be showing its earlier envelope when the reader switches tabs.
+      let latest = null;
+      let latestMs = -Infinity;
+      for (const list of lists.values()) {
+        const candidate = list.envelope;
+        if (
+          candidate === null ||
+          candidate.refresh_timing == null ||
+          coreCatalogIdentity(candidate) !== identity
+        ) {
+          continue;
+        }
+        const finishedMs = Date.parse(candidate.refresh_timing.finished_at);
+        if (finishedMs > latestMs) {
+          latest = candidate.refresh_timing;
+          latestMs = finishedMs;
+        }
+      }
+      return refreshDetail(latest, deps.now());
+    },
     onFocus: wake,
     onOnline() {
       warmPaused = false;
@@ -3989,7 +4033,8 @@ export function mountPullsPanel(container, ctx, mb) {
   });
   // The count and the connection are the shell's navigation metadata line (`.nav-metadata`,
   // docs/design-system.md, "Navigation Metadata Line"): two lines of one band under the
-  // toolbar, set as the Files and Commits tallies are.
+  // toolbar, set as the Files and Commits tallies are. The connection is shown for
+  // first load, incomplete results, and failures.
   const status = h("p", { class: "github-pulls-status nav-metadata" });
   // A tree: a row's changed files hang off it as a group. Its keys are this view's, bound by
   // the tab's host; the Files tree's keyboard handler is scoped to the Files tab and never
@@ -5649,9 +5694,8 @@ export function mountPullsPanel(container, ctx, mb) {
         ),
       );
     }
-    // The status and connection lines are always there, a line each: the list under them
-    // starts at one height before the list answers and after, and across a filter change
-    // (they moved it 24 px on every load).
+    // Keep the count's space while it loads. Add a connection line only when it has
+    // a status to show.
     status.replaceChildren(...(lines.length > 0 ? lines : ["\u00a0"]));
     const connected = model.connection;
     const working = connected?.state === "working";
@@ -5660,7 +5704,7 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionText.classList.toggle("mb-delayed-loading", working);
     spinner.classList.toggle("mb-delayed-loading", retrying);
     spinner.hidden = !working && !retrying;
-    // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
+    // An outage being retried keeps its text beside the cached rows.
     connectionMessage.classList.toggle("mb-refreshing", refreshing);
     // Busy is said of the status text, never of Refresh or the line's help link.
     if (working || retrying || refreshing) {
@@ -5669,6 +5713,16 @@ export function mountPullsPanel(container, ctx, mb) {
       connectionText.removeAttribute("aria-busy");
     }
     const message = connected?.text ?? "";
+    if (refreshing && message === "") {
+      status.setAttribute("aria-busy", "true");
+    } else {
+      status.removeAttribute("aria-busy");
+    }
+    if (message === "") {
+      connection.remove();
+    } else if (connection.parentNode === null) {
+      status.parentNode?.insertBefore(connection, status.nextSibling);
+    }
     if (connectionMessage.textContent !== message) {
       connectionMessage.textContent = message;
     }
@@ -5772,6 +5826,7 @@ export function mountPullsPanel(container, ctx, mb) {
       isOnline: () => window.navigator?.onLine !== false,
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
       formatCount: (count) => mb.formatInteger(count),
+      retellAges: tellAges,
       render(model, identity, arrivals) {
         stackIdentity = identity;
         mb.perf.measure("githubPulls:render", () => paint(model, arrivals), {
@@ -5843,8 +5898,9 @@ export function mountPullsPanel(container, ctx, mb) {
           return;
         }
         outsideNote.textContent = text;
-        if (!outsideNote.isConnected) {
-          connection.after(outsideNote);
+        if (outsideNote.parentNode === null) {
+          const line = connection.parentNode === null ? status : connection;
+          line.parentNode?.insertBefore(outsideNote, line.nextSibling);
         }
       },
       // A row, walked to by J and K or focused for Control-N, Control-P, or a keyboard Back,
@@ -5980,6 +6036,7 @@ export function mountPullsPanel(container, ctx, mb) {
         : undefined;
     }),
     refreshParts?.provide("pulls", () => controller.refresh()),
+    refreshParts?.provideTooltip?.("pulls", controller.refreshDetail),
   ];
   // The state chips are situational: through the SDK's shortcut surface each takes a number,
   // 1 to 9, from its place among the screen's numbered controls, so the panel picks no digit,

@@ -195,6 +195,13 @@ type MetabrowserPullsPanelHandle = Readonly<{
   dispose(): void;
 }>;
 
+type MetabrowserViewRenderHandle = {
+  dispose?: () => void;
+  ready?: Promise<void>;
+  /** Reread a mounted view in place. Return false when a new mount is needed. */
+  refresh?: (context: MetabrowserRenderContext) => boolean | Promise<boolean>;
+};
+
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   dispose?: (container: HTMLElement) => void;
@@ -333,6 +340,28 @@ type MetabrowserViewCompositionRuntime = Readonly<{
     getRegisteredView(kind: string, viewId: string): MetabrowserViewSpec | null | undefined;
     isCurrent?: () => boolean;
   }): Promise<MetabrowserPreparedViewComposition>;
+  /** Render the tab bar and view hosts for a prepared file or folder. */
+  renderTabs(
+    views: MetabrowserPreparedViewComposition["views"],
+    activeId: string | undefined,
+    escapeHtml: (value: unknown) => string,
+  ): string;
+  /** Remember a committed layout and the context its lazy views will read. */
+  retain(
+    host: HTMLElement,
+    installed: {
+      views: MetabrowserPreparedViewComposition["views"];
+      context: { current: MetabrowserRenderContext };
+    },
+    disposers: Array<() => void>,
+  ): void;
+  /** Refresh a matching committed layout when all its mounted views support it. */
+  refresh(
+    host: HTMLElement,
+    views: MetabrowserPreparedViewComposition["views"],
+    context: MetabrowserRenderContext,
+    isCurrent: () => boolean,
+  ): Promise<boolean>;
 }>;
 
 type MetabrowserNavigationOpenOptions = {
@@ -4637,6 +4666,8 @@ declare global {
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
     provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
+    /** The refresh detail shown while this tab is in front, until released. */
+    provideTooltip?(tab: string, detail: () => string | null): () => void;
   }>;
 
   type MetabrowserRefreshPlan = MetabrowserRefreshParts &
@@ -5085,6 +5116,7 @@ declare global {
   type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
+  type MetabrowserPublicViewRenderHandle = MetabrowserViewRenderHandle;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
 
   var hljs: {

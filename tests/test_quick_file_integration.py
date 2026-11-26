@@ -70,7 +70,7 @@ def test_preview_is_a_programmatic_focus_destination() -> None:
 
 def test_file_preview_claims_and_checks_shell_ownership() -> None:
     js = _read_app_js()
-    select_start = js.index("async function selectFile(path, preferredViewId)")
+    select_start = js.index("async function selectFile(")
     select_block = js[select_start : select_start + 5200]
     assert 'claimPreview("file", {' in select_block
     assert "isPreviewClaimCurrent(previewClaim)" in select_block
@@ -316,11 +316,7 @@ def test_selected_file_cancels_or_joins_matching_hover_prefetch() -> None:
     assert "abortHoverPrefetch()" in helper
     assert "await hoverPrefetchPromise" in helper
 
-    select_file = js[
-        js.index("async function selectFile(path, preferredViewId)") : js.index(
-            "// ── File rendering"
-        )
-    ]
+    select_file = js[js.index("async function selectFile(") : js.index("// ── File rendering")]
     assert select_file.index("beginPreviewNavigation(previewClaim)") < select_file.index(
         "await settleHoverPrefetchForSelection(path)"
     )
@@ -345,7 +341,7 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "type MetabrowserNavigationOpenOptions" in types
     assert "navigation: MetabrowserNavigationApi;" in types
 
-    assert "async function selectFile(path, preferredViewId)" in js
+    assert "async function selectFile(path, preferredViewId, refreshMounted = false)" in js
     assert "function renderFile(data, preferredViewId, claim, options = {})" in js
     assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
     assert "MetabrowserNavigationRoute.attachController(navigationController)" in js

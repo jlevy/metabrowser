@@ -28,11 +28,15 @@
 //   offered again, and an open chooser list then follows the fetch to its end.
 //
 // A press runs the parts one at a time, awaiting each, so what reads the mirror reads what
-// its fetch brought. The button waits, `aria-disabled` and dimmed in its place, while the
-// parts on screen refresh, and only then; each part shows its own busy state while it runs.
+// its fetch brought. The button keeps its place and spins while the parts on screen refresh.
+// A quick press shows the spinner briefly, including when no part needs an update.
 // A press while the button waits does nothing, as the click of any waiting control does. A
 // part that fails says so where it is drawn, and the rest still run.
 (() => {
+  const CLICK_HINT = "Click to refresh.";
+  // Keep a quick press visible for part of a spinner turn.
+  const FEEDBACK_MS = 240;
+
   /**
    * Every part a press refreshes, in the order it runs them within each half: the source
    * first, since every other part reads what its fetch brings, and the chooser's list
@@ -194,10 +198,11 @@
    * once it mounts (pulls-nav.js, `refreshParts`).
    */
   function mount() {
-    const button = document.getElementById("nav-refresh");
-    if (mounted !== null || !(button instanceof HTMLElement)) {
+    const element = document.getElementById("nav-refresh");
+    if (mounted !== null || !(element instanceof HTMLElement)) {
       return mounted;
     }
+    const button = element;
     const preview = document.getElementById("preview-pane");
     const view = () => ({
       front:
@@ -206,13 +211,57 @@
       // The chooser's root says whether its list is open (source-ref-selector.js, `paint`).
       chooser: document.getElementById("source-ref-selector")?.dataset.open === "true",
     });
+    /** @type {Map<string, () => string | null>} */
+    const tips = new Map();
+    function paintTooltip() {
+      const detail = tips.get(view().front)?.() ?? null;
+      button.dataset.tipText = detail === null ? CLICK_HINT : `${CLICK_HINT} ${detail}`;
+      if (detail === null) {
+        button.removeAttribute("aria-description");
+      } else {
+        button.setAttribute("aria-description", detail);
+      }
+    }
+
+    /** @param {string} tab @param {() => string | null} tip */
+    function provideTooltip(tab, tip) {
+      tips.set(tab, tip);
+      paintTooltip();
+      return () => {
+        if (tips.get(tab) === tip) {
+          tips.delete(tab);
+          paintTooltip();
+        }
+      };
+    }
+
+    // Pointerover precedes the delegated mouseenter that reads data-tip-text.
+    button.addEventListener("pointerover", paintTooltip);
+    button.addEventListener("focus", paintTooltip);
+
+    let preparing = false;
+    let feedbackStarted = 0;
+    /** @type {number | null} */
+    let feedbackTimer = null;
+    function finishFeedback() {
+      function stop() {
+        delete button.dataset.refreshing;
+        feedbackTimer = null;
+      }
+      const remaining = FEEDBACK_MS - (window.performance.now() - feedbackStarted);
+      if (remaining > 0) {
+        feedbackTimer = window.setTimeout(stop, remaining);
+      } else {
+        stop();
+      }
+    }
+
     const plan = createPlan({
       shown: (id) => isShown(id, view()),
       waiting(on) {
-        if (on) {
-          button.setAttribute("aria-disabled", "true");
-        } else {
+        if (!on) {
           button.removeAttribute("aria-disabled");
+          finishFeedback();
         }
       },
       failed: (id, error) => console.error(`Refresh of ${id} failed`, error),
@@ -253,11 +302,31 @@
       }
     }
     const press = async () => {
-      await askSource();
+      if (preparing || plan.waiting()) {
+        return false;
+      }
+      preparing = true;
+      button.setAttribute("aria-disabled", "true");
+      if (feedbackTimer !== null) {
+        window.clearTimeout(feedbackTimer);
+        feedbackTimer = null;
+      }
+      feedbackStarted = window.performance.now();
+      button.dataset.refreshing = "true";
+      window.MetabrowserTooltip?.hide(button);
+      try {
+        await askSource();
+      } catch (error) {
+        button.removeAttribute("aria-disabled");
+        finishFeedback();
+        throw error;
+      } finally {
+        preparing = false;
+      }
       return plan.press();
     };
     button.addEventListener("click", () => void press());
-    mounted = Object.freeze({ ...plan, press });
+    mounted = Object.freeze({ ...plan, press, provideTooltip });
     return mounted;
   }
 

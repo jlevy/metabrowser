@@ -28,6 +28,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,10 @@ class _Session:
 
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: self.now)
+        elapsed = count(step=300_000_000)
+        monkeypatch.setattr(
+            "metabrowser.builtin_plugins.github.pull_list_refresh.monotonic_ns", elapsed.__next__
+        )
         self.blocks: list[str] = []
         self.labels = Labels()
         self.epochs: set[str] = set()

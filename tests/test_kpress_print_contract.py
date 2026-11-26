@@ -38,10 +38,10 @@ def test_app_shell_tracks_active_printable_view() -> None:
     assert "function setActiveView(host, viewId)" in composition
     assert "host.dataset.printable = " in composition
     assert "setActiveView(host, tabId)" in composition
-    assert "data-printable" in src
-    assert "data-print-profile" in src
-    assert "data-render-runtime" in src
-    assert 'data-active-view="false"' in src
+    assert "data-printable" in composition
+    assert "data-print-profile" in composition
+    assert "data-render-runtime" in composition
+    assert 'data-active-view="false"' in composition
     # Printing is the browser's, for Command-P and for the rendered document's print
     # button alike: the shell draws no print control and holds no print command (mb-07a1).
     assert "file-header-print" not in src

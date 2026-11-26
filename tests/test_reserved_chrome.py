@@ -162,26 +162,24 @@ def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     assert "font-size: var(--kbd-font-size);" in _rule(_css(), ".nav-shortcut-hints")
 
 
-def _render_file() -> str:
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    render = app[app.index("async function renderFile(") :]
-    return render[: render.index('"renderFile:mount"')]
+def _view_tab_markup() -> str:
+    composition = (STATIC / "view-composition.js").read_text(encoding="utf-8")
+    return _function(composition, "renderTabs")
 
 
 def test_every_file_has_a_view_tab_bar() -> None:
     """A kind with one view, or none, starts its content where a kind with two does."""
 
-    render = _render_file()
+    render = _view_tab_markup()
     # Only the view keys wait for a second view; the bar itself does not. The one test of
     # the length past "any views" is the key gate, and the gate decides only the key.
     lengths = re.findall(r"views\.length\s*(?:[<>]=?|[!=]==)\s*\d+", render)
-    assert lengths == ["views.length > 0", "views.length > 1"], lengths
-    assert "var keyedBar = views.length > 1;" in render
-    assert re.findall(r"[^\n]*\bkeyedBar\b[^\n]*", render) == [
-        "          var keyedBar = views.length > 1;",
-        '              (keyedBar ? viewKey : "") +',
+    assert lengths == ["views.length === 0", "views.length > 1"], lengths
+    assert [line.strip() for line in render.splitlines() if "keyedBar" in line] == [
+        "const keyedBar = views.length > 1;",
+        '(keyedBar ? viewKey : "") +',
     ], "keyedBar gates something besides the key"
-    assert 'html += \'<div class="tab-bar" role="tablist">\';' in render
+    assert '<div class="tab-bar" role="tablist">' in render
     assert '<span class="tab-btn tab-slot">&nbsp;</span>' in render
     slot = _rule(_css(), ".tab-slot")
     # It takes a tab's padding and type from .tab-btn, and a button's line-height.
@@ -193,31 +191,32 @@ def test_only_a_bar_of_two_views_carries_their_keys(tmp_path: Path) -> None:
     """A lone view's tab has no other view to switch to, so it publishes no key.
 
     The server already strips such a key (``keymap.live_view_keys``), so no page it serves
-    can show the gate; this runs renderFile's own lines for the bar, verbatim, on a list of
-    one view and a list of two, each declaring a key.
+    can show the gate. Render the compositor's markup on a list of one view and a list
+    of two, each declaring a key.
     """
 
-    render = _render_file()
-    start = render.index("          var keyedBar = views.length > 1;")
-    end = render.index('          html += "</div>";\n', start) + len('          html += "</div>";')
     script = tmp_path / "view-tab-bar.js"
     script.write_text(
-        "const esc = (text) => String(text);\n"
-        "const viewMetaAttrs = () => '';\n"
+        "const fs = require('node:fs');\n"
+        "const vm = require('node:vm');\n"
+        "const window = {};\n"
+        "vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});\n"
         "const lists = [\n"
         "  [{ id: 'source', label: 'Source', key: 's' }],\n"
         "  [{ id: 'rendered', label: 'Document', key: 'd' }, { id: 'source', label: 'Source', key: 's' }],\n"
         "];\n"
         "for (const views of lists) {\n"
-        "  const initialActiveView = views[0];\n"
-        "  let html = '';\n"
-        f"{render[start:end]}\n"
-        "  console.log(html);\n"
+        "  const prepared = views.map((view) => ({view, renderer: null}));\n"
+        "  console.log(window.MetabrowserViewComposition.renderTabs(prepared, views[0].id, String));\n"
         "}\n",
         encoding="utf-8",
     )
     one, two = subprocess.run(
-        [require_node(), str(script)], capture_output=True, text=True, timeout=30, check=True
+        [require_node(), str(script), str(STATIC / "view-composition.js")],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
     ).stdout.splitlines()
     assert one.startswith('<div class="tab-bar" role="tablist"><button class="tab-btn active"')
     assert 'role="tab" aria-selected="true" data-tab="source"' in one
@@ -538,7 +537,7 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     assert "? (hold ?? model.freshness)" in page
 
 
-def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
+def test_the_pulls_metadata_uses_the_shared_line_boxes() -> None:
     """Each is a metadata line, which reserves its own line box (`.nav-metadata`)."""
 
     line = _rule(_css(), ".nav-metadata")

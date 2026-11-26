@@ -33,11 +33,14 @@ from metabrowser.builtin_plugins.github.checkout import served_checkout
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
     MAX_WINDOW,
+    CatalogRefreshTiming,
     CatalogState,
+    RefreshTiming,
     catalog_position,
     catalog_row,
     catalog_window,
     read_catalog,
+    read_catalog_refresh_timing,
     upgrade_catalog,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
@@ -111,6 +114,7 @@ class PullListEnvelope(TypedDict):
     probe_every_s: float | None
     refreshing: bool
     last_refresh: LastRefresh | None
+    refresh_timing: NotRequired[RefreshTiming]
     total: int | None
     repository_total: int | None
     filter_totals: dict[str, int] | None
@@ -308,6 +312,7 @@ class ListFound:
     rows: list[dict[str, Any]]
     following: int | None
     position: int | None = None
+    refresh_timing: CatalogRefreshTiming | None = None
 
 
 def read_catalog_window(view: ListView, window: ListWindow) -> ListFound | None:
@@ -341,9 +346,12 @@ def read_catalog_window(view: ListView, window: ListWindow) -> ListFound | None:
                 listed, rows, marker = read()
     if listed is None or listed.source != repository.source:
         return ListFound(stamp, None, [], None)
+    timing = read_catalog_refresh_timing(repository.home, repository.slug)
+    if timing is not None and timing.epoch != listed.epoch:
+        timing = None
     if window.at is not None:
-        return ListFound(stamp, listed, rows, None, marker)
-    return ListFound(stamp, listed, rows, marker)
+        return ListFound(stamp, listed, rows, None, position=marker, refresh_timing=timing)
+    return ListFound(stamp, listed, rows, marker, refresh_timing=timing)
 
 
 def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
@@ -404,6 +412,8 @@ def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -
             reason=None if view.refreshing else "not_cached",
         )
         return empty
+    if found.refresh_timing is not None:
+        empty["refresh_timing"] = found.refresh_timing.wire()
     checked_at = _checked_at(listed, view)
     return {
         **empty,

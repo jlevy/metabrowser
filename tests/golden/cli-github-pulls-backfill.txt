@@ -53,7 +53,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -97,7 +101,11 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
 }
@@ -158,7 +166,11 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
   "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
 }

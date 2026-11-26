@@ -34,18 +34,24 @@ import sqlite3
 import uuid
 from collections.abc import Generator
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Any, Final, Literal, Self, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository, PullListRow, parse_stamp
-from metabrowser.builtin_plugins.github.pull_record import ensure_pulls_directory
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_PULL_REFRESH_BYTES,
+    ensure_pulls_directory,
+)
+from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
     MAX_PULL_REQUEST_NUMBER,
     PULL_LIST_NAMES,
     PullListName,
+    source_pull_list_timing,
     source_pulls_directory,
 )
 from metabrowser.home import (
@@ -594,6 +600,63 @@ def read_catalog(home: Path, slug: str) -> CatalogState | None:
             return _state(db, allow_previous=True)
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return None
+
+
+class RefreshTiming(TypedDict):
+    finished_at: str
+    duration_ms: int
+
+
+class CatalogRefreshTiming(BaseModel):
+    """The last successful job that published pages for a catalog epoch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    epoch: str = Field(min_length=1, max_length=64)
+    finished_at: AwareDatetime
+    duration_ms: int = Field(ge=0)
+
+    def wire(self) -> RefreshTiming:
+        return {
+            "finished_at": self.finished_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            "duration_ms": self.duration_ms,
+        }
+
+
+def read_catalog_refresh_timing(home: Path, slug: str) -> CatalogRefreshTiming | None:
+    """Read the small timing record without opening the catalog or changing the cache."""
+
+    try:
+        data = read_bytes_bounded(
+            home, source_pull_list_timing(slug), max_bytes=MAX_PULL_REFRESH_BYTES
+        )
+        return CatalogRefreshTiming.model_validate_json(data)
+    except (RecordError, PrivateStorageError, OSError, ValueError):
+        return None
+
+
+def write_catalog_refresh_timing(
+    repository: ListedRepository, timing: CatalogRefreshTiming
+) -> None:
+    """Keep a completion while it still describes the served catalog."""
+
+    home, slug = repository.home, repository.slug
+    try:
+        with source_alias_lock(home, slug):
+            state = read_catalog(home, slug)
+            if state is None or (state.source, state.epoch) != (repository.source, timing.epoch):
+                return
+            previous = read_catalog_refresh_timing(home, slug)
+            if (
+                previous is not None
+                and previous.epoch == timing.epoch
+                and previous.finished_at > timing.finished_at
+            ):
+                return
+            write_private_file_atomic(
+                home, source_pull_list_timing(slug), timing.model_dump_json().encode("utf-8")
+            )
+    except (PrivateStorageError, OSError) as exc:
+        log.debug("could not keep pull-request catalog refresh timing: %s", exc)
 
 
 def upgrade_catalog(repository: ListedRepository) -> bool:

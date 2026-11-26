@@ -24,6 +24,7 @@
 import {
   createTreemapMap,
   isCompleteSnapshot,
+  retainTreemap,
   TREEMAP_LOADING_HTML,
   TREEMAP_VIEW_ID,
   treemapAvailability,
@@ -58,10 +59,10 @@ function treemapFolderOf(cell) {
  * @param {TreemapPalette} palette
  * @param {FolderRollupControls} rollupControls
  * @param {{signal?: AbortSignal, hover?: import("./distribution-hover.js").DistributionHover}} options
- * @returns {{dispose: () => void, follow: (snapshot: Record<string, any> | null) => void, refresh: () => void}}
+ * @returns {{dispose: () => void, follow: (snapshot: Record<string, any> | null) => void, refresh: () => Promise<void>}}
  *   `follow` takes each answer the section's breakdown gets (null when its
- *   request failed with nothing to show), and `refresh` retries the map's own
- *   request along with the breakdown's Retry.
+ *   request failed with nothing to show), and `refresh` reads the map again
+ *   once its watch has started.
  */
 export function mountCompactTreemap(container, context, mb, palette, rollupControls, options) {
   const path = context.path || "";
@@ -82,7 +83,11 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
   viewport.className = "tm-viewport tm-viewport-compact";
   viewport.setAttribute("role", "application");
   viewport.setAttribute("aria-label", "Folder treemap");
-  container.append(viewport);
+  // Keep the live region mounted and give it the notice's box only when it has a message.
+  const status = document.createElement("div");
+  status.setAttribute("role", "status");
+  status.setAttribute("data-severity", "warning");
+  container.append(viewport, status);
 
   const map = createTreemapMap(mb, palette, viewport, {
     size: "compact",
@@ -114,17 +119,28 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
         ...treemapRollupQuery(),
         /** @param {unknown} error */
         onError(error) {
+          if (disposed) {
+            return;
+          }
           console.warn("Could not load the compact treemap.", error);
           if (!isCompleteSnapshot(envelope) || !envelope?.node) {
             failed = true;
             relayout();
+          } else if (!status.textContent) {
+            status.className = "notice tm-status";
+            status.textContent = "Could not refresh the treemap. Showing the previous data.";
           }
         },
       },
       /** @param {Record<string, any>} next */
       (next) => {
+        if (disposed || retainTreemap(envelope, next)) {
+          return;
+        }
         envelope = next;
         failed = false;
+        status.textContent = "";
+        status.className = "";
         relayout();
       },
     );
@@ -208,13 +224,17 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
     dispose,
     /** @param {Record<string, any> | null} snapshot */
     follow(snapshot) {
+      if (
+        treemapAvailability(envelope, false) === "map" &&
+        retainTreemap(section ?? null, snapshot)
+      ) {
+        return;
+      }
       section = snapshot;
       relayout();
     },
-    refresh() {
-      if (watch && failed) {
-        void watch.refresh();
-      }
+    async refresh() {
+      await watch?.refresh();
     },
   });
 }

@@ -14,6 +14,7 @@
 // cli-ui-refresh-plan.tryscript.md pins it, and tests/test_refresh_plan_session.py holds it
 // to its invariants.
 
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -23,7 +24,14 @@ const source = fs.readFileSync(file, "utf8");
 
 /** The module in a fresh realm, with *globals* as its window. */
 function load(globals = {}) {
-  const context = vm.createContext({ console, Promise, ...globals });
+  const context = vm.createContext({
+    console,
+    Promise,
+    performance,
+    setTimeout,
+    clearTimeout,
+    ...globals,
+  });
   context.window = context;
   vm.runInContext(source, context, { filename: file });
   return context;
@@ -157,18 +165,24 @@ async function planSteps() {
 /** A stand-in element: attributes, a dataset, and click listeners. */
 function stub(attributes = {}) {
   const attrs = new Map(Object.entries(attributes));
-  const listeners = [];
+  const listeners = new Map();
+  function dispatch(type) {
+    for (const listener of listeners.get(type) ?? []) {
+      listener();
+    }
+  }
   return {
     dataset: {},
     getAttribute: (name) => (attrs.has(name) ? attrs.get(name) : null),
     setAttribute: (name, value) => attrs.set(name, String(value)),
     removeAttribute: (name) => attrs.delete(name),
-    addEventListener: (type, listener) => type === "click" && listeners.push(listener),
-    click: () => {
-      for (const listener of listeners) {
-        listener();
-      }
+    addEventListener: (type, listener) => {
+      const existing = listeners.get(type) ?? [];
+      existing.push(listener);
+      listeners.set(type, existing);
     },
+    dispatch,
+    click: () => dispatch("click"),
   };
 }
 
@@ -269,6 +283,81 @@ async function pageSteps(
   };
 }
 
+async function feedbackStep() {
+  class HTMLElement {}
+  const button = Object.assign(Object.create(HTMLElement.prototype), stub());
+  const tab = stub({ "data-tab": "pulls" });
+  const document = {
+    getElementById: (id) => (id === "nav-refresh" ? button : null),
+    querySelector: () => tab,
+  };
+  let now = 0;
+  const timers = new Map();
+  let nextTimer = 1;
+  let releaseSource;
+  const sourceReady = new Promise((resolve) => {
+    releaseSource = resolve;
+  });
+  const context = load({
+    document,
+    HTMLElement,
+    MetabrowserShell: { sourceFreshness: () => sourceReady, rereadFiles() {} },
+    performance: { now: () => now },
+    setTimeout: (finish, delay) => {
+      const timer = nextTimer++;
+      timers.set(timer, { finish, at: now + delay });
+      return timer;
+    },
+    clearTimeout: (timer) => timers.delete(timer),
+  });
+  const plan = context.MetabrowserRefreshPlan.plan();
+  const release = plan.provideTooltip("pulls", () => "Refreshed 2 min ago in 300ms");
+  const pullsHint = button.dataset.tipText;
+  const spokenHint = button.getAttribute("aria-description");
+  assert.equal(pullsHint, "Click to refresh. Refreshed 2 min ago in 300ms");
+  assert.equal(spokenHint, "Refreshed 2 min ago in 300ms");
+  tab.setAttribute("data-tab", "files");
+  button.dispatch("pointerover");
+  const filesHint = button.dataset.tipText;
+  assert.equal(filesHint, "Click to refresh.");
+  tab.setAttribute("data-tab", "pulls");
+  button.dispatch("focus");
+  assert.equal(button.dataset.tipText, pullsHint);
+
+  plan.provide("pulls", () => {});
+  const press = plan.press();
+  const immediate = button.dataset.refreshing === "true";
+  assert(immediate);
+  const waitingForSource = button.getAttribute("aria-disabled") === "true";
+  assert(waitingForSource, "the control is disabled while preparation waits for its source");
+  assert.equal(await plan.press(), false, "preparation does not admit a second press");
+  releaseSource(null);
+  await press;
+  assert.equal(button.getAttribute("aria-disabled"), null);
+  const briefly = button.dataset.refreshing === "true";
+  assert(briefly);
+  const next = plan.press();
+  assert.equal(timers.size, 0, "a new press cancels the old spinner's timer");
+  await next;
+  assert.equal(timers.size, 1);
+  const [{ at, finish }] = timers.values();
+  now = at;
+  finish();
+  const ended = button.dataset.refreshing === undefined;
+  assert(ended);
+  release();
+  assert.equal(button.dataset.tipText, filesHint);
+  assert.equal(button.getAttribute("aria-description"), null);
+  return {
+    step: "the Refresh tooltip follows the tab and a quick press shows a spinner",
+    pullsHint,
+    spokenHint,
+    filesHint,
+    waitingForSource,
+    spinner: { immediate, briefly, ended },
+  };
+}
+
 async function main() {
   const steps = await planSteps();
   steps.push(await pageSteps("pulls", "pull-request"));
@@ -283,6 +372,7 @@ async function main() {
   steps.push(await pageSteps("files", "file", { chooser: "closed" }));
   steps.push(await pageSteps("files", "file", { chooser: "open", workingTree: true }));
   steps.push(await pageSteps("git", "git", { chooser: "closed", workingTree: true }));
+  steps.push(await feedbackStep());
   process.stdout.write(`${JSON.stringify({ steps }, null, 2)}\n`);
 }
 

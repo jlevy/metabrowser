@@ -344,10 +344,19 @@ async function run() {
   await page.answer(recorded.refresh_started);
   await page.fire(1000);
   await page.answer(recorded.pending);
+  assert(controller.refreshDetail() === null, "a pending scan is not a completed refresh");
   steps.push(page.observe("the catalog runs independently of the panel", controller));
   await page.fire(1000);
   await page.answer(recorded.current);
-  steps.push(page.observe("the top cache page arrives", controller));
+  const now = page.clock.now;
+  page.clock.now = Date.parse(recorded.current.body.refresh_timing.finished_at) + 120_000;
+  const refreshDetail = controller.refreshDetail();
+  page.clock.now = now;
+  assert(
+    refreshDetail === "Refreshed 2 min ago in 300ms",
+    "the hint reports completion and duration",
+  );
+  steps.push({ ...page.observe("the top cache page arrives", controller), refreshDetail });
   await page.answer(recorded.more_window);
   steps.push(page.observe("cached windows fill only the display budget", controller));
   assert(controller.snapshot().rows === 102, "the real catalog holds 102 rows");
@@ -431,8 +440,8 @@ async function run() {
   assert(
     moreCached.paint.connection.state === "connected" &&
       moreCached.paint.connection.refreshing === true &&
-      moreCached.paint.connection.text.startsWith("Updated "),
-    "the refresh still runs, under the rows' plain age and no spinner",
+      moreCached.paint.connection.text === "",
+    "the refresh still runs while the rows stay in place",
   );
   assert(moreCached.timer === "fast", "the append does not slow the refresh poll");
   assert(
@@ -1094,7 +1103,10 @@ async function paintStory(panel, selection = false) {
     }
     filterChips.at(-1).focus();
     await answer(first);
-    assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
+    assert(
+      spinner.hidden && !container.childNodes.includes(connection),
+      "the connection line leaves after a successful load",
+    );
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
     assert(
