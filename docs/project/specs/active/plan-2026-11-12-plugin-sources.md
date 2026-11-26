@@ -817,7 +817,7 @@ async def start(plan: Launch, *, descriptors) -> Child:
 | PDF preview, trusted folder | Confined when a backend exists | The same | Nothing | No | No | The same |
 | SQLite readers | Separate today; confined is a later choice | The served folder and the pool’s private folder | The private folder | No | No | Address space |
 | Markdown child | Separate today; confined is a later choice | Its interpreter only | Nothing | No | No | None |
-| Plugin worker, authority `confined` | Confined, required | The environment, the clone, the served folder and scoped folders, and what the manifest declares | The plugin’s cache folder and a private temporary folder | No | Yes | Set in Phase 1 from measurements |
+| Plugin worker, authority `confined` | Confined, required | The environment, the clone, the served folder and scoped folders, and what the manifest declares | The plugin’s cache folder, its source’s bytecode cache, and a private temporary folder | No | Yes | Set in Phase 1 from measurements |
 | Plugin worker, authority `full` | Separate | Everything the reader can | Everything the reader can | Yes | Yes | The same |
 
 The extraction changes no behavior for the PDF preview on macOS and gives it a backend
@@ -1085,6 +1085,9 @@ A worker is a child of the isolation facility, with a protocol on top.
   The bytecode cache goes under Metabrowser’s cache home, so nothing is written into the
   plugin environment and a foreign interpreter still compiles the runtime once, not at
   every start as `-B` would have it.
+  Each source has its own cache folder, which is one of its worker’s write grants and no
+  other worker’s: bytecode one worker writes is code the next one to read it runs, so a
+  shared cache would let a confined worker reach a `full` one.
 - **Its own descriptors.** The request pipe is descriptor 3 and the reply pipe 4, both
   close-on-exec in the worker; descriptor 0 is `/dev/null`, descriptor 1 is stderr,
   which goes to the server’s log under the source id, and SIGINT is ignored, since the
