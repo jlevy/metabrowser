@@ -1659,11 +1659,75 @@ async function recordLists() {
   mixed.container.remove();
 }
 
+async function relationshipFilter() {
+  const file = "market.db/orders";
+  const ref = "people:k.WzFd";
+  const via = JSON.stringify([["buyer"], ["id"]]);
+  const scoped = new URLSearchParams({ ref, via }).toString();
+  const respond = (route, params, body) => {
+    answers[keyOf(route, params)] = { status: 200, body };
+  };
+  respond(
+    "schema",
+    { path: file },
+    {
+      table: "orders",
+      fields: [{ name: "buyer", title: "Buyer", type: "text" }],
+    },
+  );
+  respond(
+    "card",
+    { path: "market.db/people", key: "k.WzFd" },
+    {
+      label: "Ada Lovelace",
+      cells: {},
+    },
+  );
+  const page = { columns: ["buyer"], rows: [], count: 0, count_complete: true, complete: true };
+  respond("rows", { path: file, ref, via, limit: 200 }, page);
+  respond("rows", { path: file, limit: 200 }, page);
+
+  const schema = [];
+  hold = schema;
+  const view = mount(file, scoped);
+  await settle();
+  assert.equal(find(view.container, hasClass("table-open-ref")), null);
+  const first = takeRequests();
+  assert.deepEqual(first, ["schema?path=market.db%2Forders"]);
+  step("during schema loading", { requests: first, hasRelatedLink: false });
+  hold = null;
+  for (const release of schema) {
+    release();
+  }
+  await ready(view);
+  const link = find(view.container, hasClass("table-open-ref"));
+  const remove = find(view.container, hasClass("table-chip-remove"));
+  assert.equal(text(link), "Ada Lovelace");
+  assert.equal(link.dataset.path, "market.db/people");
+  step("after the schema resolves", {
+    requests: takeRequests(),
+    label: text(link.parentNode),
+    target: link.dataset.path,
+  });
+  click(remove);
+  await settle();
+  assert.equal(sdk.navigation.current().query, "");
+  step("removing the chip clears the scope", { requests: takeRequests(), query: "" });
+  view.handle.dispose();
+  view.container.remove();
+  assert.deepEqual(unrecorded, []);
+}
+
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
   const view = await import(pathToFileURL(path.join(plugin, "table-view.js")).href);
   ({ mountTable, LIVE_COALESCE_MS: LIVE_COALESCE } = view);
   placeSaveMs = view.PLACE_SAVE_MS;
+  if (process.argv[2] === "relationships") {
+    await relationshipFilter();
+    process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+    return;
+  }
   modelInvariants();
   liveInvariants();
   await wholeTable();

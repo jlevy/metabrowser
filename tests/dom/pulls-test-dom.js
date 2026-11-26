@@ -9,6 +9,10 @@ class FakeNode {
   get firstChild() {
     return this.childNodes[0] ?? null;
   }
+
+  get lastChild() {
+    return this.childNodes.at(-1) ?? null;
+  }
   get nextSibling() {
     return this.parentNode?.childNodes[this.parentNode.childNodes.indexOf(this) + 1] ?? null;
   }
