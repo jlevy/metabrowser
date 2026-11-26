@@ -208,11 +208,11 @@ fallback. SoftSchema’s plan settles how a caller asks for fallback binding.
 
 ### Reading and Validating (SoftSchema)
 
-One reader: SoftSchema’s portable reader, C-first, so every value shown is the value any
-SoftSchema consumer reads.
-The plugin requires the SoftSchema release with the collection API and
-`ruamel.yaml.clib`; `softschema.yaml_parser_mode()` reports `c-first` in
-`metab --doctor`.
+The plugin uses SoftSchema’s portable reader and requires a release with the collection
+API. A stock installation uses the pure reader.
+On compatible CPython builds the `yaml-accelerator` extra installs `ruamel.yaml.clib`
+and enables C-first mode.
+`metab --doctor` reports the active parser.
 
 For each changed record the builder reads it, extracts metadata, envelope, host keys
 (`title`), and payload, and validates the payload against its bound schema with a
@@ -441,9 +441,8 @@ inside their functions, as the GitHub sidekick does.
 2. **The index root is the nearest ancestor holding the records’ schemas**, with the
    opened folder as a filter, so references resolve from any subfolder.
    Alternative: index only the opened subtree.
-3. **One reader, SoftSchema’s, C-first.** Upgrade to SoftSchema 0.9.1 and add
-   `ruamel.yaml.clib` after the supply-chain review, rather than a second, faster reader
-   in Metabrowser.
+3. **One reader, SoftSchema’s.** Upgrade to SoftSchema 0.9.1 and offer its native
+   accelerator as a reviewed extra on compatible CPython builds.
 4. **The collection API goes in SoftSchema first**, with the shared contract and CLI
    tested on Python and TypeScript under SoftSchema’s parity process.
    The plugin starts once a release has it.
@@ -456,9 +455,9 @@ inside their functions, as the GitHub sidekick does.
 
 - [x] Supply-chain review of `ruamel.yaml.clib` per
   [SUPPLY-CHAIN-SECURITY.md](../../../../SUPPLY-CHAIN-SECURITY.md), within its cool-off.
-- [x] Upgrade to SoftSchema 0.9.1 and frontmatter-format 0.5.1 (first-party), add
-  `ruamel.yaml.clib`, and adapt to 0.9.0’s changes: results now report `execution`, and
-  some raw characters are newly refused.
+- [x] Upgrade to SoftSchema 0.9.1 and frontmatter-format 0.5.1 (first-party), add the
+  `yaml-accelerator` extra, and adapt to 0.9.0’s changes: results report `execution`,
+  and some raw characters are newly refused.
   Metabrowser’s own contracts, cache records, and guided-review collections must still
   read, which the existing corpus and round-trip checks show.
 - [x] `metab --doctor` reports SoftSchema’s parser mode.
@@ -468,6 +467,9 @@ inside their functions, as the GitHub sidekick does.
 
 The [benchmark](../../../../devtools/bench_softschema_collection.py) on macOS arm64 and
 CPython 3.14.7 took the median of three trials in each mode.
+Run it with
+`uv --config-file uv.toml run --frozen --extra yaml-accelerator python -m devtools.bench_softschema_collection`
+on an interpreter that can install the extra.
 The filesystem cache was warm and each trial started with an empty validator cache.
 The corpus commits are the ones pinned in the research brief.
 

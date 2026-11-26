@@ -17,8 +17,8 @@ And for the package as a whole:
 
 - each third-party module core (everything outside ``builtin_plugins/``) imports
   belongs to a runtime dependency;
-- each runtime dependency is imported by core, declared by a plugin, or an
-  explicitly named native accelerator of one of those imports.
+- each runtime dependency is imported by core or declared by some plugin, so a
+  dependency nothing uses cannot sit in the runtime list unnoticed.
 
 An import counts wherever it is written, inside a function too, except under
 ``if TYPE_CHECKING:``, which never runs. The standard library, ``metabrowser``,
@@ -52,10 +52,6 @@ PLUGINS = PACKAGE / "builtin_plugins"
 # A requirement's distribution name: what PEP 508 allows before a version, an
 # extra, a marker, or a URL.
 _REQUIREMENT_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
-
-# Both distributions claim the top-level `ruamel` namespace. The Python reader
-# owns `ruamel.yaml`; it loads clib itself when that extension is available.
-_ACCELERATORS = {"ruamel-yaml-clib": "ruamel-yaml"}
 
 
 def _is_type_checking(test: ast.expr) -> bool:
@@ -127,8 +123,6 @@ def _distribution(
 ) -> str | None:
     candidates = sorted({normalize_distribution(name) for name in providers.get(module, [])})
     if len(candidates) > 1:
-        candidates = [name for name in candidates if _ACCELERATORS.get(name) not in candidates]
-    if len(candidates) > 1:
         candidates = [name for name in candidates if name in runtime] or candidates
     if len(candidates) == 1:
         return candidates[0]
@@ -187,9 +181,7 @@ def check(
                 problems.append(f"{who} declares {distribution}, which is not a runtime dependency")
             declared_anywhere.setdefault(distribution, []).append(name)
 
-    used = core | declared_anywhere.keys()
-    used_accelerators = {name for name, reader in _ACCELERATORS.items() if reader in used}
-    for distribution in sorted(runtime - used - used_accelerators):
+    for distribution in sorted(runtime - core - set(declared_anywhere)):
         problems.append(
             f"runtime dependency {distribution} is imported by neither core nor any plugin"
         )

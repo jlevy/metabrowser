@@ -1,7 +1,8 @@
 """Compare SoftSchema's guarded C and pure readers on the same collection.
 
-Run `uv run --frozen python -m devtools.bench_softschema_collection` for generated
-records, or pass a collection root. Report wall times with a warm filesystem cache
+Run `uv --config-file uv.toml run --frozen --extra yaml-accelerator python -m
+devtools.bench_softschema_collection` for generated records, or pass a collection root.
+Report wall times with a warm filesystem cache
 and a cold validator cache per trial. Read only; the generated corpus lives in TMPDIR.
 """
 
