@@ -1110,6 +1110,102 @@ def test_idle_comparison_never_starts_without_a_store(
     assert asyncio.run(run()) == "not_due"
 
 
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("queued_prefetch", [False, True])
+def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, queued_prefetch: bool
+) -> None:
+    from metabrowser import server
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.gh import GhResponse
+    from metabrowser.checkout_store import store_turn
+    from metabrowser.cli.asgi_client import InProcessClient
+    from metabrowser.mirror_refresh import refresh_coordinator
+    from tests.github_pull_fixture import logged_gh_calls, pull_bodies
+    from tests.golden_harness import isolate_cli
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None and repository.cached is None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("METABROWSER_ORIGIN_STORE", "off")
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.served_pull.CORE_WAIT_TIMEOUT_S", 12)
+    server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
+    expected = pull_bodies(pull_origin)[7]["pull"]
+
+    async def run() -> None:
+        release_parts = asyncio.Event()
+        read = pulls._get  # pyright: ignore[reportPrivateUsage]
+
+        async def read_while_held(path: str, *, etag: str | None) -> GhResponse:
+            if path.startswith("repos/octo/demo/issues/7/comments?"):
+                await release_parts.wait()
+            return await read(path, etag=etag)
+
+        monkeypatch.setattr(pulls, "_get", read_while_held)
+        async with InProcessClient(server.app) as client:
+            coordinator = refresh_coordinator(server.app)
+            assert coordinator is not None
+            # The checkout's acquisition owns this same turn. Keep it until both readers
+            # have made their requests, so metadata and Git ownership cannot be confused.
+            try:
+                turn = store_turn(home, repository.git_source)
+                async with turn(lambda: False, acquisition=True):
+                    if queued_prefetch:
+                        assert (
+                            checkout_module.start_pull_refresh(
+                                coordinator, repository, 7, background=True
+                            )
+                            == "started"
+                        )
+                        await asyncio.sleep(0)
+                        assert turn._waiting  # pyright: ignore[reportPrivateUsage]
+                    selected = await client.post(
+                        "/api/plugin/github/pull-refresh",
+                        body=b'{"number":7,"retry":true,"wait_core":true}',
+                    )
+                    assert selected.status_code == 202
+                    assert selected.json()["refresh"] == (
+                        "joined" if queued_prefetch else "started"
+                    )
+                    preview = selected.json()["pull"]["core_preview"]
+                    assert preview is not None, "selected metadata waited for the Git store"
+                    assert preview["reader"] == f"gh:{READER}"
+                    assert preview["pull"]["body"] == expected["body"]
+                    assert selected.json()["pull"]["record"] is None
+
+                    changes = await client.post(
+                        "/api/plugin/github/pull-refresh",
+                        body=b'{"number":7,"retry":true,"comparison":true}',
+                    )
+                    assert changes.json()["refresh"] == "joined"
+                    assert checkout_module.checkout_pulls(repository).git_dir is None
+                # A different PR cannot attach the store while the selected core is live.
+                later = await client.post(
+                    "/api/plugin/github/pull-refresh",
+                    body=b'{"number":10,"retry":true,"comparison":true}',
+                )
+                assert later.json()["refresh"] == "started"
+                assert turn._waiting  # pyright: ignore[reportPrivateUsage]
+                still_visible = (await client.get("/api/plugin/github/pull?number=7")).json()
+                assert still_visible["core_preview"]["pull"]["body"] == expected["body"]
+                assert checkout_module.checkout_pulls(repository).git_dir is None
+                release_parts.set()
+                await coordinator.drain(timeout_s=40)
+                answer = (await client.get("/api/plugin/github/pull?number=7")).json()
+                assert answer["record"]["reader"] == f"gh:{READER}"
+                assert answer["record"]["pull"]["body"] == expected["body"]
+                assert answer["record"]["comparison"]["head"] == expected["head"]["sha"]
+            finally:
+                release_parts.set()
+
+    asyncio.run(run())
+    assert logged_gh_calls(tmp_path).count("gh api graphql core number=7") == 1
+
+
 def test_comparison_fetch_joining_metadata_refresh_is_not_lost(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

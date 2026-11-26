@@ -550,7 +550,18 @@ def _readers_start(
         # can find stopping, has counted since it started.
         if key in state.background:
             state.background.discard(key)
-            state.turn.promoted()
+            companion = state.pulls.held(number)
+            if (
+                state.turn.acquiring
+                and not comparison
+                and companion is not None
+                and companion.unattached_selection() is not None
+            ):
+                # The acquisition holds the turn, so this prefetch has not started its
+                # read. Restart it through the reader's path instead of waiting at Git.
+                coordinator.cancel(key)
+            else:
+                state.turn.promoted()
             _PULL_JOBS.add(key)
         if comparison:
             _COMPARISON_WANTED.add(key)
@@ -957,12 +968,39 @@ async def _run_foreground(
             return
 
 
+async def _read_selection_during_acquisition(
+    coordinator: RefreshCoordinator, state: _CheckoutPulls, number: int, key: str
+) -> bool:
+    """Use one ordinary provider slot for selected metadata that needs no Git store."""
+
+    if not state.turn.acquiring or key in _COMPARISON_WANTED:
+        return False
+    companion = state.pulls.held(number)
+    if companion is None or companion.unattached_selection() is None:
+        return False
+    async with coordinator.slot():
+        publication = companion.unattached_selection()
+        if publication is None or key in _COMPARISON_WANTED:
+            return False
+        with state.turn.read_during_acquisition() as admitted:
+            if not admitted:
+                return False
+            await companion.refresh(coordinator.asks(key), unattached=publication)
+    return key not in _COMPARISON_WANTED and not companion.recovery_pending
+
+
 async def _pull_job(
     coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
 ) -> None:
     state = _checkout_state(repository)
     eager = state.eager if state.eager is not None and state.eager.number == number else None
     try:
+        if (
+            eager is None
+            and key not in state.background
+            and await _read_selection_during_acquisition(coordinator, state, number, key)
+        ):
+            return
         # An idle job starts only when no reader's job runs, so it has the turn at once or
         # once a background holder unwinds, and it holds no network slot. Waiting at the
         # store keeps none either. Promotion moves an idle job's place in the store queue

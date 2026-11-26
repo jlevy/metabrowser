@@ -62,7 +62,7 @@ import contextlib
 import logging
 import re
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
 from collections.abc import Set as AbstractSet
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -830,6 +830,7 @@ class _TurnWaiter:
     turn: asyncio.Future[None]
     background: Callable[[], bool] = _never
     preempt: Callable[[], object] | None = None
+    acquisition: bool = False
 
 
 class StoreTurn:
@@ -862,6 +863,30 @@ class StoreTurn:
         self._taken = False
         self._holder: _TurnWaiter | None = None
         self._first_in_a_row = 0
+        self._reading_acquisition_metadata = False
+
+    @property
+    def acquiring(self) -> bool:
+        """Whether the current holder is making the checkout's first Git store."""
+        return self._holder is not None and self._holder.acquisition
+
+    @contextlib.contextmanager
+    def read_during_acquisition(self) -> Generator[bool]:
+        """Lend the acquisition's turn to one selected read that uses no Git store.
+
+        If Git finishes first, the next turn waits for this read. That keeps provider
+        reads serialized and prevents a store attachment from invalidating its preview.
+        """
+        if not self.acquiring or self._reading_acquisition_metadata:
+            yield False
+            return
+        self._reading_acquisition_metadata = True
+        try:
+            yield True
+        finally:
+            self._reading_acquisition_metadata = False
+            if not self._taken:
+                self._give()
 
     @asynccontextmanager
     async def __call__(
@@ -870,11 +895,12 @@ class StoreTurn:
         *,
         background: Callable[[], bool] = _never,
         preempt: Callable[[], object] | None = None,
+        acquisition: bool = False,
     ) -> AsyncGenerator[None]:
         """Hold the turn for the block, once it comes."""
 
         waiter = _TurnWaiter(
-            goes_first, asyncio.get_running_loop().create_future(), background, preempt
+            goes_first, asyncio.get_running_loop().create_future(), background, preempt, acquisition
         )
         self._waiting.append(waiter)
         if not self._taken:
@@ -917,6 +943,8 @@ class StoreTurn:
         self._give()
 
     def _give(self) -> None:
+        if self._reading_acquisition_metadata:
+            return
         # One that was cancelled and has not run yet is still listed.
         waiting = [waiter for waiter in self._waiting if not waiter.turn.done()]
         foreground = [waiter for waiter in waiting if not waiter.background()]

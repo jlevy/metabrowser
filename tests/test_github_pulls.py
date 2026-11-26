@@ -4121,6 +4121,31 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
     asyncio.run(run())
 
 
+def test_selected_core_is_revoked_when_the_source_observes_another_reader(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        repository = ServedPulls(stand.published)
+        held = await repository.companion(7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        try:
+            await held.wait_for_core()
+            preview = held.core_preview
+            assert preview is not None
+            waiter = asyncio.create_task(held.wait_for_full(preview))
+            await asyncio.sleep(0)
+            repository.observe_reader(stand.published, "gh:another-reader")
+            assert await asyncio.wait_for(waiter, timeout=2)
+            assert held.core_preview is None and not job.done()
+        finally:
+            gate.release.set()
+            await asyncio.wait_for(job, timeout=5)
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("end_wait", ["cancel", "rebind"])
 def test_selected_full_wait_does_not_own_the_refresh(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch, end_wait: str

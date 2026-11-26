@@ -1151,6 +1151,12 @@ A subdirectory resolves to its enclosing checkout.
 Reading creates nothing, and a job’s first write publishes an `unattached` source with
 no store.
 
+- **Conversation can read during cold acquisition.** A selected, missing pull can read
+  its viewer-checked metadata while the checkout’s origin store is being made.
+  It uses one ordinary provider slot and a publication with no Git store.
+  Only one metadata read shares that turn.
+  If Git finishes first, the next turn waits for the read to finish, so a new attachment
+  cannot revoke the provisional description.
 - **Comparisons need a store.** Without one, the envelope withholds a record’s
   comparison as `no_store`. Opening **Changes** sends
   `"retry": true, "comparison": true`, which asks core for the checkout’s store

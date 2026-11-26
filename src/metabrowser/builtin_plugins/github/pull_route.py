@@ -825,7 +825,7 @@ def core_preview_current(view: PullView, preview: PullCorePreview | None) -> boo
     if kept is None or not view.host.running(view.number):
         return False
     if kept.core_preview is not None:
-        return kept.core_preview is preview
+        return kept.core_preview is preview and view.host.pulls.observed_reader == preview["reader"]
     adopted = kept.display_core
     return adopted is not None and adopted[0] is preview and adopted[1] is view.core_admission
 
