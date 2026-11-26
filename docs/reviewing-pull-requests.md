@@ -97,8 +97,11 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
-A member’s row shows its place after its title and before its number, such as **Fix the
-reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
+The row shows how many pull requests the stack has and how long ago one of them last
+changed, such as **Stack #286 · 4 pulls** and **2h**. Under it, **Whole stack** shows
+the lines the whole stack changes, and its chevron hides or shows the stack’s pull
+requests. A member’s row shows its place after its title and before its number, such as
+**Fix the reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 

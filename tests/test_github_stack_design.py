@@ -89,7 +89,7 @@ def test_every_stack_word_comes_from_pull_stacks() -> None:
     assert "export function stackPositionHint(" in stacks
     assert "export function stackMenuOrder(" in stacks
     assert "export function stackEntries(" in stacks
-    assert "const entries = stackEntries(members);" in stacks, "groupByStack lists by it"
+    assert "of stackEntries(members).entries()" in stacks, "groupByStack lists by it"
     for path in sorted(GITHUB.glob("*.js")):
         if path.name == "pull-stacks.js":
             continue

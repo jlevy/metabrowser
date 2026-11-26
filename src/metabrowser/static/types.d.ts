@@ -161,10 +161,14 @@ type MetabrowserPullsPanelHandle = Readonly<{
   toggleFiles(number: number): boolean;
   /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
   toggleStack(number: number): boolean;
+  /** Space on a stack's Whole stack row shows or hides the stack's pull requests under it. */
+  toggleWhole(number: number): boolean;
   /**
    * Right and Left on a pull request's row: its changed files open, or close, and Left from
-   * a closed one goes to the stack's row it is under. On a stack's row: it opens, or Right
-   * goes to its first row, Whole stack, and Left closes it.
+   * a closed one goes to the Whole stack row it is under. On a stack's row: it opens, or
+   * Right goes to its one row, Whole stack, and Left closes it. On a Whole stack row: Right
+   * shows the stack's pull requests, or goes to the first, and Left hides them, or goes to
+   * the stack's row.
    */
   expand(): boolean;
   collapse(): boolean;

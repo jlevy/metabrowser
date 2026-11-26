@@ -2,9 +2,9 @@
 //
 // builtin_plugins/github/pulls-panel.js's controller decides the rows the list draws and the
 // keys walk, and builtin_plugins/github/pull-stacks.js how they group: each stack with a pull
-// request in the list has a "Stack #N" row, open by default, with its pull requests under it
-// in the stack menu's order, top of the stack first; pull requests in no stack follow, in the
-// list's order; one in two stacks sits once, under the first; and with no stacks known for
+// request in the list has a "Stack #N" row, open by default, whose one row is its Whole stack
+// row, with the stack's pull requests under that, shown by default, in the stack menu's
+// order, top of the stack first; pull requests in no stack follow, in the list's order; one in two stacks sits once, under the first; and with no stacks known for
 // the list's reader the list stays flat. The tab always groups; there is no option. Its answers
 // are the server's: the lists in tests/fixtures/github-pulls-panel-responses.json and the
 // stack snapshots in tests/fixtures/github-stacks-responses.json, which
@@ -46,8 +46,9 @@ async function settle() {
 
 /**
  * Mount the production panel over a stand-in for the DOM, on the recorded All list and
- * stack snapshot, and drive what its handle and its list do with a stack's row: Space's
- * toggle, Right and Left (a member's files open, then closed), and a press. Each step
+ * stack snapshot, and drive what its handle and its list do with a stack's row and its
+ * Whole stack row: Space's toggles, Right and Left (a member's files open, then closed, and
+ * the tree's levels), and a press on a row or on a chevron. Each step
  * prints the tree's drawn rows with their roles and places, and the mounted list each
  * member's muted line as drawn: its place in its stacks, its number, and its author.
  */
@@ -265,7 +266,31 @@ async function mountStory() {
         ...(opened.length > 0 ? { opened: opened.splice(0) } : {}),
       });
     };
-    await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
+    await step(
+      "mounted: Stack #286 open, its Whole stack row a level in and its pull requests two",
+      () => undefined,
+    );
+    // The heading as first drawn, before any read of the stack's change answers: its label,
+    // the stack's size as a count summary, and its age, all there at once, and its
+    // accessible name, which says the count the heading shows.
+    const headingOf = (row) => {
+      const heading = row.childNodes.find((node) =>
+        node.classList?.contains("github-pulls-stack-heading"),
+      );
+      const age = row.childNodes.find((node) => node.classList?.contains("github-pulls-age"));
+      return {
+        text: heading.childNodes.map((node) => node.textContent).join(" "),
+        age: age.textContent,
+        name: row.getAttribute("aria-label"),
+      };
+    };
+    const headingDrawn = headingOf(stackRow());
+    const shownCount = /· (\d+) pulls?$/.exec(headingDrawn.text)?.[1];
+    assert.ok(
+      shownCount !== undefined &&
+        headingDrawn.name.startsWith(`Stack #286, ${shownCount} pull request`),
+      "the heading's accessible name says the count it shows",
+    );
     // Each member's run as drawn (pulls-panel.js, `paintPlace` and `buildRow`): the state
     // icon, then the title, then the stack menu's muted dot and its place in bold, " · 3/3",
     // where another stack's glyph is written ⧉, then the dot and the number, and no stack icon
@@ -301,7 +326,7 @@ async function mountStory() {
       return { heading, place, text };
     };
     const memberLines = drawnRows()
-      .filter((row) => row.getAttribute("aria-level") === "2" && !isWhole(row))
+      .filter((row) => row.getAttribute("aria-level") === "3" && !isWhole(row))
       .map((row) => {
         assert.equal(
           find(row, "github-pull-stack-icon"),
@@ -334,16 +359,22 @@ async function mountStory() {
     );
     await step("and again opens it", () => handle.toggleStack(286));
     await step(
-      "Right on the stack's row goes to its first row, Whole stack, which opens the stack's page",
+      "Right on the stack's row goes to its one row, Whole stack, which opens the stack's page",
       () => handle.expand(),
     );
-    await step("J goes to its first pull request, which opens", () => handle.move(1));
+    await step("Right on the Whole stack row goes to its first pull request, which opens", () =>
+      handle.expand(),
+    );
     await step("Right on that pull request opens its files, as on a folder's", () =>
       handle.expand(),
     );
     const filesOpen = pullRow(8).getAttribute("aria-expanded");
     await step("Left first closes its files, keeping the pull request", () => handle.collapse());
     const filesClosed = pullRow(8).getAttribute("aria-expanded");
+    await step("Left again goes to its Whole stack row", () => handle.collapse());
+    await step("Left on the Whole stack row hides the stack's pull requests", () =>
+      handle.collapse(),
+    );
     await step("Left again goes to the stack's row", () => handle.collapse());
     await step("Left on the stack's row closes it", () => handle.collapse());
     // A press on the stack's label, in its heading, as a click lands: the row takes the
@@ -354,18 +385,22 @@ async function mountStory() {
     const label = heading.childNodes.find((node) =>
       node.classList?.contains("github-pull-stack-label"),
     );
-    await step("a press on the stack's row opens it", () =>
+    await step("a press on the stack's row opens it, its pull requests hidden as they were", () =>
       list.listeners.get("click")({ target: label, button: 0, preventDefault() {} }),
     );
     // Home (docs/design-system.md, "Home"): the list as a fresh load draws it. The reader
     // opens #8's files, walks down the stack, and closes it; Home opens it, closes #8's
     // files, and gives the Tab stop back to the stack's row. The address it opens names no
     // pull request, which the host tells the list next.
-    await step("Right, J, Right: the Whole stack row, then #8, then #8's files", () => {
-      handle.expand();
-      handle.move(1);
-      return handle.expand();
-    });
+    await step(
+      "Right, Right, J, Right: the Whole stack row, its pull requests shown, then #8, then #8's files",
+      () => {
+        handle.expand();
+        handle.expand();
+        handle.move(1);
+        return handle.expand();
+      },
+    );
     await step(
       "K back to the Whole stack row, J down the stack, then Space on its row closes it",
       () => {
@@ -389,21 +424,41 @@ async function mountStory() {
     );
     assert.equal(pullRow(8).getAttribute("aria-expanded"), "false", "#8's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
-    // The stack's Whole stack row, the first of its set: a press opens the stack's page, as a
-    // pull request's row opens its own, and while that page is open the row is the current
-    // row, until an address that names a pull request takes the mark back.
+    // The stack's Whole stack row, the stack's one row: Space, or a press on its chevron,
+    // hides and shows the stack's pull requests and opens no page; a press anywhere else on
+    // it opens the stack's page, as a pull request's row opens its own, and while that page
+    // is open the row is the current row, until an address that names a pull request takes
+    // the mark back.
     const wholeRow = () => drawnRows().find((row) => row.dataset.stack === "286" && isWhole(row));
-    const wholeTitle = wholeRow().childNodes.find((node) =>
-      node.classList?.contains("github-pulls-whole-title"),
+    const wholeTitle = find(wholeRow(), "github-pulls-whole-title");
+    const wholeName = wholeRow().getAttribute("aria-label");
+    await step(
+      "Space on the Whole stack row (the handle's toggleWhole) hides the stack's pull requests",
+      () => handle.toggleWhole(286),
     );
+    assert.equal(opened.length, 0, "Space on the Whole stack row opens no page");
+    let prevented = 0;
+    await step("a press on its chevron shows them, and opens no page", () =>
+      list.listeners.get("click")({
+        target: find(wholeRow(), "github-pulls-whole-toggle"),
+        button: 0,
+        preventDefault() {
+          prevented += 1;
+        },
+      }),
+    );
+    assert.equal(prevented, 1, "the press does not follow the row's link");
+    assert.equal(steps.at(-1).opened, undefined, "a press on the chevron opens no page");
     await step("a press on the Whole stack row opens the stack's page", () =>
       list.listeners.get("click")({ target: wholeTitle, button: 0, preventDefault() {} }),
     );
     await step("the stack's page is open: its Whole stack row is the current row", () =>
       handle.setCurrent(null, null, { stack: 286 }),
     );
-    await step("Left on it goes to the stack's row", () => handle.collapse());
-    await step("an address that names #8 takes the mark back", () => handle.setCurrent(8));
+    await step("Left on it hides the stack's pull requests", () => handle.collapse());
+    await step("an address that names #8 shows them again and takes the mark back", () =>
+      handle.setCurrent(8),
+    );
     assert.equal(wholeRow().getAttribute("aria-current"), null, "the mark has left the row");
     handle.dispose();
     return {
@@ -411,6 +466,8 @@ async function mountStory() {
       "a pull request in no stack": unstacked,
       files: { "Right on #8": filesOpen, "then Left": filesClosed },
       label: { text: label.textContent, classes: label.className },
+      heading: headingDrawn,
+      "Whole stack row": { name: wholeName },
       steps,
     };
   } finally {
@@ -551,14 +608,17 @@ async function mountStory() {
     const rest = [];
     for (const row of model.stacks.rows) {
       if (row.kind === "stack") {
+        // The heading as drawn: its label, the stack's size, and the time its age tells,
+        // then its place and its accessible name's words.
+        const pulls = stackModule.stackPullsCount(row.stack);
         lines.push(
-          `${row.expanded ? "▾" : "▸"} ${row.label} [${row.posinset}/${row.setsize}] · ${row.hint}`,
+          `${row.expanded ? "▾" : "▸"} ${row.label} · ${pulls} ${pulls === 1 ? "pull" : "pulls"} · updated ${row.updatedAt} [${row.posinset}/${row.setsize}] · ${row.hint}`,
         );
       } else if (row.kind === "whole") {
-        lines.push(`    Whole stack [${row.posinset}/${row.setsize}]`);
-      } else if (row.level === 2) {
+        lines.push(`    ${row.expanded ? "▾" : "▸"} Whole stack [${row.posinset}/${row.setsize}]`);
+      } else if (row.level === 3) {
         lines.push(
-          `    #${row.number} ${caption(row.number, row.stack)} [${row.posinset}/${row.setsize}]`,
+          `        #${row.number} ${caption(row.number, row.stack)} [${row.posinset}/${row.setsize}]`,
         );
       } else {
         rest.push(`#${row.number} [${row.posinset}/${row.setsize}]`);
@@ -575,13 +635,33 @@ async function mountStory() {
     }
     const listed = model.rows.map((row) => row.number);
     const placed = rows.filter((row) => row.kind === "pull").map((row) => row.number);
+    const wholeOf = (number) =>
+      rows.find((other) => other.kind === "whole" && other.stack === number);
     const hidden = rows.flatMap((row) =>
-      row.kind === "stack" && !row.expanded ? row.members : [],
+      row.kind === "stack" && (!row.expanded || !wholeOf(row.stack.number).expanded)
+        ? row.members
+        : [],
     );
-    // Every listed pull request is drawn once, or held by its closed stack's row.
+    // Every listed pull request is drawn once, or held by its closed stack's row, or by its
+    // stack's Whole stack row while the reader has its pull requests hidden.
     assert.deepEqual([...placed, ...hidden].sort(), [...listed].sort());
+    const updated = new Map(model.rows.map((row) => [row.number, row.updatedAt]));
     for (const row of rows) {
       if (row.kind === "stack") {
+        // The heading's age tells the newest update of the stack's pull requests the list
+        // holds: never older than any of them, and one of theirs.
+        const times = row.stack.pulls.flatMap((number) => updated.get(number) ?? []);
+        assert.equal(
+          row.updatedAt === null ? null : Date.parse(row.updatedAt),
+          times.length === 0 ? null : Math.max(...times.map((time) => Date.parse(time))),
+          "a stack's time is the newest of its listed pull requests'",
+        );
+        // Its accessible name says the count its heading shows.
+        const pulls = stackModule.stackPullsCount(row.stack);
+        assert.ok(
+          row.hint.startsWith(`${row.label}, ${pulls} pull request${pulls === 1 ? "" : "s"}`),
+          row.hint,
+        );
         // Members are the stack menu's order, of the pull requests the list has.
         const order = stackMenuOrder(row.stack).filter((number) => row.members.includes(number));
         assert.deepEqual(row.members, order);
@@ -596,33 +676,42 @@ async function mountStory() {
       rest.map((row) => row.number),
       listed.filter((number) => rest.some((row) => row.number === number)),
     );
-    // The rows under each open stack are its pull requests and its one Whole stack row, a
-    // level in, each placed in the stack's set where it is drawn; a closed one has none.
+    // The one row under each open stack is its Whole stack row, a level in, a set of one;
+    // the stack's pull requests are that row's, a level further in, each placed in their
+    // own set where it is drawn, or none while the reader has them hidden. A closed stack
+    // has no row under it.
     for (const [at, row] of rows.entries()) {
       if (row.kind !== "stack") {
         continue;
       }
-      const whole = rows.findIndex(
-        (other) => other.kind === "whole" && other.stack === row.stack.number,
-      );
+      const whole = rows[at + 1];
       if (!row.expanded) {
-        assert.equal(whole, -1, "a closed stack has no Whole stack row");
+        assert.equal(wholeOf(row.stack.number), undefined, "a closed stack has no Whole stack row");
+        assert.ok(whole === undefined || whole.level === 1, "nor any row under it");
         continue;
       }
-      const under = rows.slice(at + 1, at + row.members.length + 2);
       assert.deepEqual(
-        under.flatMap((each) => (each.kind === "pull" ? [each.number] : [])),
-        row.members,
+        [whole.kind, whole.key, whole.level, whole.posinset, whole.setsize],
+        ["whole", wholeStackRowKey(row.stack.number), 2, 1, 1],
+        "an open stack's one row is its Whole stack row",
       );
+      const under = [];
+      for (let next = at + 2; rows[next]?.level === 3; next += 1) {
+        under.push(rows[next]);
+      }
       assert.deepEqual(
-        under.flatMap((each) => (each.kind === "whole" ? [each.key] : [])),
-        [wholeStackRowKey(row.stack.number)],
-        "an open stack has one Whole stack row, among its own rows",
+        under.map((each) => [each.kind, each.number, each.stack]),
+        (whole.expanded ? row.members : []).map((number) => ["pull", number, row.stack.number]),
+        "the stack's pull requests are under its Whole stack row, unless hidden",
       );
       for (const [place, each] of under.entries()) {
-        assert.deepEqual([each.level, each.posinset, each.setsize], [2, place + 1, under.length]);
+        assert.deepEqual([each.posinset, each.setsize], [place + 1, row.members.length]);
       }
     }
+    assert.ok(
+      rows.every((row) => row.level !== 3 || row.stack !== null),
+      "only a stack's pull requests are at the third level",
+    );
     const firstRest = rows.findIndex((row) => row.kind === "pull" && row.level === 1);
     assert.ok(firstRest < 0 || rows.slice(firstRest).every((row) => row.kind !== "stack"));
     return true;
@@ -673,83 +762,152 @@ async function mountStory() {
     current,
     { "read ahead after the last open": ahead?.records ?? null },
   );
+  // The tree's keys (docs/design-system.md, "Stack Groups in the Pulls Tab"): the stack's
+  // row is the Whole stack row's parent, and the Whole stack row its pull requests'. Left
+  // goes up a level, or closes what is open; Right opens, or goes down a level.
+  const folds = () => ({
+    closed: story.controller.snapshot().closedStacks,
+    "pull requests hidden": story.controller.snapshot().closedWholes,
+  });
   await story.key("Left");
-  record("Left on a pull request in a stack goes to the stack's row", story, current);
+  record(
+    "Left on a pull request in a stack goes to its Whole stack row, and opens nothing",
+    story,
+    current,
+    { tabStop: rowName(story.anchor()) },
+  );
   await story.key("Left");
-  record("Left on the stack's row closes it", story, current);
+  record("Left on the Whole stack row hides the stack's pull requests", story, current, {
+    ...folds(),
+    tabStop: rowName(story.anchor()),
+  });
+  await story.key("J");
+  await story.key("K");
+  record(
+    "J from a Whole stack row whose pull requests are hidden goes past them, and K comes back to it",
+    story,
+    current,
+  );
+  await story.key("Left");
+  record("Left again goes to the stack's row", story, current, {
+    tabStop: rowName(story.anchor()),
+  });
+  await story.key("Left");
+  record("Left on the stack's row closes it", story, current, folds());
   await story.key("J");
   await story.key("K");
   record("J from a closed stack goes past it, and K comes back to it", story, current);
   await story.key("Right");
-  record("Right opens it", story, current);
+  record("Right opens it, its pull requests hidden as the reader left them", story, current, {
+    ...folds(),
+  });
   await story.key("Right");
   record(
-    "Right again goes to its first row, Whole stack, which opens the stack's page",
+    "Right again goes to its one row, Whole stack, which opens the stack's page",
     story,
     current,
+    { tabStop: rowName(story.anchor()) },
   );
-  await story.key("K");
-  await story.key("Enter");
-  record("Enter on the stack's row closes it", story, current, {
-    closed: story.controller.snapshot().closedStacks,
+  await story.key("Right");
+  record("Right on the Whole stack row shows the stack's pull requests", story, current, {
+    ...folds(),
+    tabStop: rowName(story.anchor()),
   });
+  await story.key("Right");
+  record("Right again goes to the first of them, which opens", story, current, {
+    tabStop: rowName(story.anchor()),
+  });
+  for (const name of ["Left", "Left", "Left", "Enter"]) {
+    await story.key(name);
+  }
+  record(
+    "Left, Left, Left, then Enter on the stack's row: its pull requests hidden, and the stack closed",
+    story,
+    current,
+    folds(),
+  );
   story.controller.setCurrent(7);
-  record("an address that names #7 opens the stack that holds it", story, current, {
-    closed: story.controller.snapshot().closedStacks,
-    tabStop: story.anchor(),
-  });
+  record(
+    "an address that names #7 opens both levels over it: the stack, and its pull requests",
+    story,
+    current,
+    { ...folds(), tabStop: story.anchor() },
+  );
+  assert.deepEqual(folds(), { closed: [], "pull requests hidden": [] });
+  assert.ok(story.model().stacks.rows.some((row) => row.kind === "pull" && row.number === 7));
   // The stack's own page (`/stack/<n>`): its Whole stack row is the current row, and an
   // address that names the page opens a stack the reader closed, as one naming a member does.
-  await story.key("Left");
-  await story.key("Left");
+  // It names none of the stack's pull requests, so they stay hidden if the reader hid them.
+  for (const name of ["Left", "Left", "Left", "Left"]) {
+    await story.key(name);
+  }
   story.controller.setCurrent(null, { stack: 286 });
   record(
-    "the reader closes the stack; an address that names its page opens it and marks its Whole stack row",
+    "the reader hides the pull requests and closes the stack; an address that names its page opens it and marks its Whole stack row, its pull requests still hidden",
     story,
     current,
     {
-      closed: story.controller.snapshot().closedStacks,
+      ...folds(),
       current: rowName(story.marked()),
       tabStop: rowName(story.anchor()),
     },
   );
   await story.key("Left");
-  record("Left on the Whole stack row goes to its stack's row", story, current, {
-    tabStop: rowName(story.anchor()),
-  });
+  record(
+    "Left on the Whole stack row, its pull requests hidden, goes to its stack's row",
+    story,
+    current,
+    { tabStop: rowName(story.anchor()) },
+  );
   story.controller.focused(wholeStackRowKey(286));
   await story.key("Right");
   await story.key("Enter");
   record(
-    "Right on the Whole stack row does nothing; Enter opens the stack's page",
+    "Right on the Whole stack row shows its pull requests; Enter opens the stack's page",
     story,
     current,
-    { current: rowName(story.marked()) },
+    { ...folds(), current: rowName(story.marked()) },
   );
   story.controller.setCurrent(7);
   record("an address that names #7 again takes the mark back", story, current, {
     current: rowName(story.marked()),
   });
+  // The current pull request's row, hidden under its Whole stack row, is held by that row:
+  // the Tab stop is the Whole stack row's, and the mark comes back with the row.
+  await story.key("Left");
+  await story.key("Left");
+  record(
+    "the reader hides the pull requests over the current one: the Whole stack row holds the Tab stop",
+    story,
+    current,
+    { ...folds(), tabStop: rowName(story.anchor()) },
+  );
   // Home (docs/design-system.md, "Home"): the rows as a fresh load draws them, from the rows
-  // held. The reader closes the stack and walks past it; Home opens it again and gives the
-  // Tab stop back to the first row, and the address it opens, /view/, names no pull request.
+  // held. The reader closes the stack and walks past it; Home opens it again, shows its pull
+  // requests, and gives the Tab stop back to the first row, and the address it opens,
+  // /view/, names no pull request.
   await story.key("Left");
   await story.key("Left");
   await story.key("J");
   record("the reader closes the stack and walks past it", story, current, {
-    closed: story.controller.snapshot().closedStacks,
+    ...folds(),
     tabStop: story.anchor(),
   });
   const homeReads = story.log.requests;
   story.controller.home();
   story.controller.setCurrent(null);
   await settle();
-  record("Home: every stack open, and the Tab stop on the first row", story, current, {
-    closed: story.controller.snapshot().closedStacks,
-    tabStop: story.anchor(),
-    requests: story.log.requests - homeReads,
-  });
-  assert.deepEqual(story.controller.snapshot().closedStacks, [], "Home opens every stack");
+  record(
+    "Home: every stack open, its pull requests shown, and the Tab stop on the first row",
+    story,
+    current,
+    {
+      ...folds(),
+      tabStop: story.anchor(),
+      requests: story.log.requests - homeReads,
+    },
+  );
+  assert.deepEqual(folds(), { closed: [], "pull requests hidden": [] }, "Home opens every stack");
   assert.equal(story.anchor(), story.model().stacks.rows[0].key, "the Tab stop is the first row's");
 
   // ── A filter, shared membership, a snapshot kept through a failed refresh, and none.

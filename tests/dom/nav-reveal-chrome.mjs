@@ -438,7 +438,7 @@ try {
     JSON.stringify(flat),
   );
   await release();
-  await waitFor(`${level} === "2"`, "#7 is grouped under its stack");
+  await waitFor(`${level} === "3"`, "#7 is grouped under its stack");
   await frames();
   phase("a pull request's address, stacks after the first window");
   const grouped = await evaluate(PANE(pullRow(7)));
