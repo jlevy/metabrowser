@@ -75,6 +75,7 @@ SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome
 DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-documents-chrome.mjs"
 KINDS = Path(__file__).resolve().parent / "dom" / "github-guided-review-kinds-chrome.mjs"
 OUTLINE = Path(__file__).resolve().parent / "dom" / "github-guided-review-outline-chrome.mjs"
+MOTION = Path(__file__).resolve().parent / "dom" / "github-guided-review-motion-chrome.mjs"
 # The stack page's native stacks, and 300, which holds 9 and then 50, so a pull request the
 # kinds guide cites has a place in a stack other than 7's, which its row names.
 KINDS_STACKS = (*STACKS, (300, (9, 50)))
@@ -103,11 +104,12 @@ def _session(
     describe: Sequence[tuple[str, str]] = (("8", "grouped"),),
     stacks: Sequence[tuple[int, Sequence[int]]] = (),
     checkout: bool = False,
+    arguments: Sequence[str] = (),
 ) -> str:
     """Build the stand-in in fixture *mode*, write each guide *describe* names into its pull
     request's description, give it the native *stacks*, serve pull request 7, from a
     reader's clone of the repository with *checkout*, and run *session* on it, told
-    `checkout` then too."""
+    `checkout` then too, and *arguments*."""
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -157,7 +159,13 @@ def _session(
     try:
         _wait_until_serving(server, port, log)
         run = run_in_own_group(
-            [node, str(session), f"http://127.0.0.1:{port}", *(["checkout"] if checkout else [])],
+            [
+                node,
+                str(session),
+                f"http://127.0.0.1:{port}",
+                *(["checkout"] if checkout else []),
+                *arguments,
+            ],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
         )
@@ -218,4 +226,20 @@ def test_guided_review_outline_in_chrome(tmp_path: Path, chrome_profile: Path) -
         describe=(("8", "mixed"), ("9", "ten-steps")),
     )
     passed = re.fullmatch(r"guided review outline in Chrome: (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_guided_review_holds_still_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided-documents", MOTION, arguments=("pull",))
+    passed = re.fullmatch(r"guided review motion in Chrome \(pull\): (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_a_stack_guide_holds_still_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(
+        tmp_path, chrome_profile, "--guided-stack", MOTION, stacks=STACKS, arguments=("stack",)
+    )
+    passed = re.fullmatch(
+        r"guided review motion in Chrome \(stack\): (\d+) checks passed\n", stdout
+    )
     assert passed is not None and int(passed.group(1)) > 0, stdout
