@@ -78,10 +78,11 @@
     // A press ends at its click, at the next press, and at any key, and one that brings no
     // click ends too, or focus arriving outside later would find the menu still held
     // (mb-yn7w): at once where the browser takes it for a scroll (`pointercancel`) or a
-    // context menu, and a task after a mouse's button comes up, since a mouse's click
-    // follows its `pointerup` in the same task, so none has come by then. A press on a
-    // disabled row is that one. A touch's focus and click follow the lift, so its
-    // `pointerup` ends nothing; the click, or the next press or key, does.
+    // context menu, and a task after a mouse's or a pen's button comes up, since their
+    // click follows its `pointerup` in the same task, so none has come by then. A press on
+    // a disabled row is that one. A touch's focus and click follow the lift, so its
+    // `pointerup` ends nothing: a touch that brings no click, no `pointercancel` and no
+    // `contextmenu`, as a long press in iOS Safari, is over at the next press or key.
     /** @param {Event} event */
     const pressOver = (event) => {
       const press = pressedIn;
@@ -92,7 +93,7 @@
       };
       if (event.type !== "pointerup") {
         end();
-      } else if (/** @type {PointerEvent} */ (event).pointerType === "mouse") {
+      } else if (/** @type {PointerEvent} */ (event).pointerType !== "touch") {
         view?.setTimeout(end, 0);
       }
     };

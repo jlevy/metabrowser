@@ -5,3 +5,5 @@
   press already aimed.
   Such a file now shows its bar and its progress mark until its rendered view comes, and
   the files after it show only then, in the places they keep.
+  A file whose rendered view is still not there a short while after the diff opened
+  shows Source and keeps it, with Rendered to choose.

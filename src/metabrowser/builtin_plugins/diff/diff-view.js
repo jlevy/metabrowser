@@ -5524,6 +5524,12 @@ export function mountDiffView(container, document_, api, options = {}) {
         controls: api.filterControls,
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
+        // A file drawn alone has nothing after it in its diff to keep out of sight, so a
+        // rendering that came later would move its host's page: its wait ends with its
+        // host's hold, and it shows Source and keeps it.
+        ...(options.embedded === true && options.markdownHoldMs !== undefined
+          ? { waitMs: options.markdownHoldMs }
+          : {}),
         opens: options.unfold === true ? "prefer-full" : "concise",
         show: view.show,
         async ensureInert() {

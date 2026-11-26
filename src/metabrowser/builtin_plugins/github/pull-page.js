@@ -8851,8 +8851,8 @@ export function mountPullPage(container, ctx, mb) {
                 return diff.mountRenderedFile(body, comparison, path, {
                   ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
                   // Its rendered layer waits for Rendered with Source hidden for as long as
-                  // the rendered route can take, so the step never shows Source first in
-                  // its place (`GUIDE_DOCUMENT_HOLD_MS`).
+                  // the rendered route can take (`GUIDE_DOCUMENT_HOLD_MS`); a document not
+                  // drawn by then shows Source and keeps it, so the step never moves.
                   markdownHoldMs: GUIDE_DOCUMENT_HOLD_MS,
                 });
               },

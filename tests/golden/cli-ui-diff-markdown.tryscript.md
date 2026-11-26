@@ -23,9 +23,13 @@ hidden, so its rendering is the first thing its body shows and never replaces So
 view. It waits past the app’s loading delay, 50 ms, too: Source shown then was replaced
 when the answer came, which moved every file below it.
 A waiting file’s section says so, and everything after it in the diff is out of sight
-meanwhile.
-A file is asked for when it comes within a viewport of the screen, one request
-at a time, and its progress mark counts down to visible only while its request waits.
+meanwhile. The wait has a ceiling from mount (`RENDERED_WAIT_MS`), which the second
+block’s last steps walk with one first-screen file at a time: a busy server is asked
+again and again until the ceiling and no more after it, and a slow server’s answer comes
+after it. At the ceiling the file shows Source and keeps Rendered to choose; the late
+answer replaces nothing, and choosing Rendered shows it without asking again.
+A file is asked for when it comes within a viewport of the screen, one request at a
+time, and its progress mark counts down to visible only while its request waits.
 A busy server is transient: the file keeps its view and asks again after 100 ms,
 doubling to 1.6 s. A file the server refuses shows Source and keeps its chooser.
 Rendered is unavailable and gives the reason in its tooltip and accessible name.
@@ -965,6 +969,90 @@ $ node tests/dom/diff-markdown-session.js long
     },
     {
       "step": "after disposal",
+      "bound": 0,
+      "timers": 0
+    },
+    {
+      "step": "a busy server, asked again and again to just short of the wait's ceiling: it waits",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing"
+        }
+      }
+    },
+    {
+      "step": "at the ceiling it shows Source and keeps Rendered to choose",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "Rendered | *Source",
+          "shows": "source"
+        }
+      }
+    },
+    {
+      "step": "and is asked for no more by itself",
+      "requests": [],
+      "files": {}
+    },
+    {
+      "step": "a slow server, to just short of the ceiling: the file waits",
+      "requests": [
+        "f1 view=concise"
+      ],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing",
+          "progress": "counting"
+        }
+      }
+    },
+    {
+      "step": "at the ceiling it shows Source",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "Rendered | *Source",
+          "shows": "source"
+        }
+      }
+    },
+    {
+      "step": "its answer comes late and replaces nothing",
+      "requests": [],
+      "files": {}
+    },
+    {
+      "step": "choosing Rendered shows the answer that was kept, asking for nothing",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "[Frontmatter, open]",
+            "  removed: owner = docs",
+            "  added: owner = platform",
+            "  context: title = Guide",
+            "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+            "removed: <p>Read the <span>setup notes</span> first.</p>",
+            "added: <p>Read the <a>first setup notes</a> first.</p>",
+            "context: <p>Unchanged paragraph 0.</p>",
+            "context: <p>Unchanged paragraph 1.</p>",
+            "[5 unchanged blocks]",
+            "context: <p>Unchanged paragraph 7.</p>",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "removed: <p>The <del>old</del> closing line.</p>",
+            "added: <p>The <ins>new</ins> closing line.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "after their disposal",
       "bound": 0,
       "timers": 0
     }

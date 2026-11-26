@@ -398,6 +398,10 @@ Changed words are marked by a bounded word diff.
   height only its answer knows, so whatever followed it would move when the answer came.
   A page that keeps the diff out of sight for its first screen shows it at a bound
   (`holdMs`), with any file still waiting drawn so.
+  The wait ends at a ceiling from mount, `RENDERED_WAIT_MS`, or the host’s hold for a
+  file drawn alone (`waitMs`): a file still waiting shows Source and keeps it, its
+  request goes on and its answer is kept for the reader’s choice of Rendered, and it is
+  asked for no more by itself, which bounds a busy server’s retries.
   Conversation prefetches the projections of the first screen’s files.
   The diff draws a file’s Source rows only while they show (`onSource`), so Source
   hidden behind the rendered view is never drawn.

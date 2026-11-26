@@ -332,6 +332,13 @@ function menuSession() {
   step("its press on an item that brings no click leaves P open");
   outside.focus();
   step("and focus arriving outside afterwards closes P");
+  // A pen's click follows its lift in the same task, as a mouse's does.
+  webkitPress(p.trigger);
+  closes.splice(0);
+  webkitPress(p.first, { click: false, pointerType: "pen" });
+  laterTask();
+  outside.focus();
+  step("a pen's press that brings no click: focus arriving outside afterwards closes P");
   // A touch's focus and click follow the lift, a task later, so its lift ends nothing;
   // its click does, and a key.
   webkitPress(p.trigger);
@@ -688,7 +695,7 @@ async function main() {
   const over = told.menu.filter((each) => /outside,? (afterwards )?closes P$/.test(each.step));
   assert.deepEqual(
     over.map((each) => each.closed),
-    Array(4).fill(["P: away"]),
+    Array(5).fill(["P: away"]),
   );
   process.stdout.write(`${JSON.stringify(told, null, 2)}\n`);
 }

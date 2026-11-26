@@ -1255,7 +1255,8 @@ closing?.dispose(); // from dispose(), when the menu goes for good
   selecting a field’s text, does not, wherever it lets go.
 - Focus that a press inside the menu moves does not close it, until that press is over:
   at its click, the next press, or a key, and, for a press that brings no click, a task
-  after the mouse’s button comes up, or at once on `pointercancel` or `contextmenu`.
+  after a mouse’s or a pen’s button comes up, or at once on `pointercancel` or
+  `contextmenu`. A touch that brings none of those ends at the next press or key.
 
 ### Folder Overview Contributions
 

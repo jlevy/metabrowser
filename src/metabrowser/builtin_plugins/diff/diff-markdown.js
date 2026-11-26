@@ -84,11 +84,25 @@ const MORE_TRIES = 5;
 // the reader has already scrolled past) is asked again after this, doubling to the cap.
 const RETRY_MS = 100;
 const RETRY_MAX_MS = 1600;
-// The app's --loading-state-delay: how long a page that asks for no other bound waits for
-// its first screen's files (`firstScreen`). A Markdown file near the first screen at mount
-// waits for its projection with Source hidden, however long that takes, so its rendered
-// view is the first thing its body shows and never replaces Source in view.
+// The app's --loading-state-delay: how long `firstScreen` waits for the first screen's
+// files, for a page that asks for no other bound (*holdMs*).
 const LOADING_DELAY_MS = 50;
+// How long, from mount, a file near the first screen waits for its rendered view with
+// Source hidden, so that view is the first thing its body shows and never replaces Source
+// in view. At this ceiling a file still waiting shows Source and keeps it, as one whose
+// request failed does: Rendered stays to choose, its request goes on and its answer is
+// kept for that choice, and it is asked for no more by itself, which also ends a busy
+// server's retries. Nothing replaces Source afterwards, so nothing moves. A page, or a
+// file drawn alone, can set its own (*waitMs*).
+// Measured 2026-11-26 in headless Chrome on a pull request's Changes at a load average
+// near 25, from the file's mount to its rendered view drawn: 10 to 97 ms (median 17,
+// n 12); the page's own hold measured 29 to 170 ms (CHANGES_FIRST_SCREEN_MS in
+// github/pull-page.js). This is ten times the longest of those, so a rendering that is
+// merely slow still lands as the first thing shown, and short enough that files which
+// need nothing from the server are not kept out of sight behind one that will not come:
+// a Markdown child started cold has taken 0.57 to 6.8 s (markdown_projection_worker.py),
+// and past this such a file shows Source.
+export const RENDERED_WAIT_MS = 2000;
 // A file's section while it waits so. styles.css keeps everything after it in the diff
 // out of sight meanwhile, so its body arriving moves nothing a reader sees. Shown at the
 // wait's bound with Source, as it was, a file's card grew from 75 to 118 px when its
@@ -1090,7 +1104,9 @@ export function kpressStylesheets(assets, base) {
  * *holdMs* is how long `firstScreen` waits for the first screen's files,
  * `LOADING_DELAY_MS` unless a page says otherwise. It settles once none of them waits,
  * each drawn, Rendered or Source, or when the wait is over; a file still waiting then
- * goes on waiting with Source hidden and nothing shown below it (`WAITING_CLASS`). *opens* is the view
+ * goes on waiting with Source hidden and nothing shown below it (`WAITING_CLASS`), until
+ * *waitMs* from mount, `RENDERED_WAIT_MS` unless the host says otherwise, when it shows
+ * Source and keeps it. *opens* is the view
  * a Markdown file opens in: `concise`, as Changes opens one, or `prefer-full`, Full for a
  * document small enough to draw whole and Concise otherwise, as Docs does; the server
  * decides which (`prefers_full` in diff/markdown_views.py). A page that keeps the
@@ -1108,6 +1124,7 @@ export function kpressStylesheets(assets, base) {
  *   cancel?: (handle: unknown) => void,
  *   opens?: "concise" | "prefer-full",
  *   holdMs?: number,
+ *   waitMs?: number,
  *   show?: "diff" | "current" | "full"
  * }} deps
  *   *show* is the comparison's initial presentation.
@@ -1159,6 +1176,9 @@ export function createMarkdownViews(deps) {
   let holdTimer;
   /** @type {unknown} */
   let retryTimer;
+  /** @type {unknown} */
+  let waitTimer;
+  let waitUntil = 0;
   /** @type {(() => void) | undefined} */
   let unprint;
   let firstScreenSettled = false;
@@ -1337,6 +1357,21 @@ export function createMarkdownViews(deps) {
   function release() {
     holdTimer = undefined;
     settleFirstScreen();
+    // The ceiling is counted from mount, and timed only while a file may still wait.
+    if (Array.from(files.values()).some((file) => file.holding && file.state === "idle")) {
+      waitTimer = later(endWaits, Math.max(0, waitUntil - now()));
+    }
+  }
+
+  // The ceiling on a file's wait (`RENDERED_WAIT_MS`): each file still waiting shows
+  // Source and keeps it, as one whose request failed does.
+  function endWaits() {
+    waitTimer = undefined;
+    for (const file of files.values()) {
+      if (file.section.classList.contains(WAITING_CLASS)) {
+        fallBack(file, null);
+      }
+    }
   }
 
   function pump() {
@@ -2251,6 +2286,7 @@ export function createMarkdownViews(deps) {
         return;
       }
       holdTimer = later(release, deps.holdMs ?? LOADING_DELAY_MS);
+      waitUntil = now() + (deps.waitMs ?? RENDERED_WAIT_MS);
       observer = new IntersectionObserver(
         (entries) => {
           if (disposed) {
@@ -2392,7 +2428,7 @@ export function createMarkdownViews(deps) {
       if (active !== null) {
         active.file.progress.classList.remove("mb-delayed-loading");
       }
-      for (const handle of [holdTimer, retryTimer]) {
+      for (const handle of [holdTimer, retryTimer, waitTimer]) {
         if (handle !== undefined) {
           cancel(handle);
         }

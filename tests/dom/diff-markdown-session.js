@@ -838,37 +838,40 @@ async function main() {
   // Each file's chooser is bound by itself, never the diff around them, whose toolbar holds
   // another control's dropdown (mb-yn7w).
   const bound = new Map();
-  const views = markdown.createMarkdownViews({
-    controls: {
-      groupHtml: (spec) => spec,
-      bind(container, handlers) {
-        assert(container.className === "diff-markdown-control", "a chooser is bound by itself");
-        bound.set(container, handlers.onChange);
-        return () => bound.delete(container);
+  const makeViews = () =>
+    markdown.createMarkdownViews({
+      controls: {
+        groupHtml: (spec) => spec,
+        bind(container, handlers) {
+          assert(container.className === "diff-markdown-control", "a chooser is bound by itself");
+          bound.set(container, handlers.onChange);
+          return () => bound.delete(container);
+        },
       },
-    },
-    load(fileId, signal, ask) {
-      const key = asked(fileId, ask);
-      requests.push(key);
-      return new Promise((resolve, reject) => {
-        const request = { fileId, key, resolve, reject };
-        waiting.push(request);
-        signal.addEventListener("abort", () => {
-          requests.push(`abort ${key}`);
-          reject(new DOMException("aborted", "AbortError"));
+      load(fileId, signal, ask) {
+        const key = asked(fileId, ask);
+        requests.push(key);
+        return new Promise((resolve, reject) => {
+          const request = { fileId, key, resolve, reject };
+          waiting.push(request);
+          signal.addEventListener("abort", () => {
+            requests.push(`abort ${key}`);
+            reject(new DOMException("aborted", "AbortError"));
+          });
         });
-      });
-    },
-    ensureInert: async () => inert,
-    loadStyles: async () => {},
-    mutate: (change) => change(),
-    isTarget,
-    now: clock.now,
-    later: clock.later,
-    cancel: clock.cancel,
-  });
+      },
+      ensureInert: async () => inert,
+      loadStyles: async () => {},
+      mutate: (change) => change(),
+      isTarget,
+      now: clock.now,
+      later: clock.later,
+      cancel: clock.cancel,
+    });
+  const views = makeViews();
 
-  const files = formatted.map((entry) => {
+  /** Add one changed file to *views*, its section in *root*, as diff-view.js adds one. */
+  const addTo = (views, root) => (entry) => {
     const section = element("section");
     const bar = element("div");
     const toggle = element("button");
@@ -912,7 +915,8 @@ async function main() {
       rendered,
       state,
     };
-  });
+  };
+  const files = formatted.map(addTo(views, root));
   const byId = Object.fromEntries(files.map((file) => [file.id, file]));
   const choose = async (file, value) => {
     bound.get(file.control)(file.source.id, value, "one");
@@ -1228,6 +1232,69 @@ async function main() {
   views.dispose();
   step("disposal unbinds every chooser and stops every timer", files);
   steps.push({ step: "after disposal", bound: bound.size, timers: clock.timers.size });
+
+  // The ceiling on a file's wait (`RENDERED_WAIT_MS`), each in a comparison of its own with
+  // one first-screen file: a server that is busy, asked again and again, and one that is
+  // slow, whose answer comes after the ceiling.
+  /** Mount *id* alone on the first screen; the views, the file, and when it was mounted. */
+  const mountAlone = async (id) => {
+    shown.clear();
+    const alone = makeViews();
+    const file = addTo(alone, element("div"))(formatted.find((entry) => entry.id === id));
+    const at = clock.time;
+    alone.observe(null);
+    observers.at(-2).notify([{ target: file.section, isIntersecting: true }]);
+    await settle();
+    return { alone, file, at };
+  };
+  const ceiling = markdown.RENDERED_WAIT_MS;
+  const busy = await mountAlone("f1");
+  let refusals = 0;
+  for (;;) {
+    while (waiting.some((request) => request.fileId === "f1")) {
+      answer("f1 view=concise", "busy");
+      refusals += 1;
+      await settle();
+    }
+    if (clock.time - busy.at >= ceiling - 100) {
+      break;
+    }
+    clock.advance(100);
+    await settle();
+  }
+  assert(refusals > 3, "the busy file was asked again and again");
+  requests = [];
+  step("a busy server, asked again and again to just short of the wait's ceiling: it waits", [
+    busy.file,
+  ]);
+  clock.advance(ceiling - (clock.time - busy.at));
+  await settle();
+  step("at the ceiling it shows Source and keeps Rendered to choose", [busy.file]);
+  clock.advance(10 * ceiling);
+  await settle();
+  step("and is asked for no more by itself", [busy.file]);
+  busy.alone.dispose();
+
+  const slow = await mountAlone("f1");
+  clock.advance(ceiling - 1);
+  await settle();
+  step("a slow server, to just short of the ceiling: the file waits", [slow.file]);
+  clock.advance(1);
+  await settle();
+  step("at the ceiling it shows Source", [slow.file]);
+  answer("f1 view=concise");
+  await settle();
+  step("its answer comes late and replaces nothing", [slow.file]);
+  // No file waits past the ceiling, and nothing replaces Source by itself afterwards.
+  assert(
+    [busy.file, slow.file].every((file) => !file.source.hidden && file.rendered.hidden),
+    "a file past the ceiling shows Source",
+  );
+  bound.get(slow.file.control)(slow.file.source.id, "rendered", "one");
+  await settle();
+  step("choosing Rendered shows the answer that was kept, asking for nothing", [slow.file]);
+  slow.alone.dispose();
+  steps.push({ step: "after their disposal", bound: bound.size, timers: clock.timers.size });
 
   finished = true;
   process.stdout.write(`${JSON.stringify(printed(PART, links, steps), null, 2)}\n`);

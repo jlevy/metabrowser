@@ -35,12 +35,13 @@ had it. Focus a press moves is that press’s own: `P` is in a pane a press can 
 every view’s menu is in the preview pane, and WebKit’s press on its item gives the pane
 focus and leaves `P` open, so its click reaches the item (`picked`), and its second
 press on the trigger closes it.
-A press that brings no click, as one on a disabled row, is over a task after the mouse’s
-button comes up, so focus that arrives outside afterwards, from a script or an assistive
-technology, closes the menu.
+A press that brings no click, as one on a disabled row, is over a task after a mouse’s
+or a pen’s button comes up, so focus that arrives outside afterwards, from a script or
+an assistive technology, closes the menu.
 A touch’s focus and click follow its lift a task later, so the lift ends nothing: a tap
 on `P`’s item leaves `P` open and reaches the item, and after a touch that brings no
 click, Tab closes the menu as focus leaves.
+A touch that brings none of those is over at the next press or key.
 A touch the browser takes for a scroll (`pointercancel`) and a secondary press that
 brings a context menu are over at once.
 `listening` is whether the document or the window holds a listener for open menus, which
@@ -257,6 +258,15 @@ $ node tests/dom/menu-dismissal-session.js
     },
     {
       "step": "and focus arriving outside afterwards closes P",
+      "open": [],
+      "closed": [
+        "P: away"
+      ],
+      "focus": "a button outside",
+      "listening": false
+    },
+    {
+      "step": "a pen's press that brings no click: focus arriving outside afterwards closes P",
       "open": [],
       "closed": [
         "P: away"
@@ -502,4 +512,5 @@ $ node tests/dom/menu-dismissal-session.js
     }
   ]
 }
+? 0
 ```

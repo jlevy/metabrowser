@@ -6,5 +6,4 @@
 
 - **Plugin SDK:** `filterControls.bind` answers for every dropdown inside the element it
   is given, so bind each control’s own element and not a region that holds another bound
-  control. `menus.dismissible`’s `opened()` again closes any other open menu, whichever
-  handle holds it ([Menus](docs/plugins.md#menus)).
+  control ([Menus](docs/plugins.md#menus)).

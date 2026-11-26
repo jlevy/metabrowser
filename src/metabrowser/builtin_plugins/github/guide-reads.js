@@ -27,10 +27,10 @@
 export const GUIDE_KEPT_CHARS = 2_000_000;
 
 // How long a document a step cites whole waits, out of sight, for its rendered layer before
-// the step shows without it (the diff view's `markdownHoldMs`). A step is shown once its
-// documents are drawn as they stay, so a hold shorter than the render would show the step
-// with a document's bar alone and then add the rendering, a change of height under the
-// reader. The rendered route answers, or refuses, within the Markdown child's render
+// it shows its source instead and keeps it (the diff view's `markdownHoldMs`, which is
+// also the wait's ceiling for a file drawn alone). A step is shown once its documents are
+// drawn as they stay, so a hold shorter than the render would show a document's source
+// where its rendering was a moment away. The rendered route answers, or refuses, within the Markdown child's render
 // deadline (`INERT_RENDER_DEADLINE_MS` in diff/markdown_projection_worker.py), so this is
 // that deadline and a second more for the request around it; the documents of #845's guide
 // rendered in 12 to 120 ms each once the child was warm, measured with the step reads above.
