@@ -5,16 +5,16 @@ base:
     - linear
     - Feature
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: "Markdown and structured-text rendering: front matter, diagrams, untrusted content"
 bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
 external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
 external_key: OS-622
 external_url: https://linear.app/finterm-ai/issue/OS-622/markdown-and-structured-text-rendering-front-matter-diagrams-untrusted
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-26T07:08:05.238Z
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-26T08:20:57.852Z
 state: linked
-synced_at: 2026-11-26T07:08:05.465Z
+synced_at: 2026-11-26T08:35:37.680Z
 type: lk

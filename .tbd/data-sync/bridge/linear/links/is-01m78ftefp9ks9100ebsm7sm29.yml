@@ -1,20 +1,20 @@
 base:
   assignee: null
-  description_hash: sha256v7:2c2f770b9282cd090ed3cc8a597d50f4199c1b9bce2b01d275316dc48d690555
+  description_hash: sha256v7:bf77718fb9f8baad03741ab8d6d968d4168cffd26d41f986e15ebf8eec7838ff
   labels:
     - linear
     - Feature
   priority: 1
   slot: in_progress
   status: in_progress
-  title: Plugin sources and out-of-process plugin environments
+  title: Plugin sources, process isolation, and out-of-process plugin environments
 bead_id: is-01m78ftefp9ks9100ebsm7sm29
 external_id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
 external_key: OS-613
 external_url: https://linear.app/finterm-ai/issue/OS-613/plugin-sources-and-out-of-process-plugin-environments
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-25T02:20:01.787Z
+remote_updated_at: 2026-11-26T08:44:00.384Z
 state: linked
-synced_at: 2026-11-25T02:24:50.612Z
+synced_at: 2026-11-26T08:44:00.544Z
 type: lk
