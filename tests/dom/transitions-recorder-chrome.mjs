@@ -27,7 +27,7 @@ const HERE = import.meta.dirname;
 const { launchBrowser, driver, sleep } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-recorder.mjs")
 );
-const { COMMITS_LANDING, MILESTONES, SUBJECTS, runJourney } = await import(
+const { COMMITS_LANDING, MILESTONES, PULLS_LIST, SUBJECTS, runJourney } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-journeys.mjs")
 );
 
@@ -1577,6 +1577,32 @@ try {
         "the named pull request has visible hunk text",
       );
       assert.equal(await d.evaluate(`(${MILESTONES.prChangesHunk(351)})()`), false);
+    });
+    await check("a first-visit Pulls list is usable during its optional tally", async () => {
+      const html = `
+        <div class="nav-tab-bar"><button class="tab-btn active" data-tab="pulls">Pulls</button></div>
+        <div id="tree-content"><div id="tab-pulls" data-tab-content="pulls">
+          <a class="github-pulls-row" href="/pull/353">A usable pull request</a>
+          <span aria-hidden="true" class="mb-delayed-loading github-pulls-change-pending"
+            style="display:inline-block;width:40px;height:16px"></span>
+        </div></div>
+        <div id="preview-pane"><div class="pull-request-list-host">Choose a pull request</div></div>`;
+      await d.evaluate(`document.body.innerHTML = ${JSON.stringify(html)}; true`);
+      const settled = `(${PULLS_LIST.converged(true)})()`;
+      assert.equal(await d.evaluate(`(${PULLS_LIST.ready(false)})()`), false);
+      assert.equal(await d.evaluate(settled), "");
+      assert.equal(
+        await d.evaluate('window.__tr.hasPlaceholder(document.getElementById("tab-pulls"))'),
+        true,
+      );
+      await d.evaluate(
+        `document.querySelector(".github-pulls-change-pending").className = "loading"; true`,
+      );
+      assert.match(await d.evaluate(settled), /list or prompt not shown/);
+      await d.evaluate(
+        `document.querySelector(".loading").remove(); document.querySelector(".github-pulls-row").remove(); true`,
+      );
+      assert.match(await d.evaluate(settled), /list or prompt not shown/);
     });
   } else {
     throw new Error(

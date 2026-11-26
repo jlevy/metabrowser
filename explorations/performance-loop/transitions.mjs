@@ -407,6 +407,9 @@ async function oneRun(options) {
       headed,
       no_warmup: !warmup,
       ...(firstVisit ? { first_visit: true } : {}),
+      ...(firstVisit && journeys.some((name) => name === "pulls" || name === "maintabs")
+        ? { usable_pulls_before_tallies: true }
+        : {}),
       ...(pullSubjects ? { pull_subjects: pullSubjects } : {}),
       ...(changesHunks ? { changes_hunks: true } : {}),
       journey_subset: subset,

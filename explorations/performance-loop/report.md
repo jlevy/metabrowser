@@ -137,6 +137,7 @@ against one that did.
 | exp-114 | [Negotiate the Broad Fetch With the Exact Commits Already Obtained](experiments/exp-114-origin-negotiation-hints.md) | H133 | `overlay bytes after exact and wildcard fetches` | diagnostic |
 | exp-115 | [Verify the GitHub Request Report Through the Live Server](experiments/exp-115-live-provider-report.md) | H128 | `provider request report on an exact selected Conversation` | diagnostic |
 | exp-116 | [Vary Process Fan-Out for the Same Conversation Reads](experiments/exp-116-conversation-process-fanout.md) | H134 | `wall time for three checked REST responses` | diagnostic |
+| exp-117 | [Distinguish an Optional Pulls Tally From List Readiness](experiments/exp-117-pulls-readiness-diagnostic.md) | H135 | `usable Pulls rows during optional tally` | diagnostic |
 
 ## Absolute numbers, per condition
 

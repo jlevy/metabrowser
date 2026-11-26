@@ -141,6 +141,7 @@ both without assigning a verdict to an unjudged run.
 | H132 | Fetch the selected Changes commits before the wildcard checkout-origin acquisition. | Compare identical diff and final refs. Measure time to exact comparison, time to all refs, and retained pack bytes separately. |
 | H133 | Let the wildcard fetch negotiate with the exact commits already obtained. | Keep the checked diff and all origin refs and recover the extra bytes of the extra fetch. |
 | H134 | Vary simultaneous gh processes within one selected Conversation. | Compare the same REST responses and quota charges. Retain refusals and per-process fan-out separately from the coordinator’s job slots. |
+| H135 | Treat a Pulls list with a usable row and prompt as ready while its optional changed-lines badge is pending. | Record that the list can be used. Keep the late badge in frame telemetry, and keep ordinary loading as a readiness blocker. |
 
 Run one hypothesis per round and record results on its owning branch.
 Measure a small, exact read first.

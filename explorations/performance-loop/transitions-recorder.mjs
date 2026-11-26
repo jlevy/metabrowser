@@ -746,7 +746,8 @@ function recorderMain(config) {
     return cache.get(root);
   };
   R.hasUseful = hasUseful;
-  R.hasPlaceholder = (root) => placeholders(root).length > 0;
+  R.hasPlaceholder = (root, ignored) =>
+    placeholders(root).some((item) => !ignored || !item.matches(ignored));
   R.rendered = (el) => !!el && rendered(el);
 
   // What the reader can see in the preview pane this frame. Letters: U useful content,

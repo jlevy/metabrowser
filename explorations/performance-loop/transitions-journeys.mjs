@@ -147,14 +147,14 @@ const viewConverged = (v, p, folder) => `() => {
 
 // A main tab with nothing selected: its list is the subject and the preview shows the
 // tab's prompt by design.
-const listReady = (tab, rowSelector, promptSelector) => `() => {
+const listReady = (tab, rowSelector, promptSelector, ignored = null) => `() => {
   const panel = document.querySelector('#tree-content > [data-tab-content="${tab}"]');
   if (!panel || !window.__tr.rendered(panel)) { return false; }
   if (panel.querySelectorAll(${J(rowSelector)}).length === 0 || !window.__tr.hasUseful(panel)) { return false; }
   if (${activeNav} !== ${J(tab)}) { return false; }
   const pane = document.getElementById("preview-pane");
   const prompt = pane && pane.querySelector(${J(promptSelector)});
-  return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel);
+  return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel, ${J(ignored)});
 }`;
 
 // A main tab's list on screen, whatever the preview shows.
@@ -165,9 +165,15 @@ const listShown = (tab, rowSelector) => `() => {
   return ${activeNav} === ${J(tab)} && !window.__tr.hasPlaceholder(panel);
 }`;
 
-const listConverged = (tab, rowSelector, promptSelector, subjectSelector) => `() => {
+const listConverged = (
+  tab,
+  rowSelector,
+  promptSelector,
+  subjectSelector,
+  ignored = null,
+) => `() => {
   const issues = [];
-  if (!(${listReady(tab, rowSelector, promptSelector)})()) { issues.push("list or prompt not shown"); }
+  if (!(${listReady(tab, rowSelector, promptSelector, ignored)})()) { issues.push("list or prompt not shown"); }
   const pane = document.getElementById("preview-pane");
   if (pane.querySelector(${J(subjectSelector)})) { issues.push("a subject is still mounted"); }
   return issues.join("; ");
@@ -458,6 +464,7 @@ function context(d, base, journey, rows, options) {
     requireRow,
     facts,
     newestCommit,
+    firstVisit: options.recordStartup === true,
     pullSubjects: options.pullSubjects,
     changesHunks: options.changesHunks,
   };
@@ -714,13 +721,28 @@ export const COMMITS_LANDING = {
   subjectConverged: commitSubjectLandingConverged,
   kind: landingKind,
 };
-const pullsList = listReady("pulls", "a.github-pulls-row", ":scope > .pull-request-list-host");
-const pullsListConverged = listConverged(
-  "pulls",
-  "a.github-pulls-row",
-  ":scope > .pull-request-list-host",
-  ".pull-request-host",
-);
+const pullsListReady = (firstVisit) =>
+  listReady(
+    "pulls",
+    "a.github-pulls-row",
+    ":scope > .pull-request-list-host",
+    optionalChangeTally(firstVisit),
+  );
+const pullsListConverged = (firstVisit) =>
+  listConverged(
+    "pulls",
+    "a.github-pulls-row",
+    ":scope > .pull-request-list-host",
+    ".pull-request-host",
+    optionalChangeTally(firstVisit),
+  );
+
+// A visible pull row can be used while its optional changed-lines tally finishes.
+function optionalChangeTally(firstVisit) {
+  return firstVisit ? '.github-pulls-change-pending[aria-hidden="true"]' : null;
+}
+
+export const PULLS_LIST = { ready: pullsListReady, converged: pullsListConverged };
 
 // The filter chips are named by their own container, not by the panel that holds it, so a
 // build that moves them into the navigation's toolbar slot is measured the same way.
@@ -770,8 +792,8 @@ async function mainTabs(ctx) {
       id,
       subject: "Pulls list",
       input: click(navTab("pulls")),
-      ready: pullsList,
-      converged: pullsListConverged,
+      ready: pullsListReady(ctx.firstVisit),
+      converged: pullsListConverged(ctx.firstVisit),
       emptyState: true,
       settleMs,
       timeoutMs: 30000,
@@ -791,7 +813,7 @@ async function mainTabs(ctx) {
   await ctx.setupClick(navTab("git"), commitsLanding(newest), "Commits");
   await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`, NAV_SCROLLER);
   await ctx.setupClick(commitRow(rev), commitReady(rev), `commit ${rev.slice(0, 8)}`);
-  await ctx.setupClick(navTab("pulls"), pullsList, "Pulls");
+  await ctx.setupClick(navTab("pulls"), pullsListReady(ctx.firstVisit), "Pulls");
   await closedPulls(ctx, [pr]);
   await ctx.setupClick(pullRow(pr), pullReady(pr), `pull request #${pr}`, 60000);
   await sleep(1500);
@@ -883,8 +905,8 @@ async function pulls(ctx) {
     id: "pulls.first_show",
     subject: "Pulls list",
     input: click(navTab("pulls")),
-    ready: pullsList,
-    converged: pullsListConverged,
+    ready: pullsListReady(ctx.firstVisit),
+    converged: pullsListConverged(ctx.firstVisit),
     emptyState: true,
     settleMs: 1500,
     timeoutMs: 30000,

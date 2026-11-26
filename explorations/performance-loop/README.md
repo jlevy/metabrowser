@@ -1002,6 +1002,13 @@ This is a declared start of browsing, with any remaining preparation reported.
 Later clicks retain state created by earlier clicks.
 Report startup and after-startup click timings separately.
 
+On a Pulls first visit, a usable list can still have an optional changed-lines tally
+loading beside a row.
+The readiness check admits the visible list and prompt during that tally.
+Frame telemetry still counts the badge as a navigation placeholder.
+New first-visit runs record `usable_pulls_before_tallies` in their regime flags so
+older, stricter first-visit runs do not enter that comparison.
+
 With `--changes-hunks`, each Changes transition also reports `prChangesHunk`. The
 milestone waits for visible hunk text on the active Changes page for the requested pull
 request. File-card readiness keeps its existing clock.

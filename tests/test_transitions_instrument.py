@@ -62,7 +62,7 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
         ("landing", 11),
         ("search", 19),
         ("window", 4),
-        ("readings", 5),
+        ("readings", 6),
     ],
 )
 def test_transition_recorder_in_chrome(group: str, count: int, chrome_profile: Path) -> None:
