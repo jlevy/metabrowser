@@ -442,11 +442,13 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert '"refresh": "started"' in found.stdout
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
     # The list's probe runs beside the ask and is listed first; then the record's probe,
-    # and the whole record between its two account checks.
+    # the whole record between its two account checks, and its status after it, which
+    # the floor does not stop either.
     assert calls[0] == f"gh api {LIST_PROBE_PATH}", calls
     calls = calls[1:]
-    assert calls[1] == "gh api user" and calls[-1] == "gh api user (If-None-Match)", calls
-    assert len(calls) == 9, calls
+    assert calls[1] == "gh api user" and calls[-2] == "gh api user (If-None-Match)", calls
+    assert calls[-1] == "gh api graphql status number=7 cursor=start", calls
+    assert len(calls) == 10, calls
     reread = session.run(CANONICAL, "--api", f"{PULL}?number=7", full=True).payload()
     assert reread["record"]["pull"]["title"] == "Retitled below the floor"
     session.blocks.pop()

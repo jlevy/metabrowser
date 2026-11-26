@@ -295,6 +295,12 @@ def speculative(*, walk: bool = False) -> Generator[None]:
         _SPECULATIVE.reset(token)
 
 
+def speculating() -> bool:
+    """Whether the work running in this context is speculative (:func:`speculative`)."""
+
+    return _SPECULATIVE.get()
+
+
 def _minute(now: datetime) -> int:
     return int(now.timestamp()) // _SPEND_BUCKET_S
 
@@ -431,6 +437,7 @@ __all__ = [
     "over_ceiling",
     "readers_own",
     "speculative",
+    "speculating",
     "speculative_spent",
     "spent",
     "walk_spent",

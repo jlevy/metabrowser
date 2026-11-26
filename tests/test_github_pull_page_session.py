@@ -29,8 +29,10 @@ and its stylesheets' manifest is left out for the same reason.
 Every pull envelope carries the whole record, and the story reads one record many
 times, so the recording holds each distinct record once: an answer whose record an
 earlier answer carried names that answer, ``{"same_as": "current"}``, and the session
-reads it back as that record. ``make golden-update`` rewrites the recording and then
-the transcript.
+reads it back as that record. The envelope's operational status, verdict, and checks,
+which it carries beside the record, are left out: no session reads them yet, and
+``tests/golden/cli-github-pull-refresh.txt`` pins them. ``make golden-update`` rewrites
+the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -46,7 +48,7 @@ import time
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from starlette.testclient import TestClient
@@ -170,11 +172,17 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
+# What a pull envelope carries beside its record that no session reads yet: its
+# operational status, its verdict, and its checks (``pull_route.PullEnvelope``).
+_UNREAD: Final = ("status", "readiness", "checks", "status_unavailable")
+
+
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     """*recorded* with each distinct record written once; see the module docstring.
 
     A record is held in full by the first pull-route answer that carried it. So a
     one-field change to a pull request's record is one changed line of the recording.
+    What no session reads beside it is left out.
     """
 
     holder: dict[str, str] = {}
@@ -184,7 +192,11 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
             continue
         # A pull-route answer is the envelope; a refresh answers one under ``pull``.
         for envelope in (body, body.get("pull")):
-            if not isinstance(envelope, dict) or not isinstance(envelope.get("record"), dict):
+            if not isinstance(envelope, dict) or "labels_pending" not in envelope:
+                continue
+            for field in _UNREAD:
+                envelope.pop(field, None)
+            if not isinstance(envelope.get("record"), dict):
                 continue
             # As text, in the order the server wrote it: reordered keys are a change.
             key = json.dumps(envelope["record"])

@@ -22,6 +22,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 ## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic work leaves to the reader. The page's own ask for the timeline waits: nothing is asked of GitHub, and the answer says to ask again in a minute, which the page does for as long as the budget refuses.
 # metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json
 exit: 0

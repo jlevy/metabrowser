@@ -31,7 +31,7 @@ from pydantic import ValidationError
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
-from metabrowser.builtin_plugins.github import gh_lists, pulls
+from metabrowser.builtin_plugins.github import gh_budget, gh_lists, pulls
 from metabrowser.builtin_plugins.github.gh import (
     GhError,
     GhFailureState,
@@ -43,7 +43,9 @@ from metabrowser.builtin_plugins.github.gh import (
     rate_limit_reset,
 )
 from metabrowser.builtin_plugins.github.gh_lists import active_account
+from metabrowser.builtin_plugins.github.pull_catalog import write_pull_status
 from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_markdown import render_part
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
@@ -63,6 +65,8 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_route import PullView, pull_state
+from metabrowser.builtin_plugins.github.pull_status import PullStatus
+from metabrowser.builtin_plugins.github.pull_status_store import kept_status
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
 from metabrowser.builtin_plugins.github.served_pull import (
     MAX_KEPT_PULLS,
@@ -1067,6 +1071,46 @@ def test_a_core_description_and_its_record_share_one_render(
     assert asked[0].flight_key == asked[1].flight_key
 
 
+def test_the_envelope_carries_the_status_its_verdict_and_checks_beside_the_record(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    answered = _read(client, 7)
+    envelope = answered.json()
+    head = envelope["record"]["pull"]["head"]["sha"]
+    assert envelope["status"]["head"] == envelope["checks"]["head"] == head
+    readiness = envelope["readiness"]
+    assert (readiness["verdict"], readiness["head"]) == ("checks_pending", head)
+    assert [row["kind"] for row in readiness["requirements"]] == ["conflicts", "checks", "reviews"]
+    assert envelope["status_unavailable"] is None
+    assert "readiness" not in envelope["record"]
+    etag = answered.headers["etag"]
+    assert _read(client, 7, etag=etag).status_code == 304
+    # A newer read of the same head moves its observed_at, and so the tag.
+    status = PullStatus.model_validate(envelope["status"])
+    later = status.model_copy(update={"observed_at": "2026-09-17T12:05:00Z"})
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    assert write_pull_status(repository, later)
+    moved = _read(client, 7, etag=etag)
+    assert moved.status_code == 200 and moved.headers["etag"] != etag
+    assert moved.json()["status"]["observed_at"] == "2026-09-17T12:05:00Z"
+    # One for another head is kept and shown, and judges nothing: the verdict is checking.
+    pushed = later.model_copy(update={"head": "f" * 40, "observed_at": "2026-09-17T12:06:00Z"})
+    assert write_pull_status(repository, pushed)
+    other = _read(client, 7, etag=moved.headers["etag"])
+    assert other.status_code == 200
+    assert other.json()["readiness"] == {
+        "verdict": "checking",
+        "tone": "attention",
+        "label": "Checking",
+        "head": head,
+        "observed_at": None,
+        "requirements": [],
+        "auto_merge": None,
+        "auto_merge_summary": None,
+    }
+
+
 def test_a_record_that_is_gone_or_replaced_stops_being_answered(
     pinned_pull: tuple[_Stand, TestClient],
 ) -> None:
@@ -1236,6 +1280,61 @@ def test_refused_checks_and_status_leave_the_record_standing(stand: _Stand) -> N
     assert record.check_runs == () and record.status is None
     assert record.unavailable == {"check_runs": "not_found_or_private", "status": "gh_failed"}
     assert record.comparison is not None
+
+
+def _status_calls(stand: _Stand) -> list[str]:
+    return [
+        call["args"][call["args"].index("-F") + 1]
+        for call in stand.calls()
+        if any(arg.startswith("query=query PullStatus(") for arg in call["args"])
+    ]
+
+
+def test_a_refresh_keeps_the_status_beside_the_record_and_out_of_it(stand: _Stand) -> None:
+    """The status is read after the record is published, and kept apart from it."""
+
+    record = stand.refresh(7)
+    assert _status_calls(stand) == ["number=7"]
+    kept = kept_status(stand.published.home, stand.published.slug, 7)
+    assert kept.status is not None and kept.checks is not None and kept.unavailable is None
+    assert kept.status.head == kept.checks.head == record.pull.head.sha
+    assert (kept.status.merge_state, kept.status.checks.state) == ("blocked", "pending")
+    assert {item.name for item in kept.checks.items} == {
+        "tests (3.13)",
+        "docs",
+        "docs/readthedocs.org:demo",
+    }
+    # The record is what it was before there was a status: nothing of it lives there.
+    assert stand.record(7) == record and "merge_state" not in record.model_dump_json()
+
+
+def test_a_status_read_github_refuses_leaves_the_record_and_the_status_before_it(
+    stand: _Stand,
+) -> None:
+    first = stand.refresh(7)
+    home, slug = stand.published.home, stand.published.slug
+    before = kept_status(home, slug, 7)
+    stand.monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT + timedelta(minutes=5))
+    path = "graphql:status:7:start"
+    stand.answer(_api(scenario(stand.origin), path, {"status": 502, "body": {"message": "bad"}}))
+    record = stand.refresh(7)
+    assert record.fetched_at > first.fetched_at
+    assert pulls.last_refresh(stand.published, 7).outcome == "succeeded"  # pyright: ignore[reportOptionalMemberAccess]
+    kept = kept_status(home, slug, 7)
+    assert (kept.status, kept.checks) == (before.status, before.checks)
+    assert kept.unavailable is not None and kept.unavailable != "succeeded"
+
+
+def test_the_prefetch_leaves_the_status_to_the_page(stand: _Stand) -> None:
+    """A record nobody is looking at reads no status: the prefetch's caps leave it out."""
+
+    async def speculative() -> PullRecord:
+        with gh_budget.speculative():
+            return await pulls.refresh_pull_request(stand.published, 7)
+
+    asyncio.run(speculative())
+    assert _status_calls(stand) == []
+    assert kept_status(stand.published.home, stand.published.slug, 7).status is None
 
 
 def test_a_base_that_cannot_be_fetched_leaves_no_comparison(stand: _Stand) -> None:
@@ -1844,7 +1943,11 @@ def test_a_refresh_answer_leaves_out_the_record_its_asker_holds(
         whole["state"],
         whole["fetched_at"],
     )
-    assert len(json.dumps(held)) < len(json.dumps(whole)) / 4
+    # The answer is smaller by the record, and by nothing else: the status, its verdict,
+    # and the checks are not the record's, and change without it.
+    saved = len(json.dumps(whole)) - len(json.dumps(held))
+    assert abs(saved - len(json.dumps(whole["record"]))) < 32
+    assert held["checks"] == whole["checks"] and held["readiness"] == whole["readiness"]
 
     # Another revision is a record the asker does not have, so it is sent.
     status, other = ask(held="0" * 64)
@@ -3075,12 +3178,12 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     assert upgraded.projection_version == PULL_RECORD_PROJECTION
     assert upgraded.pull.author_avatar_url == wanted
     assert all(item.author_avatar_url == wanted for item in upgraded.issue_comments)
-    # The pull request's own reads; the account check's ``user`` is conditional on the
-    # account, not on a record.
+    # The pull request's own REST reads; the account check's ``user`` is conditional on
+    # the account, not on a record, and its status is one GraphQL query, never conditional.
     sent = [
         call["args"]
         for call in stand.calls()
-        if call["args"][0] == "api" and call["args"][-1] != "user"
+        if call["args"][0] == "api" and call["args"][-1] != "user" and "graphql" not in call["args"]
     ]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
     assert not any("users/" in str(args) for args in sent)
@@ -3090,7 +3193,7 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     reused = [
         call["args"]
         for call in stand.calls()
-        if call["args"][0] == "api" and call["args"][-1] != "user"
+        if call["args"][0] == "api" and call["args"][-1] != "user" and "graphql" not in call["args"]
     ]
     assert len(reused) == len(sent) == 6
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
@@ -4192,7 +4295,12 @@ def test_h80_initial_graph_core_then_real_rest_etag_then_304(
     assert isinstance(first, PullRecord) and path not in first.etags and replies == []
     initial_calls = stand.calls()
     assert sum(c["args"][-1] == "user" for c in initial_calls) == 2
-    assert sum("graphql" in c["args"] for c in initial_calls) == 1
+    # The core, and then the status read after the record (``pull_status_read``).
+    assert [
+        next(arg for arg in c["args"] if arg.startswith("query=")).split("(", 1)[0]
+        for c in initial_calls
+        if "graphql" in c["args"]
+    ] == ["query=query PullCore", "query=query PullStatus"]
     second = stand.refresh(7)
     assert replies == [(200, None)] and second.etags[path]
     assert sum(c["args"][-1] == "user" for c in stand.calls()) == 2
@@ -6814,10 +6922,22 @@ def test_a_catalog_scan_does_not_send_a_polled_record_again(
 
 
 def _api_paths(stand: _Stand) -> list[str]:
-    """The repository paths asked for, leaving out the account check's ``user``."""
+    """The repository paths asked for, leaving out the account check's ``user``.
 
-    asked = (call["args"][-1] for call in stand.calls() if call["args"][:1] == ["api"])
-    return sorted(path for path in asked if path != "user")
+    A GraphQL query is named by its operation, as ``graphql PullStatus``.
+    """
+
+    def asked(args: list[str]) -> str:
+        if "graphql" in args:
+            query = next(arg for arg in args if arg.startswith("query="))
+            return "graphql " + query.removeprefix("query=query ").split("(", 1)[0]
+        return args[-1]
+
+    paths = (asked(call["args"]) for call in stand.calls() if call["args"][:1] == ["api"])
+    return sorted(path for path in paths if path != "user")
+
+
+_STATUS_QUERY: Final = "graphql PullStatus"
 
 
 def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
@@ -6829,7 +6949,8 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
     registered yet when it was read, a re-run of completed checks, and a conflict a moved
     base made. Each leaves ``updated_at`` and the head alone, and a checks-only read sees
     each by asking for the pull, its check runs, and its status, and nothing else: no list
-    of the conversation and no fetch into the store, whose comparison stands.
+    of the conversation and no fetch into the store, whose comparison stands. Its
+    operational status is read beside it, one GraphQL query, as after every read.
     """
 
     answers = scenario(stand.origin)
@@ -6869,7 +6990,7 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
         first.reviews,
         first.review_comments,
     )
-    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
+    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path, _STATUS_QUERY])
 
     # Completed checks re-run.
     rerun = copy.deepcopy(recorded_runs)
@@ -6878,7 +6999,7 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
     stand.answer(_api(answers, runs_path, ok(runs_path, rerun)))
     rerunning = checks_only()
     assert {run.status for run in rerunning.check_runs} == {"in_progress"}
-    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
+    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path, _STATUS_QUERY])
 
     # The base moved and the pull request now conflicts: GitHub says so in the pull alone.
     body = answers["api"][pull_path]["body"]
@@ -6888,7 +7009,7 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
     conflict = checks_only()
     assert conflict.pull.mergeable == "conflicting"
     assert conflict.comparison == first.comparison
-    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
+    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path, _STATUS_QUERY])
     assert stand.record(7) == conflict
 
 

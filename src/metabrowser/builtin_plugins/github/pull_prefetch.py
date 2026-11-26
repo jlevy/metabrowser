@@ -138,6 +138,8 @@ FILES_PER_HOUR: Final = 20
 # What a background record and a files list from GitHub cost at most when each part fits
 # on one page: the pull and five parts, and the list's one page (the module docstring,
 # measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``).
+# A background record reads no operational status, the GraphQL point a page's own read
+# adds (``refresh_pull_request``), so the price leaves it out.
 POINTS_PER_RECORD: Final = 6
 POINTS_PER_FILES_LIST: Final = 1
 # How long after a page's last ask its lane, idle, still keeps a scan's records from the

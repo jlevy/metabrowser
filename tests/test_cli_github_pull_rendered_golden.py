@@ -6,7 +6,9 @@ or unchanged, with changed words marked and a ``source_only`` flag on a block wh
 says more than its render, and the front matter's keys as the Document view lists them. A
 YAML or JSON file answers ``structured-diff-v1``, the tree the file view draws with each
 entry marked. This drives it in-process, as ``tests/test_cli_github_pull_image_golden.py``
-drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``.
+drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``, the
+Markdown redlines, and ``tests/golden/cli-github-pull-rendered-structured.txt``, the YAML
+and JSON trees and the route's refusals, so each stays inside the review budget.
 
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
 word mark, and a block the render cannot fully show), ticks one box of a task list and
@@ -51,6 +53,7 @@ from tests.golden_harness import (
     check_golden,
     label_home,
     normalize_pull_comparison_scopes,
+    operational_once,
     run_metab,
 )
 from tests.test_cli_github_pull_golden import PULL, ROUTE, _body, _Session
@@ -298,6 +301,9 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
             {"key": "title", "change": "added", "text": "Notes"},
         ],
     }
+    # From here on, the YAML and JSON trees and the route's refusals are their own
+    # transcript's.
+    markdown = len(session.blocks)
     yaml = rendered(f"&file={ids['config/app.yaml']}")
     assert (yaml["version"], yaml["status"], yaml["format"]) == (
         "structured-diff-v1",
@@ -363,9 +369,13 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
 
     labels = Labels()
     labels.origin(CANONICAL)
-    text = normalize_pull_comparison_scopes(
-        label_home(labels.apply("".join(session.blocks)), session.home)
-    )
-    text = _ANCHOR.sub("user-content-<ANCHORS>-", text)
-    assert str(tmp_path) not in text
-    check_golden("cli-github-pull-rendered.txt", text)
+    for name, blocks in (
+        ("cli-github-pull-rendered.txt", session.blocks[:markdown]),
+        ("cli-github-pull-rendered-structured.txt", session.blocks[markdown:]),
+    ):
+        text = normalize_pull_comparison_scopes(
+            label_home(labels.apply("".join(blocks)), session.home)
+        )
+        text = _ANCHOR.sub("user-content-<ANCHORS>-", text)
+        assert str(tmp_path) not in text
+        check_golden(name, operational_once(text))

@@ -561,14 +561,16 @@ class ServedPull:
         ) or gh_budget.held_until(now) is not None
 
     def below_floor(self, now: datetime) -> bool:
-        """Whether the account's ``core`` budget is at or below the background floor at *now*.
+        """Whether a budget a refresh spends is at or below the background floor at *now*.
 
-        Then this record's periodic reads stop (:meth:`is_stale`, :meth:`full_read_due`),
-        while its probes go on, since a ``304`` is free, and a change one finds is still
-        read in full: the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring.
+        A refresh spends ``core`` on the record and ``graphql`` on its status
+        (:func:`.pull_status_read.keep_pull_status`). Then this record's periodic reads
+        stop (:meth:`is_stale`, :meth:`full_read_due`), while its probes go on, since a
+        ``304`` is free, and a change one finds is still read in full: the owner's rule of
+        2026-11-22, in :mod:`.gh_budget`'s docstring.
         """
 
-        return gh_budget.admission(("core",), now=now).reason == "below_floor"
+        return gh_budget.admission(("core", "graphql"), now=now).reason == "below_floor"
 
     def probe_vouches(self, now: datetime) -> bool:
         """Whether a probe found the record held unchanged within a freshness window."""

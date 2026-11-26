@@ -1371,7 +1371,20 @@ status: 200
     "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
   },
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": {
+    "verdict": "checking",
+    "tone": "attention",
+    "label": "Checking",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "observed_at": null,
+    "requirements": [],
+    "auto_merge": null,
+    "auto_merge_summary": null
+  },
+  "checks": null,
+  "status_unavailable": null
 }
 --- stderr ---
 --- body ---
@@ -1454,7 +1467,20 @@ status: 200
     "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
   },
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": null,
+  "readiness": {
+    "verdict": "checking",
+    "tone": "attention",
+    "label": "Checking",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "observed_at": null,
+    "requirements": [],
+    "auto_merge": null,
+    "auto_merge_summary": null
+  },
+  "checks": null,
+  "status_unavailable": null
 }
 --- stderr ---
 --- gh ---

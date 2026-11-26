@@ -26,6 +26,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 ## Once the list is cached, the files route's own list names it, with no Git.
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 0
@@ -184,6 +185,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 ## A file the pull request does not change, and a hash GitHub never writes.
 # metab 'https://github.com/octo/demo/pull/7/files#diff-b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5' --no-serve
 exit: 0
@@ -208,6 +210,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 # metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d' --no-serve
 exit: 0
 --- stdout ---
@@ -230,6 +233,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 ## Offline, a pull request with no record and no list: nothing names the file, and the pin is the default branch.
 # metab 'https://github.com/octo/demo/pull/11/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2' --no-serve
 exit: 0

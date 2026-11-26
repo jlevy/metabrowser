@@ -1196,7 +1196,63 @@ status: 202
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": {
+      "number": 10,
+      "head": "<draft_head>",
+      "base_ref": "topic",
+      "base": "<topic>",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "observed_by": "read",
+      "conflicts": "conflicting",
+      "merge_state": "dirty",
+      "review_decision": null,
+      "checks": {
+        "state": "none",
+        "counts": {
+          "pass": 0,
+          "fail": 0,
+          "pending": 0,
+          "skipping": 0,
+          "cancel": 0
+        },
+        "required_failing": 0,
+        "required_pending": 0
+      },
+      "auto_merge": null,
+      "queue": null
+    },
+    "readiness": {
+      "verdict": "conflicts",
+      "tone": "danger",
+      "label": "Merge conflicts",
+      "head": "<draft_head>",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "requirements": [
+        {
+          "kind": "conflicts",
+          "status": "unmet",
+          "summary": "Merge conflicts with topic must be resolved.",
+          "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+        },
+        {
+          "kind": "checks",
+          "status": "met",
+          "summary": "No checks.",
+          "github_url": null
+        }
+      ],
+      "auto_merge": null,
+      "auto_merge_summary": null
+    },
+    "checks": {
+      "number": 10,
+      "head": "<draft_head>",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "items": [],
+      "truncated": false
+    },
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1312,7 +1368,11 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": "<STATUS 10>",
+  "readiness": "<READINESS <draft_head>>",
+  "checks": "<CHECKS 10>",
+  "status_unavailable": null
 }
 --- stderr ---
 --- gh ---
@@ -1324,6 +1384,7 @@ gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
+gh api graphql status number=10 cursor=start
 ## Its guide, asked at the comparison a page still draws, is pinned past it, so it says the stack has moved, as a comparison the route never gave does.
 # metab https://github.com/octo/demo --api '/api/plugin/github/guided-review?stack=70&step=2&left=<base>&right=<draft_head>&key=ebfe45cd812c6d00f8d4a921576b31d7'
 exit: 0

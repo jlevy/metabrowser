@@ -2,7 +2,9 @@
 
 The SQLite database belongs to the GitHub plugin, not a served repository. GET opens
 it read-only. A page's rows, counts and resume cursor commit together under the existing
-source-alias lock; no network operation runs while that lock is held.
+source-alias lock; no network operation runs while that lock is held. Beside the rows, a
+table of its own keeps each pull request's newest operational status
+(:func:`write_pull_status`), which moves no row, checkpoint, or generation.
 
 A catalog this release cannot use is replaced only once every version it declares has
 been read (:func:`_declarations`) and none is past this release's. One a newer
@@ -45,6 +47,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_PULL_REFRESH_BYTES,
     ensure_pulls_directory,
 )
+from metabrowser.builtin_plugins.github.pull_status import PullStatus
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
@@ -70,8 +73,10 @@ from metabrowser.sqlite_access import (
 
 log = logging.getLogger(__name__)
 
-# Version 2 indexes the Pulls list by activity for all three filters.
-CATALOG_SCHEMA = 2
+# The tables and indexes, as ``PRAGMA user_version``. 2 indexed the Pulls list by
+# activity for all three filters; 3 added ``pull_status``, each pull request's newest
+# operational status (:func:`write_pull_status`).
+CATALOG_SCHEMA = 3
 # Version 2 separates each tab's activity cursor from the creation-order backfill.
 CHECKPOINT_SCHEMA = 2
 # 2 added each row's head commit, which a cached record and file list are checked against.
@@ -161,7 +166,15 @@ _ACTIVITY_INDEXES = (
         "CREATE INDEX pulls_state_updated_number ON pulls(state, updated_at DESC, number DESC)",
     ),
 )
-_SCHEMA = _SCHEMA_V1[:2] + _ACTIVITY_INDEXES
+_STATUS_TABLE = (
+    (
+        "table",
+        "pull_status",
+        "pull_status",
+        "CREATE TABLE pull_status(number INTEGER PRIMARY KEY, head TEXT NOT NULL, observed_at TEXT NOT NULL, body TEXT NOT NULL)",
+    ),
+)
+_SCHEMA = _SCHEMA_V1[:2] + _ACTIVITY_INDEXES + _STATUS_TABLE
 
 
 class CatalogUnusableError(ValueError):
@@ -660,7 +673,7 @@ def write_catalog_refresh_timing(
 
 
 def upgrade_catalog(repository: ListedRepository) -> bool:
-    """Prepare an existing v1 cache locally. Return whether the activity indexes are ready."""
+    """Prepare an existing v1 cache locally. Return whether the current schema is ready."""
     try:
         with _database(repository.home, repository.slug) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -683,7 +696,7 @@ def upgrade_catalog(repository: ListedRepository) -> bool:
                 if state is None or state.source != repository.source:
                     return False
                 db.execute("DROP INDEX pulls_state_number")
-                for entry in _ACTIVITY_INDEXES:
+                for entry in _ACTIVITY_INDEXES + _STATUS_TABLE:
                     db.execute(entry[3])
                 db.execute(f"PRAGMA user_version={CATALOG_SCHEMA}")
                 db.execute("UPDATE checkpoint SET value=? WHERE id=1", (state.model_dump_json(),))
@@ -1148,6 +1161,92 @@ def publish_page(
         return _commit(repository, expected, proposed, rows)
 
 
+def write_pull_status(repository: ListedRepository, status: PullStatus) -> bool:
+    """Keep *status* as its pull request's newest, unless a newer one is kept. Blocking.
+
+    One row per pull request number, in a table of its own: a status changes with every
+    check, and a catalog row's change would move its fingerprint, its core, and its
+    window's generation. The row keeps the newer ``observed_at``, whatever its head, so
+    two reads that end out of order leave the later; the same moment replaces, as the
+    later write is. The checkpoint is not touched, so no window or revision moves.
+
+    The caller uses ``run_lock_section``: the row commits in one short transaction under
+    the source-alias lock, with no network work under it. A catalog this release cannot
+    use is replaced with an empty one first, as :func:`publish_page` replaces it, and a
+    newer release's raises :class:`NewerCatalogError` and one whose versions cannot be read
+    :class:`UnknownCatalogError`, both left as they are. Whether it was kept.
+    """
+    source = repository.home / f"sources/{repository.slug}/source.yml"
+    if not source.is_file() or source.is_symlink():
+        raise FileNotFoundError("no source is published under this slug")
+    body = status.model_dump_json()
+    with source_alias_lock(repository.home, repository.slug):
+        _initialize(repository)
+        try:
+            return _put_status(repository, status, body)
+        except UnknownCatalogError as exc:
+            if exc.wal:
+                _refuse_newer_in_copy(repository.home, _relative(repository.slug))
+            raise
+        except CatalogUnusableError as exc:
+            log.warning(
+                "replacing the pull-request catalog of %s, which this release cannot use "
+                "(%s); its list is fetched again",
+                repository.source,
+                failure_line(exc),
+            )
+            _replace(repository)
+        return _put_status(repository, status, body)
+
+
+def _put_status(repository: ListedRepository, status: PullStatus, body: str) -> bool:
+    classified = False
+    try:
+        with _database(repository.home, repository.slug, write=True) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            _state(db)
+            classified = True
+            kept = db.execute(
+                "INSERT INTO pull_status VALUES(?,?,?,?) ON CONFLICT(number) DO UPDATE SET "
+                "head=excluded.head,observed_at=excluded.observed_at,body=excluded.body "
+                "WHERE excluded.observed_at >= pull_status.observed_at",
+                (status.number, status.head, status.observed_at, body),
+            )
+            return kept.rowcount == 1
+    except sqlite3.DatabaseError as exc:
+        if not _damaged(exc):
+            raise
+        if not classified:
+            raise UnknownCatalogError(_DAMAGED_VERSIONS) from exc
+        raise CatalogUnusableError("the catalog is damaged") from exc
+
+
+def read_pull_status(home: Path, slug: str, number: int) -> PullStatus | None:
+    """The newest kept status of pull request *number*, or ``None``. Blocking and bounded.
+
+    Read-only, as every catalog read is. A row another release wrote in a shape this one
+    cannot read is no status, and the next read of the pull request replaces it.
+    """
+    try:
+        with _database(home, slug) as db:
+            db.execute("BEGIN")
+            _state(db)
+            row = db.execute(
+                "SELECT head,observed_at,body FROM pull_status WHERE number=?", (number,)
+            ).fetchone()
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return None
+    if row is None or not isinstance(row[2], str):
+        return None
+    try:
+        status = PullStatus.model_validate_json(row[2])
+    except ValueError:
+        return None
+    if (status.number, status.head, status.observed_at) != (number, row[0], row[1]):
+        return None
+    return status
+
+
 def _commit(
     repository: ListedRepository,
     expected: CatalogState | None,
@@ -1176,6 +1275,8 @@ def _commit(
                 proposed.source,
             )
             if reset:
+                # The statuses stay, as the records beside the catalog do: each names its
+                # head, and is judged only for the head of the record shown.
                 db.execute("DELETE FROM pulls")
                 counts = dict.fromkeys(PULL_LIST_NAMES, 0)
                 generations = dict.fromkeys(PULL_LIST_NAMES, 0)

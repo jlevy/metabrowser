@@ -76,11 +76,11 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/fsqlite/children` | covered | `--api` | `cli-api-fsqlite.tryscript.md` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt`, `cli-github-pulls-prefetch.txt` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout-idle.txt` |
-| `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pulls-refresh.txt` |
+| `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-markdown.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/guided-review` | covered | `--api` | `cli-github-guided-review.tryscript.md`, `cli-github-stack-guide.txt` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-image` | covered | `--api` | `cli-github-pull-image.txt` |
-| `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt`, `cli-github-pull-rendered-views.txt` |
+| `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt`, `cli-github-pull-rendered-structured.txt`, `cli-github-pull-rendered-views.txt` |
 | `/api/plugin/github/pull-size` | covered | `--api` | `cli-github-pull-size.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-backfill.txt` |
@@ -251,6 +251,7 @@ interaction session and fails when a named function did not execute.
 | `github.guided-review-documents` | interaction | `builtin_plugins/github/guided-review.js#referenceDrawing`, `builtin_plugins/github/guided-review.js#renderDocument`, `builtin_plugins/diff/index.js#mountRenderedFile` | `/api/plugin/github/guided-review`, `/api/plugin/github/pull-comparison`, `/api/plugin/github/pull-rendered-diff` | `node tests/dom/github-guided-review-documents-behavior.js` | `cli-ui-github-guided-review-documents.tryscript.md` |
 | `github.guided-review-file-fold` | interaction | `builtin_plugins/diff/diff-view.js#fileDisclosure`, `builtin_plugins/github/guided-review.js#renderReference`, `builtin_plugins/github/guided-review.js#referenceBar`, `builtin_plugins/github/guide-reads.js#createGuideReads` | `/api/plugin/github/guided-review` | `node tests/dom/github-guided-review-mount-behavior.js` | `cli-ui-github-guided-review.tryscript.md` |
 | `github.pull-timeline-data` | data | `/api/plugin/github/pull-timeline` | `owned-route` | `metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json` | `cli-github-pull-timeline.txt` |
+| `github.pull-readiness` | data | `/api/plugin/github/pull` | `owned-route` | `metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'` | `cli-github-pull-refresh.txt` |
 | `github.pull-checks-tab` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-late-waits` | interaction | `builtin_plugins/github/pull-page.js#noteSummaryWait`, `builtin_plugins/github/pull-page.js#reportedWait`, `builtin_plugins/github/pull-page.js#detailsToggle`, `builtin_plugins/github/pull-page.js#openDetails`, `builtin_plugins/github/pull-page.js#failureQuery` | `/api/event-log`, `/api/event-log/failures` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-tab-keys` | interaction | `builtin_plugins/github/pull-page.js#attachTabKeys`, `builtin_plugins/github/pull-page.js#numberHeaderControls` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |

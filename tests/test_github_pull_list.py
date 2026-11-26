@@ -464,8 +464,9 @@ def test_activity_indexes_upgrade_the_v1_catalog_without_reloading_rows(
 
 
 def _make_legacy_catalog(repository: ListedRepository, **updates: object) -> None:
-    """Restore the released creation-ordered indexes and v1 cursor layout."""
+    """Restore the released creation-ordered indexes, v1 cursor layout, and no status."""
     with sqlite3.connect(_path(repository)) as db:
+        db.execute("DROP TABLE pull_status")
         db.execute("DROP INDEX pulls_updated_number")
         db.execute("DROP INDEX pulls_state_updated_number")
         db.execute("CREATE INDEX pulls_state_number ON pulls(state, number DESC)")
@@ -1431,7 +1432,8 @@ def test_a_newer_checkpoint_in_another_letter_case_is_never_replaced(
     _rename_checkpoint(path, name)
     with contextlib.closing(sqlite3.connect(path)) as db:
         tables = db.execute("SELECT name FROM sqlite_schema WHERE type='table'").fetchall()
-        assert sorted(table for (table,) in tables) == sorted(["pulls", name])
+        written = {table for kind, table, *_ in pull_catalog._SCHEMA if kind == "table"}  # pyright: ignore[reportPrivateUsage]
+        assert {table for (table,) in tables} == written - {"checkpoint"} | {name}
     before = _catalog_files(repository)
     calls = _provider(monkeypatch, [generated_item(1), generated_item(2)])
     if route == "refresh":
@@ -2499,11 +2501,10 @@ def test_incompatible_sqlite_schema_is_refused_by_reads_and_replaced_by_a_write(
     # The publisher expected the checkpoint it read before, which is gone with the file.
     assert publish_page(repository, state, state, (_row(generated_item(2))[0],)) is False
     with sqlite3.connect(path) as db:
+        # The empty catalog this release writes: its own tables and index, and nothing else.
         assert set(db.execute("SELECT type,name FROM sqlite_schema")) == {
-            ("table", "checkpoint"),
-            ("table", "pulls"),
-            ("index", "pulls_state_updated_number"),
-            ("index", "pulls_updated_number"),
+            (kind, name)
+            for kind, name, *_ in pull_catalog._SCHEMA  # pyright: ignore[reportPrivateUsage]
         }
         assert db.execute("SELECT count(*) FROM pulls").fetchone() == (0,)
     assert read_catalog(repository.home, repository.slug) is None
@@ -2563,7 +2564,7 @@ def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
         ),
         "rows, CATALOG_PROJECTION": (CATALOG_PROJECTION, _shape(PullListRow.model_json_schema())),
     } == {
-        "tables, CATALOG_SCHEMA": (2, "af625b8c16761ee0"),
+        "tables, CATALOG_SCHEMA": (3, "32b7c936900d0cfd"),
         "checkpoint, CHECKPOINT_SCHEMA": (2, "4de1321ec0ef518d"),
         "rows, CATALOG_PROJECTION": (2, "327ef662914d936d"),
     }

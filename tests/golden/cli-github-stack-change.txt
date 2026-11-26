@@ -165,6 +165,7 @@ gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=8 cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data lists/files-8.json
 exit: 0
 --- stdout ---
@@ -277,6 +278,7 @@ gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=10 cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data lists/files-10.json
 exit: 0
 --- stdout ---

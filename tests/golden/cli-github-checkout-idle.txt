@@ -31,6 +31,10 @@ status: 202
     "core_preview": null,
     "repository_labels": [],
     "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null,
     "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
@@ -134,6 +138,62 @@ status: 200
   "core_preview": null,
   "repository_labels": [],
   "labels_pending": false,
+  "status": {
+    "number": 10,
+    "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+    "base_ref": "topic",
+    "base": "c691256511d05858850bc7684ae062fea0d41132",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "read",
+    "conflicts": "conflicting",
+    "merge_state": "dirty",
+    "review_decision": null,
+    "checks": {
+      "state": "none",
+      "counts": {
+        "pass": 0,
+        "fail": 0,
+        "pending": 0,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": 0,
+      "required_pending": 0
+    },
+    "auto_merge": null,
+    "queue": null
+  },
+  "readiness": {
+    "verdict": "conflicts",
+    "tone": "danger",
+    "label": "Merge conflicts",
+    "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "requirements": [
+      {
+        "kind": "conflicts",
+        "status": "unmet",
+        "summary": "Merge conflicts with topic must be resolved.",
+        "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+      },
+      {
+        "kind": "checks",
+        "status": "met",
+        "summary": "No checks.",
+        "github_url": null
+      }
+    ],
+    "auto_merge": null,
+    "auto_merge_summary": null
+  },
+  "checks": {
+    "number": 10,
+    "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "items": [],
+    "truncated": false
+  },
+  "status_unavailable": null,
   "no_store": true
 }
 --- stderr ---
@@ -148,6 +208,7 @@ gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=10 cursor=start
 # metab checkout --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -252,6 +313,10 @@ status: 200
     "core_preview": null,
     "repository_labels": [],
     "labels_pending": false,
+    "status": "<STATUS 10>",
+    "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
+    "checks": "<CHECKS 10>",
+    "status_unavailable": null,
     "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
@@ -293,6 +358,10 @@ status: 202
     "core_preview": null,
     "repository_labels": [],
     "labels_pending": false,
+    "status": null,
+    "readiness": null,
+    "checks": null,
+    "status_unavailable": null,
     "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=9"
@@ -426,6 +495,74 @@ status: 200
   "core_preview": null,
   "repository_labels": [],
   "labels_pending": false,
+  "status": {
+    "number": 9,
+    "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+    "base_ref": "topic",
+    "base": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "read",
+    "conflicts": "unknown",
+    "merge_state": "unknown",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": 0,
+      "required_pending": 1
+    },
+    "auto_merge": null,
+    "queue": null
+  },
+  "readiness": null,
+  "checks": {
+    "number": 9,
+    "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "items": [
+      {
+        "name": "tests (3.13)",
+        "kind": "run",
+        "bucket": "pass",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs",
+        "kind": "run",
+        "bucket": "pending",
+        "status": "IN_PROGRESS",
+        "conclusion": null,
+        "required": true,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions",
+        "description": null
+      },
+      {
+        "name": "docs/readthedocs.org:demo",
+        "kind": "status",
+        "bucket": "pass",
+        "status": null,
+        "conclusion": "SUCCESS",
+        "required": false,
+        "details_url": "https://demo--7.org.readthedocs.build/en/7/",
+        "app": null,
+        "description": "Read the Docs build succeeded!"
+      }
+    ],
+    "truncated": false
+  },
+  "status_unavailable": null,
   "no_store": true
 }
 --- stderr ---
@@ -440,6 +577,7 @@ gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=9 cursor=start
 # metab checkout --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -544,6 +682,10 @@ status: 202
     "core_preview": null,
     "repository_labels": [],
     "labels_pending": false,
+    "status": "<STATUS 10>",
+    "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
+    "checks": "<CHECKS 10>",
+    "status_unavailable": null,
     "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
@@ -649,7 +791,11 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": "<STATUS 10>",
+  "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
+  "checks": "<CHECKS 10>",
+  "status_unavailable": null
 }
 --- stderr ---
 --- body ---
@@ -789,7 +935,11 @@ status: 200
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": "<STATUS 9>",
+    "readiness": null,
+    "checks": "<CHECKS 9>",
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -931,6 +1081,10 @@ status: 202
     "core_preview": null,
     "repository_labels": [],
     "labels_pending": false,
+    "status": "<STATUS 9>",
+    "readiness": null,
+    "checks": "<CHECKS 9>",
+    "status_unavailable": null,
     "preparing_comparison": true
   },
   "status_route": "/api/plugin/github/pull?number=9"
@@ -1066,7 +1220,11 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": "<STATUS 9>",
+  "readiness": null,
+  "checks": "<CHECKS 9>",
+  "status_unavailable": null
 }
 --- stderr ---
 --- body ---
@@ -1208,7 +1366,11 @@ status: 200
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": "<STATUS 9>",
+    "readiness": null,
+    "checks": "<CHECKS 9>",
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -1353,7 +1515,11 @@ status: 202
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": "<STATUS 9>",
+    "readiness": null,
+    "checks": "<CHECKS 9>",
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -1488,7 +1654,11 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": "<STATUS 9>",
+  "readiness": null,
+  "checks": "<CHECKS 9>",
+  "status_unavailable": null
 }
 --- stderr ---
 --- body ---

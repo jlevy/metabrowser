@@ -10,16 +10,19 @@
    reader holds an ETag and reusing that record's list on a ``304``;
 3. the account again: a record read while the active account changed is discarded;
 4. ``refs/pull/<n>/head`` into the store, which must name the head the API reported
-   (one more full read if it moved meanwhile, then ``head_mismatch``); and
-5. the comparison endpoints, then the record, written atomically.
+   (one more full read if it moved meanwhile, then ``head_mismatch``);
+5. the comparison endpoints, then the record, written atomically; and
+6. its operational status, one GraphQL query kept apart from the record
+   (:func:`~.pull_status_read.keep_pull_status`), unless the prefetch asked.
 
 A part that fails on its own does not fail the record. Check runs or a combined status
 GitHub refuses, and a comparison whose base cannot be fetched or shares no history with
-the head, are left out and named in the record's ``unavailable``. An item GitHub sends
-that cannot be read, or that alone is larger than a page may be, is left out and its
-list marked incomplete; an optional field that cannot be read, such as an ``http://``
-link, is left empty. Everything else that fails raises :class:`PullDataError`, and
-nothing else escapes.
+the head, are left out and named in the record's ``unavailable``; a status read that
+fails is kept as how that read ended, and the status an earlier one kept stays. An item
+GitHub sends that cannot be read, or that alone is larger than a page may be, is left
+out and its list marked incomplete; an optional field that cannot be read, such as an
+``http://`` link, is left empty. Everything else that fails raises
+:class:`PullDataError`, and nothing else escapes.
 
 It runs as a refresh-coordinator job keyed by the store and the pull-request number
 (:mod:`.served_pull`), which ``POST`` routes start or join. The one-shot CLI also runs it:
@@ -44,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ValidationError
 
+from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhError, GhResponse, gh_graphql
@@ -107,6 +111,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_record,
     write_pull_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_status_read import keep_pull_status
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
@@ -1239,6 +1244,15 @@ async def refresh_pull_request(
         raise
     succeeded = {"outcome": "succeeded", "at": record.fetched_at}
     await run_lock_section(partial(_keep_stamp, published, number, succeeded, record))
+    if not gh_budget.speculating():
+        # The page's own read of its operational status, after the record is published,
+        # so the record is shown no later than before. A failure fails the status alone.
+        # The prefetch's records, which nobody is looking at, leave it to the page's read:
+        # their caps are priced without it (``POINTS_PER_RECORD`` in pull_prefetch.py).
+        owner, repo = _owner_and_repo(published)
+        await keep_pull_status(
+            published, owner, repo, number, reader=record.reader, now=lambda: utc_now()
+        )
     return record
 
 

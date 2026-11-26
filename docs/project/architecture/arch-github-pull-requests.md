@@ -3,11 +3,16 @@
 **Status:** Built: the GitHub provider (URL reducer, `gh` runner, and rate-budget
 governor), pull-request records with their commits fetched into the store, the
 repository catalog and its search, lightweight cores, changed-file lists, checks in the
-record, the Conversation timeline, native stack metadata, the repository’s label set,
-revision snapshots, rendered Markdown diffs, background prefetch, the page’s comparison
-keep, and pull requests beside a served checkout.
-Not built: opening a timeline commit in Metabrowser rather than on GitHub, and hosted
-releases and other providers, which the
+record, a pull request’s operational status and merge verdict beside its record, the
+Conversation timeline, native stack metadata, the repository’s label set, revision
+snapshots, rendered Markdown diffs, background prefetch, the page’s comparison keep, and
+pull requests beside a served checkout.
+Not built: opening a timeline commit in Metabrowser rather than on GitHub; the rest of
+the
+[merge readiness plan](../specs/active/plan-2026-11-26-pull-request-merge-readiness.md),
+whose record still holds its checks and mergeability, and whose Pulls tab reads no
+status and whose pages draw no verdict; and hosted releases and other providers, which
+the
 [GitHub provider plan](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md)
 leaves to later work.
 
@@ -175,7 +180,8 @@ Every file is disposable and carries its own schema version.
 | `<n>.snapshots.json` | Earlier comparison pairs a revision link may open | `pull_snapshot_cache.py` |
 | `stack-<n>.snapshots.json` | A native stack’s earlier comparison pairs, which its page keeps drawn | `pull_stack_retained.py` |
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
-| `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
+| `<n>.checks.json`, `<n>.status.refresh.json` | Its head’s checks as its status read found them, and how that read ended | `pull_status_store.py` |
+| `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, each pull request’s newest operational status in its `pull_status` table, and how the catalog’s refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
 | `repos/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
@@ -187,7 +193,8 @@ Every file is disposable and carries its own schema version.
 account, then the pull request, its issue comments, reviews, review comments, and the
 head’s check runs and combined status, a page at a time with `If-None-Match` from the
 same reader’s previous record; the account again, discarding a record read across an
-account switch; then the head fetch and the comparison endpoints; then the record.
+account switch; then the head fetch and the comparison endpoints; then the record; then
+its [operational status](#operational-status), kept apart from the record.
 A part GitHub refuses, such as check runs, and a comparison whose base cannot be
 fetched, are named in the record’s `unavailable` rather than failing it.
 
@@ -240,6 +247,54 @@ named, so a revision link opened at an earlier base and head keeps opening after
 refresh moves the record on.
 It holds one reader’s pairs, starts over when another reader writes the record, and
 admits each pair only for the store that computed it.
+
+## Operational Status
+
+Whether a pull request conflicts, how its checks stand, its review decision, GitHub’s
+merge verdict (`mergeStateStatus`), auto-merge, and the merge queue change without
+anyone touching the pull request: a check finishes, the base moves, or GitHub finishes a
+computation. So they are a model of their own beside the record, never in it
+([merge readiness plan](../specs/active/plan-2026-11-26-pull-request-merge-readiness.md)).
+`pull_status.py` holds `PullStatus`, one observation of one head, and `PullChecks`, that
+head’s checks, each in the bucket `gh pr checks` sorts it into.
+`pull_readiness.py` turns a lifecycle and a status into the rows github.com’s merge box
+would show and one verdict, and is the only place readiness is decided; its docstring
+has the rules.
+
+- **Reading.** `refresh_pull_request` reads the status after it publishes the record, in
+  the same job, with one GraphQL query (`pull_status_read.py`): on every full read and
+  every checks-only read, so on every change a probe finds and every `FULL_REFRESH_S`
+  read of a visible page.
+  It goes through `gh_graphql`, as the core read does, so its `rateLimit { cost }`
+  counts toward the process’s ceiling and its `viewer` must be the job’s reader.
+  It pages the rollup’s checks up to `MAX_CHECK_ITEMS` and keeps the latest run of each,
+  as `gh pr checks` does; its module docstring has the rest, and its cost, latency, and
+  size are beside `_STATUS_QUERY`. Whether `mergeStateStatus` depends on who asks is
+  unsettled, and the note there says why.
+- **Failing alone.** A read that fails fails the status alone, as a refused part fails
+  only that part of a record: the record is published and its refresh succeeds, how the
+  read ended is kept in `<n>.status.refresh.json`, and what an earlier read kept stays.
+- **Budget.** The prefetch’s records, which nobody is looking at, read no status
+  (`gh_budget.speculating`): its caps are priced without it (`POINTS_PER_RECORD` in
+  `pull_prefetch.py`). Below `BACKGROUND_FLOOR` of either the REST or the GraphQL
+  budget, a visible page’s clock-driven reads wait (`ServedPull.below_floor`).
+- **Keeping.** The status is a row of the catalog’s `pull_status` table, one for each
+  pull request number, which keeps the newer `observed_at` whatever its head.
+  It is a table of its own, so a check that finishes moves no catalog row, fingerprint,
+  core, or window generation; a catalog whose rows start over for another account keeps
+  it, as the records beside it are kept.
+  The checks are `<n>.checks.json` beside the record, within `MAX_PULL_CHECKS_BYTES`
+  (`pull_status_store.py`), cut from the end to fit.
+  Both are in the `pulls` directory, so [clearing the cache](#clearing-the-cache)
+  removes them, and a checkout without a store keeps them as it keeps its catalog.
+- **Serving.** The pull envelope carries `status`, `checks`, and `readiness` beside
+  `record`, and `status_unavailable` while the last read had failed.
+  Each names its head, and the verdict judges a status only for the head of the record
+  or core shown: another head’s is `checking`, and a closed or merged pull request has
+  none. The entity tag covers all three, so a read that moves the status’s head or
+  `observed_at` moves it.
+  `metab --show /pull/<n>/checks` prints the verdict and each requirement’s status on
+  its model line.
 
 ## Serving Pull Requests
 
@@ -377,6 +432,8 @@ GraphQL errors, including partial data with HTTP 200, never advance a checkpoint
 Each page commits its rows, counts, and cursor in one short transaction under the
 source-alias lock, a checkpoint revision rejects a superseded publisher, and no network
 work runs under the lock.
+A pull request’s [status](#operational-status) is written the same way, into a table of
+its own, and moves no row, checkpoint, or generation.
 
 **Probing.** `pull_list_probe.py` asks GitHub whether the catalog is behind with one
 conditional request for the issue or pull request updated last (`probe_path`), which
@@ -942,8 +999,9 @@ failure:
 ## Clearing the Cache
 
 `POST cache-clear` takes an empty object and removes every entry of the source’s `pulls`
-directory (`clear_pulls` in `pull_record.py`), under the source-alias lock every writer
-of those files takes; each is fetched again when next wanted.
+directory (`clear_pulls` in `pull_record.py`), the catalog with its statuses and each
+pull request’s checks among them, under the source-alias lock every writer of those
+files takes; each is fetched again when next wanted.
 The source’s own records, its store, and the store’s manifest bank stay.
 The `cache_unwritable`, `newer_cache`, and `unknown_cache` messages name it as the
 command to paste (`cache_clear_command` in `gh_lists.py`).

@@ -99,6 +99,62 @@
       "core_preview": null,
       "repository_labels": [],
       "labels_pending": false,
+      "status": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "base_ref": "topic",
+        "base": "c691256511d05858850bc7684ae062fea0d41132",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "observed_by": "read",
+        "conflicts": "conflicting",
+        "merge_state": "dirty",
+        "review_decision": null,
+        "checks": {
+          "state": "none",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "pending": 0,
+            "skipping": 0,
+            "cancel": 0
+          },
+          "required_failing": 0,
+          "required_pending": 0
+        },
+        "auto_merge": null,
+        "queue": null
+      },
+      "readiness": {
+        "verdict": "conflicts",
+        "tone": "danger",
+        "label": "Merge conflicts",
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "requirements": [
+          {
+            "kind": "conflicts",
+            "status": "unmet",
+            "summary": "Merge conflicts with topic must be resolved.",
+            "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+          },
+          {
+            "kind": "checks",
+            "status": "met",
+            "summary": "No checks.",
+            "github_url": null
+          }
+        ],
+        "auto_merge": null,
+        "auto_merge_summary": null
+      },
+      "checks": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "items": [],
+        "truncated": false
+      },
+      "status_unavailable": null,
       "no_store": true
     }
   },
@@ -204,6 +260,62 @@
         "core_preview": null,
         "repository_labels": [],
         "labels_pending": false,
+        "status": {
+          "number": 10,
+          "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "base_ref": "topic",
+          "base": "c691256511d05858850bc7684ae062fea0d41132",
+          "observed_at": "2026-09-17T12:00:00Z",
+          "observed_by": "read",
+          "conflicts": "conflicting",
+          "merge_state": "dirty",
+          "review_decision": null,
+          "checks": {
+            "state": "none",
+            "counts": {
+              "pass": 0,
+              "fail": 0,
+              "pending": 0,
+              "skipping": 0,
+              "cancel": 0
+            },
+            "required_failing": 0,
+            "required_pending": 0
+          },
+          "auto_merge": null,
+          "queue": null
+        },
+        "readiness": {
+          "verdict": "conflicts",
+          "tone": "danger",
+          "label": "Merge conflicts",
+          "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "observed_at": "2026-09-17T12:00:00Z",
+          "requirements": [
+            {
+              "kind": "conflicts",
+              "status": "unmet",
+              "summary": "Merge conflicts with topic must be resolved.",
+              "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+            },
+            {
+              "kind": "checks",
+              "status": "met",
+              "summary": "No checks.",
+              "github_url": null
+            }
+          ],
+          "auto_merge": null,
+          "auto_merge_summary": null
+        },
+        "checks": {
+          "number": 10,
+          "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "observed_at": "2026-09-17T12:00:00Z",
+          "items": [],
+          "truncated": false
+        },
+        "status_unavailable": null,
         "no_store": true
       },
       "status_route": "/api/plugin/github/pull?number=10"
@@ -311,7 +423,63 @@
       },
       "core_preview": null,
       "repository_labels": [],
-      "labels_pending": false
+      "labels_pending": false,
+      "status": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "base_ref": "topic",
+        "base": "c691256511d05858850bc7684ae062fea0d41132",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "observed_by": "read",
+        "conflicts": "conflicting",
+        "merge_state": "dirty",
+        "review_decision": null,
+        "checks": {
+          "state": "none",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "pending": 0,
+            "skipping": 0,
+            "cancel": 0
+          },
+          "required_failing": 0,
+          "required_pending": 0
+        },
+        "auto_merge": null,
+        "queue": null
+      },
+      "readiness": {
+        "verdict": "conflicts",
+        "tone": "danger",
+        "label": "Merge conflicts",
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "requirements": [
+          {
+            "kind": "conflicts",
+            "status": "unmet",
+            "summary": "Merge conflicts with topic must be resolved.",
+            "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+          },
+          {
+            "kind": "checks",
+            "status": "met",
+            "summary": "No checks.",
+            "github_url": null
+          }
+        ],
+        "auto_merge": null,
+        "auto_merge_summary": null
+      },
+      "checks": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "items": [],
+        "truncated": false
+      },
+      "status_unavailable": null
     }
   }
 }

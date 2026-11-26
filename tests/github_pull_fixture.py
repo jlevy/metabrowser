@@ -150,6 +150,8 @@ if args[:1] == ["api"]:
             path = "graphql:core:" + fields.get("number", "missing")
         elif fields.get("query", "").lstrip().startswith("query MetabrowserPullTimeline("):
             path = "graphql:timeline:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
+        elif fields.get("query", "").startswith("query PullStatus("):
+            path = "graphql:status:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query VisiblePullCores("):
             slots = [f"n{{i}}" for i in range(8)]
             path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
@@ -714,6 +716,12 @@ def logged_gh_calls(directory: Path) -> list[str]:
                     f"cursor={fields.get('cursor', 'start')}"
                 )
                 continue
+            if fields.get("query", "").startswith("query PullStatus("):
+                calls.append(
+                    f"gh api graphql status number={fields.get('number', 'missing')} "
+                    f"cursor={fields.get('cursor', 'start')}"
+                )
+                continue
             if fields.get("query", "").startswith("query VisiblePullCores("):
                 slots = [f"n{i}" for i in range(8)]
                 numbers = ",".join(fields[key] for key in slots if key in fields)
@@ -842,6 +850,148 @@ def graph_core_entry(item: Mapping[str, Any], *, reader: str = READER) -> dict[s
     return ok(f"graphql:core:{item['number']}", {"data": graph_core_data(item, reader=reader)})
 
 
+# GitHub's ``CheckRunState`` and ``StatusState``, every one of which its counts by state
+# name, zero or not.
+_CHECK_RUN_STATES: Final = (
+    "ACTION_REQUIRED",
+    "CANCELLED",
+    "COMPLETED",
+    "FAILURE",
+    "IN_PROGRESS",
+    "NEUTRAL",
+    "PENDING",
+    "QUEUED",
+    "SKIPPED",
+    "STALE",
+    "STARTUP_FAILURE",
+    "SUCCESS",
+    "TIMED_OUT",
+    "WAITING",
+)
+_STATUS_STATES: Final = ("EXPECTED", "ERROR", "FAILURE", "PENDING", "SUCCESS")
+# What the stand-in's base branch requires, a rule only the status read sees: its tests and
+# its docs build, and a review.
+REQUIRED_CHECKS: Final = frozenset({"tests (3.13)", "docs"})
+# The operational status of each pull request, as GitHub's merge verdict would give it
+# under that rule: 7 waits on its docs build and a review, with auto-merge on; 8 was
+# merged and 9 closed, which GitHub no longer judges; and 10, the draft, conflicts.
+STATUS_SHAPES: Final[Mapping[int, Mapping[str, Any]]] = {
+    7: {
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "BLOCKED",
+        "reviewDecision": "REVIEW_REQUIRED",
+        "autoMergeRequest": {
+            "mergeMethod": "SQUASH",
+            "enabledAt": "2026-09-16T17:40:00Z",
+            "enabledBy": {"login": "maintainer"},
+        },
+    },
+    8: {"mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN", "reviewDecision": "APPROVED"},
+    9: {"mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN", "reviewDecision": "REVIEW_REQUIRED"},
+    10: {"mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY", "reviewDecision": None},
+}
+
+
+def graph_status_data(
+    parts: Mapping[str, Any],
+    *,
+    reader: str = READER,
+    shape: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The status query's answer for one pull request, from its REST checks and status.
+
+    Each check run and commit status the REST answers list is one context, required as
+    :data:`REQUIRED_CHECKS` says, and GitHub's counts and rollup are taken from them, so
+    the two reads agree. A head with neither has no rollup, as GitHub answers ``null``.
+    *shape* is GitHub's verdict on it, :data:`STATUS_SHAPES`' for its number by default.
+    """
+
+    pull = parts["pull"]
+    runs = parts["check_runs"]["check_runs"]
+    statuses = (parts.get("status") or {}).get("statuses") or []
+    nodes: list[dict[str, Any]] = []
+    run_counts = dict.fromkeys(_CHECK_RUN_STATES, 0)
+    status_counts = dict.fromkeys(_STATUS_STATES, 0)
+    for minute, run in enumerate(runs):
+        state = (run["conclusion"] if run["status"] == "completed" else run["status"]).upper()
+        run_counts[state] += 1
+        nodes.append(
+            {
+                "__typename": "CheckRun",
+                "name": run["name"],
+                "status": run["status"].upper(),
+                "conclusion": run["conclusion"].upper() if run["conclusion"] else None,
+                "isRequired": run["name"] in REQUIRED_CHECKS,
+                "detailsUrl": run["details_url"],
+                "startedAt": f"2026-09-16T17:{30 + minute:02d}:00Z",
+                "checkSuite": {"app": {"name": run["app"]["name"]}},
+            }
+        )
+    for status in statuses:
+        status_counts[status["state"].upper()] += 1
+        nodes.append(
+            {
+                "__typename": "StatusContext",
+                "context": status["context"],
+                "state": status["state"].upper(),
+                "isRequired": status["context"] in REQUIRED_CHECKS,
+                "targetUrl": status["target_url"],
+                "description": status["description"],
+            }
+        )
+    states = {state for state, count in (*run_counts.items(), *status_counts.items()) if count}
+    rollup = None
+    if nodes:
+        rollup = {
+            "state": "FAILURE"
+            if states & {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
+            else "PENDING"
+            if states - {"SUCCESS", "SKIPPED", "NEUTRAL"}
+            else "SUCCESS",
+            "contexts": {
+                "pageInfo": {"hasNextPage": False, "endCursor": "MTA"},
+                "checkRunCountsByState": [
+                    {"state": state, "count": count} for state, count in run_counts.items()
+                ],
+                "statusContextCountsByState": [
+                    {"state": state, "count": count} for state, count in status_counts.items()
+                ],
+                "nodes": nodes,
+            },
+        }
+    shape = STATUS_SHAPES[pull["number"]] if shape is None else shape
+    return {
+        "viewer": {"login": reader},
+        "rateLimit": {"cost": 1},
+        "repository": {
+            "nameWithOwner": "octo/demo",
+            "pull": {
+                "number": pull["number"],
+                "headRefOid": pull["head"]["sha"],
+                "baseRefName": pull["base"]["ref"],
+                "baseRefOid": pull["base"]["sha"],
+                "isDraft": pull.get("draft", False),
+                "mergeable": shape["mergeable"],
+                "mergeStateStatus": shape["mergeStateStatus"],
+                "reviewDecision": shape["reviewDecision"],
+                "isInMergeQueue": False,
+                "mergeQueueEntry": None,
+                "autoMergeRequest": shape.get("autoMergeRequest"),
+                "statusCheckRollup": rollup,
+            },
+        },
+    }
+
+
+def graph_status_entry(
+    parts: Mapping[str, Any], *, reader: str = READER, shape: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """The fake-gh entry for one pull request's status query, its first page."""
+
+    path = f"graphql:status:{parts['pull']['number']}:start"
+    return ok(path, {"data": graph_status_data(parts, reader=reader, shape=shape)})
+
+
 def api_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of pull requests 7 to 10 and its recorded answer."""
 
@@ -860,6 +1010,7 @@ def api_entries(origin: Origin) -> dict[str, Any]:
         for path, body in paths.items():
             entries[path] = ok(path, body)
         entries[f"graphql:core:{number}"] = graph_core_entry(parts["pull"])
+        entries[f"graphql:status:{number}:start"] = graph_status_entry(parts)
     return entries
 
 

@@ -174,10 +174,41 @@ def _describe_pull(payload: dict[str, Any], tab: str) -> str:
         unavailable = record.get("unavailable")
         if isinstance(unavailable, dict) and unavailable:
             parts.append("unavailable=" + ",".join(sorted(str(key) for key in unavailable)))
+    if tab == "checks":
+        parts.extend(_describe_readiness(payload))
     parts.append(f"tab={tab or 'conversation'}")
     if tab == "files":
         parts.append(f"comparison_route={payload.get('comparison_route')}")
     return "pull envelope; " + " ".join(parts)
+
+
+def _describe_readiness(payload: dict[str, Any]) -> list[str]:
+    """The verdict the Checks tab shows, and each requirement's status, in its order.
+
+    ``readiness=none`` is a closed or merged pull request, or one not shown at all; a
+    status read that failed is named, since the verdict is then an earlier read's, or
+    ``checking``.
+    """
+
+    readiness = payload.get("readiness")
+    if not isinstance(readiness, dict):
+        parts = ["readiness=none"]
+    else:
+        parts = [f"readiness={readiness.get('verdict')}"]
+        requirements = readiness.get("requirements")
+        if isinstance(requirements, list) and requirements:
+            parts.append(
+                "requirements="
+                + ",".join(
+                    f"{row.get('kind')}:{row.get('status')}"
+                    for row in requirements
+                    if isinstance(row, dict)
+                )
+            )
+    unavailable = payload.get("status_unavailable")
+    if unavailable is not None:
+        parts.append(f"status_unavailable={unavailable}")
+    return parts
 
 
 def _describe_stack(payload: dict[str, Any], tab: str, file: str) -> str:

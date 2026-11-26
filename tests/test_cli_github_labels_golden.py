@@ -33,6 +33,7 @@ from tests.golden_harness import (
     isolate_cli,
     label_home,
     normalize_pull_comparison_scopes,
+    operational_once,
     quoted,
     run_metab,
 )
@@ -134,4 +135,4 @@ def test_golden_repository_labels(
     assert kept["labels"] == read["labels"] and kept["fetched_at"] != read["fetched_at"]
     rendered = normalize_pull_comparison_scopes(label_home(Labels().apply("".join(blocks)), home))
     assert str(tmp_path) not in rendered and "file://" not in rendered
-    check_golden("cli-github-labels.txt", rendered)
+    check_golden("cli-github-labels.txt", operational_once(rendered))

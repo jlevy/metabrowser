@@ -97,12 +97,14 @@ def _without_store(envelope: Any) -> bool:
 
 
 def _drop_core_preview(envelope: PullEnvelope) -> None:
-    """Drop a revoked core preview, and the label entries and fast poll it alone asked for."""
+    """Drop a revoked core preview, and the label entries, fast poll, and verdict it alone
+    asked for: with no pull request shown there is no head to judge."""
 
     envelope["core_preview"] = None
     if envelope["record"] is None:
         envelope["repository_labels"] = []
         envelope["labels_pending"] = False
+        envelope["readiness"] = None
 
 
 async def _preview_current(view: PullView, preview: PullCorePreview | None) -> bool:

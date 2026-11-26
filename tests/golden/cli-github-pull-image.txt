@@ -22,6 +22,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 # metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA'
 exit: 1
 --- stdout ---
@@ -310,7 +311,111 @@ status: 202
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "status": {
+      "number": 7,
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_ref": "topic",
+      "base": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "observed_by": "read",
+      "conflicts": "mergeable",
+      "merge_state": "blocked",
+      "review_decision": "review_required",
+      "checks": {
+        "state": "pending",
+        "counts": {
+          "pass": 2,
+          "fail": 0,
+          "pending": 1,
+          "skipping": 0,
+          "cancel": 0
+        },
+        "required_failing": 0,
+        "required_pending": 1
+      },
+      "auto_merge": {
+        "method": "squash",
+        "enabled_by": "maintainer",
+        "enabled_at": "2026-09-16T17:40:00Z"
+      },
+      "queue": null
+    },
+    "readiness": {
+      "verdict": "checks_pending",
+      "tone": "attention",
+      "label": "Checks pending",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "requirements": [
+        {
+          "kind": "conflicts",
+          "status": "met",
+          "summary": "No merge conflicts with topic.",
+          "github_url": null
+        },
+        {
+          "kind": "checks",
+          "status": "waiting",
+          "summary": "Some checks are still pending: 2 successful, and 1 pending.",
+          "github_url": "<PATH>/pull/7/checks"
+        },
+        {
+          "kind": "reviews",
+          "status": "waiting",
+          "summary": "Review required.",
+          "github_url": "<PATH>/pull/7"
+        }
+      ],
+      "auto_merge": {
+        "method": "squash",
+        "enabled_by": "maintainer",
+        "enabled_at": "2026-09-16T17:40:00Z"
+      },
+      "auto_merge_summary": "Auto-merge enabled (squash)."
+    },
+    "checks": {
+      "number": 7,
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "observed_at": "2026-09-17T12:00:00Z",
+      "items": [
+        {
+          "name": "tests (3.13)",
+          "kind": "run",
+          "bucket": "pass",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "required": true,
+          "details_url": "<PATH>/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions",
+          "description": null
+        },
+        {
+          "name": "docs",
+          "kind": "run",
+          "bucket": "pending",
+          "status": "IN_PROGRESS",
+          "conclusion": null,
+          "required": true,
+          "details_url": "<PATH>/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions",
+          "description": null
+        },
+        {
+          "name": "docs/readthedocs.org:demo",
+          "kind": "status",
+          "bucket": "pass",
+          "status": null,
+          "conclusion": "SUCCESS",
+          "required": false,
+          "details_url": "https://demo--7.org.readthedocs.build/en/7/",
+          "app": null,
+          "description": "Read the Docs build succeeded!"
+        }
+      ],
+      "truncated": false
+    },
+    "status_unavailable": null
   },
   "status_route": "/api/plugin/github/pull?number=7"
 }
@@ -495,7 +600,20 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": "<STATUS 7>",
+  "readiness": {
+    "verdict": "checking",
+    "tone": "attention",
+    "label": "Checking",
+    "head": "de22d10b6b8d1dd5f87861fb532b0ab66af5f408",
+    "observed_at": null,
+    "requirements": [],
+    "auto_merge": null,
+    "auto_merge_summary": null
+  },
+  "checks": "<CHECKS 7>",
+  "status_unavailable": null
 }
 --- stderr ---
 selection: pull_request
@@ -510,6 +628,7 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
 # sources/<SLUG>/pulls/7.snapshots.json
 [{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"},{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"de22d10b6b8d1dd5f87861fb532b0ab66af5f408"}]
 

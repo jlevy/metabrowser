@@ -80,11 +80,14 @@ from metabrowser.builtin_plugins.github.pull_labels import (
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_probe import checked_at
 from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
+from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, readiness
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
     read_pull_record,
 )
+from metabrowser.builtin_plugins.github.pull_status import PullStatus
+from metabrowser.builtin_plugins.github.pull_status_store import kept_status
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
     PullCorePreview,
@@ -163,6 +166,54 @@ class PullEnvelope(TypedDict):
     # set does not hold one of those labels, so a page reads again soon.
     repository_labels: list[LabelEntry]
     labels_pending: bool
+    # The pull request's operational status as last read (:class:`~.pull_status.PullStatus`),
+    # its head's checks (:class:`~.pull_status.PullChecks`), and the verdict on it
+    # (:func:`~.pull_readiness.readiness`), beside the record and never in it: they change
+    # with a check, and the record does not. Each names the head it describes, and
+    # ``readiness`` judges ``status`` only when that is the head of the record or core
+    # shown; it is ``None`` for a closed or merged pull request, and with nothing shown.
+    # ``status_unavailable`` is why the last read of the status failed, when it did; what
+    # an earlier read kept is still answered.
+    status: dict[str, Any] | None
+    readiness: dict[str, Any] | None
+    checks: dict[str, Any] | None
+    status_unavailable: str | None
+
+
+def display_state(pull: Mapping[str, object]) -> DisplayState:
+    """The state badge of *pull*, a record's or core's ``pull`` as the wire has it.
+
+    Merged and draft come before open and closed, as GitHub's badge shows them.
+    """
+
+    if pull.get("merged"):
+        return "merged"
+    if pull.get("state") == "closed":
+        return "closed"
+    return "draft" if pull.get("draft") else "open"
+
+
+def judged_readiness(shown: object, status: PullStatus | None) -> dict[str, Any] | None:
+    """The verdict on *shown*, the ``pull`` the envelope shows, with *status*, as the wire has it.
+
+    ``None`` with no pull request shown, or a closed or merged one.
+    """
+
+    if not isinstance(shown, dict):
+        return None
+    pull: dict[str, object] = shown  # pyright: ignore[reportUnknownVariableType]
+    head = pull.get("head")
+    sha = head.get("sha") if isinstance(head, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if not isinstance(sha, str):
+        return None
+    url = pull.get("html_url")
+    verdict = readiness(
+        state=display_state(pull),
+        head=sha,
+        status=status,
+        html_url=url if isinstance(url, str) else None,
+    )
+    return None if verdict is None else verdict.model_dump(mode="json")
 
 
 def _parse_stamp(stamp: str) -> datetime:
@@ -496,6 +547,10 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             core_preview=None,
             repository_labels=[],
             labels_pending=False,
+            status=None,
+            readiness=None,
+            checks=None,
+            status_unavailable=None,
         )
         return none, None
     served = host.pulls
@@ -557,6 +612,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     labels: object = shown.get("labels") if isinstance(shown, dict) else None
     listed: list[object] = labels if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
     lookup = labels_for(served.home, served.slug, served.source, listed)
+    operational = kept_status(served.home, served.slug, view.number)
     envelope = PullEnvelope(
         state=state,
         reason=absence,
@@ -584,6 +640,10 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         core_preview=preview if not isinstance(record, PullRecord) else None,
         repository_labels=lookup.entries,
         labels_pending=view.labels_running and bool(lookup.missing),
+        status=(None if operational.status is None else operational.status.model_dump(mode="json")),
+        readiness=judged_readiness(shown, operational.status),
+        checks=None if operational.checks is None else operational.checks.model_dump(mode="json"),
+        status_unavailable=operational.unavailable,
     )
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True
@@ -737,6 +797,11 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
     change nothing else a page shows, so they are left out: a ``304`` carries them in
     :data:`VERIFIED_HEADER` instead (:func:`verified_header`). What the verdict changes,
     ``state``, ``head_moved``, and ``checks_pending``, stays in.
+
+    The status, its verdict, and the checks are in it whole, so a read that moves the
+    status's head or ``observed_at`` changes the tag. The checks are at most
+    ``MAX_CHECK_ITEMS``: 400 checks as this repository's CI names them took about 110 KB
+    and about 1 ms to hash here, 20 to 35 a tenth of that (measured 2026-11-26).
     """
 
     fields: dict[str, Any] = {
@@ -1085,8 +1150,10 @@ __all__ = [
     "catalog_checked_at",
     "catalog_scanning",
     "comparison_route",
+    "display_state",
     "envelope_etag",
     "image_route",
+    "judged_readiness",
     "pull_answer",
     "pull_envelope",
     "pull_host",
