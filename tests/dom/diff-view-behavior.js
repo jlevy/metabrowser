@@ -1013,18 +1013,32 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     answered.handle.dispose();
 
-    // Past the loading delay with no answer, the first screen shows Source, drawn there.
+    // Past the loading delay with no answer, a first-screen file still waits, its Source
+    // undrawn: shown then, it was replaced when the answer came, and the files below moved.
     const late = await mount({
       answer: pending,
       holdMs: 0,
       near: { hydration: true, rendered: true },
     });
     check(
-      "a first-screen file past its loading delay shows Source and draws it",
-      late.body.hidden !== true && late.rows() > 1000,
+      "a first-screen file past its loading delay still waits and draws none of its Source",
+      late.body.hidden === true && late.rows() === 0,
       JSON.stringify({ hidden: late.body.hidden, rows: late.rows() }),
     );
     late.handle.dispose();
+
+    // The server refuses its rendered view: it shows Source, drawn there.
+    const refused = await mount({
+      answer: async () => ({ status: "refused" }),
+      holdMs: 60_000,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a first-screen file whose rendered view is refused shows Source and draws it",
+      refused.body.hidden !== true && refused.rows() > 1000,
+      JSON.stringify({ hidden: refused.body.hidden, rows: refused.rows() }),
+    );
+    refused.handle.dispose();
   }
 
   const markupText = (value) => {

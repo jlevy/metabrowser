@@ -18,11 +18,14 @@ The comparison names the route that answers a file’s rendered redline,
 Before the reader opens Changes, the page asks for the projections of the Markdown files
 among the first eight, at most four, so the first screen finds them computed.
 
-Every Markdown file waits for its rendered view with Source hidden for the app’s loading
-delay, 50 ms, so an answer within it paints its rendering first and never replaces
-Source in view; past it, Source shows and the rendering replaces it when it arrives.
-A file is asked for when it comes within a viewport of the screen, one request at a
-time, and its progress mark counts down to visible only while its request waits.
+Every Markdown file near the first screen waits for its rendered view with Source
+hidden, so its rendering is the first thing its body shows and never replaces Source in
+view. It waits past the app’s loading delay, 50 ms, too: Source shown then was replaced
+when the answer came, which moved every file below it.
+A waiting file’s section says so, and everything after it in the diff is out of sight
+meanwhile.
+A file is asked for when it comes within a viewport of the screen, one request
+at a time, and its progress mark counts down to visible only while its request waits.
 A busy server is transient: the file keeps its view and asks again after 100 ms,
 doubling to 1.6 s. A file the server refuses shows Source and keeps its chooser.
 Rendered is unavailable and gives the reason in its tooltip and accessible name.
@@ -89,11 +92,12 @@ has no pin, and pinned at the head once another tab changed the pin.
 `links.opens` says which addresses in a rendered block open something on the page pinned
 at the head. Each step lists the requests the page made and each file whose state it
 changed: its chooser (`*` chosen, and `unavailable` with the reason for a view that
-cannot be chosen), what its body shows (`nothing` while it waits within the loading
-delay), `progress` while its mark counts down, and its rendered rows, a fold as its bar
-and a chunk not drawn yet as the place it keeps, a long file’s rows shortened to their
-first and last four.
-The session fails if a file’s chooser is ever gone.
+cannot be chosen), what its body shows (`nothing` while it waits for its rendered view),
+`progress` while its mark counts down, and its rendered rows, a fold as its bar and a
+chunk not drawn yet as the place it keeps, a long file’s rows shortened to their first
+and last four.
+The session fails if a file’s chooser is ever gone, or if a file’s section
+says it waits at any time but while its body shows nothing.
 It prints its transcript in two parts, each a block of its own: the links and the steps
 before the long document’s, then the long document’s steps on (`long`).
 
@@ -251,15 +255,9 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "past the loading delay a waiting file shows Source",
+      "step": "past the loading delay a waiting file still waits, Source hidden",
       "requests": [],
-      "files": {
-        "f2 docs/renamed.md": {
-          "chooser": "*Rendered | Source",
-          "shows": "source",
-          "progress": "counting"
-        }
-      }
+      "files": {}
     },
     {
       "step": "a file Rendered cannot show stays in Source, and its chooser says why",
@@ -961,15 +959,13 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
-      "step": "disposal unbinds the chooser and stops every timer",
+      "step": "disposal unbinds every chooser and stops every timer",
       "requests": [],
       "files": {}
     },
     {
       "step": "after disposal",
-      "unbound": [
-        "unbound"
-      ],
+      "bound": 0,
       "timers": 0
     }
   ]

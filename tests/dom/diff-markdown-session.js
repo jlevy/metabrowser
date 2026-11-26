@@ -24,7 +24,7 @@
 // route, and for each file whose state the step changed: its chooser (`*` marks the chosen
 // format, and a rendered view that cannot be chosen says `unavailable` and why, as its
 // tooltip and its accessible name do), what its body shows (`rendered`, `source`, or
-// `nothing` while it waits within the loading delay), whether its progress mark is
+// `nothing` while it waits for its rendered view), whether its progress mark is
 // counting down to visible, and the rendered rows: each block's kind and text, a fold's bar
 // as `[N unchanged blocks]`, open with its rows under it or closed, and the place a chunk
 // not drawn yet keeps as `[blocks I-J not drawn: N px]`. A long file's rows are shortened
@@ -712,6 +712,12 @@ function describe(file) {
     `${file.name}: the chooser is gone`,
   );
   assert(file.section.childNodes.length === 4, `${file.name}: unexpected file content`);
+  // A file whose body shows nothing yet says so on its section, which keeps what follows it
+  // in the diff out of sight (styles.css), so its body arriving moves nothing a reader sees.
+  assert(
+    file.section.classList.contains(waitingClass) === (shows === "nothing"),
+    `${file.name}: a file waits exactly while its body shows nothing`,
+  );
   if (file.rendered.childNodes.length > 0) {
     joinsAreFresh(file);
   }
@@ -723,6 +729,8 @@ function describe(file) {
   };
 }
 
+/** The class a waiting file's section has (`WAITING_CLASS` in diff-markdown.js). */
+let waitingClass;
 const steps = [];
 /** What each file showed when last printed: a step prints only the files it changed. */
 const shown = new Map();
@@ -750,6 +758,7 @@ async function main() {
   const markdown = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
+  waitingClass = markdown.WAITING_CLASS;
   markJoins = markdown.markJoins;
 
   // Every file of a rendered format is drawn with the chooser; a projection is asked only
@@ -826,15 +835,16 @@ async function main() {
   };
 
   const root = element("div");
-  const unbinds = [];
-  let shared;
+  // Each file's chooser is bound by itself, never the diff around them, whose toolbar holds
+  // another control's dropdown (mb-yn7w).
+  const bound = new Map();
   const views = markdown.createMarkdownViews({
     controls: {
       groupHtml: (spec) => spec,
       bind(container, handlers) {
-        assert(container === root, "the chooser is bound to the diff");
-        shared = handlers.onChange;
-        return () => unbinds.push("unbound");
+        assert(container.className === "diff-markdown-control", "a chooser is bound by itself");
+        bound.set(container, handlers.onChange);
+        return () => bound.delete(container);
       },
     },
     load(fileId, signal, ask) {
@@ -905,7 +915,7 @@ async function main() {
   });
   const byId = Object.fromEntries(files.map((file) => [file.id, file]));
   const choose = async (file, value) => {
-    shared(file.source.id, value, "one");
+    bound.get(file.control)(file.source.id, value, "one");
     await settle();
   };
   const near = (...ids) =>
@@ -1019,7 +1029,7 @@ async function main() {
     return prevented;
   };
 
-  views.observe(root, null);
+  views.observe(null);
   steps.push({
     step: "the page asks for the first screen's projections ahead of Changes",
     asks: ahead,
@@ -1047,7 +1057,7 @@ async function main() {
 
   clock.advance(50);
   await settle();
-  step("past the loading delay a waiting file shows Source", files);
+  step("past the loading delay a waiting file still waits, Source hidden", files);
 
   answer("f2 view=concise");
   await settle();
@@ -1216,8 +1226,8 @@ async function main() {
   step("a page that learns another pin is served keeps no link to a file", [byId.f1]);
 
   views.dispose();
-  step("disposal unbinds the chooser and stops every timer", files);
-  steps.push({ step: "after disposal", unbound: unbinds, timers: clock.timers.size });
+  step("disposal unbinds every chooser and stops every timer", files);
+  steps.push({ step: "after disposal", bound: bound.size, timers: clock.timers.size });
 
   finished = true;
   process.stdout.write(`${JSON.stringify(printed(PART, links, steps), null, 2)}\n`);

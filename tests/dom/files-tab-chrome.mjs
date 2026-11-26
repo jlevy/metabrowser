@@ -1007,6 +1007,10 @@ try {
   }
   await browser.evaluate(frames);
   result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
+  // Whether the write reached the page's store at all, which says where a refresh that did
+  // not come stopped: before the page, in the operating system's file events, the
+  // server's watcher, or the event stream; or in the page, with the change in hand.
+  result.refreshDelivered = await browser.evaluate(`fileStore.has("src/lib/k99.py")`);
   // The heading kept its place, its category's icon, and its name, and updated its tally
   // beside its name.
   result.refreshedHeading = await browser.evaluate(

@@ -519,6 +519,17 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # src/lib stays open with the new file in it, and the scroll position and the focused
     # row inside it are kept.
     refresh = measured["refresh"]
+    # The refresh starts with the operating system's file events, which the server's
+    # watcher reads (watch_backends.py). A host whose events do not arrive fails here, by
+    # name: on a Mac up 8 days whose fseventsd had used 4,654 CPU minutes, `watchfiles`
+    # alone saw no event for a file written under three directories in 30 s, while its
+    # polling saw each in 1 to 2 s, and the page's store never held the file (mb-em6e).
+    assert measured["refreshDelivered"], (
+        "the written file never reached the page: no file event came through the server's "
+        "watcher in 15 s. Check the host's native file events before the page's refresh; "
+        "on macOS, a `watchfiles.awatch` of a temporary directory that reports no write "
+        "means fseventsd is not delivering."
+    )
     focused = "type:code|file:src/lib/k06.py"
     assert refresh["before"]["focused"] == focused and refresh["before"]["scrollTop"] > 0, refresh
     assert not refresh["before"]["written"], refresh

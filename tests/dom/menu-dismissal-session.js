@@ -24,15 +24,15 @@
 // ignored, on another dropdown's trigger, and outside the bar; what each press landed on
 // still acts; Escape gives focus back to the trigger; and a consumer that binds the bar
 // again with a dropdown drawn open, as the Agents list does on every load, keeps it
-// closing; and a container bound around the bar, as a diff's Markdown layer binds the diff
-// that holds its File type control, leaves the bar's open dropdown to the bar.
+// closing.
 //
 // `early` is menus opened before the shell's tools arrive: they ask for them, and once
 // they land the one still open closes as every menu does, while one closed or disposed
 // meanwhile, and a bar's binding replaced meanwhile, stay out of it.
 //
 // A press is a browser's: `pointerdown`, then focus for a button, as Chrome gives it, then
-// `click`. WebKit's focuses no button: it gives focus to the nearest ancestor a press can
+// `pointerup` and `click` in one task. Each step is a later task than the presses before
+// it, so what a press left for a later task has run. WebKit's focuses no button: it gives focus to the nearest ancestor a press can
 // focus, one with a `tabindex`, or takes it off the page's focused element where there is
 // none, as measured in the macOS app's web view on 2026-11-25 (mb-iwfs). Exits 1 on a
 // failed invariant.
@@ -86,13 +86,37 @@ function loadShell({ early = null } = {}) {
   return sandbox.metabrowser;
 }
 
-/** The listeners the document and the window hold for open menus. */
+/** Whether the document or the window holds a listener for open menus. */
 function listening(doc) {
-  const kinds = new Set(["pointerdown", "click", "focusin", "keydown"]);
+  const kinds = /^(pointer(down|up|cancel)|click|focusin|contextmenu|keydown)$/;
   return (
-    doc.listeners.filter((entry) => kinds.has(entry.type)).length +
-    doc.defaultView.listeners.filter((entry) => entry.type === "blur").length
+    doc.listeners.some((entry) => kinds.test(entry.type)) ||
+    doc.defaultView.listeners.some((entry) => entry.type === "blur")
   );
+}
+
+/**
+ * A document whose window keeps what is left for a later task, as `setTimeout` leaves it,
+ * until `laterTask` runs it.
+ */
+function documentWithTasks() {
+  const doc = new FakeDocument();
+  const tasks = [];
+  doc.defaultView.setTimeout = (task) => tasks.push(task);
+  const laterTask = () => {
+    for (const task of tasks.splice(0)) {
+      task();
+    }
+  };
+  return { doc, laterTask };
+}
+
+/** The button of a press coming up, and its click in the same task, unless it brings none. */
+function letGo(node, { click = true, pointerType = "mouse" } = {}) {
+  node.dispatchEvent({ type: "pointerup", target: node, button: 0, pointerType });
+  if (click) {
+    node.dispatchEvent({ type: "click", target: node, button: 0 });
+  }
 }
 
 /**
@@ -109,7 +133,7 @@ function press(node, { check = false } = {}) {
   if (check) {
     node.checked = !(node.checked ?? node.hasAttribute("checked"));
   }
-  node.dispatchEvent({ type: "click", target: node, button: 0 });
+  letGo(node);
   if (check) {
     node.dispatchEvent({ type: "change", target: node });
   }
@@ -118,9 +142,10 @@ function press(node, { check = false } = {}) {
 /**
  * A press as WebKit delivers one on a button: down, then focus to the nearest ancestor a
  * press can focus, or off the focused element where there is none, then the click, unless
- * the press is let go with none (`click: false`).
+ * the press brings none (`click: false`), as one on a disabled row, or a touch's
+ * (`pointerType`).
  */
-function webkitPress(node, { click = true } = {}) {
+function webkitPress(node, options = {}) {
   node.dispatchEvent({ type: "pointerdown", target: node, button: 0 });
   const focusable = node.parentElement?.closest("[tabindex]");
   if (focusable) {
@@ -128,9 +153,7 @@ function webkitPress(node, { click = true } = {}) {
   } else {
     node.ownerDocument.activeElement?.blur();
   }
-  if (click) {
-    node.dispatchEvent({ type: "click", target: node, button: 0 });
-  }
+  letGo(node, options);
 }
 
 /** A key at the focused element, bubbling to the document; whether it was prevented. */
@@ -159,7 +182,7 @@ function focusName(doc) {
 
 function menuSession() {
   const mb = loadShell();
-  const doc = new FakeDocument();
+  const { doc, laterTask } = documentWithTasks();
   const closes = [];
   /**
    * A trigger, its panel of an item and a field, and the wiring every menu has. One that
@@ -211,6 +234,7 @@ function menuSession() {
 
   const steps = [];
   const step = (label, extra = {}) => {
+    laterTask();
     steps.push({
       step: label,
       open: [a, b, g, p].filter((menu) => !menu.panel.hidden).map((menu) => menu.name),
@@ -236,6 +260,7 @@ function menuSession() {
   // both, here the page.
   a.field.dispatchEvent({ type: "pointerdown", target: a.field, button: 0 });
   a.field.focus();
+  outside.dispatchEvent({ type: "pointerup", target: outside, button: 0, pointerType: "mouse" });
   doc.body.dispatchEvent({ type: "click", target: doc.body, button: 0 });
   step("a drag from a field in it, let go outside, leaves it open");
   press(outside);
@@ -300,11 +325,43 @@ function menuSession() {
   step("and its second press on P's trigger closes P");
   webkitPress(p.trigger);
   closes.splice(0);
+  // A press that brings no click, as on a disabled row: the focus it moves is its own, and
+  // a task after the button comes up it is over, so focus a script, a native menu command,
+  // or an assistive technology then moves outside closes the menu (mb-yn7w).
   webkitPress(p.first, { click: false });
-  step("its press on an item let go with no click leaves P open");
+  step("its press on an item that brings no click leaves P open");
+  outside.focus();
+  step("and focus arriving outside afterwards closes P");
+  // A touch's focus and click follow the lift, a task later, so its lift ends nothing;
+  // its click does, and a key.
+  webkitPress(p.trigger);
+  closes.splice(0);
+  p.first.dispatchEvent({ type: "pointerdown", target: p.first, button: 0 });
+  letGo(p.first, { click: false, pointerType: "touch" });
+  laterTask();
+  pane.focus();
+  p.first.dispatchEvent({ type: "click", target: p.first, button: 0 });
+  step("a tap on an item of P, its focus and click a task after the lift, leaves P open", {
+    picked: picked.splice(0),
+  });
+  webkitPress(p.first, { click: false, pointerType: "touch" });
+  step("a touch on an item that brings no click leaves P open");
   key(doc, "Tab");
   outside.focus();
   step("then Tab, taking focus outside, closes P");
+  for (const [type, what] of [
+    ["pointercancel", "a touch in P the browser takes for a scroll"],
+    ["contextmenu", "a secondary press in P that brings a context menu"],
+  ]) {
+    webkitPress(p.trigger);
+    closes.splice(0);
+    p.first.dispatchEvent({ type: "pointerdown", target: p.first, button: 0 });
+    pane.focus();
+    p.first.dispatchEvent({ type, target: p.first });
+    // No later task has run: the press is over at once.
+    outside.focus();
+    step(`${what} is over at once: focus arriving outside closes P`);
+  }
   open(b);
   b.dismissal.dispose();
   step("a menu disposed open, as when its view goes, lets the document go", { disposed: "B" });
@@ -320,7 +377,7 @@ function menuSession() {
 function filesBarSession() {
   const mb = loadShell();
   const fc = mb.filterControls;
-  const doc = new FakeDocument();
+  const { doc, laterTask } = documentWithTasks();
   const bar = element(doc, "div", { id: "nav-filter-bar", class: "nav-filter-bar" });
   const treeRow = element(doc, "button", { "data-name": "a tree row" });
   doc.body.append(bar, treeRow);
@@ -411,6 +468,7 @@ function filesBarSession() {
   const steps = [];
   let otherOpen = false;
   const step = (label, extra = {}) => {
+    laterTask();
     steps.push({
       step: label,
       open: state.open ?? "none",
@@ -475,17 +533,6 @@ function filesBarSession() {
   rebind();
   key(doc, "Escape");
   step("and, bound again twice, Escape closes it and gives focus back to its trigger");
-  // A container bound around the bar while a dropdown is open, as each diff a File type
-  // choice mounts binds itself around the File type control in its toolbar.
-  open("types");
-  const around = element(doc, "div", { "data-name": "a container around the bar" });
-  doc.body.append(around);
-  around.append(bar);
-  const unbindAround = fc.bind(around, {});
-  step("a container bound around the bar with File type open leaves it open");
-  press(treeRow);
-  step("and a press outside both closes it");
-  unbindAround();
   open("group");
   unbind();
   step("unbinding the bar with Group by drawn open lets the document go", { unbound: true });
@@ -497,7 +544,7 @@ function filesBarSession() {
 async function earlySession() {
   const early = { asked: [], land: null };
   const mb = loadShell({ early });
-  const doc = new FakeDocument();
+  const { doc, laterTask } = documentWithTasks();
   const closes = [];
   /** A menu whose panel shows while it is open, and goes with its view. */
   function makeMenu(name) {
@@ -530,6 +577,7 @@ async function earlySession() {
     [a, b, c].filter((menu) => menu.view.parentNode && !menu.panel.hidden).map((menu) => menu.name);
   const steps = [];
   const step = (label, extra = {}) =>
+    laterTask() ??
     steps.push({
       step: label,
       ...extra,
@@ -564,7 +612,7 @@ async function earlyBarSession() {
   const early = { asked: [], land: null };
   const mb = loadShell({ early });
   const fc = mb.filterControls;
-  const doc = new FakeDocument();
+  const { doc, laterTask } = documentWithTasks();
   const bar = element(doc, "div", { id: "nav-filter-bar" });
   const outside = element(doc, "button", { "data-name": "a tree row" });
   doc.body.append(bar, outside);
@@ -595,6 +643,7 @@ async function earlyBarSession() {
   unbind = fc.bind(bar, handlers);
   const steps = [];
   const step = (label, extra = {}) =>
+    laterTask() ??
     steps.push({
       step: label,
       ...extra,
@@ -618,23 +667,29 @@ async function main() {
   const told = { menu: menuSession(), filesBar: filesBarSession(), early: await earlySession() };
   // No menu holds the document while none is open, and one holds it while open.
   for (const step of told.menu.filter((each) => !each.disposed)) {
-    assert.equal(step.listening > 0, step.open.length > 0, step.step);
+    assert.equal(step.listening, step.open.length > 0, step.step);
   }
   for (const step of told.filesBar.filter((each) => !each.unbound)) {
-    assert.equal(step.listening > 0, step.open !== "none" || "otherMenu" in step, step.step);
+    assert.equal(step.listening, step.open !== "none" || "otherMenu" in step, step.step);
   }
   for (const step of told.early) {
     const open = Array.isArray(step.open) ? step.open.length > 0 : step.open !== "none";
-    assert.equal(step.listening > 0, open && step.loaded, step.step);
+    assert.equal(step.listening, open && step.loaded, step.step);
   }
   // WebKit's press in a menu, which gives the pane around it focus, is the menu's own: the
   // menu is open after it and its click reached the item. A menu closed by that focus is
   // rebuilt under the press in the page, and the choice is lost (mb-iwfs).
-  const pressed = told.menu.find((each) => "picked" in each);
-  assert.deepEqual([pressed?.open, pressed?.picked], [["P"], ["P first item"]], pressed?.step);
-  // A dropdown its own container holds open stays open as a container around it binds.
-  const around = told.filesBar.find((each) => each.step.startsWith("a container bound around"));
-  assert.equal(around?.open, "types", around?.step);
+  for (const pressed of told.menu.filter((each) => "picked" in each)) {
+    assert.deepEqual([pressed.open, pressed.picked], [["P"], ["P first item"]], pressed.step);
+  }
+  // A press that brings no click is over by the next task, or at once where the browser
+  // says so: focus arriving outside afterwards closes the menu (mb-yn7w).
+  // So does Tab after a touch, whose lift ends nothing.
+  const over = told.menu.filter((each) => /outside,? (afterwards )?closes P$/.test(each.step));
+  assert.deepEqual(
+    over.map((each) => each.closed),
+    Array(4).fill(["P: away"]),
+  );
   process.stdout.write(`${JSON.stringify(told, null, 2)}\n`);
 }
 

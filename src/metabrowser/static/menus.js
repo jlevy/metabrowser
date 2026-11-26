@@ -3,7 +3,8 @@
 // and Escape close it, and opening one closes any other. Its trigger's own click toggles
 // it, so a second press closes it. A press that closes a menu still acts on what it lands
 // on, as a press beside the branch chooser always has. Opening one with focus outside it
-// moves focus to its trigger.
+// moves focus to its trigger. A press that went down in a menu keeps it open through the
+// focus that press moves and through its click, wherever they land, and no longer.
 //
 // Every menu in the shell and its built-in plugins closes through this, and a plugin's
 // menu does through `metabrowser.menus.dismissible` (docs/plugins.md, "Menus");
@@ -65,14 +66,36 @@
     if (listening.has(doc)) {
       return;
     }
-    // The open menus the last press went down in, until its click or a key. Its click is
-    // theirs wherever it lands: a drag from a field in a menu to outside it clicks on an
-    // ancestor of both. So is the focus it moves: WebKit, the macOS app's engine, focuses no
-    // button on a press, and gives focus to the nearest ancestor a press can focus instead,
-    // which for every menu in a view is the preview pane (`tabindex="-1"`). Closing on that
-    // rebuilt the menu under the press, so its click never reached the row (mb-iwfs).
+    // The open menus the last press went down in, until that press ends (`pressOver`). Its
+    // click is theirs wherever it lands: a drag from a field in a menu to outside it clicks
+    // on an ancestor of both. So is the focus it moves: WebKit, the macOS app's engine,
+    // focuses no button on a press, and gives focus to the nearest ancestor a press can
+    // focus instead, which for every menu in a view is the preview pane (`tabindex="-1"`).
+    // Closing on that rebuilt the menu under the press, so its click never reached the row
+    // (mb-iwfs).
     /** @type {Set<OpenMenu>} */
     let pressedIn = new Set();
+    // A press ends at its click, at the next press, and at any key, and one that brings no
+    // click ends too, or focus arriving outside later would find the menu still held
+    // (mb-yn7w): at once where the browser takes it for a scroll (`pointercancel`) or a
+    // context menu, and a task after a mouse's button comes up, since a mouse's click
+    // follows its `pointerup` in the same task, so none has come by then. A press on a
+    // disabled row is that one. A touch's focus and click follow the lift, so its
+    // `pointerup` ends nothing; the click, or the next press or key, does.
+    /** @param {Event} event */
+    const pressOver = (event) => {
+      const press = pressedIn;
+      const end = () => {
+        if (pressedIn === press) {
+          pressedIn = new Set();
+        }
+      };
+      if (event.type !== "pointerup") {
+        end();
+      } else if (/** @type {PointerEvent} */ (event).pointerType === "mouse") {
+        view?.setTimeout(end, 0);
+      }
+    };
     // A press, a click an assistive technology sends with no press, or focus arriving
     // outside a menu and its trigger closes it. Captured, so no handler below can keep it
     // from here; the event goes on to what it landed on.
@@ -96,10 +119,10 @@
     // Escape closes the menu opened last. One a surface above it took first is that
     // surface's ("Shared Overlay Lifecycle"), and a chord is the browser's and the app's.
     /** @param {Event} event */
-    const onEscape = (event) => {
+    const onKey = (event) => {
       const key = /** @type {KeyboardEvent} */ (event);
-      // Focus a key moves is the key's, never a press's: a press let go with no click, as
-      // one dragged off a row that was rebuilt, must not keep Tab from closing its menu.
+      // Every key ends the press: focus a key moves is the key's, never a press's, so Tab
+      // closes a menu whatever press came before it.
       pressedIn = new Set();
       const last = openMenusOf(doc).at(-1);
       if (
@@ -125,7 +148,10 @@
       ["pointerdown", outside, true],
       ["click", outside, true],
       ["focusin", outside, true],
-      ["keydown", onEscape, false],
+      ["pointerup", pressOver, true],
+      ["pointercancel", pressOver, true],
+      ["contextmenu", pressOver, true],
+      ["keydown", onKey, false],
     ];
     for (const [type, listener, capture] of on) {
       doc.addEventListener(type, listener, capture);
@@ -171,14 +197,6 @@
         if (!doc || (entry && openMenus.has(entry))) {
           return;
         }
-        // A menu another holder has open is that holder's, by its trigger: a container
-        // bound around a bound control finds the control's dropdown drawn open, as a
-        // diff's Markdown layer finds the File type menu in the diff it binds, and
-        // opening it again here closed it under the reader at each mount (mb-iwfs).
-        const trigger = triggerOf(menu);
-        if (openMenusOf(doc).some((other) => triggerOf(other.menu) === trigger)) {
-          return;
-        }
         for (const other of openMenusOf(doc)) {
           closeMenu(other, "other");
         }
@@ -187,6 +205,7 @@
         listen(doc);
         // Focus goes with the menu. A press in WebKit gives a trigger none, and a rebuild
         // that put focus back on a tree row, say, would arrive outside and close the menu.
+        const trigger = triggerOf(menu);
         const active = doc.activeElement;
         if (
           trigger?.isConnected &&

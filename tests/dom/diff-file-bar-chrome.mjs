@@ -25,7 +25,11 @@
 //   moves View file to the next line;
 // - the chooser ends the bar at its end pad, and View file follows the name's group;
 // - at rest the stats are nearer the name than View file is to the stats, though Copy
-//   path keeps its slot between them (A4).
+//   path keeps its slot between them (A4);
+// - nothing after a file that waits for its first drawing is seen or takes a press, and
+//   all of it is once the wait is over, so a body that arrives late moves nothing a reader
+//   sees (mb-ne65). The session in tests/dom/diff-markdown-session.js holds when a file
+//   says it waits.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -233,6 +237,16 @@ const server = /** @type {import("node:http").Server} */ (await serve());
 const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
 /** @type {Awaited<ReturnType<typeof launchChrome>> | undefined} */
 let chrome;
+// In the page: which files are seen, with the file at *index* waiting, or none (-1).
+const SEEN = `(waiting, index) => {
+  const files = [...document.querySelectorAll("#host .diff-file")];
+  files.forEach((file, at) => file.classList.toggle(waiting, at === index));
+  return files.map((file) => {
+    const style = getComputedStyle(file);
+    return style.visibility === "visible" && style.opacity !== "0";
+  });
+}`;
+const { WAITING_CLASS } = await import(path.join(DIFF, "diff-markdown.js"));
 const measured = [];
 try {
   chrome = await launchChrome(/** @type {string} */ (process.env.CHROME_BIN), {
@@ -248,6 +262,13 @@ try {
   const mounted = await chrome.evaluate(`(${MOUNT})(${JSON.stringify(BARS)})`);
   check("every bar is drawn", mounted === BARS.length, String(mounted));
   await chrome.evaluate("document.fonts.ready.then(() => true)");
+  const seen = (index) => chrome.evaluate(`(${SEEN})(${JSON.stringify(WAITING_CLASS)}, ${index})`);
+  const waiting = 1;
+  check(
+    "a waiting file and the files before it are seen, and none after it",
+    JSON.stringify(await seen(waiting)) === JSON.stringify(BARS.map((_bar, at) => at <= waiting)),
+  );
+  check("every file is seen once none waits", (await seen(-1)).every(Boolean));
   for (const width of BAR_WIDTHS) {
     const bars = await chrome.evaluate(`(${MEASURE})(${width})`);
     measured.push({ width, bars });

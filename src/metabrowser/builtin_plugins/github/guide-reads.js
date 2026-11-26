@@ -27,9 +27,9 @@
 export const GUIDE_KEPT_CHARS = 2_000_000;
 
 // How long a document a step cites whole waits, out of sight, for its rendered layer before
-// it shows its source instead (the diff view's `markdownHoldMs`). A step is shown once its
+// the step shows without it (the diff view's `markdownHoldMs`). A step is shown once its
 // documents are drawn as they stay, so a hold shorter than the render would show the step
-// with a document's source and then swap it for the rendering, a change of height under the
+// with a document's bar alone and then add the rendering, a change of height under the
 // reader. The rendered route answers, or refuses, within the Markdown child's render
 // deadline (`INERT_RENDER_DEADLINE_MS` in diff/markdown_projection_worker.py), so this is
 // that deadline and a second more for the request around it; the documents of #845's guide
@@ -115,7 +115,8 @@ export function createGuideReads(options = {}) {
   // Bumped by `clear`, so an answer on its way then is not kept.
   let generation = 0;
   // The files a reader folded, by guide: a guide's query, the head it was read at, and the
-  // folded files' keys. One small entry for each guide the document has shown.
+  // folded files' keys. An entry is made by a guide's first fold and goes with its last,
+  // so the map holds only guides with a file folded.
   /** @type {Map<string, {head: string, folded: Set<string>}>} */
   const folds = new Map();
 
@@ -236,30 +237,34 @@ export function createGuideReads(options = {}) {
      * The files a reader folded in the guide *asks* names, as read at *head*. They are kept
      * for the document, as the answers are, so a fold lasts while the reader moves between
      * steps, leaves the tab and comes back, or a poll draws the step again. A guide read at
-     * another head starts with nothing folded, since a new head can change its files.
+     * another head starts with nothing folded, since a new head can change its files: the
+     * head check here drops the folds of the head before, and nothing else needs to.
      *
      * @param {string} asks @param {string} head
      * @returns {{has: (key: string) => boolean, set: (key: string, folded: boolean) => void}}
      */
     folds(asks, head) {
-      let entry = folds.get(asks);
-      if (entry === undefined || entry.head !== head) {
-        entry = { head, folded: new Set() };
-        folds.set(asks, entry);
+      if (folds.get(asks)?.head !== head) {
+        folds.delete(asks);
       }
-      const { folded } = entry;
       return {
-        has: (key) => folded.has(key),
+        has: (key) => folds.get(asks)?.folded.has(key) ?? false,
         set(key, isFolded) {
+          let entry = folds.get(asks);
           if (isFolded) {
-            folded.add(key);
-          } else {
-            folded.delete(key);
+            if (entry === undefined) {
+              entry = { head, folded: new Set() };
+              folds.set(asks, entry);
+            }
+            entry.folded.add(key);
+          } else if (entry?.folded.delete(key) && entry.folded.size === 0) {
+            folds.delete(asks);
           }
         },
       };
     },
-    /** Forget every answer and every fold, and end every read on its way. */
+    /** Forget every answer and every fold, and end every read on its way. No page calls
+     * it for a new head: the answers are kept by record revision, the folds by head. */
     clear() {
       generation += 1;
       folds.clear();
