@@ -3091,21 +3091,22 @@ The status line is there only while it has something to say, so the tab bar move
 failure, a message, or an offer comes and goes, and for nothing else: never between
 tabs, nor as the age ticks, or a rate limit’s hold begins or lifts.
 Otherwise it is decided in every state: the row of ages begins with the state’s badge,
-as wide as the widest state, then “Opened”, the ages, and Browse code, and ends in the
-stack chip’s slot (see native stack navigation below), one line at a chip’s height whose
-ages are cut short at their end, the links after them whole down to 420 px, or 560 px
-beside two stacks’ chips, below which they are clipped at the row’s end; the author’s
-row is one line, the author and the sentence, then the freshness note; where that row
-has no room left, the note leaves it first, whole, and then the sentence is cut short at
-its end, the action first and then the author, never moved or wrapped; the branches have
-the line under it to themselves, one line in every state, their names cut short rather
-than wrapping it; a pull request with labels has a row of them, one line at a label’s
-height, and one with none has no labels row and no gap for it; and a cold page keeps
-every row, empty, at its height.
-The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
-its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
-now via GitHub CLI”, never a second time for a check that found nothing changed, since
-that makes what is shown no newer.
+as wide as the widest state, then an open pull request’s readiness badge, as wide as the
+widest verdict ([A Pull Request’s Readiness](#a-pull-requests-readiness)), then
+“Opened”, the ages, and Browse code, and ends in the stack chip’s slot (see native stack
+navigation below), one line at a chip’s height whose ages are cut short at their end,
+the links after them whole down to 420 px, or 560 px beside two stacks’ chips, below
+which they are clipped at the row’s end; the author’s row is one line, the author and
+the sentence, then the freshness note; where that row has no room left, the note leaves
+it first, whole, and then the sentence is cut short at its end, the action first and
+then the author, never moved or wrapped; the branches have the line under it to
+themselves, one line in every state, their names cut short rather than wrapping it; a
+pull request with labels has a row of them, one line at a label’s height, and one with
+none has no labels row and no gap for it; and a cold page keeps every row, empty, at its
+height. The freshness note is muted, after a muted dot, at the sentence’s size, stepping
+back by its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit ·
+Fetched just now via GitHub CLI”, never a second time for a check that found nothing
+changed, since that makes what is shown no newer.
 A rate limit’s hold is said in its place, “GitHub rate limit reached.
 Next attempt after 2:05 PM.”, in the failure’s ink: it begins and lifts by itself and
 asks nothing of the reader, so it adds no line.
@@ -3212,10 +3213,19 @@ surface uses. The Checks tab uses the same heading and status badges for check r
 status contexts. A check row is its status badge, its plain name, its action, and its
 description. The badge says the check’s own state, as GitHub names it, in the ink of the
 bucket the server sorts it into as `gh pr checks` does: pass `--status-success-text`,
-fail `--status-error-text`, pending `--status-warning-text`, and skipping and cancel
-`--muted`; the page sorts no check into a bucket of its own.
-The rows are in `gh`’s order, failing first, then pending, then the rest, and the
-summary over them leads with `gh`’s headline for them, “Some checks are still pending”.
+fail `--status-error-text`, pending `--github-pull-attention`, the readiness’s
+attention, so waiting is one color across the plugin, and skipping and cancel `--muted`;
+the page sorts no check into a bucket of its own.
+A check a rule on the base branch requires carries a compact outlined **Required** tag
+after its name, in the row’s muted ink, as the ref chooser’s tags are
+([Chip Sizes](#chip-sizes)). The rows are in `gh`’s order, failing first, then pending,
+then the rest, and the summary over them leads with `gh`’s headline for them, “Some
+checks are still pending”.
+While the server has counted the head’s checks and no read has listed them, as after the
+Pulls tab’s scan, the summary is the server’s counts and a muted line says the list is
+being read; a scan’s status is drawn as a read’s is.
+The tab opens with the **Merge status** section
+([A Pull Request’s Readiness](#a-pull-requests-readiness)), before the checks.
 The action says where it opens: **View action on GitHub** for a GitHub Actions run,
 **View on GitHub** for another page on a GitHub host, and **View details** for the
 check’s own site, and its accessible name adds the check’s name.
@@ -3833,6 +3843,45 @@ token’s hue across the themes.
 
 Color is never the only signal: the glyph says what stands in the way, and the label,
 the badge’s text or the glyph’s accessible name, says the verdict.
+
+#### On the Pull Request Page
+
+The page says an open pull request’s readiness twice, from the envelope’s `readiness`
+(`readinessModel` in `builtin_plugins/github/pull-page.js`), and draws nothing for a
+closed or merged one, or before a record or core is shown.
+
+- **The header’s badge** follows the state’s badge in the row of ages: “[Open]
+  [Merge conflicts] Opened 3 days ago”.
+  It is the verdict’s badge, a link to the Checks tab, which the Merge status section
+  opens. Its accessible name adds auto-merge’s sentence while auto-merge is on, “Checks
+  pending. Auto-merge enabled (squash).”, and its tooltip, also its accessible
+  description, lists the requirements that are not met, which the badge abbreviates.
+  Its slot is a grid as wide as the widest label the server gives a verdict, by a hidden
+  sizer of each (`SLOT_LABELS` and `readinessSizers` in `pull-readiness.js`), as the
+  state’s slot is the widest state’s, so a verdict that changes as checks finish moves
+  nothing in the row. The sizers are the module’s one copy of the server’s labels, and
+  `tests/test_github_pull_readiness_js.py` holds it to `LABELS` in `pull_readiness.py`;
+  the badge always says the label its readiness came with.
+  Its comment in the plugin’s `styles.css` records what the slot measured in Chrome and
+  that Browse code stays whole at the row’s limits.
+- **The Merge status section** opens the Checks tab: the verdict’s badge and the
+  sentence of the requirement that heads it, the first at the worst status, then a row
+  for each requirement and one for auto-merge while it is on.
+  A row is its status’s badge, the server’s word for the status with a capital, in the
+  outlined form of a check’s, in the ink of the tone its status gives a verdict
+  (`STATUS_TONES` in `pull-readiness.js`, held to the server’s), then the server’s
+  sentence and its link.
+  The badges sit in a column as wide as the widest, so the sentences line up.
+  A met requirement links nowhere.
+  Checks links to the first failing or running check in the list below, which it brings
+  into view and focuses; Reviews that asked for changes to the Conversation tab when it
+  shows a review that did; and every other requirement, and Checks with no list yet, to
+  the page on GitHub the server names, as a check’s action does.
+
+`tests/dom/github-pull-page-mount-behavior.js` builds both browserlessly on the
+production page, and `tests/golden/cli-ui-github-pull-readiness.tryscript.md` pins what
+each says for five answers GitHub could give; `tests/dom/github-pull-header-chrome.mjs`
+holds the slot’s width in Chrome at every header width.
 
 ### Pull Request Numbers
 

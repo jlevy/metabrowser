@@ -451,6 +451,28 @@
   justify-self: stretch;
   text-align: center;
 }
+/* An open pull request's readiness follows the state's badge (mb-io36): a link to the Checks
+   tab's Merge status section, as wide as the widest label the server gives a verdict, by the
+   state slot's sizers (`SLOT_LABELS` in pull-readiness.js), so a verdict that changes as
+   checks finish moves nothing in the row. A closed or merged pull request has no slot.
+   Measured in headless Chrome for Testing 158, 2026-11-26: the slot is 118.48 px, the badge
+   of the widest label, "Changes requested", at every verdict and width, and the row keeps
+   Browse code whole at its limits, 420 px beside one stack's chip, with 23.8 px of the ages'
+   195 left, and 560 px beside two stacks' named chips, with 62.23 px; at 560 px beside one
+   chip the ages keep 163.8 px. So no label is shortened: the ages give way first, as they do
+   to a chip (tests/dom/github-pull-header-chrome.mjs, "the readiness slot is as wide as its
+   widest label"). */
+.github-pull-readiness-slot {
+  display: inline-grid;
+  flex: none;
+}
+.github-pull-readiness-slot > .github-pull-readiness-link {
+  display: grid;
+}
+.github-pull-readiness-slot > .github-pull-readiness-link > .github-pull-badge {
+  text-align: center;
+}
+.github-pull-readiness-slot > .github-pull-badge-sizer,
 .github-pull-state-slot > .github-pull-badge-sizer {
   block-size: 0;
   padding-block: 0;
@@ -460,7 +482,8 @@
 }
 /* A check's badge is in the ink of its bucket, the server's (`state_bucket` in
    pull_status.py), as `gh pr checks` colors its marks: pass green, fail red, pending yellow,
-   skipping and cancel muted. */
+   skipping and cancel muted. Pending is the readiness's attention, so waiting is one color
+   across the plugin, and the shell's warning ink stays a degraded result's. */
 .github-pull-badge[data-state="pass"],
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success-text);
@@ -470,7 +493,7 @@
   color: var(--status-error-text);
 }
 .github-pull-badge[data-state="pending"] {
-  color: var(--status-warning-text);
+  color: var(--github-pull-attention);
 }
 .github-pull-badge[data-state="skipping"],
 .github-pull-badge[data-state="cancel"],
@@ -1060,10 +1083,71 @@
 .github-pull-checks .github-pull-external-action:focus-visible {
   color: var(--link);
 }
-/* The Checks tab's last line, the server's conflicts requirement: in the error ink while
-   the author must resolve a conflict. */
-.github-pull-merge[data-state="unmet"] {
-  color: var(--status-error-text);
+/* A check a rule on the base branch requires: the compact outlined tag, in the row's muted
+   ink, after the name it qualifies, as the ref chooser's tags are (docs/design-system.md,
+   "Chip Sizes"). It sits on the row's baseline. */
+.github-pull-required {
+  flex: none;
+  padding: 0 var(--compact-chip-padding-inline);
+  border: var(--chip-border) solid var(--border);
+  border-radius: var(--radius-tag);
+  line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
+  color: var(--muted);
+}
+/* The Checks tab's Merge status section, which opens it: the verdict's badge and sentence,
+   then a row for each requirement, as a check's row is, its status's badge in a column as
+   wide as the widest status word, so the sentences line up. */
+.github-pull-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.github-pull-requirements {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
+  list-style: none;
+}
+.github-pull-requirements > li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: var(--body-font-size);
+}
+.github-pull-requirements > li > .github-pull-badge {
+  justify-self: stretch;
+  text-align: center;
+}
+/* Its sentence, then its link on the same line where it fits; auto-merge's row, which has
+   no status, starts in the sentences' column. */
+.github-pull-requirement-said {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  grid-column: 2;
+}
+.github-pull-requirements a {
+  color: var(--link);
+  text-decoration: none;
+}
+.github-pull-requirements a:hover {
+  text-decoration: underline;
+}
+.github-pull-requirements a:focus-visible,
+.github-pull-checks li:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.github-pull-requirements .github-pull-external-action {
+  color: var(--muted);
+}
+.github-pull-requirements .github-pull-external-action:hover,
+.github-pull-requirements .github-pull-external-action:focus-visible {
+  color: var(--link);
 }
 
 /* ── A pull request's state ──────────────────────────────────────
@@ -1142,14 +1226,17 @@
   --github-pull-attention: oklch(72% 0.14 75);
 }
 .github-pull-badge.github-pull-readiness[data-tone="success"],
+.github-pull-badge.github-pull-requirement[data-tone="success"],
 .github-pull-readiness-icon[data-tone="success"] {
   color: var(--status-success-text);
 }
 .github-pull-badge.github-pull-readiness[data-tone="attention"],
+.github-pull-badge.github-pull-requirement[data-tone="attention"],
 .github-pull-readiness-icon[data-tone="attention"] {
   color: var(--github-pull-attention);
 }
 .github-pull-badge.github-pull-readiness[data-tone="danger"],
+.github-pull-badge.github-pull-requirement[data-tone="danger"],
 .github-pull-readiness-icon[data-tone="danger"] {
   color: var(--status-error-text);
 }

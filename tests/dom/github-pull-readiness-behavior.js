@@ -8,7 +8,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-const { verdicts, tones } = JSON.parse(process.argv[2]);
+const { verdicts, tones, statuses } = JSON.parse(process.argv[2]);
 
 let created = 0;
 let parses = 0;
@@ -60,7 +60,16 @@ const ACCESSIBLE = ["role", "aria-label", "aria-hidden"];
 const said = (element) => ACCESSIBLE.map((name) => element.getAttribute(name));
 
 (async () => {
-  const { VERDICT_GLYPHS, readinessBadge, readinessIcon } = await import(
+  const {
+    VERDICT_GLYPHS,
+    SLOT_LABELS,
+    STATUS_TONES,
+    readinessBadge,
+    readinessIcon,
+    readinessSizers,
+    requirementBadge,
+    statusWord,
+  } = await import(
     pathToFileURL(
       path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/github/pull-readiness.js"),
     ).href
@@ -135,9 +144,41 @@ const said = (element) => ACCESSIBLE.map((name) => element.getAttribute(name));
   const glyphs = new Set(Object.values(VERDICT_GLYPHS)).size;
   assert.equal(parses, glyphs, "each glyph is parsed once");
 
+  // A requirement's badge says its status in the server's own word, a capital first, and
+  // takes the tone the status gives a verdict; a status the server does not name has none.
+  for (const status of statuses) {
+    const badge = requirementBadge(status);
+    assert.equal(badge.tag, "span", status);
+    assert.deepEqual(
+      badge.className.split(" ").sort(),
+      ["file-header-badge", "github-pull-badge", "github-pull-requirement"],
+      status,
+    );
+    assert.deepEqual(badge.dataset, { status, tone: STATUS_TONES[status] }, status);
+    assert.deepEqual(badge.children, [statusWord(status)], status);
+    assert.equal(statusWord(status).toLowerCase(), status.replaceAll("_", " "), status);
+    assert.match(statusWord(status), /^[A-Z]/, status);
+  }
+  assert.equal(requirementBadge("not a status"), null, "an unnamed status has no badge");
+  assert.equal(requirementBadge("constructor"), null, "nor does a name every object has");
+  // The slot's sizers: one hidden badge's box for each label, in a sizer's class alone.
+  const sizers = readinessSizers();
+  assert.deepEqual(
+    sizers.map((sizer) => sizer.textContent),
+    [...SLOT_LABELS],
+  );
+  for (const sizer of sizers) {
+    assert.equal(sizer.getAttribute("aria-hidden"), "true");
+    assert.equal(sizer.className, "file-header-badge github-pull-badge github-pull-badge-sizer");
+  }
+
   console.log(
     JSON.stringify({
       vocabulary: Object.keys(VERDICT_GLYPHS),
+      slotLabels: SLOT_LABELS,
+      statusTones: Object.entries(STATUS_TONES),
+      requirementBadgesSayTheStatus: true,
+      sizersAreHiddenLabels: true,
       cases,
       noReadinessDrawsNothing: true,
       toneAndLabelAreTheReadinesss: true,

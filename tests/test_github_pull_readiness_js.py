@@ -5,7 +5,10 @@
 each readiness (docs/design-system.md, "A Pull Request’s Readiness").
 ``tests/dom/github-pull-readiness-behavior.js`` runs the production module in Node over
 every verdict and tone this test hands it from the server's own types, and reports the
-vocabulary's verdicts, so a verdict added to the server and not drawn fails here.
+vocabulary's verdicts, so a verdict added to the server and not drawn fails here. It also
+reports the module's two copies of the server's vocabulary, the labels the header's slot is
+sized by and each requirement status's tone, in the order a verdict's tone is chosen by,
+so each is held to the server's here.
 """
 
 from __future__ import annotations
@@ -15,14 +18,25 @@ import subprocess
 from pathlib import Path
 from typing import Any, get_args
 
-from metabrowser.builtin_plugins.github.pull_readiness import Tone, Verdict
+from metabrowser.builtin_plugins.github.pull_readiness import (
+    LABELS,
+    STATUS_ORDER,
+    STATUS_TONES,
+    RequirementStatus,
+    Tone,
+    Verdict,
+)
 from tests.required_tools import require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pull-readiness-behavior.js"
 
 
 def _session() -> dict[str, Any]:
-    given = {"verdicts": list(get_args(Verdict.__value__)), "tones": list(get_args(Tone.__value__))}
+    given = {
+        "verdicts": list(get_args(Verdict.__value__)),
+        "tones": list(get_args(Tone.__value__)),
+        "statuses": list(get_args(RequirementStatus.__value__)),
+    }
     result = subprocess.run(
         [require_node(), str(SESSION), json.dumps(given)],
         capture_output=True,
@@ -43,7 +57,15 @@ def test_each_verdict_the_server_decides_has_one_glyph_and_takes_its_tone_and_la
         "pull-readiness.js draws exactly the verdicts pull_readiness.py decides"
     )
     assert session.pop("cases") == len(verdicts) * len(get_args(Tone.__value__))
+    assert sorted(session.pop("slotLabels")) == sorted(LABELS.values()), (
+        "the header's slot is sized by exactly the labels the server gives a verdict"
+    )
+    assert session.pop("statusTones") == [
+        [status, STATUS_TONES[status]] for status in STATUS_ORDER
+    ], "each requirement status takes the server's tone, worst first"
     assert session == {
+        "requirementBadgesSayTheStatus": True,
+        "sizersAreHiddenLabels": True,
         "noReadinessDrawsNothing": True,
         "toneAndLabelAreTheReadinesss": True,
         "namedByDefaultOrHidden": True,

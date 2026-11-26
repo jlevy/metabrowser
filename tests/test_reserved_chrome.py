@@ -368,7 +368,12 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
     # The stack's slot ends the row (mb-646g, mb-dwha), on a record's row and on the one held
     # before a record, with nothing after it: the page has no Refresh of its own (mb-ablv).
-    assert "placeChildren(openedRow, [stateSlot, opened.row, stackColumn]);" in page
+    # An open pull request's readiness has its slot after the state's (mb-io36).
+    assert (
+        "placeChildren(openedRow, [\n        stateSlot,\n"
+        "        ...(paintReadiness(model.readiness) ? [readinessSlot] : []),\n"
+        "        opened.row,\n        stackColumn,\n      ]);"
+    ) in page
     assert "          ),\n          stackColumn,\n        ]);" in page
     assert "github-pull-refresh" not in page and "github-pull-refresh" not in css
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page

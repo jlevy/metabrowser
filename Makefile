@@ -377,6 +377,7 @@ GOLDEN_RECORDERS := \
 	tests/test_diff_structured_session.py \
 	tests/test_pdf_surfaces_session.py \
 	tests/test_github_pull_page_session.py \
+	tests/test_github_pull_readiness_page.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_stack_change.py \

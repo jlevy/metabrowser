@@ -1,10 +1,16 @@
 // Whether a pull request is ready to merge, one vocabulary for the page's header, its Checks
 // tab, and the Pulls tab's rows (docs/design-system.md, "A Pull Request’s Readiness"). The
 // server decides the readiness, its verdict, its tone, and its label (pull_readiness.py), and
-// this module draws it: one glyph for each verdict, in the color of the readiness's tone. It
-// holds no label and no color of its own, so a verdict cannot read one way here and another
-// in `metab`. Color is never the only signal, since the glyphs differ and the label is always
-// there, as the badge's text or the glyph's accessible name.
+// this module draws it: one glyph for each verdict, in the color of the readiness's tone. A
+// mark says the label its readiness came with and takes its color from that readiness's tone,
+// so a verdict cannot read one way here and another in `metab`; the module's only copies of
+// the server's vocabulary are the labels the header's slot is sized by (`SLOT_LABELS`) and
+// each requirement status's tone (`STATUS_TONES`), both held to the server's by
+// tests/test_github_pull_readiness_js.py. Color is never the only signal, since the glyphs
+// differ and the label is always there, as the badge's text or the glyph's accessible name.
+//
+// It loads with the plugin's module graph, as pull-state.js does: the page and the Pulls tab
+// that draw it import it statically, and its ten glyphs are parsed only when first drawn.
 
 /**
  * A verdict, `Verdict` in pull_readiness.py.
@@ -183,4 +189,91 @@ export function readinessBadge(readiness) {
   const badge = mark("file-header-badge github-pull-badge github-pull-readiness", readiness);
   badge.textContent = readiness.label;
   return badge;
+}
+
+/**
+ * Every label the server gives a verdict (`LABELS` in pull_readiness.py), for one use only:
+ * the width of the header's readiness slot, which is as wide as the widest of them, so a
+ * verdict that changes as checks finish moves nothing in the row (`readinessSizers`). A badge
+ * always says the label its readiness came with, never one of these.
+ * tests/test_github_pull_readiness_js.py holds this list to the server's labels, so a label
+ * changed there and not here fails.
+ *
+ * @type {ReadonlyArray<string>}
+ */
+export const SLOT_LABELS = Object.freeze([
+  "Ready to merge",
+  "Ready for review",
+  "Merge conflicts",
+  "Checks failing",
+  "Changes requested",
+  "Blocked",
+  "Leaving queue",
+  "Queued",
+  "Checks pending",
+  "Review required",
+  "Not up to date",
+  "Checking",
+]);
+
+/**
+ * Each requirement status's tone, `STATUS_TONES` in pull_readiness.py, which a verdict's tone
+ * is the worst of: a requirement's row is drawn in the ink its status gives the verdict.
+ * tests/test_github_pull_readiness_js.py holds this table to the server's.
+ *
+ * @type {Readonly<Record<ReadinessRequirement["status"], ReadinessTone>>}
+ */
+export const STATUS_TONES = Object.freeze({
+  unmet: "danger",
+  waiting: "attention",
+  unknown: "attention",
+  met: "success",
+});
+
+/**
+ * A requirement's status as its row says it: the server's own word for it, its first letter a
+ * capital, "Waiting". Pure.
+ *
+ * @param {string} status
+ */
+export function statusWord(status) {
+  return `${status.charAt(0).toUpperCase()}${status.slice(1).replaceAll("_", " ")}`;
+}
+
+/**
+ * A requirement status's badge (`statusWord`), in the outlined form of a check's, in the ink
+ * of the tone its status gives a verdict (`STATUS_TONES`), or null for a status the server
+ * does not name. Browser only.
+ *
+ * @param {string} status
+ */
+export function requirementBadge(status) {
+  const tone = Object.hasOwn(STATUS_TONES, status)
+    ? STATUS_TONES[/** @type {ReadinessRequirement["status"]} */ (status)]
+    : null;
+  if (tone === null) {
+    return null;
+  }
+  const badge = document.createElement("span");
+  badge.className = "file-header-badge github-pull-badge github-pull-requirement";
+  badge.dataset.status = status;
+  badge.dataset.tone = tone;
+  badge.textContent = statusWord(status);
+  return badge;
+}
+
+/**
+ * The header's readiness slot's sizers: each label in `SLOT_LABELS` in a badge's box of no
+ * height, after the badge, so the slot is as wide as the widest (github/styles.css,
+ * `.github-pull-readiness-slot`), as the state's badge's slot is the widest state's. Hidden
+ * from assistive technology. Browser only.
+ */
+export function readinessSizers() {
+  return SLOT_LABELS.map((label) => {
+    const sizer = document.createElement("span");
+    sizer.className = "file-header-badge github-pull-badge github-pull-badge-sizer";
+    sizer.setAttribute("aria-hidden", "true");
+    sizer.textContent = label;
+    return sizer;
+  });
 }

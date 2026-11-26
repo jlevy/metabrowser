@@ -690,9 +690,48 @@ const MEASURE = `async (name, change, tab, width) => {
         agesNatural: r2(agesText.scrollWidth),
         text: agesText.textContent,
       };
+  // The readiness slot (mb-io36): as wide as the widest label the server gives a verdict, so
+  // each label in its badge leaves the slot's width and the ages' place as they were. Each
+  // label is set in the badge in turn, measured, and the server's put back.
+  const readinessSlot = header.querySelector(".github-pull-opened .github-pull-readiness-slot");
+  const readiness = (() => {
+    if (readinessSlot === null) return null;
+    const shownBadge = readinessSlot.querySelector(".github-pull-readiness-link .github-pull-badge");
+    const ages = header.querySelector(".github-pull-opened .github-pull-quiet");
+    const said = shownBadge.textContent;
+    const at = () => ({ slot: r2(box(readinessSlot).width), ages: r2(box(ages).left) });
+    const before = at();
+    const labels = [...readinessSlot.querySelectorAll(".github-pull-badge-sizer")].map(
+      (sizer) => sizer.textContent,
+    );
+    const natural = (label) => {
+      const probe = shownBadge.cloneNode(false);
+      probe.textContent = label;
+      probe.style.cssText = "position:absolute;visibility:hidden;width:max-content";
+      document.body.append(probe);
+      const measuredWidth = probe.getBoundingClientRect().width;
+      probe.remove();
+      return measuredWidth;
+    };
+    const widest = labels.reduce(
+      (best, label) => (natural(label) > best.width ? { label, width: r2(natural(label)) } : best),
+      { label: null, width: 0 },
+    );
+    const moved = [];
+    for (const label of labels) {
+      shownBadge.textContent = label;
+      const now = at();
+      if (Math.abs(now.slot - before.slot) > 0.5 || Math.abs(now.ages - before.ages) > 0.5) {
+        moved.push({ label, ...now });
+      }
+    }
+    shownBadge.textContent = said;
+    return { said, labels: labels.length, ...before, widest, moved };
+  })();
   const result = {
     edges,
     agesRow,
+    readiness,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
@@ -2174,6 +2213,22 @@ async function main() {
                   `${where}: in a wide pane the note shows whole`,
                   lead.inView && !lead.cut,
                   JSON.stringify(lead),
+                );
+              }
+            }
+            if (shape.readiness !== null) {
+              // The readiness slot is its widest label's badge, so whichever verdict the
+              // server gives moves nothing in the row (mb-io36).
+              check(
+                `${where}: the readiness slot is as wide as its widest label, and no label moves the row`,
+                shape.readiness.labels > 0 &&
+                  Math.abs(shape.readiness.slot - shape.readiness.widest.width) <= 0.5 &&
+                  shape.readiness.moved.length === 0,
+                JSON.stringify(shape.readiness),
+              );
+              if (tab === "" && process.env.READINESS_SLOT_REPORT) {
+                process.stderr.write(
+                  `readiness slot ${width} px ${label}: ${JSON.stringify({ ...shape.readiness, agesRow: shape.agesRow, chips: shape.chipMoves?.chips ?? null })}\n`,
                 );
               }
             }

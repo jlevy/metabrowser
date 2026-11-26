@@ -777,6 +777,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "hiddenReadiness": True,
         "markdownOwnership": True,
         "checkRows": True,
+        "mergeStatus": True,
         "headerAges": True,
         "headerShape": True,
         # The freshness note's slot is as wide as its widest age, "59 min ago"; an age wider

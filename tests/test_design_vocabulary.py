@@ -2584,9 +2584,16 @@ def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> 
     for tone in tones:
         icon = github[f'.github-pull-readiness-icon[data-tone="{tone}"]']["color"]
         badge = github[f'.github-pull-badge.github-pull-readiness[data-tone="{tone}"]']["color"]
-        assert icon == badge, f"the {tone} glyph and badge are one ink"
+        requirement = github[f'.github-pull-badge.github-pull-requirement[data-tone="{tone}"]'][
+            "color"
+        ]
+        assert icon == badge == requirement, (
+            f"the {tone} glyph, verdict's badge, and requirement's badge are one ink"
+        )
         inks[tone] = icon
     assert len(set(inks.values())) == len(tones), "each tone is its own ink"
+    # Waiting is one color across the plugin: a pending check is the attention tone's ink.
+    assert github['.github-pull-badge[data-state="pending"]']["color"] == inks["attention"]
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     section = doc[doc.index("### A Pull Request’s Readiness") :]
     section = section[: section.index("\n### ")]

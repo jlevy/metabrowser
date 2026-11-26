@@ -143,8 +143,12 @@ function browseCode(model) {
   return model.browse.kind === "link" ? "link to the root" : `switches to ${model.browse.ref}`;
 }
 
-/** What a reader would see, in a line per item. */
-function summarize(model) {
+/**
+ * What a reader would see, in a line per item. The first part's paints leave out which checks
+ * a rule requires and say the header's badge as its tone and label alone, since that part is
+ * near the size tryscript's matcher compiles; `--part readiness` says both in full.
+ */
+function summarize(model, { full = false } = {}) {
   const pull = model.pull;
   return {
     status: model.status,
@@ -167,7 +171,13 @@ function summarize(model) {
             (label) =>
               `${label.name} ${label.color === null ? "neutral" : `#${label.color} ${label.style}`} ${label.tip === null ? "no tip" : `tip: ${label.tip}`}`,
           ),
-    merge: model.merge === null ? null : `[${model.merge.state}] ${model.merge.label}`,
+    // The header's readiness badge in a line: its tone and its label, and its accessible name
+    // where it adds to the label. The Merge status section is `--part readiness`'s.
+    readiness: full
+      ? readinessBadgeLine(model.readiness)
+      : model.readiness === null
+        ? null
+        : `[${model.readiness.tone}: ${model.readiness.label}]`,
     timeline: model.timeline.map(
       (item) =>
         // A review's chip is only for a state its verb does not say (mb-novh).
@@ -188,8 +198,9 @@ function summarize(model) {
               .join(" · ")}`,
             items: model.checks.items.map(
               (item) =>
-                `[${item.bucket}: ${item.label}] ${item.name}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
+                `[${item.bucket}: ${item.label}] ${item.name}${full && item.required ? " [Required]" : ""}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
             ),
+            ...(model.checks.listing ? { listing: "the list is being read" } : {}),
           },
     ...(model.checkNotes.length === 0 ? {} : { checkNotes: model.checkNotes }),
     notes: model.notes,
@@ -198,6 +209,46 @@ function summarize(model) {
       model.comparison === null
         ? null
         : `${model.comparison.left.slice(0, 12)}...${model.comparison.right.slice(0, 12)}`,
+  };
+}
+
+/** Where a requirement's row links, as its text and what it opens. */
+function requirementLink(link) {
+  if (link === null) {
+    return "no link";
+  }
+  if (link.kind === "check") {
+    return `${link.label} -> the check "${link.check}" in the list`;
+  }
+  if (link.kind === "tab") {
+    return `${link.label} -> the ${link.tab || "conversation"} tab`;
+  }
+  return `${link.label} ${link.href}`;
+}
+
+/** The header's readiness badge: its tone, its label, and its accessible name. */
+function readinessBadgeLine(readiness) {
+  return readiness === null
+    ? null
+    : `[${readiness.tone}: ${readiness.label}]${readiness.name === readiness.label ? "" : ` named "${readiness.name}"`} -> the checks tab`;
+}
+
+/** The header's readiness badge and the Merge status section, as a reader meets them. */
+function summarizeReadiness(readiness) {
+  if (readiness === null) {
+    return null;
+  }
+  return {
+    badge: readinessBadgeLine(readiness),
+    tip: readiness.tip,
+    sentence: readiness.sentence,
+    rows: [
+      ...readiness.rows.map(
+        (row) =>
+          `[${row.tone}: ${row.word}] ${row.kind}: ${row.summary} -> ${requirementLink(row.link)}`,
+      ),
+      ...(readiness.autoMerge === null ? [] : [`auto-merge: ${readiness.autoMerge}`]),
+    ],
   };
 }
 
@@ -1924,6 +1975,49 @@ async function main() {
     }),
   );
 
+  // A pull request's readiness on the page, the header's badge and the Checks tab's Merge
+  // status section, for the recorded story's verdict, for four more answers GitHub could have
+  // given about pull request 7, recorded as the server decides them
+  // (tests/fixtures/github-pull-page-readiness.json), and for a merged pull request, which
+  // has none. The conflicts answer is drawn twice: as recorded, its changes-requested
+  // review is GitHub's alone, and with a review in the conversation that requested them,
+  // whose row then links there.
+  const readinessScenarios = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-readiness.json"), "utf8"),
+  );
+  const drawn = (body) => {
+    const model = runtime.describePull(body, {
+      number: body.number,
+      tab: "checks",
+      nowMs: page.clock.now,
+    });
+    const said = summarize(model, { full: true });
+    return {
+      readiness: summarizeReadiness(model.readiness),
+      checks: said.checks,
+      ...(said.checkNotes === undefined ? {} : { checkNotes: said.checkNotes }),
+    };
+  };
+  const drawnAs = (scenario, change = (body) => body) => {
+    const body = structuredClone(recorded.current.body);
+    Object.assign(body, structuredClone(scenario));
+    return drawn(change(body));
+  };
+  const readiness = {
+    recorded: drawn(recorded.current.body),
+    ...Object.fromEntries(
+      Object.entries(readinessScenarios).map(([name, scenario]) => [name, drawnAs(scenario)]),
+    ),
+    "conflicts, with a review in the conversation that requested changes": drawnAs(
+      readinessScenarios.conflicts,
+      (body) => {
+        body.record.reviews[0].state = "CHANGES_REQUESTED";
+        return body;
+      },
+    ).readiness.rows,
+    merged: drawn(recorded.merged.body).readiness,
+  };
+
   // Printed in two parts: this script prints the first, and
   // github-pull-page-second-session.js, which runs this same session, the second.
   // tryscript matches a command's expected output as one regular expression, and the
@@ -2005,9 +2099,19 @@ async function main() {
     docsEmpty,
     docsOffered,
   };
+  // `--part readiness` prints the page's readiness alone (github-pull-readiness-session.js), for
+  // cli-ui-github-pull-readiness.tryscript.md, since the first part is near the size tryscript's
+  // matcher compiles.
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
-  const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;
+  const chosen =
+    wanted === "all"
+      ? { ...first, ...second, readiness }
+      : wanted === "2"
+        ? second
+        : wanted === "readiness"
+          ? { readiness }
+          : first;
   console.log(JSON.stringify(chosen, null, 2));
 }
 

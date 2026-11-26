@@ -889,6 +889,7 @@ async function run() {
   // The pending check leads, as `gh pr checks` lists it, in the pending ink.
   assert.deepEqual(
     checksBody
+      .querySelector(".github-pull-checks")
       .querySelectorAll(".github-pull-badge")
       .map((badge) => [badge.getAttribute("data-state"), badge.textContent]),
     [
@@ -898,10 +899,13 @@ async function run() {
   );
   // One note for the checks: the list was cut short, and still shows what it holds.
   assert.match(checksBody.textContent, /Only some checks are shown\./);
-  // The merge line is the server's conflicts requirement, in its words.
-  assert.match(checksBody.textContent, /No merge conflicts with topic\./);
+  // The Merge status section says the server's conflicts requirement, in its words.
+  assert.match(
+    checksBody.querySelector(".github-pull-merge-status").textContent,
+    /No merge conflicts with topic\./,
+  );
   assert.doesNotMatch(checksBody.textContent, /Only some comments are shown|It no longer does/);
-  const checkLinks = checksBody.querySelectorAll("a[href]");
+  const checkLinks = checksBody.querySelector(".github-pull-checks").querySelectorAll("a[href]");
   assert.equal(checkLinks.length, 2);
   for (const link of checkLinks) {
     assert.equal(link.getAttribute("target"), "_blank");
@@ -923,7 +927,7 @@ async function run() {
     { number: 7, tab: "checks", nowMs: Date.now() },
   );
   assert.deepEqual(
-    [unread.checks, unread.checkNotes, unread.merge],
+    [unread.checks, unread.checkNotes, unread.readiness],
     [null, ["Checks could not be loaded."], null],
   );
   // Checks of another head are none of this one's.

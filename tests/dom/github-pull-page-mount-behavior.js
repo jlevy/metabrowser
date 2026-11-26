@@ -2205,7 +2205,16 @@ async function checkRows(page) {
     assert.equal(name.getAttribute("class"), null, "the name is plain text, not a link");
     const link = rest.find((node) => node.tag === "a") ?? null;
     const detail = rest.find((node) => node.classes.has("github-pull-quiet")) ?? null;
-    assert.equal(rest.length, Number(link !== null) + Number(detail !== null));
+    // A check a rule requires carries the compact Required tag right after its name.
+    const required = rest.find((node) => node.classes.has("github-pull-required")) ?? null;
+    assert.equal(
+      rest.length,
+      Number(link !== null) + Number(detail !== null) + Number(required !== null),
+    );
+    if (required !== null) {
+      assert.equal(rest.indexOf(required), 0, "the tag follows the name it qualifies");
+      assert.equal(required.textContent, "Required");
+    }
     if (link !== null && detail !== null) {
       assert.equal(rest.indexOf(link), 0, "the action comes before the description");
     }
@@ -2214,6 +2223,7 @@ async function checkRows(page) {
     );
     return {
       name: name.textContent,
+      required: required !== null,
       action:
         link === null
           ? null
@@ -2244,6 +2254,7 @@ async function checkRows(page) {
   assert.deepEqual(rows, [
     {
       name: "docs",
+      required: true,
       action: {
         ...actions("actions", `${job}51401654788`),
         accessibleName: "View action on GitHub: docs",
@@ -2252,6 +2263,7 @@ async function checkRows(page) {
     },
     {
       name: "tests (3.13)",
+      required: true,
       action: {
         ...actions("actions", `${job}51401654787`),
         accessibleName: "View action on GitHub: tests (3.13)",
@@ -2260,6 +2272,7 @@ async function checkRows(page) {
     },
     {
       name: "docs/readthedocs.org:demo",
+      required: false,
       action: {
         ...actions("external", "https://demo--7.org.readthedocs.build/en/7/"),
         accessibleName: "View details: docs/readthedocs.org:demo",
@@ -2268,6 +2281,7 @@ async function checkRows(page) {
     },
     {
       name: "coverage",
+      required: false,
       action: {
         ...actions("github", "https://github.com/octo/demo/runs/123"),
         accessibleName: "View on GitHub: coverage",
@@ -2276,6 +2290,7 @@ async function checkRows(page) {
     },
     {
       name: "lint",
+      required: false,
       action: {
         ...actions("external", "https://ci.example/runs/2"),
         accessibleName: "View details: lint",
@@ -2284,6 +2299,7 @@ async function checkRows(page) {
     },
     {
       name: "gist",
+      required: false,
       action: {
         ...actions("github", "https://gist.github.com/octo/abc"),
         accessibleName: "View on GitHub: gist",
@@ -2292,6 +2308,7 @@ async function checkRows(page) {
     },
     {
       name: "proxied",
+      required: false,
       action: {
         ...actions("external", "https://github.com:8443/octo/demo/actions/runs/9"),
         accessibleName: "View details: proxied",
@@ -2300,17 +2317,95 @@ async function checkRows(page) {
     },
     {
       name: "credentialed",
+      required: false,
       action: {
         ...actions("external", "https://bot@github.com/octo/demo/runs/5"),
         accessibleName: "View details: credentialed",
       },
       detail: "Bot",
     },
-    { name: "legacy-ci", action: null, detail: "Passed" },
+    { name: "legacy-ci", required: false, action: null, detail: "Passed" },
   ]);
   const names = rows.flatMap((row) => (row.action === null ? [] : [row.action.accessibleName]));
   assert.equal(new Set(names).size, names.length, "every action has its own accessible name");
   handle.dispose();
+}
+
+// The Merge status section opens the Checks tab (mb-io36): the verdict's badge and the
+// requirement that heads it, then a row for each requirement, its status's badge in the tone
+// its status gives a verdict, the server's sentence, and its link, then auto-merge's. The
+// Checks row's link brings the first running check into view and focuses it, and only while
+// the page is mounted; a merged pull request, which has no readiness, has no section. The
+// section is built only when the tab shows, and kept while what it says is the same.
+async function mergeStatusSection(page) {
+  const body = structuredClone(recorded.current.body);
+  const { container, handle } = await mountOn(page, body, "", () => "now");
+  assert.equal(
+    container.querySelector(".github-pull-merge-status"),
+    null,
+    "Conversation builds no Merge status",
+  );
+  handle.dispose();
+  const checks = await mountOn(page, body, "checks", () => "now");
+  const pane = checks.container.querySelector(".github-pull-body");
+  const section = pane.children[0];
+  assert.ok(section.classes.has("github-pull-merge-status"), "Merge status opens the tab");
+  assert.equal(section.children[0].textContent, "Merge status");
+  const verdict = section.querySelector(".github-pull-verdict");
+  const [badge, sentence] = verdict.children;
+  const readiness = body.readiness;
+  assert.deepEqual(
+    [badge.dataset.verdict, badge.dataset.tone, badge.textContent],
+    [readiness.verdict, readiness.tone, readiness.label],
+  );
+  // The worst status among the requirements, and the first requirement at it.
+  const order = ["unmet", "waiting", "unknown", "met"];
+  const worst = order.find((status) =>
+    readiness.requirements.some((requirement) => requirement.status === status),
+  );
+  assert.equal(
+    sentence.textContent,
+    readiness.requirements.find((requirement) => requirement.status === worst).summary,
+  );
+  const rows = section.querySelector(".github-pull-requirements").children;
+  assert.equal(rows.length, readiness.requirements.length + 1, "and auto-merge's row");
+  readiness.requirements.forEach((requirement, at) => {
+    const [status, said] = rows[at].children;
+    assert.equal(rows[at].getAttribute("data-kind"), requirement.kind);
+    assert.equal(status.dataset.status, requirement.status);
+    assert.equal(status.dataset.tone, requirement.status === "met" ? "success" : readiness.tone);
+    assert.ok(said.classes.has("github-pull-requirement-said"));
+    assert.equal(said.children[0].textContent, requirement.summary);
+  });
+  assert.equal(rows.at(-1).textContent, readiness.auto_merge_summary);
+  const checksRow = rows.find((row) => row.getAttribute("data-kind") === "checks");
+  const toCheck = checksRow.children[1].children.find((node) => node.tag === "a");
+  assert.equal(toCheck.getAttribute("aria-label"), "View check: docs");
+  const listed = pane.querySelector(".github-pull-checks").children;
+  const running = listed.find((row) => row.children[2].textContent === "docs");
+  assert.equal(running.getAttribute("tabindex"), "-1", "the row the link names takes focus");
+  const moves = [];
+  running.scrollIntoView = (options) => moves.push(`scrolled ${options.block}`);
+  running.focus = (options) => moves.push(`focused, preventScroll ${options.preventScroll}`);
+  let prevented = 0;
+  // A plain click, as isPlainClick reads one in a browser.
+  globalThis.MouseEvent = class MouseEvent {};
+  const click = { button: 0, preventDefault: () => (prevented += 1) };
+  toCheck.events.get("click")(click);
+  assert.deepEqual(moves, ["scrolled nearest", "focused, preventScroll true"]);
+  assert.equal(prevented, 1);
+  // Landing on the tab again with the same readiness keeps the section it built.
+  checks.handle.land({ tab: "checks" });
+  assert.equal(pane.children[0], section, "the same readiness keeps its section");
+  checks.handle.dispose();
+  toCheck.events.get("click")(click);
+  assert.equal(prevented, 1, "a link of a page that is gone does nothing");
+  assert.equal(moves.length, 2);
+  delete globalThis.MouseEvent;
+  const merged = await mountOn(page, structuredClone(recorded.merged.body), "checks", () => "now");
+  assert.equal(merged.container.querySelector(".github-pull-merge-status"), null);
+  assert.equal(merged.container.querySelector(".github-pull-readiness-slot"), null);
+  merged.handle.dispose();
 }
 
 // The header leaves out an updated age that reads the same as the merged or closed age
@@ -4108,12 +4203,45 @@ async function run() {
     // The state's badge leads the first metadata row, and the stack's slot ends it (mb-646g):
     // the slot holds a strut while no stack is known, so a late chip lands in the row's empty
     // end. Nothing follows it: the page has no Refresh of its own (mb-ablv).
-    const [stateBadgeSlot, ages, stackSlot] = opened.children;
+    // The readiness's slot follows the state's (mb-io36): a link to the Checks tab, its badge
+    // the server's label in the server's tone, named with auto-merge's sentence while it is
+    // on, its tooltip the requirements not met, then a sizer of every label the slot is as
+    // wide as, hidden from assistive technology.
+    const [stateBadgeSlot, readinessSlot, ages, stackSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
+    assert.ok(readinessSlot.classes.has("github-pull-readiness-slot"));
+    const [readinessLink, ...readinessSizers] = readinessSlot.children;
+    const shownReadiness = recorded.current.body.readiness;
+    assert.equal(readinessLink.tag, "a");
+    assert.equal(readinessLink.getAttribute("href"), "/pull/7/checks");
+    assert.equal(
+      readinessLink.getAttribute("aria-label"),
+      `${shownReadiness.label}. ${shownReadiness.auto_merge_summary}`,
+    );
+    const notMet = shownReadiness.requirements
+      .filter((requirement) => requirement.status !== "met")
+      .map((requirement) => requirement.summary)
+      .join(" ");
+    assert.equal(readinessLink.dataset.tipText, notMet);
+    assert.equal(readinessLink.getAttribute("aria-description"), notMet);
+    const [verdictBadge] = readinessLink.children;
+    assert.deepEqual(
+      [verdictBadge.dataset.verdict, verdictBadge.dataset.tone, verdictBadge.textContent],
+      [shownReadiness.verdict, shownReadiness.tone, shownReadiness.label],
+    );
+    assert.ok(readinessSizers.length > 0);
+    assert.ok(
+      readinessSizers.every(
+        (sizer) =>
+          sizer.classes.has("github-pull-badge-sizer") &&
+          sizer.getAttribute("aria-hidden") === "true",
+      ),
+    );
+    assert.ok(readinessSizers.some((sizer) => sizer.textContent === shownReadiness.label));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
-    assert.equal(opened.children.length, 3);
+    assert.equal(opened.children.length, 4);
     const stateBadge = stateBadgeSlot.children[0];
     assert.equal(opened.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
@@ -4628,6 +4756,7 @@ async function run() {
   );
   await markdownOwnership();
   await checkRows(page);
+  await mergeStatusSection(page);
   await headerAges(page);
   await headerShape(page);
   // The freshness note's slot is as wide as its widest age: each age the page says is put at
@@ -4686,6 +4815,7 @@ async function run() {
     hiddenReadiness: true,
     markdownOwnership: true,
     checkRows: true,
+    mergeStatus: true,
     headerAges: true,
     headerShape: true,
     widestNotes,

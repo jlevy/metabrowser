@@ -135,9 +135,18 @@ page, as they open a pull request’s. Metabrowser reads stacks and never change
 ## The Pull Request Page
 
 The header gives the title and number; the state and dates, with any stack button at the
-end of their line; the author’s sentence, such as “octo wants to merge 2 commits”; the
-head and base branches on a line of their own, head → base; and the labels, each in the
-color GitHub gives it, with its description, if any, shown on hover.
+end of their line, and for an open pull request, right after its state, whether it can
+merge, in GitHub’s words, such as **Merge conflicts**, **Checks pending**, or **Ready to
+merge** (**Ready for review** for a draft); the author’s sentence, such as “octo wants
+to merge 2 commits”; the head and base branches on a line of their own, head → base; and
+the labels, each in the color GitHub gives it, with its description, if any, shown on
+hover.
+The verdict is green when nothing stands in the way, yellow while the pull request
+waits on a check, a reviewer, the merge queue, or GitHub itself, and red when its author
+must change something.
+Hovering it lists what stands in the way, and clicking it opens **Checks**. Until GitHub
+has answered for the head shown it says **Checking**; a closed or merged pull request
+shows its state alone.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
 where GitHub gave none, as on a commit’s page; a Pulls row shows none.
 **View on GitHub**, in the page’s upper right as on a file’s, a folder’s, and a commit’s
@@ -187,9 +196,17 @@ The page has up to five tabs:
   ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
-- **Checks** (`E`): the check runs and commit statuses, with links to their details,
-  failing first and then pending, each marked as GitHub’s CLI marks it, under GitHub’s
-  summary of them.
+- **Checks** (`E`): **Merge status** first, the verdict and what heads it, then a row
+  for each thing GitHub weighs, merge conflicts, checks, reviews, being up to date with
+  the base branch, the base branch’s rules, and the merge queue, each as met, waiting,
+  unmet, or unknown, with a link to where you can act on it: GitHub’s conflict page, the
+  first failing or running check below, **Conversation** when a review there asked for
+  changes, or the pull request on GitHub; and a row saying so while auto-merge is on.
+  Then the check runs and commit statuses, with links to their details, failing first
+  and then pending, each marked as GitHub’s CLI marks it, under GitHub’s summary of
+  them, and **Required** beside each one a rule on the base branch requires.
+  Until the page has read the list itself, as after the Pulls tab counted a pull
+  request’s checks, it shows the summary and says it is reading the list.
 
 ### Links in a Pull Request’s Text
 

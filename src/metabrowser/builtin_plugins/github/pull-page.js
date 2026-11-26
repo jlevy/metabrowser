@@ -60,6 +60,13 @@ import {
   guideReads,
 } from "./guide-reads.js";
 import {
+  readinessBadge,
+  readinessSizers,
+  requirementBadge,
+  STATUS_TONES,
+  statusWord,
+} from "./pull-readiness.js";
+import {
   createStackIndex,
   memberRoute,
   namedStackPosition,
@@ -544,7 +551,32 @@ const TRUNCATED = Object.freeze({
  *
  * @typedef {{kind: string, status: string, summary: string, github_url?: string | null}} PullRequirement
  * @typedef {{verdict: string, tone: string, label: string, head: string,
- *   observed_at?: string | null, requirements?: PullRequirement[]}} PullReadiness
+ *   observed_at?: string | null, requirements?: PullRequirement[],
+ *   auto_merge_summary?: string | null}} PullReadiness
+ */
+
+/**
+ * Where a requirement's row on the Checks tab links (`readinessModel`): a page on GitHub, as
+ * a check's action is (`CheckAction`); a check in the list below it, by its name; or a tab
+ * of this page. `label` is the link's text and `name` its accessible name: its text, then
+ * what it opens.
+ *
+ * @typedef {CheckAction | {kind: "check", check: string, label: string, name: string}
+ *   | {kind: "tab", tab: string, label: string, name: string}} RequirementLink
+ */
+
+/**
+ * A pull request's readiness as its page shows it (`readinessModel`): the header's badge, its
+ * accessible name and its tooltip, and the Checks tab's Merge status section, the verdict's
+ * sentence, a row for each requirement, and auto-merge's. Everything said is the server's
+ * (`Readiness` in pull_readiness.py); the page decides only where each row links.
+ *
+ * @typedef {{kind: string, status: string, tone: string, word: string, summary: string,
+ *   link: RequirementLink | null}} RequirementRow
+ * @typedef {{verdict: import("./pull-readiness.js").ReadinessVerdict,
+ *   tone: import("./pull-readiness.js").ReadinessTone, label: string, name: string,
+ *   tip: string | null, sentence: string | null, rows: RequirementRow[],
+ *   autoMerge: string | null}} ReadinessModel
  */
 
 /**
@@ -603,7 +635,8 @@ const TRUNCATED = Object.freeze({
  * One row of the Checks tab. `bucket` is the server's, and the badge's ink
  * (`data-state`, github/styles.css); `label` is the check's own state in words.
  *
- * @typedef {{name: string, detail: string | null, bucket: string, label: string, action: CheckAction | null}} CheckItem
+ * @typedef {{name: string, detail: string | null, bucket: string, label: string,
+ *   required: boolean, action: CheckAction | null}} CheckItem
  */
 
 /**
@@ -647,9 +680,10 @@ const TRUNCATED = Object.freeze({
  *   },
  *   timeline: TimelineItem[],
  *   reviewComments: ReviewCommentItem[],
- *   checks: {headline: string, counts: Record<string, number>, items: CheckItem[]} | null,
+ *   checks: {headline: string, counts: Record<string, number>, items: CheckItem[],
+ *     listing?: true} | null,
  *   checkNotes: string[],
- *   merge: {state: string, label: string} | null,
+ *   readiness: ReadinessModel | null,
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, branch: {ref: string | null} | null} | null,
  *   comparisonComing: boolean,
@@ -954,6 +988,17 @@ export function checksSummary(items) {
   for (const item of items) {
     counted[item.bucket] = (counted[item.bucket] ?? 0) + 1;
   }
+  return bucketsSummary(counted);
+}
+
+/**
+ * The summary `checksSummary` gives, over each bucket's count rather than the checks in it:
+ * the server's counts of a head whose checks are not listed yet. Pure.
+ *
+ * @param {Readonly<Record<string, number>>} counted
+ * @returns {{headline: string, counts: Record<string, number>}}
+ */
+export function bucketsSummary(counted) {
   const first = CHECK_HEADLINES.find(([bucket]) => (counted[bucket] ?? 0) > 0);
   /** @type {Record<string, number>} */
   const counts = {};
@@ -1330,6 +1375,9 @@ function checks(kept, head, base) {
           : description,
       bucket: text(check.bucket),
       label: checkLabel(check),
+      // Only true is required: a check the server could not say of is drawn as one no rule
+      // requires, as GitHub's list draws it (`CheckItem.required` in pull_status.py).
+      required: check.required === true,
       action,
     };
   });
@@ -1357,18 +1405,151 @@ function checkNotes(envelope, head) {
 }
 
 /**
- * The sentence the Checks tab ends with, whether the pull request conflicts with its base:
- * the server's `conflicts` requirement (`pull_readiness.py`), its words and its status, or
- * `null` when the server judged nothing of the head shown, or a closed or merged one.
+ * The summary of the head shown's checks while the page has no list of them: the status's
+ * counts, when the status describes that head and no read has listed its checks yet
+ * (`ChecksSummary.listed_at` in pull_status.py), as the Pulls tab's scan leaves it until the
+ * page's own read lists them. `null` when there is a list, or no status of the head, or it
+ * counts no check. A scan's status is drawn as a read's is: who observed it changes nothing
+ * it says.
+ *
+ * @param {PullEnvelope} envelope
+ * @param {string} head
+ * @returns {PullModel["checks"]}
+ */
+function checksListing(envelope, head) {
+  const status = envelope.status;
+  const summary = status?.checks;
+  if (
+    envelope.checks != null ||
+    head === "" ||
+    status?.head !== head ||
+    summary === null ||
+    typeof summary !== "object" ||
+    summary.listed_at != null
+  ) {
+    return null;
+  }
+  /** @type {Record<string, number>} */
+  const counted = {};
+  for (const [bucket, count] of Object.entries(summary.counts ?? {})) {
+    if (typeof count === "number" && count > 0) {
+      counted[bucket] = count;
+    }
+  }
+  if (Object.keys(counted).length === 0) {
+    return null;
+  }
+  return { ...bucketsSummary(counted), items: [], listing: true };
+}
+
+// What a requirement's in-page link says: a check in the list, or the review that asked for
+// changes, on the Conversation tab.
+const CHECK_TARGET = "View check";
+const REVIEW_TARGET = "View in Conversation";
+
+/**
+ * Where a requirement's row links, by its kind and its status: Checks to the first failing or
+ * running check in the list below it, Reviews that asked for changes to the Conversation tab
+ * when it shows a review that did, and anything else to the page the server names on GitHub
+ * (`github_url`), where the reader can act on it. A met requirement asks nothing, and links
+ * nowhere. Pure.
+ *
+ * @param {PullRequirement} requirement
+ * @param {PullModel["checks"]} shownChecks
+ * @param {TimelineItem[]} shownTimeline
+ * @param {string} base The pull request's page.
+ * @returns {RequirementLink | null}
+ */
+function requirementLink(requirement, shownChecks, shownTimeline, base) {
+  const status = text(requirement.status);
+  if (status === "met") {
+    return null;
+  }
+  const kind = text(requirement.kind);
+  if (kind === "checks") {
+    const first = shownChecks?.items.find(
+      (item) => item.bucket === (status === "unmet" ? "fail" : "pending"),
+    );
+    if (first !== undefined) {
+      return {
+        kind: "check",
+        check: first.name,
+        label: CHECK_TARGET,
+        name: `${CHECK_TARGET}: ${first.name}`,
+      };
+    }
+  }
+  if (
+    kind === "reviews" &&
+    status === "unmet" &&
+    shownTimeline.some((item) => item.review?.state === "CHANGES_REQUESTED")
+  ) {
+    return {
+      kind: "tab",
+      tab: "",
+      label: REVIEW_TARGET,
+      name: `${REVIEW_TARGET}: ${text(requirement.summary)}`,
+    };
+  }
+  return checkAction(statusWord(kind), requirement.github_url, base);
+}
+
+/**
+ * A pull request's readiness as its page shows it, or `null` with none: a closed or merged
+ * pull request, or one the server judged nothing of (`judged_readiness` in pull_route.py).
+ * Pure.
+ *
+ * - The header's badge says the server's label, its accessible name adds auto-merge's
+ *   sentence while it is on, and its tooltip (`tip`) the requirements that are not met,
+ *   which the badge abbreviates.
+ * - The Merge status section's sentence is the requirement that heads the verdict: the first,
+ *   in the server's order, at the worst status among them (`STATUS_TONES`' order, the
+ *   server's `STATUS_ORDER`), as the server chose the verdict by. A verdict no requirement
+ *   stands in the way of has none, and its badge says it all.
+ * - Each requirement's row is its status's word in the tone its status gives a verdict, the
+ *   server's sentence, and its link (`requirementLink`).
  *
  * @param {PullReadiness | null | undefined} readiness
- * @returns {{state: string, label: string} | null}
+ * @param {PullModel["checks"]} shownChecks
+ * @param {TimelineItem[]} shownTimeline
+ * @param {string} base The pull request's page.
+ * @returns {ReadinessModel | null}
  */
-function mergeLine(readiness) {
-  const row = list(readiness?.requirements).find(
-    (requirement) => requirement?.kind === "conflicts",
+export function readinessModel(readiness, shownChecks, shownTimeline, base) {
+  if (readiness === null || readiness === undefined || typeof readiness !== "object") {
+    return null;
+  }
+  const label = text(readiness.label);
+  const autoMerge = text(readiness.auto_merge_summary) || null;
+  /** @type {RequirementRow[]} */
+  const rows = list(readiness.requirements)
+    .filter((requirement) => Object.hasOwn(STATUS_TONES, text(requirement?.status)))
+    .map((requirement) => {
+      const status = /** @type {keyof typeof STATUS_TONES} */ (text(requirement.status));
+      return {
+        kind: text(requirement.kind),
+        status,
+        tone: STATUS_TONES[status],
+        word: statusWord(status),
+        summary: text(requirement.summary),
+        link: requirementLink(requirement, shownChecks, shownTimeline, base),
+      };
+    });
+  const unmet = rows.filter((row) => row.status !== "met");
+  const worst = Object.keys(STATUS_TONES).find((status) =>
+    unmet.some((row) => row.status === status),
   );
-  return row === undefined ? null : { state: text(row.status), label: text(row.summary) };
+  return {
+    // The server's, as it named them: the page draws a verdict and a tone it was given.
+    verdict: /** @type {ReadinessModel["verdict"]} */ (text(readiness.verdict)),
+    tone: /** @type {ReadinessModel["tone"]} */ (text(readiness.tone)),
+    label,
+    name: autoMerge === null ? label : `${label}. ${autoMerge}`,
+    tip: unmet.length === 0 ? null : unmet.map((row) => row.summary).join(" "),
+    sentence: rows.find((row) => row.status === worst)?.summary ?? null,
+    rows,
+    autoMerge,
+  };
 }
 
 /**
@@ -1691,7 +1872,7 @@ export function describePull(envelope, page) {
     reviewComments: [],
     checks: null,
     checkNotes: [],
-    merge: null,
+    readiness: null,
     notes: [],
     comparison: null,
     comparisonComing: false,
@@ -1759,6 +1940,9 @@ export function describePull(envelope, page) {
     model.textRevision = textRevision(envelope);
     model.head = text(preview.pull?.head?.sha) || null;
     model.baseRef = text(preview.pull?.base?.ref) || null;
+    // The verdict is the status's, beside the core as beside a record: the header says it
+    // while the record is on its way, and the Checks tab has no list to link into yet.
+    model.readiness = readinessModel(envelope.readiness, null, [], model.pull.htmlUrl);
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
@@ -1854,11 +2038,16 @@ export function describePull(envelope, page) {
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
   const head = text(pull.head?.sha);
-  // The checks and the merge line are the status's, beside the record: a check that
-  // finishes changes them and leaves the record, and the conversation drawn from it, alone.
-  model.checks = checks(envelope.checks, head, model.pull.htmlUrl);
+  // The checks and the verdict are the status's, beside the record: a check that finishes
+  // changes them and leaves the record, and the conversation drawn from it, alone.
+  model.checks = checks(envelope.checks, head, model.pull.htmlUrl) ?? checksListing(envelope, head);
   model.checkNotes = checkNotes(envelope, head);
-  model.merge = mergeLine(envelope.readiness);
+  model.readiness = readinessModel(
+    envelope.readiness,
+    model.checks,
+    model.timeline,
+    model.pull.htmlUrl,
+  );
   model.notes = notes(record);
   model.head = head || null;
   model.baseRef = text(pull.base?.ref) || null;
@@ -5391,6 +5580,9 @@ export function numberHeaderControls(shortcuts, held, controls, signal) {
   }
 }
 
+/** What the Checks tab says while the server has counted the head's checks and not listed them. */
+const CHECKS_BEING_LISTED = "Reading the list of checks…";
+
 /**
  * The dot between the Checks summary's counts, "3 success · 1 failure": muted and hidden
  * from a screen reader, which is told a comma in its place.
@@ -5445,6 +5637,12 @@ export function mountPullPage(container, ctx, mb) {
   const stackStrut = rowStrut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const stateSlot = h("span", { class: "github-pull-state-slot" });
+  // An open pull request's readiness follows its state's badge (`paintReadiness`): a slot of
+  // its own, as wide as its widest label, so a verdict that changes as checks finish moves
+  // nothing in the row. A closed or merged pull request, and a page with no readiness yet,
+  // has no slot.
+  const readinessSlot = h("span", { class: "github-pull-readiness-slot" });
+  const readinessSlotSizers = readinessSizers();
   // The author's sentence ends in a muted note of how fresh what is shown is, one time
   // (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via GitHub CLI". A rate
   // limit's hold is said in its place, since it begins and lifts by itself and asks nothing of
@@ -6657,6 +6855,38 @@ export function mountPullPage(container, ctx, mb) {
     ),
   );
 
+  /**
+   * The readiness slot's badge (`readinessBadge`): a link to the Checks tab, which the Merge
+   * status section opens, named by the server's label and auto-merge's sentence while it is
+   * on, its tooltip the requirements that are not met. Kept across paints while what it says
+   * is the same. Answers whether there is one to show.
+   *
+   * @param {ReadinessModel | null} readiness
+   */
+  function paintReadiness(readiness) {
+    if (readiness === null) {
+      return false;
+    }
+    const { verdict, tone, label, name, tip } = readiness;
+    placeChildren(readinessSlot, [
+      headerPart("readiness", [verdict, tone, label, name, tip], () => {
+        const link = pageLink({ number, tab: "checks" }, "github-pull-readiness-link", [
+          readinessBadge({ verdict, tone, label }) ?? label,
+        ]);
+        if (name !== label) {
+          link.setAttribute("aria-label", name);
+        }
+        if (tip !== null) {
+          link.dataset.tipText = tip;
+          link.setAttribute("aria-description", tip);
+        }
+        return link;
+      }),
+      ...readinessSlotSizers,
+    ]);
+    return true;
+  }
+
   /** Keep stack disclosure and focus connected while ages and record details repaint.
    * @param {NonNullable<PullModel["pull"]>} pull
    */
@@ -6940,7 +7170,12 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateSlot, opened.row, stackColumn]);
+      placeChildren(openedRow, [
+        stateSlot,
+        ...(paintReadiness(model.readiness) ? [readinessSlot] : []),
+        opened.row,
+        stackColumn,
+      ]);
       children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
       // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
@@ -7576,7 +7811,9 @@ export function mountPullPage(container, ctx, mb) {
     const checksSection = h("section", { class: "github-pull-section" }, [
       h("h2", { class: "section-heading" }, ["Checks"]),
     ]);
-    if (summary !== null && summary.items.length > 0) {
+    /** Each check's row, by its name, for the Merge status section's link to it. @type {Map<string, HTMLElement>} */
+    const checkRows = new Map();
+    if (summary !== null && (summary.items.length > 0 || summary.listing === true)) {
       // "Some checks are still pending: 3 successful · 1 pending": `gh pr checks`'s headline
       // (`checksSummary`), then a count summary in its parts, painted by the shell's one
       // painter of them (`mb.countPartsNodes`): its numbers bold, and its dots muted and
@@ -7594,19 +7831,33 @@ export function mountPullPage(container, ctx, mb) {
         ]),
       ];
       checksSection.append(h("p", { class: "github-pull-quiet" }, mb.countPartsNodes(counted)));
-      const rows = h("ul", { class: "github-pull-checks" });
-      for (const item of summary.items) {
-        rows.append(
-          h("li", {}, [
-            stateBadge(item.bucket, item.label, "check"),
-            " ",
-            h("span", {}, [item.name]),
-            item.action === null ? null : checkLink(item.action),
-            item.detail ? h("span", { class: "github-pull-quiet" }, [item.detail]) : null,
-          ]),
+      if (summary.listing === true) {
+        // The server counted the head's checks and has not listed them yet: the page's own
+        // read lists them, and the counts and the verdict above stand meanwhile.
+        checksSection.append(
+          h("p", { class: "github-pull-quiet mb-refreshing-muted" }, [CHECKS_BEING_LISTED]),
         );
       }
-      checksSection.append(rows);
+      const rows = h("ul", { class: "github-pull-checks" });
+      for (const item of summary.items) {
+        const row = h("li", {}, [
+          stateBadge(item.bucket, item.label, "check"),
+          " ",
+          h("span", {}, [item.name]),
+          // A rule on the base branch requires it: the compact outlined tag, muted, after the
+          // name it qualifies (docs/design-system.md, "Chip Sizes").
+          item.required ? h("span", { class: "github-pull-required" }, ["Required"]) : null,
+          item.action === null ? null : checkLink(item.action),
+          item.detail ? h("span", { class: "github-pull-quiet" }, [item.detail]) : null,
+        ]);
+        if (!checkRows.has(item.name)) {
+          checkRows.set(item.name, row);
+        }
+        rows.append(row);
+      }
+      if (summary.items.length > 0) {
+        checksSection.append(rows);
+      }
     } else if (summary !== null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
@@ -7620,17 +7871,96 @@ export function mountPullPage(container, ctx, mb) {
           : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
       );
     }
-    if (!model.corePreview && model.merge !== null) {
-      checksSection.append(
-        h("p", { class: "github-pull-merge", "data-state": model.merge.state }, [
-          model.merge.label,
-        ]),
-      );
-    }
     body.replaceChildren(
+      ...(model.readiness === null ? [] : [mergeStatus(model, model.readiness, checkRows)]),
       checksSection,
       ...model.checkNotes.map((note) => notice("warning", [note])),
     );
+  }
+
+  /**
+   * The Checks tab's Merge status section, which opens it (docs/design-system.md, "On the
+   * Pull Request Page"): the verdict's badge and its sentence, then a row for each requirement, its
+   * status's badge, the server's sentence, and its link, and auto-merge's row while it is on.
+   *
+   * @param {PullModel} model
+   * @param {ReadinessModel} readiness
+   * @param {ReadonlyMap<string, HTMLElement>} checkRows Each check's row in the list below.
+   */
+  function mergeStatus(model, readiness, checkRows) {
+    const { verdict, tone, label } = readiness;
+    const rows = h("ul", { class: "github-pull-requirements" });
+    for (const row of readiness.rows) {
+      rows.append(
+        h("li", { "data-kind": row.kind }, [
+          requirementBadge(row.status),
+          // The sentence and its link share the row's second column, the link after the
+          // sentence on its line, as a check's action follows its name.
+          h("span", { class: "github-pull-requirement-said" }, [
+            h("span", {}, [row.summary]),
+            row.link === null ? null : requirementAnchor(model, row.link, checkRows),
+          ]),
+        ]),
+      );
+    }
+    if (readiness.autoMerge !== null) {
+      rows.append(
+        h("li", { "data-kind": "auto_merge" }, [
+          h("span", { class: "github-pull-requirement-said" }, [
+            h("span", {}, [readiness.autoMerge]),
+          ]),
+        ]),
+      );
+    }
+    return h("section", { class: "github-pull-section github-pull-merge-status" }, [
+      h("h2", { class: "section-heading" }, ["Merge status"]),
+      h("p", { class: "github-pull-verdict" }, [
+        readinessBadge({ verdict, tone, label }),
+        readiness.sentence === null ? null : h("span", {}, [readiness.sentence]),
+      ]),
+      ...(rows.children.length === 0 ? [] : [rows]),
+    ]);
+  }
+
+  /**
+   * A requirement's link (`RequirementLink`): to a check in the list below, which it brings
+   * into view and focuses, to a tab of this page, or to GitHub, as a check's action is.
+   *
+   * @param {PullModel} model
+   * @param {RequirementLink} link
+   * @param {ReadonlyMap<string, HTMLElement>} checkRows
+   */
+  function requirementAnchor(model, link, checkRows) {
+    if (link.kind === "tab") {
+      const anchor = pageLink(
+        { number, tab: routeForTab(link.tab, model.pull?.text ?? null) },
+        "",
+        [link.label],
+      );
+      anchor.setAttribute("aria-label", link.name);
+      return anchor;
+    }
+    if (link.kind !== "check") {
+      return checkLink(link);
+    }
+    const row = checkRows.get(link.check);
+    if (row === undefined) {
+      return null;
+    }
+    // The row takes focus, not the tab order, so a reader is put where the link said.
+    row.setAttribute("tabindex", "-1");
+    const anchor = h("a", { href: `/pull/${number}/checks`, "aria-label": link.name }, [
+      link.label,
+    ]);
+    anchor.addEventListener("click", (event) => {
+      if (listening.signal.aborted || !isPlainClick(event)) {
+        return;
+      }
+      event.preventDefault();
+      row.scrollIntoView({ block: "nearest" });
+      row.focus({ preventScroll: true });
+    });
+    return anchor;
   }
 
   /** Settles when the diff last asked for has mounted, or was replaced. */
@@ -9301,7 +9631,7 @@ export function mountPullPage(container, ctx, mb) {
         model.checks === null && model.refreshing,
         model.checks,
         model.checkNotes,
-        model.merge,
+        model.readiness,
         model.pull.htmlUrl,
       ]);
       if (key !== bodyKey) {

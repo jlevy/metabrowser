@@ -935,15 +935,17 @@ The two phases are the data, which `metab` shows, and the surfaces that draw it.
 
 **Layer 5: readiness on the pull request page** (`mb-io36`).
 
-- [ ] `pull-readiness.js` vocabulary and the glyphs, with their catalog rows.
-- [ ] `--github-pull-attention`, its dark twin, and its contrast and hue tests; pending
+- [x] `pull-readiness.js` vocabulary and the glyphs, with their catalog rows.
+- [x] `--github-pull-attention`, its dark twin, and its contrast and hue tests; pending
   checks move to it.
-- [ ] The header’s readiness badge and slot, measured at 420 px and 560 px in Chrome.
-- [ ] The Checks tab’s Merge status section, `gh`’s order and summary sentence, and the
+- [x] The header’s readiness badge and slot, measured at 420 px and 560 px in Chrome: it
+  fits, so no label is shortened (the measurement is beside
+  `.github-pull-readiness-slot` in the plugin’s `styles.css`).
+- [x] The Checks tab’s Merge status section, `gh`’s order and summary sentence, and the
   Required chip.
-- [ ] [Design System](../../../design-system.md) sections beside
+- [x] [Design System](../../../design-system.md) sections beside
   [A Pull Request’s State](../../../design-system.md#a-pull-requests-state).
-- [ ] A changelog fragment.
+- [x] A changelog fragment.
 
 **Layer 6: readiness in the Pulls tab and on stacks** (`mb-3n21`).
 

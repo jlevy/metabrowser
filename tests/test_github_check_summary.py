@@ -185,22 +185,29 @@ def _badge_tokens() -> dict[str, str]:
 def test_every_bucket_has_a_badge_inked_by_what_it_means() -> None:
     """``gh pr checks`` marks pass green, fail red, pending yellow, and skipping and cancel
     muted (plan-2026-11-26-pull-request-merge-readiness.md, "How GitHub Classifies Each
-    State"). Each bucket's badge takes a token the shell defines; pass, fail, and pending
-    take status text inks, of the success family, the error family, and a third, as the
-    tokens' names say; skipping and cancel take the muted ink, no status's."""
+    State"). Each bucket's badge takes a token: pass and fail the shell's status text inks,
+    of the success family and the error family, as the tokens' names say; pending the
+    attention a readiness waits in, the plugin's yellow, and not the shell's warning ink, so
+    waiting is one color across the plugin (docs/design-system.md, "A Pull Request's
+    Readiness"); skipping and cancel the muted ink, no status's."""
 
     tokens = _badge_tokens()
     defined = _theme_tokens()["light"]
+    plugin = {
+        name
+        for selector, declarations in _rules_of(PULL_PAGE_JS.parent / "styles.css")
+        if selector == ":root"
+        for name in declarations
+    }
     for bucket, token in tokens.items():
-        assert token in defined, f"{bucket}'s badge ink {token} is no shell token"
+        assert token in defined or token in plugin, f"{bucket}'s badge ink {token} is no token"
     families = {
         bucket: found.group("family")
         for bucket, token in tokens.items()
         if (found := _STATUS_INK.fullmatch(token)) is not None
     }
-    assert set(families) == {"pass", "fail", "pending"}, families
-    assert (families["pass"], families["fail"]) == ("success", "error")
-    assert families["pending"] not in {families["pass"], families["fail"]}
+    assert families == {"pass": "success", "fail": "error"}, families
+    assert tokens["pending"] == "--github-pull-attention"
     for bucket in ("skipping", "cancel"):
         assert "muted" in tokens[bucket], bucket
 
