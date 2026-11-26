@@ -1,0 +1,27 @@
+created_at: 2026-11-26T21:51:25.798Z
+ops:
+  - bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
+    block: |-
+      ⟦tbd⟧
+      `mb-3s19` · epic · in_progress · P2
+      Children: 40 (25 ready)
+      Bead: `tbd show mb-3s19`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    kind: splice_description
+  - bead_id: is-01m8ctvgrty5asxe2xh62gzn8v
+    block: |-
+      ⟦tbd⟧
+      `mb-wb0x` · epic · in_progress · P2
+      Children: 5 (2 ready)
+      Bead: `tbd show mb-wb0x`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 7acc64fa-fd5d-4b37-b24d-9f321abb3ea6
+    kind: splice_description
+provider: linear
+run_id: 01m8cxf2k5dx0a0mqfktejf8zf
+type: in
