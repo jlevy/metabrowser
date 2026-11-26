@@ -1677,7 +1677,9 @@ async function relationshipFilter() {
     { path: file },
     {
       table: "orders",
-      fields: [{ name: "buyer", title: "Buyer", type: "text" }],
+      fields: [
+        { name: "buyer", title: "Buyer", type: "text", description: "The person who bought it." },
+      ],
     },
   );
   respond(
@@ -1709,10 +1711,18 @@ async function relationshipFilter() {
   const remove = find(view.container, hasClass("table-chip-remove"));
   assert.equal(text(link), "Ada Lovelace");
   assert.equal(link.dataset.path, "market.db/people");
+  const columns = find(view.container, hasClass("table-columns-button"));
+  click(columns);
+  const menu = find(view.container, hasClass("table-menu"));
+  const choice = find(menu, (element) => element.localName === "input");
+  const description = choice.attributes.get("aria-description");
+  assert.equal(description, "The person who bought it.");
+  click(columns);
   step("after the schema resolves", {
     requests: takeRequests(),
     label: text(link.parentNode),
     target: link.dataset.path,
+    description,
   });
   click(remove);
   await settle();

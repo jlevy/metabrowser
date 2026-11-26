@@ -2166,9 +2166,17 @@ export function mountTable(container, ctx, host = {}) {
           el("input", { type: "checkbox", "data-field": field.name })
         );
         box.checked = shown.has(field.name);
-        menu.append(
-          el("label", { class: "menu-item table-menu-check" }, box, field.title || field.name),
+        const label = el(
+          "label",
+          { class: "menu-item table-menu-check" },
+          box,
+          field.title || field.name,
         );
+        if (field.description) {
+          box.setAttribute("aria-description", field.description);
+          label.dataset.tipText = field.description;
+        }
+        menu.append(label);
       }
     }
     menu.append(
@@ -2568,6 +2576,9 @@ export function mountTable(container, ctx, host = {}) {
         value.append(view.kind === "absent" ? `${ABSENT_TEXT}.` : view.text);
       }
       dd.append(value);
+      if (field.description) {
+        dd.append(el("p", { class: "table-record-note" }, field.description));
+      }
       if (view.cut !== null && view.kind === "text") {
         dd.append(
           el(

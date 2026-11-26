@@ -35,6 +35,7 @@
  * @typedef {Readonly<{
  *   name: string,
  *   title?: string | null,
+ *   description?: string,
  *   type: string,
  *   declared_type?: string | null,
  *   key?: boolean,

@@ -233,6 +233,7 @@ class TableField:
     sort_note: str | None = None
     filterable: bool = False
     numeric: bool = False
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -874,6 +875,7 @@ def field_wire(item: TableField) -> dict[str, Any]:
         "sort_note": item.sort_note,
         "filterable": item.filterable,
         "numeric": item.numeric,
+        **({"description": item.description} if item.description else {}),
     }
 
 

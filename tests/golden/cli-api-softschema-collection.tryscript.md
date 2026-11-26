@@ -9,7 +9,7 @@ env:
   METABROWSER_LOG_LEVEL: "ERROR"
 before: >-
   mkdir -p library/_schemas library/people library/empty &&
-  printf '%s\n' '{"type":"object","properties":{"name":{"type":"string"}},"required":["name"],"x-softschema":{"contract":"example:Person/v1"}}'
+  printf '%s\n' '{"type":"object","properties":{"name":{"type":"string","description":"The person’s display name."}},"required":["name"],"x-softschema":{"contract":"example:Person/v1"}}'
   > library/_schemas/person.schema.json &&
   printf '%s\n' '{"softschema":{"contract":"example:Person/v1","envelope":"person","schema":"../_schemas/person.schema.json"},"person":{"name":"Ada Lovelace"}}'
   > library/people/ada.json
@@ -30,6 +30,12 @@ $ metab library --show people --format json | jq -c '{kind,views:[.views[]|{id,d
 ```console
 $ metab library --api '/api/plugin/softschema/collection?path=people&wait=1' --format json > summary.json && jq -c '{root,state,complete,tables}' summary.json
 {"root":"","state":"ready","complete":true,"tables":[{"id":"example:Person/v1","label":"Person/v1","count":1}]}
+? 0
+```
+
+```console
+$ metab library --api '/api/plugin/table/schema?path=people&table=example%3APerson%2Fv1&wait=1' --format json | jq -r '.fields[]|select(.name=="name").description'
+The person’s display name.
 ? 0
 ```
 

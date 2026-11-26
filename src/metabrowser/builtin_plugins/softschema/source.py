@@ -341,8 +341,7 @@ def _schema(
     for definition in snapshot.schemas:
         if definition.contract == name:
             for info in definition.view().iter_fields(include_refs=False):
-                if info.pointer.count("/") == 1:
-                    descriptions.setdefault(info.name, info)
+                descriptions.setdefault(info.name, info)
     fields: list[TableField] = []
     references: list[FieldRef] = []
     for field in dict.fromkeys([*descriptions, *observed]):
@@ -374,6 +373,9 @@ def _schema(
                 sortable=True,
                 filterable=kind != "json",
                 numeric=kind in ("integer", "real"),
+                description=info.description[:TABLE_CELL_PREVIEW_CHARS]
+                if info and isinstance(info.description, str)
+                else None,
             )
         )
     visible = [field.name for field in fields if not field.name.startswith("$path")]

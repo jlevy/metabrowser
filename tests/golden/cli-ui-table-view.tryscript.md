@@ -23,7 +23,8 @@ $ node tests/dom/table-view-session.js relationships
       "rows?limit=200&path=market.db%2Forders&ref=people%3Ak.WzFd&via=%5B%5B%22buyer%22%5D%2C%5B%22id%22%5D%5D"
     ],
     "label": "Referencing Ada Lovelace via Buyer",
-    "target": "market.db/people"
+    "target": "market.db/people",
+    "description": "The person who bought it."
   },
   "removing the chip clears the scope": {
     "requests": [
