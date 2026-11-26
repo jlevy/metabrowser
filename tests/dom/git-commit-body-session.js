@@ -95,6 +95,34 @@ class HTMLElement extends StandInNode {
   getAttribute(name) {
     return name === "class" ? this.className || null : (this.attributes.get(name) ?? null);
   }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+  // What static/repository-links.js gives a link it makes open in place.
+  addEventListener(type, listener) {
+    this.listeners ??= [];
+    this.listeners.push({ type, listener });
+  }
+  // A plain primary click: whether a listener kept the browser from following the link.
+  click() {
+    const event = {
+      altKey: false,
+      button: 0,
+      ctrlKey: false,
+      defaultPrevented: false,
+      metaKey: false,
+      shiftKey: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+    };
+    for (const { type, listener } of this.listeners ?? []) {
+      if (type === "click") {
+        listener(event);
+      }
+    }
+    return event.defaultPrevented;
+  }
   append(...nodes) {
     for (const given of nodes) {
       const node = typeof given === "string" ? new Text(given) : given;
@@ -300,8 +328,11 @@ sandbox.metabrowser = {
       throw new Error("the stylesheets did not load");
     }
   },
+  // The SDK marks an outside destination only, and an in-app link not at all.
   decorateExternalLink: (anchor) => {
-    anchor.dataset.decorated = "external";
+    if (/^https?:\/\//.test(anchor.getAttribute("href") ?? "")) {
+      anchor.dataset.decorated = "external";
+    }
     return anchor;
   },
   // What a preparation asks of the SDK for the diff beside the body.
@@ -320,6 +351,11 @@ for (const file of [
   "git-graph.js",
   "git-history-window.js",
   "inert-html.js",
+  // What a body's links open, which the SDK's loader answers on a page with a repository
+  // identity (`loadRepositoryLinks` below); the stand-in loads nothing, so it is here
+  // from the start.
+  "git-path.js",
+  "repository-links.js",
   "git-panel.js",
 ]) {
   const filename = path.join(staticDir, file);
@@ -341,6 +377,7 @@ const SHARED = "3".repeat(40);
 const PREFETCHED = "4".repeat(40);
 const BUSY = "5".repeat(40);
 const ABANDONED = "6".repeat(40);
+const LINKED = "7".repeat(40);
 
 const ASSETS = {
   schema_version: "kpress-asset-manifest-v2",
@@ -393,6 +430,17 @@ answers.set(route(DEADLINE), {
   },
 });
 answers.set(route(OFFLINE), new TypeError("Failed to fetch"));
+// A body with links into the served repository, `acme/widgets`, as the route sends them: a
+// pull request's page, a file on the served branch, a relative reference, which the route's
+// `about:blank` base leaves with no address, and another site.
+answers.set(
+  route(LINKED),
+  rendered(
+    LINKED,
+    '\n<div><div><p>See <a href="https://github.com/acme/widgets/pull/12" target="_blank" rel="noopener noreferrer">the pull request</a>, <a href="https://github.com/acme/widgets/blob/main/docs/guide.md" target="_blank" rel="noopener noreferrer">the guide</a>, <a>a relative one</a>, and <a href="https://example.com/doc" target="_blank" rel="noopener noreferrer">another site</a>.</p></div></div>',
+    "",
+  ),
+);
 answers.set(
   route(PREFETCHED),
   rendered(PREFETCHED, "\n<div><div><p>prefetched</p></div></div>", ""),
@@ -643,6 +691,88 @@ async function step(label, revision, body, before = null) {
   options.inertFails = true;
   Object.assign(transcript, await step("an allowlist that cannot load", NO_ALLOWLIST, "x"));
   options.inertFails = false;
+
+  // On a page with the served repository's identity, a body's links into it open its pages
+  // here (static/repository-links.js, run whole): a same-repository pull request's page is
+  // its route, which the browser follows, and a file on the served branch its `/view/`
+  // address, which a plain click opens through the navigation; a relative reference stays
+  // text, as on github.com, where a commit's message is not Markdown, and another site
+  // stays an outside link.
+  const navigated = [];
+  sandbox.metabrowser.repository = {
+    host: "github.com",
+    owner: "acme",
+    name: "widgets",
+    branch: "main",
+    revision: "8".repeat(40),
+    served_prefix: "",
+  };
+  sandbox.metabrowser.sourceKind = () => "filesystem";
+  // As static/plugin-sdk-views.js answers it on a repository's page: the resolver, which
+  // the transcript lists among what the panel asked for.
+  sandbox.metabrowser.loadRepositoryLinks = async () => {
+    assetLoads.push("repository-links");
+    return sandbox.MetabrowserRepositoryLinks;
+  };
+  sandbox.metabrowser.navigation = {
+    href: (target) => `/view/${target.path}`,
+    open: async (target) => {
+      navigated.push(`/view/${target.path}`);
+    },
+  };
+  Object.assign(
+    transcript,
+    await step("a body's links into the served repository", LINKED, "linked"),
+  );
+  {
+    const linked = transcript["a body's links into the served repository"];
+    assert(linked.assets.includes("repository-links"), "the panel asks for what links open");
+    const box = JSON.stringify(linked.box);
+    assert(
+      box.includes("a[href=/pull/12 data-metabrowser-github-localization=pull]"),
+      "a same-repository pull request opens its page here, in this tab, unmarked",
+    );
+    assert(box.includes('{"a":"a relative one"}'), "a relative reference stays text");
+    assert(
+      box.includes(
+        "a[href=https://example.com/doc target=_blank rel=noopener noreferrer data-decorated=external]",
+      ),
+      "another site stays an outside link",
+    );
+    // What a plain click on each link does: the page opens a `/view/` address itself, and
+    // the browser follows any other, the pull request's route included.
+    const placed = summary(LINKED, "linked");
+    await internals.placeCommitBody(placed, detail(LINKED, "linked"));
+    linked.clicks = placed.querySelectorAll("a[href]").map((anchor) => {
+      const opened = anchor.click();
+      return `${anchor.textContent}: ${opened ? navigated.splice(0).join(", ") : "the browser follows it"}`;
+    });
+    assert(
+      JSON.stringify(linked.clicks) ===
+        JSON.stringify([
+          "the pull request: the browser follows it",
+          "the guide: /view/docs/guide.md",
+          "another site: the browser follows it",
+        ]),
+      "only a /view/ address opens in place",
+    );
+  }
+  sandbox.MetabrowserSourcePinGuard = { hasChanged: () => true };
+  const staleCommit = summary(LINKED, "linked");
+  await internals.placeCommitBody(staleCommit, detail(LINKED, "linked"));
+  const staleGuide = staleCommit
+    .querySelectorAll("a[href]")
+    .find((anchor) => anchor.textContent === "the guide");
+  assert(
+    staleGuide?.getAttribute("href") ===
+      "https://github.com/acme/widgets/blob/main/docs/guide.md" && !staleGuide.click(),
+    "commit prose in a stale shell keeps the authored GitHub document link",
+  );
+  delete sandbox.MetabrowserSourcePinGuard;
+  delete sandbox.metabrowser.repository;
+  delete sandbox.metabrowser.sourceKind;
+  delete sandbox.metabrowser.loadRepositoryLinks;
+  delete sandbox.metabrowser.navigation;
 
   Object.assign(transcript, await step("a commit with no body", NO_BODY, ""));
   assert(transcript["a commit with no body"].requests.length === 0, "no body, no request");

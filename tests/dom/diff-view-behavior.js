@@ -901,7 +901,7 @@ async function headLinkChecks(mountDiffView, byName) {
   // request's Docs, a 17,177-line document's Source, drawn at load behind its rendered view,
   // was 72,000 nodes and 4 s of main-thread work (mb-qzgs). Here a 2,000-line Markdown file
   // drawn as Docs draws it, every fold open.
-  async function heldSourceChecks(viewFile) {
+  async function heldSourceChecks() {
     const book = structuredClone(byName.get("added-text-file"));
     const lines = Array.from({ length: 2000 }, (_, index) => ({
       op: "add",
@@ -932,7 +932,6 @@ async function headLinkChecks(mountDiffView, byName) {
           ensureAsset: async () => {},
         },
         {
-          viewFile,
           markdownViews,
           renderMarkdown: answer,
           markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
@@ -1103,10 +1102,6 @@ async function headLinkChecks(mountDiffView, byName) {
   const markdownViews = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
-  const { createPinSwitch, createViewFileOpener } = await import(
-    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view-file.js"))
-      .href
-  );
 
   const saved = {
     document: global.document,
@@ -1149,36 +1144,12 @@ async function headLinkChecks(mountDiffView, byName) {
     MetabrowserInertHtml: realm.window.MetabrowserInertHtml,
   };
   try {
-    const { head } = Object.fromEntries(
-      new URL(recording.image_route, ORIGIN).searchParams
-        .entries()
-        .map(([key, value]) => [key === "right" ? "head" : key, value]),
-    );
-    // The page's opener, on a pin at the head: the pin guard's news reaches the diff as the
-    // shell's listener on the window hands it on (builtin_plugins/diff/index.js).
+    // A stack's rendered changes omit View file controls. The view still watches
+    // the pin for links in Markdown, including after the first projection is drawn.
     let pinChanged = null;
-    const pinSwitch = createPinSwitch({
-      post: () => new Promise(() => {}),
-      onRestored: () => () => {},
-    });
-    const viewFile = (callbacks) =>
-      createViewFileOpener(
-        {
-          kind: "pin",
-          pin: head,
-          branch: "refs/pull/7/head",
-          href: (address) => (typeof address === "string" ? `/view/${address}` : null),
-          navigate() {},
-          onPinChanged(listener) {
-            pinChanged = listener;
-            return () => {
-              pinChanged = null;
-            };
-          },
-          pinSwitch,
-        },
-        callbacks,
-      );
+    let headOpen = true;
+    const fallback =
+      "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md";
     const requested = [];
     const container = new MarkupElement("div");
     const handle = mountDiffView(
@@ -1189,13 +1160,22 @@ async function headLinkChecks(mountDiffView, byName) {
         ensureAsset: async () => {},
       },
       {
-        viewFile,
+        onPinChanged(listener) {
+          pinChanged = listener;
+          return () => {
+            pinChanged = null;
+          };
+        },
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
           return structuredClone(recording.answers.f1["view=concise"]);
         },
-        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownTargets: markdownViews.markdownTargets(
+          recording.image_route,
+          () => headOpen,
+          (href, links) => links?.viewFileUrl(null, "b".repeat(40), href) ?? null,
+        ),
         markdownHoldMs: 0,
       },
     );
@@ -1236,11 +1216,14 @@ async function headLinkChecks(mountDiffView, byName) {
       JSON.stringify({ requested, hrefs: drawn().map((link) => link.getAttribute("href")) }),
     );
     check("the page heard no pin change yet", typeof pinChanged === "function");
+    // The first file already rendered when the optional resolver became available.
+    global.window.MetabrowserRepositoryLinks = { viewFileUrl: () => fallback };
+    headOpen = false;
     pinChanged?.();
     check(
-      "a pin another tab changed makes each drawn link to a file of the head plain text",
+      "a stale diff with a late resolver updates links without View file controls",
       toHead.length === 1 &&
-        toHead.every((link) => link.getAttribute("href") === null && drawn().includes(link)),
+        toHead.every((link) => link.getAttribute("href") === fallback && drawn().includes(link)),
       JSON.stringify(drawn().map((link) => link.getAttribute("href"))),
     );
     handle.dispose();
@@ -1271,7 +1254,6 @@ async function headLinkChecks(mountDiffView, byName) {
         ensureAsset: async () => {},
       },
       {
-        viewFile,
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
@@ -1308,7 +1290,7 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     unreadHandle.dispose();
 
-    await heldSourceChecks(viewFile);
+    await heldSourceChecks();
   } finally {
     global.document = saved.document;
     global.window = saved.window;

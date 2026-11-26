@@ -519,7 +519,7 @@ def test_recording_is_what_a_served_pull_request_answers(
     # hands one to the page's allowlist directly.
     for hazard in ('"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
-    assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
+    assert allowlist_violations(recorded["markdown added"]["body"]["html"], pr_text=True) == []
     merged = recorded["merged"]["body"]["record"]["pull"]
     assert (merged["merged"], merged["merged_by"], merged["commits"]) == (True, "octo", 1)
     conclusions = [run["conclusion"] for run in recorded["merged"]["body"]["record"]["check_runs"]]
@@ -556,7 +556,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     transcript = run_session("github-pull-page-session.js", "--part", "all")
     steps = {step["step"]: step for step in transcript["steps"]}
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
-    assert allowlist_violations(hook) == []
+    assert allowlist_violations(hook, pr_text=True) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
     # An image written in full over https is an image, with no referrer sent.
     assert (
@@ -635,6 +635,20 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     """Asset and renderer failures recover without a dangling readiness rejection."""
 
     result = run_session("github-pull-page-mount-behavior.js")
+    # What a text's links open (`textLinks`) is the golden's, and the session asserts that a
+    # click opens each in-app link's own address. Read here: no link it lists is the missing
+    # page github.com resolves a path-relative reference to under the pull request, and one
+    # that leaves for github.com names a file at the head the record's comparison names.
+    head = json.loads(
+        (Path(__file__).parent / "fixtures/github-pull-page-responses.json").read_text("utf-8")
+    )["current"]["body"]["record"]["comparison"]["head"]
+    hrefs = re.findall(r"→ ([^;\s]+)", "\n".join(result.pop("textLinks")))
+    assert hrefs, "the steps list their links"
+    for href in hrefs:
+        assert "/pull/docs/" not in href, href
+        assert href.startswith(("/view/", "/pull/7/")) or href.startswith(
+            f"https://github.com/octo/demo/blob/{head}/"
+        ), href
     assert result == {
         "titleStateAndTextBadge": True,
         "failedAssetsRecover": True,

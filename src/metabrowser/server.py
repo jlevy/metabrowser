@@ -2407,6 +2407,24 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # What a link in authored text opens (static/repository-links.js), which views load
+        # through metabrowser.loadRepositoryLinks(): only a page with a GitHub repository's
+        # identity reads one, beside the text that holds it, a Markdown render, a pull
+        # request's text, a commit's message, or a rendered diff. As a startup script it
+        # would cost every folder's shell its compressed size, 8,166 bytes, and the startup
+        # scripts were 109 bytes under their budget when it was written (2026-11-26). On
+        # demand it arrives before a Markdown file's render is asked for
+        # (static/plugin-sdk-views.js has the measurement). The GitPath codec it
+        # spells a pin's addresses with comes first: a startup script of a pin's shell,
+        # which a browser has cached there, and needed elsewhere only by a rendered diff
+        # beside a checkout, whose link to a file of the head it reads back.
+        "repository-links": [
+            {"src": _static_asset_url("git-path.js"), "provides": "MetabrowserGitPath"},
+            {
+                "src": _static_asset_url("repository-links.js"),
+                "provides": "MetabrowserRepositoryLinks",
+            },
+        ],
         # These preferences need listeners only when the reader opens the menu.
         "settings-menu": [
             {"src": remote_images_url, "provides": "MetabrowserRemoteImages"},

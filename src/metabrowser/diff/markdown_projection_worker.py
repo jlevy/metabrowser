@@ -361,6 +361,7 @@ class InertRender:
     profile: str | None = None
     include_toc: Literal["auto", "on", "off"] = "auto"
     link_base: str | None = None
+    mark_path_relative: bool = False
     # What the log names the document by, where *source_path* is a route's token rather
     # than a name a reader knows (a pin's wire path); *source_path* otherwise.
     display_path: str | None = None
@@ -400,6 +401,7 @@ class InertRender:
             self.profile,
             self.include_toc,
             self.link_base,
+            self.mark_path_relative,
         )
 
 
@@ -459,6 +461,7 @@ def _encode_render(request: InertRender, asset_url_prefix: str) -> dict[str, Any
         "include_toc": request.include_toc,
         "asset_url_prefix": asset_url_prefix,
         "link_base": request.link_base,
+        "mark_path_relative": request.mark_path_relative,
     }
 
 
@@ -530,7 +533,10 @@ def _render(request: dict[str, Any]) -> dict[str, Any]:
         return {"error": "render", "message": str(exc)}
     link_base = request["link_base"]
     if isinstance(link_base, str):
-        return {"rendered": {"html": harden(str(rendered["html"]), link_base)}}
+        html = harden(
+            str(rendered["html"]), link_base, mark_path_relative=bool(request["mark_path_relative"])
+        )
+        return {"rendered": {"html": html}}
     inert = kpress_adapter.inert_render(rendered)
     # What KPress's sanitizer removed is for `--api` and debugging of a trusted render
     # (kpress_adapter._separate_sanitizer_diagnostics); no page reads it, and for raw HTML

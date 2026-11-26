@@ -548,7 +548,7 @@ HOSTILE_COMMENT: Final = (
 )
 
 
-def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
+def allowlist_violations(html: str, *, images: bool = False, pr_text: bool = False) -> list[str]:
     """Every tag and attribute in *html* the page may not insert, parsed as HTML.
 
     The allowlist is :mod:`metabrowser.inert_html`'s. An image from the web is always
@@ -568,6 +568,7 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
         ANCHOR_PREFIX,
         CHECKBOX_ATTRIBUTES,
         IMAGE_FALLBACK_CLASS,
+        PATH_RELATIVE_LINK,
         allowed_attributes,
         is_inside,
     )
@@ -591,6 +592,8 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
                 elif not images:
                     found.append("<img>")
             for name, value in attrs:
+                if pr_text and tag == "a" and name == PATH_RELATIVE_LINK and value == "":
+                    continue
                 if name not in ALLOWED_ATTRIBUTES.get(tag, ()):
                     found.append(f"{tag}[{name}]")
                 elif name == "id" and not (value or "").startswith(ANCHOR_PREFIX):

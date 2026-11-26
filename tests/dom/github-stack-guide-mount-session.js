@@ -882,7 +882,139 @@ async function run() {
   assert.ok(names(others[76].first_paint).includes("members"), "76 holds its members row");
   report.cold_without_labels = others[75];
   report.unknown_stack = others[76];
+  report.note_links = await noteLinks(page, mb);
   console.log(JSON.stringify(report, null, 2));
+}
+
+/**
+ * What a note's links open, with static/repository-links.js run whole beside the GitPath
+ * codec, as the `repository-links` bundle carries them and the SDK's loader answers them,
+ * on a server whose tree is not the stack's head. The allowlist's stand-in makes each link of a note absolute against the carrier's
+ * page, as static/inert-html.js does, so a path-relative reference arrives under `/pull/`.
+ * The step's note is drawn before the comparison is read: its links open github.com at the
+ * head of the comparison drawn, and once the read says what it changes, a changed file's
+ * link opens it in the stack's Changes, in place, and an unchanged one stays on github.com.
+ *
+ * @param {Record<string, any>} page
+ * @param {Record<string, any>} mb The session's SDK, with what this story adds.
+ */
+async function noteLinks(page, mb) {
+  const sandbox = { Object, URL, TextEncoder, TextDecoder, btoa, atob, console };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  for (const name of ["git-path.js", "repository-links.js"]) {
+    const file = path.join(root, "src/metabrowser/static", name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
+  }
+  const allowlist = window.MetabrowserInertHtml;
+  window.MetabrowserInertHtml = {
+    sanitizeHtml(html, base, keepPathRelative) {
+      return [
+        ...html.matchAll(/<a href="([^"]*)"( data-metabrowser-path-relative="")?>([^<]*)<\/a>/g),
+      ].map(([, href, relative, text]) => {
+        const link = new Element("a");
+        link.setAttribute("href", new URL(href, base).href);
+        if (keepPathRelative && relative) {
+          link.setAttribute("data-metabrowser-path-relative", "");
+        }
+        link.setAttribute("target", "_blank");
+        link.setAttribute("rel", "noopener noreferrer");
+        link.textContent = text;
+        return link;
+      });
+    },
+    kpressProse: allowlist.kpressProse,
+  };
+  // A comparison whose head is a full commit, which a path-relative reference names.
+  const head = "5".repeat(40);
+  const drawn = { ...drawnFirst, right: head, key: "1".repeat(32) };
+  stackAnswer = { ...stack(revision(4)), comparison: drawn };
+  /** The comparison's read, which answers when the session says. */
+  let answerRead = () => {};
+  const read = new Promise((resolve) => {
+    answerRead = () =>
+      resolve({
+        manifest: {
+          files: [
+            {
+              id: "1",
+              kind: "modified",
+              old: { path: "docs/draft.md" },
+              new: { path: "docs/draft.md" },
+            },
+          ],
+          totals: { files: 1, additions: 1, deletions: 0, exact: true },
+          truncated: false,
+        },
+      });
+  });
+  const view = {
+    prefetch: () => read,
+    summary: async () => ({ dispose() {} }),
+    render: async () => ({ dispose() {} }),
+  };
+  const opened = [];
+  const container = new Element("main");
+  const handle = page.mountStackPage(
+    container,
+    {
+      number: 70,
+      tab: "",
+      open(route) {
+        opened.push(JSON.stringify(route));
+        return Promise.resolve();
+      },
+    },
+    {
+      ...mb,
+      // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
+      loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
+      getRegisteredView: () => view,
+      repository: {
+        host: "github.com",
+        owner: "octo",
+        name: "demo",
+        branch: "main",
+        revision: "a".repeat(40),
+        served_prefix: "",
+      },
+      navigation: { href: (target) => `/view/${target.path}`, open: async () => {} },
+      sourceKind: () => "git_revision",
+    },
+  );
+  await settle();
+  reads.at(-1).answer({
+    ...step(revision(4), 1, pinsOf(drawn)),
+    note_html:
+      '<p><a href="https://github.com/octo/demo/pull/docs/draft.md" data-metabrowser-path-relative="">the draft</a><a href="https://github.com/octo/demo/pull/src/same.txt" data-metabrowser-path-relative="">an unchanged file</a></p>',
+  });
+  await settle();
+  const note = () => container.querySelector(".kpress-prose");
+  const told = () =>
+    note()
+      .querySelectorAll("a[href]")
+      .map((link) => `${link.textContent} → ${link.getAttribute("href")}`);
+  const drawnFirstNote = note();
+  const said = { before_the_read: told() };
+  answerRead();
+  await settle();
+  assert.equal(note(), drawnFirstNote, "the note drawn is read again, not drawn again");
+  said.once_read = told();
+  const clicks = [];
+  for (const link of note().querySelectorAll("a[href]")) {
+    const event = { button: 0, defaultPrevented: false };
+    event.preventDefault = () => {
+      event.defaultPrevented = true;
+    };
+    link.events.get("click")?.(event);
+    clicks.push(
+      `${link.textContent}: ${event.defaultPrevented ? opened.splice(0).join(", ") : "the browser follows it"}`,
+    );
+  }
+  said.clicks = clicks;
+  handle.dispose?.();
+  window.MetabrowserInertHtml = allowlist;
+  return said;
 }
 
 run().catch((error) => {

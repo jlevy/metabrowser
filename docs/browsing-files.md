@@ -196,9 +196,12 @@ Links resolve the way GitHub resolves them:
 - **Relative and root-relative links** open the file they name from the document’s own
   folder or from the served root, including headings, images, spaces, and Unicode.
   A link to a missing file opens a not-found page; nothing guesses a target by its name.
-- **GitHub links to this repository:** a `github.com/<owner>/<repo>/blob/...` link opens
-  locally only when the served folder is a checkout of that repository at that branch or
-  revision. Every other link to the web stays a web link.
+- **GitHub links to this repository** open their page in Metabrowser when it shows the
+  same thing: a file or folder on the branch or commit being browsed, the repository’s
+  root, a pull request and its Changes and Checks, a commit, and the list of pull
+  requests. A link to another branch, a tag, an issue, or a comparison stays a web link,
+  since there it would show the branch being browsed instead; so does every other link
+  to the web.
 - **Published sites:** when an MkDocs, Docusaurus, or Jekyll configuration sits at the
   served root, a link to a published page such as `/guide/` opens the source file behind
   it, if no file has that exact path.

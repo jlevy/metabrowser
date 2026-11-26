@@ -139,6 +139,49 @@ $ node tests/dom/plugin-view-helpers-session.js
         "source header"
       ]
     }
+  },
+  "repositoryLinkReadiness": {
+    "plainFolder": {
+      "state": "no resolver",
+      "requests": []
+    },
+    "slow": {
+      "beforeDeadline": {
+        "states": [
+          "pending",
+          "pending"
+        ],
+        "deadlines": 1
+      },
+      "timedOut": [
+        "no resolver",
+        "no resolver",
+        "no resolver"
+      ],
+      "afterLateSuccess": "ready",
+      "originalStatesAfterSuccess": [
+        "no resolver",
+        "no resolver"
+      ],
+      "requests": [
+        "script /static/git-path.js",
+        "script /static/repository-links.js"
+      ],
+      "remainingTimers": 0
+    },
+    "retry": {
+      "failure": {
+        "state": "no resolver",
+        "deadlines": 0
+      },
+      "recovered": "ready",
+      "requests": [
+        "script /static/git-path.js",
+        "script /static/repository-links.js",
+        "script /static/repository-links.js"
+      ],
+      "remainingTimers": 0
+    }
   }
 }
 ? 0

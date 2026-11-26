@@ -12,8 +12,8 @@ changes nothing.
 ``plugins``    Every plugin and the packaged cache record contracts; each problem  problem
                is a detail
 ``open_in``    Where ``--present`` opens a target, and the app it would find       problem
-``metab``      Its version, executable, Python, how it was installed, and the      warning
-               oldest ``metab`` the app runs: the app running the check
+``metab``      Its version, executable, Python, SoftSchema YAML parser, and      warning
+               installation. Its app minimum comes from the app running the check
                (:data:`DOCTOR_APP_ENV`), or else the one ``open_in`` found
 ``git``        The ``git`` on ``PATH`` against the cloning floor                   warning
                (``ACQUISITION_MINIMUM``), a partial clone's
@@ -307,12 +307,15 @@ def metab_check(*, app_path: str | None, app_minimum: str | None, looked_up: boo
     *app_minimum* the oldest ``metab`` that app names.
     """
 
+    from softschema import yaml_parser_mode
+
     method, where = metab_install()
     executable = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else sys.executable
     details: list[tuple[str, str]] = [
         ("version", display_version(__version__)),
         ("executable", _shown(executable)),
         ("python", f"{platform.python_version()} at {_shown(sys.executable)}"),
+        ("SoftSchema YAML parser", yaml_parser_mode()),
         ("installed", f"{_INSTALLED_AS[method]} {_shown(where)}"),
     ]
     summary = f"metab {__version__}"

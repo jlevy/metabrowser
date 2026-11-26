@@ -2823,6 +2823,46 @@
     );
   }
 
+  // Limit how long a view waits to localize links before rendering. In nine cold loads
+  // of a checkout's README from 127.0.0.1 in headless Chromium 152 on 2026-11-26, the asset
+  // took 4 to 25 ms and always arrived before the Markdown request started. The limit
+  // lets every surface render if that optional request stalls.
+  const REPOSITORY_LINKS_WAIT_MS = 250;
+
+  /** @type {Promise<MetabrowserRepositoryLinksRuntime | null> | null} */
+  let repositoryLinksWait = null;
+
+  /**
+   * The link resolver for a page with a GitHub repository's identity. All views join one
+   * load and stop waiting at the same deadline. A stalled request stays in flight, so a
+   * later view can use the resolver once installed. A failed request can be retried.
+   *
+   * @returns {Promise<MetabrowserRepositoryLinksRuntime | null>}
+   */
+  function loadRepositoryLinks() {
+    if (!mb.repository) {
+      return Promise.resolve(null);
+    }
+    if (global.MetabrowserRepositoryLinks) {
+      return Promise.resolve(global.MetabrowserRepositoryLinks);
+    }
+    repositoryLinksWait ??= new Promise((resolve) => {
+      const deadline = setTimeout(() => resolve(null), REPOSITORY_LINKS_WAIT_MS);
+      void Promise.resolve()
+        .then(() => mb.ensureAsset("repository-links"))
+        .then(
+          () => resolve(global.MetabrowserRepositoryLinks ?? null),
+          (error) => {
+            repositoryLinksWait = null;
+            console.warn("metabrowser: repository links are unavailable", error);
+            resolve(null);
+          },
+        )
+        .finally(() => clearTimeout(deadline));
+    });
+    return repositoryLinksWait;
+  }
+
   function loadChangedFilesTree() {
     return mb.ensureAsset("changed-files-tree").then(() => {
       const tree = global.MetabrowserChangedFilesTree;
@@ -2863,6 +2903,7 @@
     decorateExternalLink,
     externalLinkMenuItems,
     loadChangedFilesTree,
+    loadRepositoryLinks,
     mountCounterpart,
     prefetchCounterpart,
     refChipHtml,

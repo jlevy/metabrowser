@@ -137,6 +137,9 @@ Acceptance criteria:
 
 **Status:** Implemented with bounded Git metadata discovery, pure URL localization, and
 rendered-link integration coverage.
+[In-App Link Resolution](plan-2026-11-26-in-app-link-resolution.md) widens it to the
+repository root, pull requests, commits, and the pull request list, and to every surface
+that shows authored text, in `static/repository-links.js`.
 
 Absolute `https://github.com/<owner>/<repo>/blob/...` and `/tree/...` links become local
 only when their host and repository match the mounted Git context.

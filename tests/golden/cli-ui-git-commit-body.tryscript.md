@@ -21,6 +21,12 @@ the reader’s open joins that request; when the hover’s request ends in a ref
 panel does not keep, such as a busy renderer, the open asks again and shows its own
 answer. A preparation given up before its detail comes asks for no body.
 A body of only trailers has no article.
+On a page with the served repository’s identity, `static/repository-links.js` decides
+what the body’s links open: a same-repository pull request’s link becomes its in-app
+page, `/pull/<n>`, which the browser follows in this tab, and a file on the served
+branch its `/view/` address, which a plain click opens through the navigation; a
+relative reference stays text, as on github.com, where a commit’s message is not
+Markdown, and another site stays an outside link.
 
 A body the route will not render shows as written: one too long, with a notice that is
 not asked for again, and one past the renderer’s deadline, with a notice that is.
@@ -452,6 +458,68 @@ $ node tests/dom/git-commit-body-session.js
       "ccccccc"
     ]
   },
+  "a body's links into the served repository": {
+    "waiting": true,
+    "requests": [
+      "/api/git/commit-markdown/7777777777777777777777777777777777777777"
+    ],
+    "assets": [
+      "inert-html",
+      "repository-links"
+    ],
+    "box": {
+      "div.git-commit-body.page-card.chrome-prose": [
+        {
+          "div.metabrowser-kpress-host": [
+            {
+              "article.kpress.kpress-inert": [
+                {
+                  "div.kpress-prose": [
+                    {
+                      "p": [
+                        "See ",
+                        {
+                          "a[href=/pull/12 data-metabrowser-github-localization=pull]": "the pull request"
+                        },
+                        ", ",
+                        {
+                          "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree data-tip-text=Open the corresponding path in the currently served working tree.]": "the guide"
+                        },
+                        ", ",
+                        {
+                          "a": "a relative one"
+                        },
+                        ", and ",
+                        {
+                          "a[href=https://example.com/doc target=_blank rel=noopener noreferrer data-decorated=external]": "another site"
+                        },
+                        "."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "warnings": [],
+    "kept": [
+      "aaaaaaa",
+      "3333333",
+      "4444444",
+      "5555555",
+      "bbbbbbb",
+      "ccccccc",
+      "7777777"
+    ],
+    "clicks": [
+      "the pull request: the browser follows it",
+      "the guide: /view/docs/guide.md",
+      "another site: the browser follows it"
+    ]
+  },
   "a commit with no body": {
     "waiting": false,
     "requests": [],
@@ -464,7 +532,8 @@ $ node tests/dom/git-commit-body-session.js
       "4444444",
       "5555555",
       "bbbbbbb",
-      "ccccccc"
+      "ccccccc",
+      "7777777"
     ]
   },
   "notes": {

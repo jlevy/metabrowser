@@ -41,6 +41,12 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   of a count summary, which a Diff summary is drawn with.
  * @property {MetabrowserPublicSdk["changeLine"]} [changeLine] The brief change line's builder.
  * @property {MetabrowserPublicSdk["changeLineNodes"]} [changeLineNodes] Its painter.
+ * @property {MetabrowserPublicSdk["navigation"]} [navigation]
+ * @property {MetabrowserPublicSdk["repository"]} [repository] What a rendered file's links
+ *   into the repository open is read against (static/repository-links.js).
+ * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
+ * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
+ * @property {MetabrowserPublicSdk["loadRepositoryLinks"]} [loadRepositoryLinks]
  */
 
 /**
@@ -5399,7 +5405,8 @@ export function mountDiffSummary(slot, document_, api, options) {
  *     ask?: import("./diff-markdown.js").RenderedAsk,
  *   ) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
- *   markdownTargets?: (value: string, image: boolean) => boolean,
+ *   onPinChanged?: (changed: () => void) => () => void,
+ *   markdownTargets?: (value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void,
@@ -5517,12 +5524,16 @@ export function mountDiffView(container, document_, api, options = {}) {
     api?.filterControls &&
     typeof IntersectionObserver === "function"
   ) {
+    /** What a rendered file's links open, once loaded with its allowlist. @type {MetabrowserRepositoryLinksRuntime | null} */
+    let repositoryLinks = null;
+    // A bundle that arrives after the first file's deadline can also serve a later pin event.
+    const loadedLinks = () => repositoryLinks ?? window.MetabrowserRepositoryLinks ?? null;
     view.markdown = {
       format: options.markdownViews.renderedFormat,
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
-        ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
+        isTarget: (value, image) => options.markdownTargets?.(value, image, loadedLinks()) ?? null,
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         // A file drawn alone has nothing after it in its diff to keep out of sight, so a
         // rendering that came later would move its host's page: its wait ends with its
@@ -5535,6 +5546,29 @@ export function mountDiffView(container, document_, api, options = {}) {
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
+        },
+        async prepareLinks() {
+          // A later projection can use a bundle that missed the first draw's deadline.
+          repositoryLinks = (await api?.loadRepositoryLinks?.()) ?? null;
+        },
+        // A rendered file's link into the repository opens its page here, a pull request or
+        // a commit, which names no revision (static/repository-links.js); a `/view/` target
+        // would open whatever the server serves once the pin moves, so it stays a link to
+        // github.com, marked as an outside link is everywhere else.
+        enhanceLinks(prose) {
+          const navigation = api?.navigation;
+          const sourceKind = api?.sourceKind;
+          const links = loadedLinks();
+          if (links && navigation && sourceKind && api?.repository) {
+            links.enhance(
+              prose,
+              { navigation, repository: api.repository, sourceKind },
+              { views: false },
+            );
+          }
+          for (const link of prose.querySelectorAll('a[target="_blank"]')) {
+            api?.decorateExternalLink?.(/** @type {HTMLElement} */ (link));
+          }
         },
         // The structured plugin draws a YAML or JSON file's tree, as in the file view
         // (`requires` in manifest.toml).
@@ -5551,17 +5585,17 @@ export function mountDiffView(container, document_, api, options = {}) {
       }),
     };
   }
+  const unwatchMarkdownPin = view.markdown
+    ? options.onPinChanged?.(() => view.markdown?.controller.closeHeadLinks())
+    : undefined;
   if (options.viewFile) {
     view.viewFile = options.viewFile({
       released() {
         view.viewFileBusy?.setAttribute("aria-busy", "false");
         view.viewFileBusy = null;
       },
-      // Another tab switched the server's pin: a link opens the same path at that pin now,
-      // so each becomes the switch back, and rendered Markdown's links plain text.
       changed() {
         repaintViewFileControls(view);
-        view.markdown?.controller.closeHeadLinks();
       },
     });
   }
@@ -5870,6 +5904,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         }
         currentFrame = null;
       }
+      unwatchMarkdownPin?.();
       cancelPendingWork();
       view.viewFile?.dispose();
       for (const card of view.pdfCards.splice(0)) {

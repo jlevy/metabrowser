@@ -253,6 +253,54 @@ export function manifestFiles(raw) {
   return typeof files === "number" && Number.isInteger(files) && files >= 0 ? files : null;
 }
 
+/**
+ * The paths a comparison changes at its head. Text links address the head, so deletion,
+ * rename-source, and copy-source paths cannot select a diff for another path. Null when
+ * the manifest lists no files. A list cut short at its bound (`MAX_MANIFEST_FILES` in
+ * diff/adapters/git.py) names only its first page, and a link to a later file stays the
+ * github.com link to it.
+ *
+ * @param {unknown} raw
+ * @returns {ReadonlySet<string> | null}
+ */
+export function changedPaths(raw) {
+  const files = /** @type {{manifest?: {files?: unknown}} | null} */ (raw)?.manifest?.files;
+  if (!Array.isArray(files)) {
+    return null;
+  }
+  /** @type {Set<string>} */
+  const paths = new Set();
+  for (const change of files) {
+    const path = /** @type {{new?: {path?: unknown}} | null} */ (change)?.new?.path;
+    if (typeof path === "string" && path !== "") {
+      paths.add(path);
+    }
+  }
+  return paths;
+}
+
+/**
+ * What a page's `open` takes to show the pull request, stack, tab, or changed file a link in
+ * a text names (`pull` of static/repository-links.js's route, which static/pull-route.js's
+ * `open` takes as a route), or null for a route that names none, a commit's or the list's,
+ * which the browser follows. Pure.
+ *
+ * @param {Extract<MetabrowserRepositoryLinkTarget, {kind: "route"}>} route
+ * @returns {{number: number, tab: string, file?: string, stack?: true} | null}
+ */
+export function textRouteOpening(route) {
+  const pull = route.pull;
+  if (pull === null) {
+    return null;
+  }
+  return {
+    number: pull.number,
+    tab: pull.tab,
+    ...(pull.file ? { file: pull.file } : {}),
+    ...(pull.stack ? { stack: /** @type {const} */ (true) } : {}),
+  };
+}
+
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 // The repository's list of pull requests, whose scan says which records GitHub changed.
@@ -1982,6 +2030,13 @@ const poolFor = (part) => (part === "body" ? renderedDescriptions : renderedPart
 // KPress's stylesheets for texts have loaded, or failed to, on some page of this document:
 // they are the same for every text, so a later page inserts a kept render at once.
 let kpressStylesSettled = false;
+// What `metabrowser.loadRepositoryLinks()` answered on some page of this document, the
+// resolver of what a text's links open (static/repository-links.js) or null, and undefined
+// until it has: a later page inserts a kept render at once, its links read with this answer,
+// and reads them again if its own ask answers otherwise. A text inserted before any answer
+// would keep its links as github.com links.
+/** @type {MetabrowserRepositoryLinksRuntime | null | undefined} */
+let repositoryLinksAnswer;
 
 /**
  * @param {string} source
@@ -5474,11 +5529,25 @@ export function mountPullPage(container, ctx, mb) {
    *   heldMs: number,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
-  // The allowlist a text's Markdown passes through before it is inserted; a text stays
-  // plain if it cannot load.
+  // The allowlist a text's Markdown passes through before it is inserted, and what its links
+  // open (`inertProse`); a text stays plain if the allowlist cannot load, and keeps its
+  // links as github.com links if the second cannot. A page with no repository identity asks
+  // for no resolver, which it would answer with none.
+  /** The resolver the page's texts' links are read with (`linkText`), the loader's answer. */
+  let repositoryLinks = repositoryLinksAnswer ?? null;
+  const repositoryLinksReady = (
+    mb.repository ? mb.loadRepositoryLinks() : Promise.resolve(null)
+  ).then((links) => {
+    repositoryLinksAnswer = links;
+    if (links !== repositoryLinks) {
+      // A text inserted with an earlier page's answer reads its links again with this one.
+      repositoryLinks = links;
+      textsLinkedFor = "";
+      relinkTexts();
+    }
+  });
   /** @type {Promise<MetabrowserInertHtmlRuntime | null>} */
-  const inertReady = mb
-    .ensureAsset("inert-html")
+  const inertReady = Promise.all([mb.ensureAsset("inert-html"), repositoryLinksReady])
     .then(() => window.MetabrowserInertHtml ?? null)
     .catch(() => null);
   /** @type {{left: string, right: string, route?: string} | null} */
@@ -5850,7 +5919,12 @@ export function mountPullPage(container, ctx, mb) {
    * @returns {boolean}
    */
   function insertableNow(rendered) {
-    return rendered !== null && kpressStylesSettled && window.MetabrowserInertHtml !== undefined;
+    return (
+      rendered !== null &&
+      kpressStylesSettled &&
+      repositoryLinksAnswer !== undefined &&
+      window.MetabrowserInertHtml !== undefined
+    );
   }
 
   /**
@@ -5875,22 +5949,139 @@ export function mountPullPage(container, ctx, mb) {
   /**
    * A text's inert HTML in KPress's prose element, as `kpressHost` sets a description's and
    * Guided Review sets a note's (`DrawProse` in guided-review.js): rebuilt from the allowlist,
-   * links absolute against the pull request.
+   * links absolute against the pull request, then each link into the repository opening its
+   * page here (static/repository-links.js). A path-relative reference, which github.com
+   * resolves under the pull request's page, names the head's file: in place at the served
+   * head, in Changes for a file the comparison changes, and on github.com otherwise
+   * (`textReading`).
    *
    * @param {MetabrowserInertHtmlRuntime} inert
    * @param {string} html
    */
   function inertProse(inert, html) {
     const prose = inert.kpressProse(
-      inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/"),
+      inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/", true),
       document,
     );
-    // Only this newly sanitized, lazily opened message is visited. Authored SVG and
-    // state attributes have already been discarded; known state comes from our record.
+    textProses.add(prose);
+    linkText(prose, textReading().text);
+    return prose;
+  }
+
+  /**
+   * The prose elements `inertProse` made, which `relinkTexts` reads again: a weak set, so a
+   * text the page lets go is not held by it.
+   *
+   * @type {WeakSet<Element>}
+   */
+  const textProses = new WeakSet();
+  /**
+   * The paths the comparison the page shows changes, by that comparison's key, once a read
+   * of all of it is in hand (`learnChangedPaths`), or null before.
+   *
+   * @type {{key: string, paths: ReadonlySet<string>} | null}
+   */
+  let changedFiles = null;
+  /** What the drawn texts' links were last read with (`textReading`'s key). */
+  let textsLinkedFor = "";
+  let textViewsOpen = !window.MetabrowserSourcePinGuard?.hasChanged();
+
+  /**
+   * What a text of this pull request describes, for its links (static/repository-links.js),
+   * and its key: the head of the comparison the page shows, or the record's head before it
+   * names one, and the paths that comparison changes once they are read, so a path-relative
+   * link to a changed file opens it in Changes. One comparison names both, so a link never
+   * pairs one head with another comparison's files.
+   *
+   * @returns {{text: MetabrowserRepositoryTextContext, key: string}}
+   */
+  function textReading() {
+    const comparison = shown?.comparison ?? null;
+    if (comparison === null) {
+      const head = shown?.pull?.headSha || null;
+      return { text: { head }, key: JSON.stringify([head, null]) };
+    }
+    const key = comparisonKey(comparison);
+    return changedFiles !== null && changedFiles.key === key
+      ? {
+          text: {
+            head: comparison.right,
+            changes: { number, stack: false, files: changedFiles.paths },
+          },
+          key: JSON.stringify([comparison.right, key]),
+        }
+      : { text: { head: comparison.right }, key: JSON.stringify([comparison.right, null]) };
+  }
+
+  /**
+   * Make *prose*'s links open what *text* says they open, and mark each outside link. Only
+   * this sanitized message is visited. Authored SVG and state attributes have already been
+   * discarded; known state comes from our record.
+   *
+   * @param {Element} prose
+   * @param {MetabrowserRepositoryTextContext} text
+   */
+  function linkText(prose, text) {
+    repositoryLinks?.enhance(prose, mb, { text, open: openTextRoute, views: textViewsOpen });
     for (const anchor of prose.querySelectorAll("a[href]")) {
       decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
     }
-    return prose;
+  }
+
+  /**
+   * Read the drawn texts' links again once what they describe has changed since they were
+   * read (`textReading`): the comparison's head, or the paths it changes, which arrive after
+   * the texts drawn before them, so a link to a changed file becomes Changes's in place,
+   * never at its click, and its `href` is what a click opens. A text drawn since was read
+   * with the same, so it is one pass for each change, over the texts drawn: what the page
+   * shows, Guided Review's notes among them, and the conversation's sections kept for a
+   * return to Conversation.
+   */
+  function relinkTexts() {
+    const { text, key } = textReading();
+    if (key === textsLinkedFor || listening.signal.aborted) {
+      return;
+    }
+    textsLinkedFor = key;
+    /** @type {Set<Element>} */
+    const drawn = new Set();
+    for (const holder of [container, ...sections.values()]) {
+      for (const prose of holder.querySelectorAll(".kpress-prose")) {
+        if (textProses.has(prose)) {
+          drawn.add(prose);
+        }
+      }
+    }
+    for (const prose of drawn) {
+      linkText(prose, text);
+    }
+  }
+
+  /**
+   * Keep the paths *comparison* changes from *raw*, a read of all of it, the prefetch's or
+   * Changes's own, while it is the comparison the page shows, and read the drawn texts'
+   * links again with them. A read of another, an older diff Changes still shows, changes
+   * nothing.
+   *
+   * @param {{left: string, right: string, route?: string}} comparison
+   * @param {unknown} raw
+   */
+  function learnChangedPaths(comparison, raw) {
+    const key = comparisonKey(comparison);
+    const current = shown?.comparison ?? null;
+    if (
+      listening.signal.aborted ||
+      current === null ||
+      comparisonKey(current) !== key ||
+      changedFiles?.key === key
+    ) {
+      return;
+    }
+    const paths = changedPaths(raw);
+    if (paths !== null) {
+      changedFiles = { key, paths };
+      relinkTexts();
+    }
   }
 
   /**
@@ -6161,6 +6352,22 @@ export function mountPullPage(container, ctx, mb) {
       void open(route);
     });
     return link;
+  }
+
+  /**
+   * Open a pull request's page, tab, or changed file that a text links to in place, as
+   * `pageLink` and a changed file's row do; answer false for any other route, a commit's or
+   * the list's, which the browser follows.
+   *
+   * @param {Extract<MetabrowserRepositoryLinkTarget, {kind: "route"}>} route
+   */
+  function openTextRoute(route) {
+    const opening = textRouteOpening(route);
+    if (opening === null || listening.signal.aborted) {
+      return false;
+    }
+    void open(opening);
+    return true;
   }
 
   /**
@@ -7397,9 +7604,10 @@ export function mountPullPage(container, ctx, mb) {
     // comparison the document keeps is handed over in the paint that shows its record, so the
     // summary is drawn in that paint once the diff's view is registered, as it is after any
     // first read (mb-neg9). Its first screen's Markdown is this page's own to ask for, once it
-    // is idle.
+    // is idle. The files it changes are what a text's links to them open (`learnChangedPaths`).
     reading: (comparison) => summaryReading(comparison),
     loaded(comparison, payload) {
+      learnChangedPaths(comparison, payload);
       if (mb.getRegisteredView("diff", "diff")) {
         showSummary(comparison, payload);
         askMarkdown(comparison, payload);
@@ -8300,6 +8508,7 @@ export function mountPullPage(container, ctx, mb) {
                     },
                     onDocument: (/** @type {unknown} */ document_) => {
                       documented = true;
+                      learnChangedPaths(comparison, document_);
                       showSummary(comparison, document_);
                     },
                   }),
@@ -8933,6 +9142,8 @@ export function mountPullPage(container, ctx, mb) {
   function paint(model) {
     container.dataset.corePreview = String(model.corePreview);
     shown = model;
+    // The texts drawn read their links again if what they describe moved with the record.
+    relinkTexts();
     noteRefreshWait(model);
     if (model.tab !== "guided" || model.pull === null) {
       disposeGuided();
@@ -9476,6 +9687,15 @@ export function mountPullPage(container, ctx, mb) {
   // Disposing a page ends its work: a superseded page's requests are cancelled, whatever
   // answer they were waiting for, and its listeners go with them.
   const listening = new AbortController();
+  window.addEventListener?.(
+    "metabrowser:pin-changed",
+    () => {
+      textViewsOpen = false;
+      textsLinkedFor = "";
+      relinkTexts();
+    },
+    { signal: listening.signal, once: true },
+  );
   // The tab keys end with it too: cancelPending() aborts the signal. A page the shell
   // stages for a retained navigation is inert, so its keys wait until it is shown.
   tabKeys = attachTabKeys(

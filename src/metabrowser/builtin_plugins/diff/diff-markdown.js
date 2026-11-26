@@ -347,35 +347,57 @@ const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#[\w%.~-]+)?$/;
 
 /**
  * Which addresses in a rendered block open something of this comparison, as the server
- * spelled them, before the shared sanitizer, which would drop every local one:
+ * spelled them, before the shared sanitizer, which would drop every local one, and the
+ * address each keeps:
  *
  * - an image, on the comparison's own image route, which the server completes with the
  *   path of an image at the head in the Git path codec's wire form;
- * - a link to a file of the head, at its `/view/` address, only while *linksOpen* says
- *   the page shows that head. Anywhere else the address would open the same path at
- *   another commit, and a link that switched the pin first would let content choose what
- *   the server serves, so the link stays plain text.
+ * - a link to a file of the head, at its `/view/` address while *linksOpen* says the page
+ *   shows that head, and otherwise at *headFile*'s, that file at the head on github.com.
+ *   Anywhere else the `/view/` address would open the same path at another commit, and a
+ *   link that switched the pin first would let content choose what the server serves; a
+ *   link with neither stays plain text.
  *
- * Every other local address is dropped.
+ * Every other local address is dropped (null).
  * @param {string | undefined} imageRoute The comparison's `image_route`, when it names one.
  * @param {() => boolean} linksOpen
- * @returns {(value: string, image: boolean) => boolean}
+ * @param {(href: string, links?: MetabrowserRepositoryLinksRuntime | null) => string | null} [headFile] The head's file a `/view/` link
+ *   names, on github.com, or null.
+ * @returns {(value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null}
  */
-export function markdownTargets(imageRoute, linksOpen) {
+export function markdownTargets(imageRoute, linksOpen, headFile = () => null) {
   const images =
     typeof imageRoute === "string" && imageRoute.startsWith("/") && imageRoute.includes("?")
       ? imageRoute
       : null;
-  return (value, image) => {
+  return (value, image, links) => {
     if (!image) {
-      return HEAD_LINK.test(value) && linksOpen();
+      if (!HEAD_LINK.test(value)) {
+        return null;
+      }
+      return linksOpen() ? value : headFile(value, links);
     }
     if (images === null || !value.startsWith(`${images}&`)) {
-      return false;
+      return null;
     }
     const query = new URLSearchParams(value.slice(images.length + 1));
-    return [...query.keys()].join() === "path" && GIT_PATH.test(query.get("path") ?? "");
+    return [...query.keys()].join() === "path" && GIT_PATH.test(query.get("path") ?? "")
+      ? value
+      : null;
   };
+}
+
+/**
+ * Give a link the shape of one that leaves the page, as the sanitizer gives every outside
+ * link: a new tab, with no opener or referrer.
+ *
+ * @param {Element} link
+ * @param {string} href An `http` or `https` address.
+ */
+function leaveFor(link, href) {
+  link.setAttribute("href", href);
+  link.setAttribute("target", "_blank");
+  link.setAttribute("rel", "noopener noreferrer");
 }
 
 // The files a projection is asked for before the reader opens Changes: the rendered files
@@ -427,13 +449,14 @@ function outsideLink(value) {
 
 /**
  * The shared sanitizer discards reserved application URLs. Preserve only
- * the addresses *isTarget* keeps (`markdownTargets`) through it and discard other local targets
- * before the detached nodes can load any resource.
+ * the addresses *isTarget* keeps (`markdownTargets`) through it, as it keeps them, and
+ * discard other local targets before the detached nodes can load any resource. A link kept
+ * as an outside address leaves the page as the sanitizer's own outside links do.
  * @param {string} html
  * @param {MetabrowserInertHtmlRuntime} inert
  * @param {HTMLTemplateElement} template
  * @param {Document} scratch
- * @param {(value: string, image: boolean) => boolean} isTarget
+ * @param {(value: string, image: boolean) => string | null} isTarget
  */
 export function sanitizeBlock(html, inert, template, scratch, isTarget) {
   template.innerHTML = html;
@@ -443,9 +466,10 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
     const image = element.tagName === "IMG";
     const attribute = image ? "src" : "href";
     const value = element.getAttribute(attribute) ?? "";
-    if (isTarget(value, image)) {
+    const kept = isTarget(value, image);
+    if (kept !== null) {
       const marker = `mb-markdown-target-${targets.size}`;
-      targets.set(marker, value);
+      targets.set(marker, kept);
       element.setAttribute(attribute, marker);
     } else if (
       // An image from the web keeps its address: the sanitizer loads it or replaces it
@@ -465,7 +489,9 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
     const image = element.tagName === "IMG";
     const attribute = image ? "src" : "href";
     const scoped = targets.get(element.getAttribute(attribute) ?? "");
-    if (scoped !== undefined) {
+    if (scoped !== undefined && !image && outsideLink(scoped)) {
+      leaveFor(element, scoped);
+    } else if (scoped !== undefined) {
       element.setAttribute(attribute, scoped);
     }
   }
@@ -1115,10 +1141,12 @@ export function kpressStylesheets(assets, base) {
  *   load: (fileId: string, signal: AbortSignal, ask?: RenderedAsk) => Promise<unknown>,
  *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
+ *   prepareLinks?: () => Promise<void>,
  *   ensureStructured?: () => Promise<TreeHelpers | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
- *   isTarget?: (value: string, image: boolean) => boolean,
+ *   isTarget?: (value: string, image: boolean) => string | null,
+ *   enhanceLinks?: (prose: HTMLElement) => void,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
@@ -1131,7 +1159,7 @@ export function kpressStylesheets(assets, base) {
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
-  const isTarget = deps.isTarget ?? (() => false);
+  const isTarget = deps.isTarget ?? (() => null);
   const opens = deps.opens ?? "concise";
   let shown = deps.show ?? "diff";
   let explicitFull = false;
@@ -1565,7 +1593,7 @@ export function createMarkdownViews(deps) {
       /** @type {MetabrowserInertHtmlRuntime | undefined} */
       let inert;
       try {
-        inert = await inertReady;
+        [inert] = await Promise.all([inertReady, deps.prepareLinks?.()]);
       } catch {
         inert = undefined;
       }
@@ -1592,7 +1620,11 @@ export function createMarkdownViews(deps) {
       settled = true;
       deps.mutate(() => {
         file.model = ready.model;
-        file.build = (html) => sanitizeBlock(html, inert, template, scratch, isTarget);
+        file.build = (html) => {
+          const prose = sanitizeBlock(html, inert, template, scratch, isTarget);
+          deps.enhanceLinks?.(prose);
+          return prose;
+        };
         file.emptied = emptiedModel(ready.model);
         if (view === "prefer-full") {
           file.automaticView = ready.view;
@@ -2406,15 +2438,23 @@ export function createMarkdownViews(deps) {
       pump();
     },
     /**
-     * Make every link to a file of the head plain text, in what is drawn: the page learned
-     * that the server serves another pin, at which those addresses open other files. What
-     * is drawn later asks *isTarget*, which says so itself.
+     * Point every link to a file of the head, in what is drawn, where *isTarget* now keeps
+     * it: the page learned that the server serves another pin, at which those addresses
+     * open other files, so each opens that file at the head on github.com, or is plain text
+     * where it cannot. What is drawn later asks *isTarget*, which says so itself.
      */
     closeHeadLinks() {
       for (const file of files.values()) {
         for (const link of file.rendered.querySelectorAll('a[href^="/view/"]')) {
-          link.removeAttribute("href");
+          const kept = isTarget(link.getAttribute("href") ?? "", false);
+          if (kept !== null && outsideLink(kept)) {
+            leaveFor(link, kept);
+          } else {
+            link.removeAttribute("href");
+          }
         }
+        // Marked as the outside links it now holds, as one drawn after the change is.
+        deps.enhanceLinks?.(file.rendered);
       }
     },
     dispose() {
