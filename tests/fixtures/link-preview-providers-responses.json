@@ -1,0 +1,369 @@
+{
+  "pulls?q=12": {
+    "status": 200,
+    "body": {
+      "rows": [
+        {
+          "number": 12,
+          "title": "feat(links): preview what a link opens",
+          "state": "open"
+        }
+      ],
+      "complete": true,
+      "limited": false,
+      "truncated": false,
+      "refreshing": false
+    }
+  },
+  "pulls?q=13": {
+    "status": 200,
+    "body": {
+      "rows": [
+        {
+          "number": 13,
+          "title": "Draft: a tooltip for every in-app link",
+          "state": "draft"
+        }
+      ],
+      "complete": true,
+      "limited": false,
+      "truncated": false,
+      "refreshing": false
+    }
+  },
+  "pulls?q=14": {
+    "status": 200,
+    "body": {
+      "rows": [
+        {
+          "number": 14,
+          "title": "Retire the native link title",
+          "state": "closed"
+        }
+      ],
+      "complete": true,
+      "limited": false,
+      "truncated": false,
+      "refreshing": false
+    }
+  },
+  "pulls?q=15": {
+    "status": 200,
+    "body": {
+      "rows": [
+        {
+          "number": 15,
+          "title": "docs: the rule for tooltips on links",
+          "state": "merged"
+        }
+      ],
+      "complete": true,
+      "limited": false,
+      "truncated": false,
+      "refreshing": false
+    }
+  },
+  "pulls?q=99": {
+    "status": 200,
+    "body": {
+      "rows": [],
+      "complete": true,
+      "limited": false,
+      "truncated": false,
+      "refreshing": false
+    }
+  },
+  "pull?number=12&warm=1": {
+    "status": 200,
+    "body": {
+      "state": "absent",
+      "reason": "not_cached",
+      "source": "https://github.com/octo/demo",
+      "number": 12,
+      "pin": null,
+      "pin_ref": null,
+      "fetched_at": null,
+      "verified_at": null,
+      "verified_by": null,
+      "head_moved": false,
+      "checks_pending": false,
+      "record_revision": null,
+      "fresh_for_s": 60.0,
+      "probe_every_s": null,
+      "refreshing": false,
+      "last_refresh": null,
+      "comparison_route": null,
+      "image_route": null,
+      "rendered_route": null,
+      "size_route": null,
+      "record": null,
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false,
+      "no_store": true
+    }
+  },
+  "commit": {
+    "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
+    "status": 200,
+    "body": {
+      "is_repo": true,
+      "commit": {
+        "id": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
+        "short_id": "5ed518d",
+        "parent_ids": [
+          "837bda622f37d716397d71eac1ca8abb7263e01f"
+        ],
+        "author": {
+          "name": "Ada Author",
+          "email": "ada@example.invalid"
+        },
+        "authored_at": 1795176000.0,
+        "committed_at": 1795176000.0,
+        "subject": "docs: write the guide",
+        "refs": [
+          {
+            "id": "refs/heads/main",
+            "name": "main",
+            "kind": "branch",
+            "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
+            "is_head": true,
+            "is_trunk": true
+          }
+        ]
+      },
+      "body": "",
+      "stats": {
+        "files_changed": 1,
+        "files_modified": 0,
+        "files_added": 1,
+        "files_deleted": 0,
+        "additions": 3,
+        "deletions": 0
+      },
+      "files": [
+        {
+          "path": "docs/guide.md",
+          "status": "added",
+          "additions": 3,
+          "deletions": 0
+        }
+      ],
+      "files_truncated": false
+    }
+  },
+  "commit comparison": {
+    "revision": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1",
+    "status": 200,
+    "body": {
+      "schema": "file-diff-v1",
+      "schema_version": 1,
+      "resolved": {
+        "comparison_id": "git:334259409fcdb58d",
+        "source": {
+          "name": "git"
+        },
+        "kind": "content",
+        "base_policy": "first_parent",
+        "left": {
+          "kind": "commit",
+          "id": "837bda622f37d716397d71eac1ca8abb7263e01f",
+          "symbolic": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
+        },
+        "right": {
+          "kind": "commit",
+          "id": "5ed518dc01e604da80e752ddd5ee4de4b6e14bd1"
+        },
+        "options": {
+          "context": 3,
+          "rename_detection": true,
+          "rename_similarity": 50
+        },
+        "warnings": []
+      },
+      "manifest": {
+        "files": [
+          {
+            "id": "f1",
+            "kind": "added",
+            "new": {
+              "path": "docs/guide.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "942c5a3d3feceebb68378fba47359df8b5ac9870"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 3,
+            "deletions": 0
+          }
+        ],
+        "totals": {
+          "files": 1,
+          "additions": 3,
+          "deletions": 0,
+          "exact": true
+        },
+        "truncated": false
+      },
+      "patches": {
+        "f1": {
+          "file_id": "f1",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 3,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "# Guide",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "",
+                  "no_newline": false
+                },
+                {
+                  "op": "add",
+                  "text": "Rest on a link to see what it opens.",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  },
+  "first commit": {
+    "revision": "837bda622f37d716397d71eac1ca8abb7263e01f",
+    "status": 200,
+    "body": {
+      "is_repo": true,
+      "commit": {
+        "id": "837bda622f37d716397d71eac1ca8abb7263e01f",
+        "short_id": "837bda6",
+        "parent_ids": [],
+        "author": {
+          "name": "Ada Author",
+          "email": "ada@example.invalid"
+        },
+        "authored_at": 1795176000.0,
+        "committed_at": 1795176000.0,
+        "subject": "Start the demo"
+      },
+      "body": "",
+      "stats": {
+        "files_changed": 1,
+        "files_modified": 0,
+        "files_added": 1,
+        "files_deleted": 0,
+        "additions": 1,
+        "deletions": 0
+      },
+      "files": [
+        {
+          "path": "README.md",
+          "status": "added",
+          "additions": 1,
+          "deletions": 0
+        }
+      ],
+      "files_truncated": false
+    }
+  },
+  "first commit comparison": {
+    "revision": "837bda622f37d716397d71eac1ca8abb7263e01f",
+    "status": 200,
+    "body": {
+      "schema": "file-diff-v1",
+      "schema_version": 1,
+      "resolved": {
+        "comparison_id": "git:b9f18fb664d1e090",
+        "source": {
+          "name": "git"
+        },
+        "kind": "content",
+        "base_policy": "first_parent",
+        "left": {
+          "kind": "empty",
+          "symbolic": "837bda622f37d716397d71eac1ca8abb7263e01f"
+        },
+        "right": {
+          "kind": "commit",
+          "id": "837bda622f37d716397d71eac1ca8abb7263e01f"
+        },
+        "options": {
+          "context": 3,
+          "rename_detection": true,
+          "rename_similarity": 50
+        },
+        "warnings": []
+      },
+      "manifest": {
+        "files": [
+          {
+            "id": "f1",
+            "kind": "added",
+            "new": {
+              "path": "README.md",
+              "entry_type": "file",
+              "mode": "100644",
+              "content": {
+                "kind": "git_object",
+                "oid": "0805455a24b6c68fbc38d0fa5d121f735984285d"
+              }
+            },
+            "binary": false,
+            "availability": "ready",
+            "additions": 1,
+            "deletions": 0
+          }
+        ],
+        "totals": {
+          "files": 1,
+          "additions": 1,
+          "deletions": 0,
+          "exact": true
+        },
+        "truncated": false
+      },
+      "patches": {
+        "f1": {
+          "file_id": "f1",
+          "hunks": [
+            {
+              "old_start": 0,
+              "old_count": 0,
+              "new_start": 1,
+              "new_count": 1,
+              "lines": [
+                {
+                  "op": "add",
+                  "text": "# Demo",
+                  "no_newline": false
+                }
+              ]
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  },
+  "commit absent": {
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "status": 404,
+    "body": {
+      "error": "unknown revision",
+      "code": "commit_not_found"
+    }
+  }
+}

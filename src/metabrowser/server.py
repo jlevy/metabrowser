@@ -2418,12 +2418,19 @@ async def index(
         # spells a pin's addresses with comes first: a startup script of a pin's shell,
         # which a browser has cached there, and needed elsewhere only by a rendered diff
         # beside a checkout, whose link to a file of the head it reads back.
+        # The link card's providers (static/link-preview-providers.js), what a card says of
+        # each kind of page and what a rest on a link starts loading, follow the card's
+        # registry they register with. Measured 2026-11-26 at `delivery.GZIP_LEVEL`, as
+        # devtools/check_startup_scripts.py measures a script sent: the resolver had grown
+        # to 9,866 bytes and the providers are 6,407, where the startup scripts had 75 bytes
+        # left under their budget, and only a page that draws a text with links reads them.
         "repository-links": [
             {"src": _static_asset_url("git-path.js"), "provides": "MetabrowserGitPath"},
             {
                 "src": _static_asset_url("repository-links.js"),
                 "provides": "MetabrowserRepositoryLinks",
             },
+            {"src": _static_asset_url("link-preview-providers.js")},
         ],
         # These preferences need listeners only when the reader opens the menu.
         "settings-menu": [

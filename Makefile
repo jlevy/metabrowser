@@ -377,6 +377,7 @@ GOLDEN_RECORDERS := \
 	tests/test_github_pull_page_session.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
+	tests/test_link_preview_providers_session.py \
 	tests/test_github_stack_change.py \
 	tests/test_cli_github_stack_golden.py \
 	tests/test_github_pull_files_summary.py \
