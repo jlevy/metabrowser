@@ -3,12 +3,12 @@ type: is
 id: is-01m78fvywxsmc0m4481ypk3zbq
 title: Per-command plugin environments (--plugin-env) and the --present refusal test
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 18
+version: 21
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 assignee: null
-delegate: claude-code@vm
+delegate: null
 labels: []
 dependencies:
   - type: blocks
@@ -35,11 +35,11 @@ parent_id: is-01m78ftefp9ks9100ebsm7sm29
 hold: null
 hold_until: null
 created_at: 2026-11-12T18:21:08.379Z
-updated_at: 2026-11-26T09:20:28.195Z
+updated_at: 2026-11-26T09:20:37.487Z
 started_at: 2026-11-26T08:35:34.373Z
 ---
 Phase 1 (plan: Sources and Scopes, The Registry's listing, CLI and Routes; Key Decision 5). One executable: metab --plugin-env PATH names a plugin environment for one command, identified by its pyvenv.cfg prefix, not its interpreter; the Python floor is read from pyvenv.cfg. No option that names a plugin source or records a decision is in --present's option set (_MODE_OPTIONS in cli/main.py), and a test fails if one is added; the first revision's second executable is dropped, since the documented sandbox exemption is the prefix metab --present. Here: the listing cache keyed by the environment fingerprint and written only for added or decided sources, a cold listing taken before the classifier is built, manifests read and assets served by the host, hooks proxied to the worker, the content reader's host calls, the ownership rule before each spawn and on the worker's sys.path, and --doctor's per-source checks. Acceptance: the motivating plugin's hooks, at the current SDK version, served from its own environment under a uv tool install, with no change to its Python beyond the runtime's import name. Fixture environment built offline, as explorations/plugin-worker-spike/probes.py builds one.
 
 ## Notes
 
-Rewritten 2026-11-26 with the plan's second revision (review against main); supersedes the 2026-11-12 body.
+2026-11-26, third revision of the plan: folded in a second review of the isolation layer, threats, and protocol. Listing is static first: a provider's plugin directory comes from its RECORD (a wheel) or its .pth path line (an editable install), with nothing imported (probes.py locate); an entry point is imported only where the metadata does not say, in a worker and after the decision, and only those answers are cached. No interpreter of a source starts for a dry run of add.
