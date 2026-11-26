@@ -979,6 +979,10 @@ async def _read_selection_during_acquisition(
     if companion is None or companion.unattached_selection() is None:
         return False
     async with coordinator.slot():
+        # A companion can be evicted while a job waits for this slot.
+        companion = state.pulls.held(number)
+        if companion is None:
+            return False
         publication = companion.unattached_selection()
         if publication is None or key in _COMPARISON_WANTED:
             return False
