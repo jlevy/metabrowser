@@ -1031,10 +1031,11 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   address a link to it carries: a pull request’s page, one of its tabs or changed files,
   a stack’s page, the list of pull requests, or a commit (`/pull/…`, `/stack/…`,
   `/pulls`, `/commit/…`). The shell pushes a history entry, brings the tab that holds
-  the page to the front, and shows the page, and the call returns `true`. It returns
-  `false` for any other address, a file’s among them, and before the shell’s tabs have
-  loaded; leave the click to the browser then, which follows the link’s `href`. The
-  links `loadRepositoryLinks()`’s `enhance` makes already open this way.
+  the page to the front, and shows the page, and the call returns `true`; for the
+  address already shown it pushes nothing and keeps the page where it is.
+  It returns `false` for any other address, a file’s among them, and before the shell’s
+  tabs have loaded; leave the click to the browser then, which follows the link’s
+  `href`. The links `loadRepositoryLinks()`’s `enhance` makes already open this way.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length

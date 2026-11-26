@@ -277,6 +277,9 @@ request loaded the page again, which lost the shell’s state.
   (`openMainTab`, through the same `land`): the tab that holds it in front, its panel
   revealing the item, and the pane showing what the address names, the Commits panel
   selecting a commit as Back makes it select one.
+  The address already shown it opens again where it is, as `navigation.open` does: it
+  pushes no entry and lands nothing, so the page keeps its place, and the panel reveals
+  the item again, as Quick Search for the item shown does.
   It answers false for any other address, and before the shell tools have loaded, and
   the browser follows the link.
 - [x] The SDK’s `metabrowser.navigation.openRoute(href)`, an additive method of the

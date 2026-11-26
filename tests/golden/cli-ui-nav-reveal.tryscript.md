@@ -1615,11 +1615,14 @@ the front, and its panel reveals the item.
 A commit is the Commits panel’s to select, and a pull request’s page that holds the pane
 writes its place into its own entry first.
 Another tab of the pull request shown reveals no row, and another pull request reveals
-its own. An address the shell cannot show in place answers false and moves, writes, and
-tells nothing, so the browser follows the link: before the shell tools have loaded, a
-commit before Git discovery has registered Commits, a file’s address (`navigation.open`
-opens those), another origin, an address the pull-request routes do not read, and one no
-tab holds.
+its own. A link to the address shown, the same stack’s page, the list, or a changed file
+of a pull request, opens it again where it is: it pushes no entry and the pane shows
+nothing anew, so the reader keeps their place, and the panel reveals the item again.
+An address the shell cannot show in place answers false and moves, writes, and tells
+nothing, so the browser follows the link: before the shell tools have loaded, a commit
+before Git discovery has registered Commits, a file’s address (`navigation.open` opens
+those), another origin, an address the pull-request routes do not read, and one no tab
+holds.
 
 ```console
 $ node tests/dom/nav-reveal-session.js links
@@ -1716,6 +1719,55 @@ $ node tests/dom/nav-reveal-session.js links
           "the pane shows /stack/3",
           "Pulls: current null"
         ]
+      },
+      {
+        "step": "a link to the stack's page shown opens it again, pushing nothing",
+        "href": "/stack/3",
+        "address": "/stack/3",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current null (again)"
+        ]
+      },
+      {
+        "step": "a link opens the list",
+        "href": "/pulls",
+        "address": "/pulls",
+        "tab": "pulls",
+        "told": [
+          "the pane shows /pulls",
+          "Pulls: current null"
+        ]
+      },
+      {
+        "step": "a link to the list shown opens it again, pushing nothing",
+        "href": "/pulls",
+        "address": "/pulls",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current null (again)"
+        ]
+      },
+      {
+        "step": "a link opens a changed file of #8",
+        "href": "/pull/8/files/docs/a%20b.md",
+        "address": "/pull/8/files/docs/a%20b.md",
+        "tab": "pulls",
+        "told": [
+          "the pane shows /pull/8/files/docs/a%20b.md",
+          "Pulls: #8 revealed",
+          "Pulls: current 8, file docs/a b.md"
+        ]
+      },
+      {
+        "step": "a link to the changed file shown opens it again, pushing nothing",
+        "href": "/pull/8/files/docs/a%20b.md",
+        "address": "/pull/8/files/docs/a%20b.md",
+        "tab": "pulls",
+        "told": [
+          "Pulls: #8 revealed",
+          "Pulls: current 8, file docs/a b.md (again)"
+        ]
       }
     ],
     "the browser follows": [
@@ -1774,7 +1826,7 @@ $ node tests/dom/nav-reveal-session.js links
     ]
   },
   "invariants": {
-    "an open pushes one entry, the link's own address": true,
+    "an open pushes one entry, the link's own address, and none for the address shown": true,
     "an address the shell cannot open in place moves, writes, and tells nothing": true,
     "no link moves focus": true
   }
