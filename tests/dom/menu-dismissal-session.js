@@ -632,7 +632,7 @@ async function main() {
   // rebuilt under the press in the page, and the choice is lost (mb-iwfs).
   const pressed = told.menu.find((each) => "picked" in each);
   assert.deepEqual([pressed?.open, pressed?.picked], [["P"], ["P first item"]], pressed?.step);
-  // A dropdown open in a container bound inside another stays open as the outer one binds.
+  // A dropdown its own container holds open stays open as a container around it binds.
   const around = told.filesBar.find((each) => each.step.startsWith("a container bound around"));
   assert.equal(around?.open, "types", around?.step);
   process.stdout.write(`${JSON.stringify(told, null, 2)}\n`);

@@ -583,11 +583,8 @@ assertEqual(
     },
     removeEventListener() {},
     contains: () => true,
-    // The fit asks for the open menus' panels; bind's own look for an open menu does not.
-    querySelectorAll(selector) {
-      if (selector.includes(".chip-menu-panel")) {
-        order.push("fit");
-      }
+    querySelectorAll() {
+      order.push("fit");
       return [];
     },
     // No menu here opened, so there is no row to focus (the focus path is checked below,

@@ -171,15 +171,22 @@
         if (!doc || (entry && openMenus.has(entry))) {
           return;
         }
+        // A menu another holder has open is that holder's, by its trigger: a container
+        // bound around a bound control finds the control's dropdown drawn open, as a
+        // diff's Markdown layer finds the File type menu in the diff it binds, and
+        // opening it again here closed it under the reader at each mount (mb-iwfs).
+        const trigger = triggerOf(menu);
+        if (openMenusOf(doc).some((other) => triggerOf(other.menu) === trigger)) {
+          return;
+        }
         for (const other of openMenusOf(doc)) {
           closeMenu(other, "other");
         }
         entry = { menu, doc };
         openMenus.add(entry);
         listen(doc);
-        // Focus goes with the menu. A press in WebKit leaves it where it was, on a tree row
-        // say, and a rebuild that put it back there would arrive outside and close the menu.
-        const trigger = triggerOf(menu);
+        // Focus goes with the menu. A press in WebKit gives a trigger none, and a rebuild
+        // that put focus back on a tree row, say, would arrive outside and close the menu.
         const active = doc.activeElement;
         if (
           trigger?.isConnected &&

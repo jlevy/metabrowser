@@ -816,29 +816,9 @@
   function bind(root, handlers) {
     const opts = handlers || {};
 
-    /**
-     * The container's open dropdown, or null: it holds at most one open. A dropdown in a
-     * container bound inside this one is that container's, which opens and closes it: a
-     * diff's Markdown layer binds the whole diff, whose toolbar holds the File type
-     * control, bound for itself, and claiming its open menu here closed it under the
-     * reader at each mount (mb-iwfs).
-     */
-    function openWrap() {
-      for (const wrap of root.querySelectorAll('.chip-menu[aria-expanded="true"]')) {
-        let node = wrap.parentElement;
-        while (node && node !== root && !boundMenus.has(node)) {
-          node = node.parentElement;
-        }
-        if (node === root) {
-          return wrap;
-        }
-      }
-      return null;
-    }
-
-    /** The open dropdown's key, or null. */
+    /** The open dropdown's key, or null: the container holds at most one open. */
     function openMenuKey() {
-      const open = openWrap();
+      const open = root.querySelector('.chip-menu[aria-expanded="true"]');
       return open ? open.getAttribute("data-chip-menu") : null;
     }
 
@@ -1075,6 +1055,7 @@
 
     // A press beside it in the container closes it once the control acts, on its click or a
     // checkbox's change: the consumer's rebuild as it closes would take the control away.
+    const openWrap = () => root.querySelector('.chip-menu[aria-expanded="true"]');
     const dropdowns = dismissible({
       name: "chip-menu-panel",
       trigger: () =>
