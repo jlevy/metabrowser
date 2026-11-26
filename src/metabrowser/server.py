@@ -2073,7 +2073,7 @@ async def index(
     # size by a few bytes from run to run).
     nav_refresh = (
         '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
-        f' aria-label="Refresh" data-tip-text="Click to refresh.">{REFRESH_SVG}'
+        f' aria-label="Refresh" data-tip-text="Refresh">{REFRESH_SVG}'
         '<span class="spinner spinner-sm nav-refresh-spinner" aria-hidden="true"></span>'
         "</button>"
     )

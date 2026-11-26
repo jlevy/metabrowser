@@ -43,7 +43,7 @@ dependencies = [
     "funlog>=0.2.1",
     "json5>=0.15.0",
     "jsonschema>=4.26.0",
-    "kpress==0.3.10",
+    "kpress==0.3.11",
     "markdown-it-py==4.2.0",
     "pathspec>=1.1.1",
     "prettyfmt>=0.4.1",

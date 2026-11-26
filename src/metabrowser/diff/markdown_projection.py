@@ -1003,7 +1003,9 @@ def _hardened(html: str, budget: float) -> _Html:
     """*html* through KPress's post-processing and sanitizer and the inert-HTML hardener,
     as the Document view renders a document, read as a tree."""
 
-    sanitized, _ = sanitize_raw_html(_postprocess_html(html), "sanitized")
+    # The diagnostics say what the sanitizer removed, which no diff shows, and cost most
+    # of its time (mb-d1gq).
+    sanitized, _ = sanitize_raw_html(_postprocess_html(html), "sanitized", diagnose=False)
     return _Html(harden(sanitized), budget)
 
 

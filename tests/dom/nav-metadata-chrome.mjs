@@ -489,7 +489,7 @@ try {
   await measure("pulls updated");
   await measureRules("pulls updated");
   await waitFor(
-    "(() => { const button = document.querySelector('#nav-refresh'); button.dispatchEvent(new Event('pointerover')); return button.dataset.tipText.startsWith('Click to refresh. Refreshed ') && button.dataset.tipText.includes(' in '); })()",
+    "(() => { const button = document.querySelector('#nav-refresh'); button.dispatchEvent(new Event('pointerover')); return button.dataset.tipText.startsWith('Refreshed ') && button.dataset.tipText.includes(' in '); })()",
   );
   // As pulls-nav.js's showFailure puts it, first in the tab's panel.
   const pullsFailed = await givesWay(
