@@ -3,9 +3,9 @@ type: is
 id: is-01m8ahf0redf7mwvtesxr8zdkw
 title: Lean family and kind in the recommended file types with linguist's color
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-25-lean-language-support.md
 delegate: claude-code@vm
 labels: []
@@ -18,6 +18,10 @@ parent_id: is-01m8ahev7t0174z3a2vhhnpw81
 hold: null
 hold_until: null
 created_at: 2026-11-25T23:43:12.142Z
-updated_at: 2026-11-25T23:43:14.961Z
+updated_at: 2026-11-26T00:05:24.112Z
 started_at: 2026-11-25T23:43:14.961Z
+closed_at: 2026-11-26T00:05:24.112Z
+close_reason: Lean family and kind landed in 5aeb registry revision 5; contract and color checks pass
+resolution: null
+duplicate_of: null
 ---
