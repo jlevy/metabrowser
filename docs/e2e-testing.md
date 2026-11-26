@@ -482,7 +482,8 @@ Strict mode is off on a developer machine, which can add these:
   Git is newer, so CI runs them and strict mode fails them if they skip, and the
   admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
-- `root is never denied by modes`, when the suite runs as root;
+- `root is never denied by modes`, when the suite runs as root, for the tests that stage
+  a refusal by a file’s mode (`tests/mode_denials.py`);
 - `this machine has no IPv6 loopback`, where `::1` cannot be bound, for the tests that
   serve on an IPv6 host (`tests/ipv6_loopback.py`); CI’s runners have one and run them;
 - `symlinks are unavailable`, where the platform or the account cannot create one;

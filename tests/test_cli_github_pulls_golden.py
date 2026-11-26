@@ -69,6 +69,7 @@ from tests.golden_harness import (
     quoted,
     run_metab,
 )
+from tests.mode_denials import require_mode_denials
 from tests.required_tools import needs_git
 
 pytestmark = [
@@ -567,6 +568,7 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 def test_golden_pull_list_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
+    require_mode_denials()
     session = _Session(tmp_path, monkeypatch, pull_origin)
     online = scenario(session.origin)
     first_path = "graphql:updated:start"

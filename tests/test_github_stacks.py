@@ -37,6 +37,7 @@ from tests.github_pull_fixture import (
     logged_gh_calls,
     seed_catalog,
 )
+from tests.mode_denials import require_mode_denials
 
 
 def test_stack_get_on_plain_folder_is_cache_only(
@@ -611,6 +612,7 @@ def test_unwritable_cache_keeps_snapshot_and_process_backoff(
     repository: ListedRepository,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    require_mode_denials()
     provider(monkeypatch, [response([native(1)])])
     asyncio.run(refresh_stacks(repository))
     directory = repository.home / f"sources/{repository.slug}/pulls"
