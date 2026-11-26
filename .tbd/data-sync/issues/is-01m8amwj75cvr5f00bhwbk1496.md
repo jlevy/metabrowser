@@ -3,9 +3,9 @@ type: is
 id: is-01m8amwj75cvr5f00bhwbk1496
 title: Upgrade to softschema 0.9.1 with ruamel.yaml.clib and benchmark collection reads
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 refs:
   - kind: pr
@@ -22,8 +22,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:43:01.733Z
-updated_at: 2026-11-26T17:52:09.689Z
+updated_at: 2026-11-26T18:01:41.410Z
 started_at: 2026-11-26T09:36:57.972Z
+closed_at: 2026-11-26T18:01:41.404Z
+close_reason: "Merged as Metabrowser PR #881 after 20 green GitHub jobs and independent senior, security, and performance review. Stock CPython 3.14t and opt-in native CPython installs verified."
+resolution: null
+duplicate_of: null
 ---
 Phase 1: supply-chain review of ruamel.yaml.clib; upgrade softschema 0.9.1 + frontmatter-format 0.5.1; adapt to 0.9.0 execution reporting and newly refused characters; metab --doctor shows parser mode; devtools/bench_softschema_collection.py sets the plan's bounds.
 
