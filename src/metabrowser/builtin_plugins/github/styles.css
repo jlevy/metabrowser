@@ -1316,15 +1316,24 @@
 /* The count and the connection are the shell's navigation metadata line (`.nav-metadata`
    in static/styles.css), which owns their box, type, and spacing: two lines of one band
    under the toolbar, with the connection line only while it has a status (pulls-panel.js).
-   This stylesheet lays out only their spans. The count, the line's one item, is cut short
-   rather than wrapped: it shrinks to its line and ellipsizes. The connection line, whose
+   This stylesheet lays out only their spans. The count stays on one line: its repository
+   total can ellipsize, while the state tally keeps its width. The connection line, whose
    failures carry their remedy, wraps only for a message longer than the pane, as the pull
    request header's failure does. */
 .github-pulls-total-line {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.github-pulls-total-lead {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.github-pulls-total-scope {
+  flex: none;
+  white-space: pre;
 }
 /* The shared spinner beside "Fetching pull requests…", centred on the words. */
 .github-pulls-connection-text {

@@ -130,7 +130,7 @@ try {
   // The list's count is visible without a redundant freshness line. The page still
   // identifies how the opened PR record was fetched.
   await waitFor(
-    "document.querySelector('.github-pulls-status .github-pulls-total') !== null && /Fetched/.test(document.querySelector('.github-pull-freshness')?.textContent ?? '')",
+    "document.querySelector('.github-pulls-status .github-pulls-total-line .summary-number') !== null && /Fetched/.test(document.querySelector('.github-pull-freshness')?.textContent ?? '')",
   );
   phase("pull request");
   const pulls = "the Pulls panel";

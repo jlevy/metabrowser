@@ -75,9 +75,11 @@ function summarize(model) {
     status: model.status,
     listName: model.listName,
     summary:
-      model.countNumber === null
-        ? model.repository
-        : model.countNumber + model.countSuffix + model.repository,
+      model.countSummary === null
+        ? null
+        : [...model.countSummary.total, ...(model.countSummary.scope ?? [])]
+            .map((part) => (typeof part === "string" ? part : (part.number ?? part.separator)))
+            .join(""),
     connection: model.connection,
     empty: model.empty,
     progress: model.progress,
@@ -377,6 +379,20 @@ async function run() {
   steps.push(page.observe("Open has its exact matching count", controller));
   controller.setFilter("closed");
   await settle();
+  const waitingForClosed = page.observe(
+    "Closed uses the known tally while its list loads",
+    controller,
+  );
+  assert(
+    waitingForClosed.paint.summary === "102 pull requests · 2 closed",
+    "the cached tally follows the new filter before its list arrives",
+  );
+  assert(
+    waitingForClosed.paint.status === "loading" &&
+      waitingForClosed.paint.connection.state === "working",
+    "the list still reports that it is loading",
+  );
+  steps.push(waitingForClosed);
   controller.setFilter("all", { fromAddress: true });
   await settle();
   await page.notModified();
@@ -1514,33 +1530,37 @@ async function paintStory(panel, selection = false) {
       node.classList?.contains("github-pulls-status"),
     );
     const total = status.firstElementChild;
-    // The count is the shell's metadata line, set as the Files and Commits totals are: the
-    // number bold, as every count summary's (docs/design-system.md, "Count Summaries Bold
-    // Their Numbers"), the words in the line's weight, and the repository name in its text
-    // role.
+    // The shared metadata line and tally painter keep both counts bold, the words
+    // regular, and the separator muted.
+    const [lead, scope] = total.childNodes;
+    const [allCount, noun] = lead.childNodes;
+    const [dot, pause, openCount, state] = scope.childNodes;
     assert(
       status.classList.contains("nav-metadata") &&
-        total.childNodes[0].localName === "span" &&
-        total.childNodes[0].classList.contains("summary-number") &&
-        total.childNodes[0].textContent === "102",
-      "the exact repository number is a count summary's bold number",
+        allCount.classList.contains("summary-number") &&
+        allCount.textContent === "102" &&
+        openCount.classList.contains("summary-number") &&
+        openCount.textContent === String(first.body.filter_totals.open),
+      "the repository and open totals are both bold",
     );
     assert(
-      total.childNodes[1].nodeName === "#text" &&
-        total.childNodes[1].textContent === " PRs on " &&
-        total.childNodes[2].localName === "strong" &&
-        total.childNodes[2].classList.contains("repository-name") &&
-        total.childNodes[2].textContent === "octo/demo",
-      "the words keep the line's weight, and the repository name is bold in its role",
+      noun.nodeName === "#text" &&
+        noun.textContent === " pull requests" &&
+        dot.classList.contains("summary-punctuation") &&
+        dot.getAttribute("aria-hidden") === "true" &&
+        pause.classList.contains("visually-hidden") &&
+        pause.textContent === "," &&
+        state.nodeName === "#text" &&
+        state.textContent === " open",
+      "the shared painter keeps plain words and a muted separator with a spoken pause",
     );
-    assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
       "lent to the one Refresh": lentWhileLoading,
       "the list's part while the list loads": listPartWhileLoading,
       landing: pane.textContent,
       "filter tallies": filterTallies,
-      "only the repository name is bold": total.childNodes.map((node) => ({
+      "both counts are bold": [...lead.childNodes, ...scope.childNodes].map((node) => ({
         node: node.nodeName,
         text: node.textContent,
       })),

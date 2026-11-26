@@ -2820,8 +2820,7 @@ _PULL_NUMBERS = frozenset(
         ".source-ref-selector-pull-number",
     }
 )
-# A class a source gives a count summary's number beside `.summary-number`, as the Pulls
-# count's `.github-pulls-total`.
+# A class a source gives a count summary's number beside `.summary-number`.
 _SUMMARY_NUMBER_CLASSES = re.compile(
     r"""class(?:Name)?\s*[:=]\s*["']([^"']*\bsummary-number\b[^"']*)["']"""
 )
@@ -2874,16 +2873,13 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
         for name in found.group(1).split()
         if name != "summary-number"
     }
-    assert beside == {".github-pulls-total"}, beside
+    assert not beside, beside
     for sheet in _stylesheets():
         for selector, declarations in _rules_of(sheet):
             assert selector == ".summary-number" or "summary-number" not in selector, (
                 sheet,
                 selector,
             )
-            for name in beside:
-                if re.search(re.escape(name) + r"(?![\w-])", selector):
-                    assert "font-weight" not in declarations, (sheet, selector)
             # The Checks summary's numbers are spans in a quiet paragraph; nothing styles a
             # paragraph's descendants' weight there.
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
@@ -2894,7 +2890,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
         "builtin_plugins/diff/diff-view.js": "words.append(...paint(parts));",
-        "builtin_plugins/github/pulls-panel.js": '{ class: "github-pulls-total summary-number" }',
+        "builtin_plugins/github/pulls-panel.js": "mb.countPartsNodes(summary.total)",
         "builtin_plugins/github/pull-page.js": "mb.countPartsNodes(counted)",
     }
     for path, painted in painters.items():

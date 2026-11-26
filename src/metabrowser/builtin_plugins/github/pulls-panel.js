@@ -298,10 +298,8 @@ const CHECKOUT_NOT_LISTED =
  *   rowsVersion: number,
  *   setSize: number,
  *   listName: string,
- *   repository: string | null,
  *   filterTotals: PullFilterTotals | null,
- *   countNumber: string | null,
- *   countSuffix: string | null,
+ *   countSummary: {total: MetabrowserCountParts, scope: MetabrowserCountParts | null} | null,
  *   catalogReady: boolean,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
  *     canRefresh: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
@@ -479,18 +477,16 @@ export function describePulls(envelope, page) {
   /** @type {PullsModel} */
   const model = {
     filter: page.filter,
-    status: "loading",
+    status: envelope?.state ?? "loading",
     rows: page.rows,
     rowsVersion: page.rowsVersion,
     // How many rows the list has, which a window appended does not move: each row's place is
     // told against it, and not against the rows held or drawn so far.
     setSize: envelope?.total ?? Math.max(envelope?.fetched ?? 0, page.rows.length),
     listName: "Pull requests",
-    repository: null,
     filterTotals:
       page.filterTotals === undefined ? (envelope?.filter_totals ?? null) : page.filterTotals,
-    countNumber: null,
-    countSuffix: null,
+    countSummary: null,
     catalogReady: envelope?.complete === true && !envelope.refreshing,
     connection: null,
     empty: null,
@@ -499,6 +495,32 @@ export function describePulls(envelope, page) {
     live: "",
     stacks: page.stacks ?? NO_GROUPING,
   };
+  if (envelope?.state === "absent" && envelope.reason === "not_github") {
+    model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : NO_GITHUB;
+    model.live = model.empty;
+    return model;
+  }
+  const repository = repositoryName(envelope?.source ?? null);
+  const repositoryTotal = model.filterTotals?.all ?? envelope?.repository_total ?? null;
+  if (repositoryTotal !== null && (envelope === null || repository !== null)) {
+    const subset = page.filter === "closed" ? "closed" : "open";
+    const subsetTotal =
+      model.filterTotals?.[subset] ?? (envelope?.list === subset ? envelope.total : null);
+    model.countSummary = {
+      total: [
+        { number: page.formatCount(repositoryTotal) },
+        repositoryTotal === 1 ? " pull request" : " pull requests",
+      ],
+      scope:
+        subsetTotal === null
+          ? null
+          : [
+              { separator: " · ", spoken: "," },
+              { number: page.formatCount(subsetTotal) },
+              ` ${subset}`,
+            ],
+    };
+  }
   const online = page.online !== false;
   if (envelope === null) {
     model.status = page.error === null ? "loading" : "unavailable";
@@ -511,21 +533,8 @@ export function describePulls(envelope, page) {
     model.live = model.connection.text;
     return model;
   }
-  model.status = envelope.state;
-  const repository = repositoryName(envelope.source);
   const failure = refreshFailure(envelope, page.formatTime, { includeWhileRefreshing: true });
   const holding = envelope.fetched > 0 || page.rows.length > 0;
-  if (envelope.state === "absent" && envelope.reason === "not_github") {
-    model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : NO_GITHUB;
-    model.live = model.empty;
-    return model;
-  }
-  model.repository = repository;
-  const repositoryTotal = model.filterTotals?.all ?? envelope.repository_total;
-  if (repositoryTotal !== null && repository !== null) {
-    model.countNumber = page.formatCount(repositoryTotal);
-    model.countSuffix = repositoryTotal === 1 ? " PR on " : " PRs on ";
-  }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
   const known = envelope.state === "current" || envelope.state === "stale";
   model.listName = known
@@ -5730,28 +5739,19 @@ export function mountPullsPanel(container, ctx, mb) {
     tellAges();
     list.setAttribute("aria-label", model.listName);
     list.hidden = model.rows.length === 0;
-    const lines = [];
-    if (model.repository !== null) {
-      const repository = h("strong", { class: "repository-name" }, [model.repository]);
-      lines.push(
-        h(
-          "span",
-          { class: "github-pulls-total-line" },
-          model.countNumber === null || model.countSuffix === null
-            ? [repository]
-            : [
-                // The number bold, as every count summary's (docs/design-system.md, "Count
-                // Summaries Bold Their Numbers"), and the words in the line's weight.
-                h("span", { class: "github-pulls-total summary-number" }, [model.countNumber]),
-                model.countSuffix,
-                repository,
-              ],
-        ),
-      );
-    }
     // Keep the count's space while it loads. Add a connection line only when it has
     // a status to show.
-    status.replaceChildren(...(lines.length > 0 ? lines : ["\u00a0"]));
+    const summary = model.countSummary;
+    status.replaceChildren(
+      summary === null
+        ? "\u00a0"
+        : h("span", { class: "github-pulls-total-line" }, [
+            h("span", { class: "github-pulls-total-lead" }, mb.countPartsNodes(summary.total)),
+            summary.scope === null
+              ? null
+              : h("span", { class: "github-pulls-total-scope" }, mb.countPartsNodes(summary.scope)),
+          ]),
+    );
     const connected = model.connection;
     const working = connected?.state === "working";
     const retrying = connected?.retrying === true;
@@ -5897,7 +5897,7 @@ export function mountPullsPanel(container, ctx, mb) {
         if (model.rows.length > 0) {
           mb.perf.measure("githubPulls:rowsReady", () => {}, { rows: model.rows.length });
         }
-        if (model.countNumber !== null && model.catalogReady) {
+        if (model.countSummary !== null && model.catalogReady) {
           mb.perf.measure("githubPulls:catalogReady", () => {});
         }
       },
