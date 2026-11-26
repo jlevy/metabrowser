@@ -18,8 +18,9 @@ where auto-merge’s sentence adds to the label, and the link to the Checks tab.
 none when nothing stands in the way.
 `rows` are its rows, each its status’s word in that status’s tone, the server’s
 sentence, and its link: Checks to the first failing or running check in the list below,
-Reviews that asked for changes to the Conversation tab when it shows a review that did,
-and the rest to the page the server names on GitHub; a met requirement links nowhere.
+named by its place in that list, since two checks can share a name, Reviews that asked
+for changes to the Conversation tab when it shows a review that did, and the rest to the
+page the server names on GitHub; a met requirement links nowhere.
 Auto-merge has a row of its own while it is on.
 `checks` is the list below them, in `gh pr checks`’s order, a check a rule requires
 marked `[Required]`.
@@ -34,6 +35,13 @@ scan read, which counts the checks and lists none, so the page says the list is 
 read and its Checks row links to GitHub, and every requirement met.
 A merged pull request has no readiness.
 
+`listed` is the recorded pull request once the list of pull requests says another state,
+a second after its record’s update, which the header then shows, beside its record and
+beside its core while the record is on its way.
+The server judged the verdict with the pull request open, so only an open state draws
+it: a page whose list learned of a merge, a close, or a draft first draws no verdict,
+and so no Merge status section, until a read judges the state it shows.
+
 ```console
 $ node tests/dom/github-pull-readiness-session.js
 {
@@ -45,7 +53,7 @@ $ node tests/dom/github-pull-readiness-session.js
         "sentence": "Some checks are still pending: 2 successful, and 1 pending.",
         "rows": [
           "[success: Met] conflicts: No merge conflicts with topic. -> no link",
-          "[attention: Waiting] checks: Some checks are still pending: 2 successful, and 1 pending. -> View check -> the check \"docs\" in the list",
+          "[attention: Waiting] checks: Some checks are still pending: 2 successful, and 1 pending. -> View check -> the list's check 1, \"docs\"",
           "[attention: Waiting] reviews: Review required. -> View on GitHub https://github.com/octo/demo/pull/7",
           "auto-merge: Auto-merge enabled (squash)."
         ]
@@ -66,7 +74,7 @@ $ node tests/dom/github-pull-readiness-session.js
         "sentence": "Merge conflicts with topic must be resolved.",
         "rows": [
           "[danger: Unmet] conflicts: Merge conflicts with topic must be resolved. -> View on GitHub https://github.com/octo/demo/pull/7/conflicts",
-          "[danger: Unmet] checks: Some checks were not successful: 1 failing (1 required), and 2 successful. -> View check -> the check \"docs\" in the list",
+          "[danger: Unmet] checks: Some checks were not successful: 1 failing (1 required), and 2 successful. -> View check -> the list's check 1, \"docs\"",
           "[danger: Unmet] reviews: Changes requested. -> View on GitHub https://github.com/octo/demo/pull/7"
         ]
       },
@@ -140,10 +148,28 @@ $ node tests/dom/github-pull-readiness-session.js
     },
     "conflicts, with a review in the conversation that requested changes": [
       "[danger: Unmet] conflicts: Merge conflicts with topic must be resolved. -> View on GitHub https://github.com/octo/demo/pull/7/conflicts",
-      "[danger: Unmet] checks: Some checks were not successful: 1 failing (1 required), and 2 successful. -> View check -> the check \"docs\" in the list",
+      "[danger: Unmet] checks: Some checks were not successful: 1 failing (1 required), and 2 successful. -> View check -> the list's check 1, \"docs\"",
       "[danger: Unmet] reviews: Changes requested. -> View in Conversation -> the conversation tab"
     ],
-    "merged": null
+    "merged": null,
+    "listed": {
+      "the list says merged": {
+        "record": "[Merged] no readiness",
+        "core": "[Merged] no readiness"
+      },
+      "the list says draft": {
+        "record": "[Draft] no readiness",
+        "core": "[Draft] no readiness"
+      },
+      "the list says closed": {
+        "record": "[Closed] no readiness",
+        "core": "[Closed] no readiness"
+      },
+      "the list says open": {
+        "record": "[Open] [attention: Checks pending] named \"Checks pending. Auto-merge enabled (squash).\" -> the checks tab",
+        "core": "[Open] [attention: Checks pending] named \"Checks pending. Auto-merge enabled (squash).\" -> the checks tab"
+      }
+    }
   }
 }
 ? 0

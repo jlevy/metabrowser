@@ -61,6 +61,28 @@
  * @typedef {Pick<Readiness, "verdict" | "tone" | "label">} ShownReadiness
  */
 
+/**
+ * The readiness a surface draws beside the state it shows: *readiness*, the verdict the server
+ * judged with the pull request in *judged*, only where the state *shown* is that one and is
+ * open or draft, and null anywhere else. Every surface that draws a verdict draws it through
+ * this, so none draws one beside a state the server did not judge it in. Pure.
+ *
+ * A closed or merged pull request has no readiness. A verdict says what stands in the way of
+ * merging an open pull request, or of marking a draft ready, so it says nothing of the pull
+ * request in another state: a page that shows the list's state, fresher than its record's
+ * (`withListedState` in pull-state.js), draws no verdict once the list has learned of a merge
+ * or a draft the record has not, until a read judges the state it shows.
+ *
+ * @template {ShownReadiness} T
+ * @param {T | null} readiness
+ * @param {import("./pull-state.js").PullState} judged
+ * @param {import("./pull-state.js").PullState} shown
+ * @returns {T | null}
+ */
+export function readinessForState(readiness, judged, shown) {
+  return shown === judged && (shown === "open" || shown === "draft") ? readiness : null;
+}
+
 /** @typedef {keyof typeof GLYPHS} ReadinessGlyph */
 
 /**

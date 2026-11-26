@@ -61,6 +61,7 @@ import {
 } from "./guide-reads.js";
 import {
   readinessBadge,
+  readinessForState,
   readinessIcon,
   readinessSizers,
   requirementBadge,
@@ -558,11 +559,12 @@ const TRUNCATED = Object.freeze({
 
 /**
  * Where a requirement's row on the Checks tab links (`readinessModel`): a page on GitHub, as
- * a check's action is (`CheckAction`); a check in the list below it, by its name; or a tab
+ * a check's action is (`CheckAction`); a check in the list below it, by its place in that
+ * list (`at`), since two checks can share a name, and named by its name (`check`); or a tab
  * of this page. `label` is the link's text and `name` its accessible name: its text, then
  * what it opens.
  *
- * @typedef {CheckAction | {kind: "check", check: string, label: string, name: string}
+ * @typedef {CheckAction | {kind: "check", at: number, check: string, label: string, name: string}
  *   | {kind: "tab", tab: string, label: string, name: string}} RequirementLink
  */
 
@@ -1468,15 +1470,15 @@ function requirementLink(requirement, shownChecks, shownTimeline, base) {
   }
   const kind = text(requirement.kind);
   if (kind === "checks") {
-    const first = shownChecks?.items.find(
-      (item) => item.bucket === (status === "unmet" ? "fail" : "pending"),
-    );
-    if (first !== undefined) {
+    const items = shownChecks?.items ?? [];
+    const at = items.findIndex((item) => item.bucket === (status === "unmet" ? "fail" : "pending"));
+    if (at >= 0) {
       return {
         kind: "check",
-        check: first.name,
+        at,
+        check: items[at].name,
         label: CHECK_TARGET,
-        name: `${CHECK_TARGET}: ${first.name}`,
+        name: `${CHECK_TARGET}: ${items[at].name}`,
       };
     }
   }
@@ -1942,8 +1944,13 @@ export function describePull(envelope, page) {
     model.head = text(preview.pull?.head?.sha) || null;
     model.baseRef = text(preview.pull?.base?.ref) || null;
     // The verdict is the status's, beside the core as beside a record: the header says it
-    // while the record is on its way, and the Checks tab has no list to link into yet.
-    model.readiness = readinessModel(envelope.readiness, null, [], model.pull.htmlUrl);
+    // while the record is on its way, and the Checks tab has no list to link into yet. It
+    // judged the core's state, so a state the list says instead draws none.
+    model.readiness = readinessForState(
+      readinessModel(envelope.readiness, null, [], model.pull.htmlUrl),
+      displayState(preview.pull),
+      model.pull.state,
+    );
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
@@ -2040,14 +2047,14 @@ export function describePull(envelope, page) {
   model.reviewComments = reviewComments(record);
   const head = text(pull.head?.sha);
   // The checks and the verdict are the status's, beside the record: a check that finishes
-  // changes them and leaves the record, and the conversation drawn from it, alone.
+  // changes them and leaves the record, and the conversation drawn from it, alone. The
+  // verdict judged the record's state, so a state the list says instead draws none.
   model.checks = checks(envelope.checks, head, model.pull.htmlUrl) ?? checksListing(envelope, head);
   model.checkNotes = checkNotes(envelope, head);
-  model.readiness = readinessModel(
-    envelope.readiness,
-    model.checks,
-    model.timeline,
-    model.pull.htmlUrl,
+  model.readiness = readinessForState(
+    readinessModel(envelope.readiness, model.checks, model.timeline, model.pull.htmlUrl),
+    displayState(pull),
+    model.pull.state,
   );
   model.notes = notes(record);
   model.head = head || null;
@@ -7816,8 +7823,10 @@ export function mountPullPage(container, ctx, mb) {
     const checksSection = h("section", { class: "github-pull-section" }, [
       h("h2", { class: "section-heading" }, ["Checks"]),
     ]);
-    /** Each check's row, by its name, for the Merge status section's link to it. @type {Map<string, HTMLElement>} */
-    const checkRows = new Map();
+    /** Each check's row, in the list's order, so the Merge status section's link to a check
+     * finds the row of the item it names (`RequirementLink`'s `at`), whatever their names.
+     * @type {HTMLElement[]} */
+    let checkRows = [];
     if (summary !== null && (summary.items.length > 0 || summary.listing === true)) {
       // "Some checks are still pending: 3 successful · 1 pending": `gh pr checks`'s headline
       // (`checksSummary`), then a count summary in its parts, painted by the shell's one
@@ -7843,9 +7852,8 @@ export function mountPullPage(container, ctx, mb) {
           h("p", { class: "github-pull-quiet mb-refreshing-muted" }, [CHECKS_BEING_LISTED]),
         );
       }
-      const rows = h("ul", { class: "github-pull-checks" });
-      for (const item of summary.items) {
-        const row = h("li", {}, [
+      checkRows = summary.items.map((item) =>
+        h("li", {}, [
           stateBadge(item.bucket, item.label, "check"),
           " ",
           h("span", {}, [item.name]),
@@ -7854,14 +7862,10 @@ export function mountPullPage(container, ctx, mb) {
           item.required ? h("span", { class: "github-pull-required" }, ["Required"]) : null,
           item.action === null ? null : checkLink(item.action),
           item.detail ? h("span", { class: "github-pull-quiet" }, [item.detail]) : null,
-        ]);
-        if (!checkRows.has(item.name)) {
-          checkRows.set(item.name, row);
-        }
-        rows.append(row);
-      }
-      if (summary.items.length > 0) {
-        checksSection.append(rows);
+        ]),
+      );
+      if (checkRows.length > 0) {
+        checksSection.append(h("ul", { class: "github-pull-checks" }, checkRows));
       }
     } else if (summary !== null) {
       checksSection.append(
@@ -7890,7 +7894,7 @@ export function mountPullPage(container, ctx, mb) {
    *
    * @param {PullModel} model
    * @param {ReadinessModel} readiness
-   * @param {ReadonlyMap<string, HTMLElement>} checkRows Each check's row in the list below.
+   * @param {ReadonlyArray<HTMLElement>} checkRows Each check's row in the list below, in its order.
    */
   function mergeStatus(model, readiness, checkRows) {
     const { verdict, tone, label } = readiness;
@@ -7933,7 +7937,7 @@ export function mountPullPage(container, ctx, mb) {
    *
    * @param {PullModel} model
    * @param {RequirementLink} link
-   * @param {ReadonlyMap<string, HTMLElement>} checkRows
+   * @param {ReadonlyArray<HTMLElement>} checkRows
    */
   function requirementAnchor(model, link, checkRows) {
     if (link.kind === "tab") {
@@ -7948,7 +7952,7 @@ export function mountPullPage(container, ctx, mb) {
     if (link.kind !== "check") {
       return checkLink(link);
     }
-    const row = checkRows.get(link.check);
+    const row = checkRows[link.at];
     if (row === undefined) {
       return null;
     }

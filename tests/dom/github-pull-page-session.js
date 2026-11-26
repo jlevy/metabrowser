@@ -218,7 +218,7 @@ function requirementLink(link) {
     return "no link";
   }
   if (link.kind === "check") {
-    return `${link.label} -> the check "${link.check}" in the list`;
+    return `${link.label} -> the list's check ${link.at + 1}, "${link.check}"`;
   }
   if (link.kind === "tab") {
     return `${link.label} -> the ${link.tab || "conversation"} tab`;
@@ -250,6 +250,48 @@ function summarizeReadiness(readiness) {
       ...(readiness.autoMerge === null ? [] : [`auto-merge: ${readiness.autoMerge}`]),
     ],
   };
+}
+
+/**
+ * The recorded open pull request 7 as its page draws it once the list of pull requests says
+ * another state, a second after the record's update (`withListedState`), beside its record
+ * and beside its core while the record is on its way: the state the header shows, and the
+ * header's badge, which the Merge status section is drawn with, or null. The server judged
+ * the verdict with the pull request open, so only an open state draws it.
+ */
+function listedReadiness(runtime, nowMs) {
+  const body = recorded.current.body;
+  const later = new Date(Date.parse(body.record.pull.updated_at) + 1000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  const core = {
+    ...body,
+    record: null,
+    core_preview: {
+      source: body.source,
+      number: body.number,
+      reader: body.record.reader,
+      observed_at: body.record.fetched_at,
+      revision: "core",
+      pull: body.record.pull,
+      comparison_state: "pending",
+    },
+  };
+  return Object.fromEntries(
+    ["merged", "draft", "closed", "open"].map((state) => {
+      const listed = { state, updatedAt: later };
+      const drawn = (envelope) => {
+        const model = runtime.describePull(envelope, {
+          number: 7,
+          tab: "checks",
+          nowMs,
+          listed,
+        });
+        return `[${model.pull.stateLabel}] ${readinessBadgeLine(model.readiness) ?? "no readiness"}`;
+      };
+      return [`the list says ${state}`, { record: drawn(body), core: drawn(core) }];
+    }),
+  );
 }
 
 // ── The template the page parses a text into ──────────────────────
@@ -2016,6 +2058,7 @@ async function main() {
       },
     ).readiness.rows,
     merged: drawn(recorded.merged.body).readiness,
+    listed: listedReadiness(runtime, page.clock.now),
   };
 
   // Printed in two parts: this script prints the first, and

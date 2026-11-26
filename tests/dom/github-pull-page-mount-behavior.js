@@ -2406,6 +2406,85 @@ async function mergeStatusSection(page) {
   assert.equal(merged.container.querySelector(".github-pull-merge-status"), null);
   assert.equal(merged.container.querySelector(".github-pull-readiness-slot"), null);
   merged.handle.dispose();
+  await checkLinkByPlace(page);
+  await listedStateReadiness(page);
+}
+
+// A requirement's link to a check focuses the row of the check it names, whatever the others
+// are called: two checks can share a name, as a failing "docs" of another app's does the
+// running "docs" the verdict waits for, which `gh pr checks`'s order lists after it.
+async function checkLinkByPlace(page) {
+  const body = structuredClone(recorded.current.body);
+  const running = body.checks.items.find((item) => item.name === "docs");
+  body.checks.items.unshift({
+    ...running,
+    kind: "status",
+    bucket: "fail",
+    status: null,
+    conclusion: "FAILURE",
+    required: false,
+    details_url: "https://ci.example.com/octo/demo/docs/1",
+    app: null,
+    description: "Another app's docs build failed",
+  });
+  const { container, handle } = await mountOn(page, body, "checks", () => "now");
+  const listed = container.querySelector(".github-pull-checks").children;
+  const named = listed.filter((row) => row.children[2].textContent === "docs");
+  assert.equal(named.length, 2, "two checks named docs, the failing one first");
+  const [failing, waitedFor] = named;
+  assert.ok(listed.indexOf(failing) < listed.indexOf(waitedFor));
+  const link = container
+    .querySelector(".github-pull-requirements")
+    .children.find((row) => row.getAttribute("data-kind") === "checks")
+    .children[1].children.find((node) => node.tag === "a");
+  const focused = [];
+  for (const row of named) {
+    row.scrollIntoView = () => {};
+    row.focus = () => focused.push(row);
+  }
+  globalThis.MouseEvent = class MouseEvent {};
+  link.events.get("click")({ button: 0, preventDefault() {} });
+  delete globalThis.MouseEvent;
+  assert.deepEqual(focused, [waitedFor], "the link focuses the running check it names");
+  assert.equal(waitedFor.getAttribute("tabindex"), "-1");
+  assert.equal(failing.getAttribute("tabindex"), null, "and leaves the failing one alone");
+  handle.dispose();
+}
+
+// The server judged the verdict with the pull request in its record's state. A page that shows
+// the list's state instead, fresher than the record (`withListedState`), shows no verdict for
+// it: once the list says the pull request merged or is a draft, the header has no readiness
+// slot and the Checks tab no Merge status section, until a read judges the state shown.
+async function listedStateReadiness(page) {
+  const states = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  const later = new Date(Date.parse(recorded.current.body.record.pull.updated_at) + 1000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  // A repository of its own, so what the list says here is said of no other story's, and its
+  // row taken back at the end, so no later story finds two repositories' rows for #7.
+  const source = "https://github.com/octo/listed-state";
+  for (const state of ["merged", "draft", "open"]) {
+    const body = structuredClone(recorded.current.body);
+    body.source = source;
+    states.noteListed(source, "all", [{ number: 7, state, updatedAt: later }]);
+    const { container, handle } = await mountOn(page, body, "checks", () => "now");
+    const shown = container.querySelector(".github-pull-state-slot").children[0].textContent;
+    const drawn = {
+      slot: container.querySelector(".github-pull-readiness-slot") !== null,
+      section: container.querySelector(".github-pull-merge-status") !== null,
+    };
+    assert.equal(shown, states.PULL_STATES[state].label, `the header shows the list's ${state}`);
+    assert.deepEqual(
+      drawn,
+      state === "open" ? { slot: true, section: true } : { slot: false, section: false },
+      `the list says ${state}`,
+    );
+    handle.dispose();
+  }
+  states.noteListed(source, "open", []);
+  assert.equal(states.listedState(source, 7), null);
 }
 
 // The header leaves out an updated age that reads the same as the merged or closed age

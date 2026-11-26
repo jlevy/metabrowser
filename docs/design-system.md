@@ -3850,6 +3850,12 @@ the badge’s text or the glyph’s accessible name, says the verdict.
 The page says an open pull request’s readiness twice, from the envelope’s `readiness`
 (`readinessModel` in `builtin_plugins/github/pull-page.js`), and draws nothing for a
 closed or merged one, or before a record or core is shown.
+The server judged the verdict with the pull request in its record’s or core’s state, so
+the page draws it only beside that state (`readinessForState` in `pull-readiness.js`,
+which every surface that draws a verdict goes through): where it shows the list of pull
+requests’ state instead, fresher than its record’s, as once the list has learned of a
+merge or a draft first, it draws no badge and no Merge status section until a read
+judges the state it shows.
 
 - **The header’s badge** follows the state’s badge in the row of ages: “[Open]
   [Merge conflicts] Opened 3 days ago”.
@@ -3885,15 +3891,17 @@ closed or merged one, or before a record or core is shown.
   sentence and its link.
   The badges sit in a column as wide as the widest, so the sentences line up.
   A met requirement links nowhere.
-  Checks links to the first failing or running check in the list below, which it brings
-  into view and focuses; Reviews that asked for changes to the Conversation tab when it
-  shows a review that did; and every other requirement, and Checks with no list yet, to
-  the page on GitHub the server names, as a check’s action does.
+  Checks links to the first failing or running check in the list below, by its place in
+  the list, since two checks can share a name, which it brings into view and focuses;
+  Reviews that asked for changes to the Conversation tab when it shows a review that
+  did; and every other requirement, and Checks with no list yet, to the page on GitHub
+  the server names, as a check’s action does.
 
 `tests/dom/github-pull-page-mount-behavior.js` builds both browserlessly on the
 production page, and `tests/golden/cli-ui-github-pull-readiness.tryscript.md` pins what
-each says for five answers GitHub could give; `tests/dom/github-pull-header-chrome.mjs`
-holds the slot’s width in Chrome at every header width.
+each says for five answers GitHub could give and beside each state the list could say;
+`tests/dom/github-pull-header-chrome.mjs` holds the slot’s width in Chrome at every
+header width.
 
 ### Pull Request Numbers
 

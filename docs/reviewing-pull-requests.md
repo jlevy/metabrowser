@@ -148,6 +148,8 @@ In a narrow pane it is its icon alone, in the same color.
 Hovering it lists what stands in the way, and clicking it opens **Checks**. Until GitHub
 has answered for the head shown it says **Checking**; a closed or merged pull request
 shows its state alone.
+Where the Pulls tab learned of a merge, a close, or a draft before the page’s own copy
+did, the page shows the new state, and no verdict until it reads one for that state.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
 where GitHub gave none, as on a commit’s page; a Pulls row shows none.
 **View on GitHub**, in the page’s upper right as on a file’s, a folder’s, and a commit’s

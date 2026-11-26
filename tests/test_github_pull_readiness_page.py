@@ -33,6 +33,7 @@ from metabrowser.builtin_plugins.github.pull_status import (
     PullStatus,
     QueueEntry,
 )
+from metabrowser.builtin_plugins.github.pull_status_store import KeptStatus
 from tests.golden_harness import check_recording, read_recording
 
 _COUNTS = {"pass": 0, "fail": 0, "pending": 0, "skipping": 0, "cancel": 0}
@@ -146,7 +147,9 @@ def _scenarios() -> dict[str, dict[str, Any]]:
     return {
         name: {
             "status": PullStatus.model_validate(shown.model_dump()).model_dump(mode="json"),
-            "readiness": judged_readiness(pull, shown),
+            "readiness": judged_readiness(
+                pull, KeptStatus(status=shown, checks=listing, unavailable=None)
+            ),
             "checks": None if listing is None else listing.model_dump(mode="json"),
         }
         for name, (shown, listing) in built.items()

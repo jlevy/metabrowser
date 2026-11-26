@@ -362,14 +362,16 @@ has the rules.
   three, so a read that moves the status’s head or `observed_at` moves it.
   The page draws the verdict in its header, after the state’s badge, and in the Checks
   tab’s Merge status section, each requirement with its status and its link
-  (`readinessModel` in `pull-page.js`), and the tab’s list from `checks`, each check in
-  the ink of its server-side bucket, failing first, then pending, then the rest, as
-  `gh pr checks` lists them, a required one marked, under `gh`’s headline for them
-  (`checksSummary` in `pull-page.js`, held to `checks_sentence` by
-  `tests/test_github_check_summary.py`). The verdict’s checks row counts the same list,
-  so the two agree; without a whole list, as on the Pulls tab, it counts GitHub’s
-  rollup, as `gh pr status` does. With a status of the head shown that counts no list,
-  the tab shows the status’s counts and says the list is being read.
+  (`readinessModel` in `pull-page.js`), and only beside the state it judged: a page that
+  shows the list’s fresher state instead draws none (`readinessForState` in
+  `pull-readiness.js`), and the tab’s list from `checks`, each check in the ink of its
+  server-side bucket, failing first, then pending, then the rest, as `gh pr checks`
+  lists them, a required one marked, under `gh`’s headline for them (`checksSummary` in
+  `pull-page.js`, held to `checks_sentence` by `tests/test_github_check_summary.py`).
+  The verdict’s checks row counts the same list, so the two agree; without a whole list,
+  as on the Pulls tab, it counts GitHub’s rollup, as `gh pr status` does.
+  With a status of the head shown that counts no list, the tab shows the status’s counts
+  and says the list is being read.
   A block that no required check explains, once the read knows every required one
   passes, is a Rules row (`pull_readiness.py`). `metab --show /pull/<n>/checks` prints
   the verdict and each requirement’s status on its model line.
