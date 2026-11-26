@@ -2418,6 +2418,12 @@ async def index(
         # spells a pin's addresses with comes first: a startup script of a pin's shell,
         # which a browser has cached there, and needed elsewhere only by a rendered diff
         # beside a checkout, whose link to a file of the head it reads back.
+        # The link card (static/link-previews.js) comes after the resolver, since every
+        # surface that registers a link with it has the resolver's answer for that link,
+        # and nothing loads it alone. Measured 2026-11-26 at gzip -6 (`delivery.GZIP_LEVEL`),
+        # the bundle's scripts are 1,742, 9,866, and 9,181 bytes compressed (4,626, 34,808,
+        # and 31,261 raw): the card would cost every folder's shell 9,181 bytes as a startup
+        # script, where it runs only once a pointer rests on a link it registered.
         # The link card's providers (static/link-preview-providers.js), what a card says of
         # each kind of page and what a rest on a link starts loading, follow the card's
         # registry they register with. Measured 2026-11-26 at `delivery.GZIP_LEVEL`, as
@@ -2429,6 +2435,10 @@ async def index(
             {
                 "src": _static_asset_url("repository-links.js"),
                 "provides": "MetabrowserRepositoryLinks",
+            },
+            {
+                "src": _static_asset_url("link-previews.js"),
+                "provides": "MetabrowserLinkPreviews",
             },
             {"src": _static_asset_url("link-preview-providers.js")},
         ],

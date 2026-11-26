@@ -4004,6 +4004,79 @@ declare global {
     ): string | null;
   }>;
 
+  /**
+   * What a link with a link card opens (static/link-previews.js): a resolver's in-app
+   * answer, or a rendered diff's link to a file of its head, a pin's `/view/<GitPath
+   * wire>[#fragment]` address.
+   */
+  type MetabrowserLinkPreviewTarget =
+    | Extract<MetabrowserRepositoryLinkTarget, { kind: "view" | "route" }>
+    | Readonly<{ kind: "view-head"; href: string }>;
+
+  /** What a link card is about, as `MetabrowserLinkPreviews.subject` reads a target. */
+  type MetabrowserLinkPreviewSubject =
+    | Readonly<{ kind: "pull"; number: number; tab: "" | "files" | "checks"; file: string }>
+    | Readonly<{ kind: "stack"; number: number; file: string }>
+    | Readonly<{ kind: "commit"; revision: string }>
+    | Readonly<{
+        kind: "file" | "folder";
+        /** The path from the served root, decoded for display; "" for the root. */
+        path: string;
+        /** "working-tree" for a link to a branch, which opens whatever is served. */
+        opens: "here" | "working-tree";
+      }>
+    | Readonly<{ kind: "pulls" }>;
+
+  /** A provider's answer for a subject: plain text only, never markup. */
+  type MetabrowserLinkPreview = Readonly<{
+    title?: string;
+    /** A pull request's state, which only its metadata can say. */
+    state?: "open" | "closed" | "merged" | "draft";
+    detail?: string;
+    /** Said in place of where the link opens, as "Not in this repository". */
+    missing?: string;
+  }>;
+
+  /** One kind's data for its link cards (`MetabrowserLinkPreviews.provide`). */
+  type MetabrowserLinkPreviewProvider = Readonly<{
+    summary(
+      subject: MetabrowserLinkPreviewSubject,
+      context: { mb: MetabrowserPublicSdk; signal: AbortSignal },
+    ): Promise<MetabrowserLinkPreview | null> | MetabrowserLinkPreview | null;
+    prefetch?(
+      subject: MetabrowserLinkPreviewSubject,
+      context: { mb: MetabrowserPublicSdk },
+    ): unknown;
+  }>;
+
+  /** static/link-previews.js, in the `repository-links` on-demand bundle. */
+  type MetabrowserLinkPreviewsRuntime = Readonly<{
+    /** How long the pointer rests on a link before its summary and prefetch start. */
+    INTENT_MS: number;
+    register(
+      root: Element,
+      anchor: Element,
+      target: MetabrowserLinkPreviewTarget,
+      mb: MetabrowserPublicSdk,
+      options?: { authorTitle?: string | null },
+    ): boolean;
+    forget(anchor: Element): void;
+    dispose(root: Element): void;
+    provide(
+      kind: MetabrowserLinkPreviewSubject["kind"],
+      provider: MetabrowserLinkPreviewProvider,
+    ): void;
+    subject(
+      target: MetabrowserLinkPreviewTarget | null | undefined,
+      sourceKind?: "filesystem" | "git_revision",
+    ): MetabrowserLinkPreviewSubject | null;
+    card(
+      subject: MetabrowserLinkPreviewSubject,
+      preview: MetabrowserLinkPreview | null | undefined,
+      options?: { linkText?: string | null; authorTitle?: string | null },
+    ): string;
+  }>;
+
   /** What the freshness label says and offers; see static/source-freshness.js. */
   /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserInertHtmlRuntime = Readonly<{
@@ -5283,6 +5356,8 @@ declare global {
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     MetabrowserRepositoryLinks?: MetabrowserRepositoryLinksRuntime;
+    /** static/link-previews.js, the link card, in the `repository-links` on-demand bundle. */
+    MetabrowserLinkPreviews?: MetabrowserLinkPreviewsRuntime;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{

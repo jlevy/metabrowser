@@ -32,6 +32,13 @@ tip computed at run time. The shell holds those: app.js shows a tip equal to its
 element's text, or to the text of a box inside it, only while that text is cut short.
 ``tests/test_check_tooltips.py`` pins what it finds and what it does not.
 
+**And one link card.** A link that opens a page in Metabrowser shows the link card, and
+one renderer draws every card from data (docs/design-system.md, "Tooltips on Links"):
+``card`` in ``static/link-previews.js``. A card's markup is its classes, ``link-card-``
+and a name, and its words for where a link opens, so a browser source or a stylesheet
+other than the renderer and the shell's stylesheet that writes either is drawing or
+restyling a card of its own, and fails here. A surface registers its links instead.
+
 **What this is not.** It is not a rule about accessible names. ``aria-label``
 is untouched and still required wherever it was: a screen reader does not read
 ``data-tip-text``, so a glyph-only control needs both. ``<title>`` inside an
@@ -121,6 +128,13 @@ _REPEAT_H = re.compile(
 # A document's <title> is the tab's name, not a tooltip.
 _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")
 
+# The link card's one renderer, and the one stylesheet that styles it. Anything else that
+# writes the card's classes or its words for where a link opens draws a card of its own.
+LINK_CARD_OWNERS = ("static/link-previews.js", "static/styles.css")
+_LINK_CARD = re.compile(
+    r"\blink-card-[a-z]|Opens here in Metabrowser|Opens in the served working tree"
+)
+
 
 # The rules that own a tooltip's type size, and the only values they may take: None is
 # no size at all, so the rule reads at the tooltip's.
@@ -173,6 +187,18 @@ def _repeats(path: Path) -> list[Finding]:
         Finding(path, number, line.strip())
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
         if _REPEAT_HTML.search(line) or _REPEAT_H.search(line)
+    ]
+
+
+def _link_cards(path: Path) -> list[Finding]:
+    """A line outside the card's renderer and stylesheet that writes a link card."""
+
+    if path.as_posix().endswith(LINK_CARD_OWNERS):
+        return []
+    return [
+        Finding(path, number, line.strip())
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if _LINK_CARD.search(line)
     ]
 
 
@@ -229,10 +255,23 @@ def _size_findings() -> list[Finding]:
 def main() -> int:
     findings: list[Finding] = []
     repeats: list[Finding] = []
+    cards: list[Finding] = []
     for path in _candidates():
         findings.extend(_scan(path))
         repeats.extend(_repeats(path))
+        cards.extend(_link_cards(path))
     size_findings = _size_findings()
+
+    if cards:
+        print("tooltips: one renderer draws every link card", file=sys.stderr)
+        for finding in cards:
+            relative = finding.path.relative_to(ROOT)
+            print(f"  {relative}:{finding.line}: {finding.text[:96]}", file=sys.stderr)
+        print(
+            "\nRegister the link with MetabrowserLinkPreviews.register, which draws its\n"
+            'card (docs/design-system.md, "Tooltips on Links").',
+            file=sys.stderr,
+        )
 
     if repeats:
         print("tooltips: a tooltip adds information, so it never repeats", file=sys.stderr)
@@ -270,7 +309,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    return 1 if size_findings or repeats else 0
+    return 1 if size_findings or repeats or cards else 0
 
 
 if __name__ == "__main__":
