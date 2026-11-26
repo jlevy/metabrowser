@@ -149,9 +149,9 @@ async def _attending(
 
 
 async def _settle(coordinator: RefreshCoordinator) -> None:
-    # A job can start another as it ends, as a refresh that follows another process's.
-    for _ in range(3):
-        await coordinator.drain(timeout_s=5)
+    # The drain waits for a job another starts as it ends, as a refresh that follows another
+    # process's.
+    await coordinator.drain(timeout_s=5)
     await coordinator.aclose()
 
 
@@ -1584,8 +1584,7 @@ def test_a_quiet_fetch_stays_quiet_while_it_follows_another_processs_fetch(
                 session.request_refresh(for_selection=True)
             seen.append((session.refreshing(), session._refresh_quiet()))
             mirror.other_done = True
-            for _ in range(3):
-                await coordinator.drain(timeout_s=5)
+            await coordinator.drain(timeout_s=5)
         await coordinator.aclose()
         return answers, seen
 

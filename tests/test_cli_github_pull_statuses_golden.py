@@ -20,8 +20,10 @@ a walk has not read it.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import subprocess
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
@@ -29,19 +31,22 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh_budget, pull_list, pulls
-from metabrowser.builtin_plugins.github.pull_status_scan import SCAN_POINT_GAP_S
-from metabrowser.builtin_plugins.github.served_pull import MERGEABLE_SETTLE_S
+from metabrowser.builtin_plugins.github import gh_budget, pull_list, pull_status_scan, pulls
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_status_scan import SCAN_POINT_GAP_S, StatusScan
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S, MERGEABLE_SETTLE_S
 from metabrowser.cache.urls import GitSource
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 from tests.github_pull_fixture import (
     CANONICAL,
+    DEFAULT_BRANCH,
     FETCHED_AT,
     FIRST_CLONE_GH_CALLS,
     Origin,
     account,
     catalog_entries,
     generated_item,
+    git_env,
     in_a_stable_order,
     install_fake_gh,
     logged_gh_calls,
@@ -403,3 +408,84 @@ def test_golden_pull_statuses_scan_settle_and_refuse(
     rendered = label_home("".join(blocks), home)
     assert str(tmp_path) not in rendered and "file://" not in rendered
     check_golden("cli-github-pull-statuses.txt", rendered)
+
+
+def test_a_scan_the_asks_look_starts_finishes_inside_the_one_shot_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """The ask answers before it looks at the mirror: the look is a job of its own, which
+    starts the scan once it finds a base moved, while the command is already draining. The
+    scan is work that the command's ask led to, so the command finishes it rather than
+    cancelling it as it leaves (mb-inol)."""
+
+    isolate_cli(tmp_path, monkeypatch)
+    local = pull_origin.url
+
+    def remote(source: GitSource) -> str:
+        return local if source.normalized == CANONICAL else source.normalized
+
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote)
+    clock = [FETCHED_AT]
+    monkeypatch.setattr(pull_list, "utc_now", lambda: clock[0])
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    gh_budget.forget()
+    items = _items()
+    settled = statuses_entries(_nodes(items, settled=True), updated_at=_updated_at(items))
+    answers = {"auth": account(), "api": {**catalog_entries(items), **settled}, "api_failure": None}
+    for key, value in install_fake_gh(tmp_path, answers).items():
+        monkeypatch.setenv(key, value)
+    request = tmp_path / "request.json"
+
+    def run(*args: str) -> tuple[Invocation, list[str]]:
+        result = run_metab([CANONICAL, "--api", *args])
+        assert result.exit_code == 0, result.stdout + result.stderr
+        return result, logged_gh_calls(tmp_path)
+
+    def ask(route: str, body: dict[str, Any]) -> tuple[Invocation, list[str]]:
+        request.write_text(json.dumps(body) + "\n", encoding="utf-8")
+        return run(route, "--data", str(request))
+
+    def last_scan() -> dict[str, Any]:
+        result, calls = run(f"{ROUTE}?numbers=101")
+        assert calls == []
+        return result.payload()["scan"]
+
+    ask(REFRESH, {})
+    clock[0] += timedelta(seconds=20)
+    _walk, calls = ask(REFRESH, {"background": True})
+    assert calls[-1] == "gh api graphql statuses cursor=start"
+    walked = clock[0]
+    assert last_scan()["trigger"] == "periodic"
+
+    # A push moves the base branch every pull request targets, and a fetch brings it.
+    topic = f"refs/heads/{DEFAULT_BRANCH}"
+    subprocess.run(
+        ["git", "--git-dir", str(pull_origin.path), "update-ref", topic, pull_origin["draft_head"]],
+        check=True,
+        capture_output=True,
+        env=git_env(tmp_path),
+    )
+    ask("/api/source/refresh", {})
+    # Past the spacing and inside the walk's clock, so only the moved base starts a scan.
+    clock[0] += timedelta(seconds=SCAN_POINT_GAP_S + 1)
+    assert clock[0] - walked < timedelta(seconds=FULL_REFRESH_S)
+    scan_job = pull_status_scan._scan_job  # pyright: ignore[reportPrivateUsage]
+
+    async def last_to_end(
+        repository: ListedRepository, coordinator: RefreshCoordinator, scan: StatusScan, *rest: Any
+    ) -> None:
+        # A GraphQL page outlasts a look at the mirror and, often, the list's own job; here it
+        # always does, so the scan runs alone once the jobs the ask started have ended.
+        jobs = coordinator._jobs  # pyright: ignore[reportPrivateUsage]
+        others = [job for key, job in jobs.items() if key != scan.key and not job.done()]
+        if others:
+            await asyncio.wait(others)
+        await asyncio.sleep(0.2)
+        await scan_job(repository, coordinator, scan, *rest)
+
+    monkeypatch.setattr(pull_status_scan, "_scan_job", last_to_end)
+    looked, calls = ask(REFRESH, {"background": True})
+    assert "status_scan=not_due" in _asked(looked)
+    assert calls.count("gh api graphql statuses cursor=start") == 1
+    scan = last_scan()
+    assert (scan["trigger"], scan["outcome"]) == ("base_moved", "succeeded")

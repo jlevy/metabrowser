@@ -673,14 +673,6 @@ def test_each_trigger_starts_a_scan_when_it_should(clock: list[datetime]) -> Non
         assert scan_due(stamp, now=periodic) is None
 
 
-async def _quiet(coordinator: RefreshCoordinator, source: str) -> None:
-    """Wait for the scan and any look at the mirror, which may start the scan itself."""
-
-    scan = status_scan(coordinator, source)
-    while coordinator.running(scan.look_key) or coordinator.running(scan.key):
-        await coordinator.drain(timeout_s=5)
-
-
 @pytest.mark.parametrize("writable", [True, False], ids=["kept", "unwritable"])
 def test_an_hour_of_asks_spends_what_the_spacing_allows(
     repository: ListedRepository,
@@ -719,7 +711,7 @@ def test_an_hour_of_asks_spends_what_the_spacing_allows(
                     changed=True,
                     retry=second in refreshes,
                 )
-                await _quiet(coordinator, repository.source)
+                await coordinator.drain(timeout_s=5)
                 left = status_scan(coordinator, repository.source).last
                 if left is not None and left is not last:
                     triggers.append(left.trigger)
@@ -843,7 +835,7 @@ def test_a_fetch_starts_a_scan_only_when_it_moved_a_base_since_the_last_walk(
         answer = await ask_status_scan(
             repository, coordinator, reader=f"gh:{READER}", git_dir=mirror.path, retry=retry
         )
-        await _quiet(coordinator, repository.source)
+        await coordinator.drain(timeout_s=5)
         stamp = read_scan_stamp(repository.home, repository.slug)
         asked.append((answer, len(github.cursors) - pages, stamp.trigger if stamp else None))
 
@@ -915,7 +907,7 @@ def test_a_mirror_git_cannot_read_moves_nothing_and_holds_no_scan(
                         retry=retry,
                     )
                 )
-                await _quiet(coordinator, repository.source)
+                await coordinator.drain(timeout_s=5)
             return answers
         finally:
             await coordinator.aclose()
@@ -964,7 +956,7 @@ def test_the_ask_never_waits_on_git(
             )
             looking = coordinator.running(status_scan(coordinator, repository.source).look_key)
             released[0].set()
-            await _quiet(coordinator, repository.source)
+            await coordinator.drain(timeout_s=5)
             return answer, looking
         finally:
             await coordinator.aclose()

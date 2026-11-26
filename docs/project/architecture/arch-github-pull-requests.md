@@ -352,7 +352,8 @@ has the rules.
   `started` the scan, `joined` it, or found it `not_due`, and `status_scan_at`, when the
   last scan ended (`scan_ended_at`), so a page learns of a scan that ended since its
   last ask whoever started it, a look at the mirror after an ask had answered among
-  them.
+  them. A one-shot `metab --api` ask finishes the scan a look starts, since the command
+  waits for every job a job starts.
 - **Failing alone.** A read that fails fails the status alone, as a refused part fails
   only that part of a record: the record is published and its refresh succeeds, how the
   read ended is kept in `<n>.status.refresh.json`, and what an earlier read kept stays.

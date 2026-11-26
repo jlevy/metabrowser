@@ -21,6 +21,7 @@ import time
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -55,11 +56,14 @@ from metabrowser.mirror_refresh import (
     RefKind,
     RefreshCoordinator,
     RefreshResult,
+    drain_refreshes,
     followed_outcome,
     follows_moves,
+    lifespan_refresh,
     mirror_session,
     probes_origin,
     refresh_coordinator,
+    serve_mirror,
 )
 from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
@@ -1149,6 +1153,76 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
     peak, answers = asyncio.run(scenario())
     assert peak == 2
     assert answers == ["started", "started", "started", "joined", "started"]
+
+
+def _one_shot_app() -> SimpleNamespace:
+    """An application with only the refresh lifespan's state, as a one-shot command's has
+    when it serves no mirror."""
+
+    serve_mirror(None)
+    return SimpleNamespace(state=SimpleNamespace())
+
+
+def test_a_one_shot_command_finishes_a_job_that_a_job_starts_while_it_drains() -> None:
+    """``metab --api`` drains and then leaves, which closes the coordinator (mb-inol). A job
+    the request started may start another as it runs, as a list's look at the mirror starts
+    the status scan: the drain waits for that one too, so it ends rather than being
+    cancelled, however long it outlasts the job that started it."""
+
+    async def scenario() -> list[str]:
+        app = _one_shot_app()
+        ended: list[str] = []
+        async with lifespan_refresh(app):
+            coordinator = refresh_coordinator(app)
+            assert coordinator is not None
+
+            async def second() -> None:
+                try:
+                    starter = coordinator.job("first")
+                    if starter is not None:
+                        await asyncio.wait({starter})
+                    await asyncio.sleep(0.2)
+                except asyncio.CancelledError:
+                    ended.append("second cancelled")
+                    raise
+                ended.append("second")
+
+            async def first() -> None:
+                coordinator.start("second", second)
+                ended.append("first")
+
+            coordinator.start("first", first)
+            await drain_refreshes(app, timeout_s=30)
+        return ended
+
+    assert asyncio.run(scenario()) == ["first", "second"]
+
+
+def test_a_chain_of_jobs_that_never_ends_is_stopped_at_the_drains_one_deadline() -> None:
+    """The drain's rounds share one deadline, so a command whose jobs keep starting others
+    waits no longer than it would for one job, and then leaving stops the one running."""
+
+    async def scenario() -> tuple[int, bool]:
+        app = _one_shot_app()
+        started = 0
+        async with lifespan_refresh(app):
+            coordinator = refresh_coordinator(app)
+            assert coordinator is not None
+
+            async def link() -> None:
+                nonlocal started
+                started += 1
+                coordinator.start(f"link-{started}", link)
+                await asyncio.sleep(0.01)
+
+            coordinator.start("link-0", link)
+            # Each round alone would wait its own deadline, and a chain has no last round.
+            await asyncio.wait_for(drain_refreshes(app, timeout_s=0.3), timeout=30)
+            running = coordinator.running(f"link-{started}")
+        return started, running
+
+    started, running = asyncio.run(scenario())
+    assert started > 1 and running
 
 
 def test_a_job_joined_as_it_stops_is_started_again_once_and_never_once_the_coordinator_closes() -> (

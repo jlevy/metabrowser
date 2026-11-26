@@ -772,8 +772,7 @@ def test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job(
             counted.append(key in checkout_module._PULL_JOBS)  # pyright: ignore[reportPrivateUsage]
             # Asked again before the stopped job has unwound: still one job after it.
             answers.append(start(12, **joins[joining]))
-            for _ in range(3):
-                await coordinator.drain(timeout_s=5)
+            await coordinator.drain(timeout_s=5)
         finally:
             release.set()
             await coordinator.aclose()
@@ -857,8 +856,7 @@ def test_the_restart_of_a_job_a_reader_joined_runs_however_many_reader_jobs_run_
                 await asyncio.sleep(0)
             restarted = coordinator.job(key)
             seen["restarted"] = restarted is not None and restarted is not stopped
-            for _ in range(3):
-                await coordinator.drain(timeout_s=5)
+            await coordinator.drain(timeout_s=5)
         finally:
             release.set()
             await coordinator.aclose()
@@ -940,8 +938,7 @@ def test_a_readers_join_of_a_prefetch_waiting_at_the_turn_stops_a_background_hol
                 await asyncio.wait_for(twelve_done.wait(), 5)
             seen["before 13 could end"] = list(events)
             finish.set()
-            for _ in range(3):
-                await coordinator.drain(timeout_s=5)
+            await coordinator.drain(timeout_s=5)
         finally:
             finish.set()
             release.set()
@@ -1027,8 +1024,7 @@ def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start
             await asyncio.wait_for(working.wait(), 5)
             answers.append(start(11))
             answers.append(start(14, background=True))
-            for _ in range(3):
-                await coordinator.drain(timeout_s=5)
+            await coordinator.drain(timeout_s=5)
         finally:
             release.set()
             await coordinator.aclose()

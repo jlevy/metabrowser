@@ -1077,11 +1077,32 @@ class RefreshCoordinator:
         return self._semaphore
 
     async def drain(self, *, timeout_s: float) -> None:
-        """Wait up to *timeout_s* for the jobs running now, for a one-shot command."""
+        """Wait until no job is left, at most *timeout_s* in all, for a one-shot command.
 
-        jobs = [job for job in self._jobs.values() if not job.done()]
-        if jobs:
-            await asyncio.wait(jobs, timeout=timeout_s)
+        A job may start another before it ends: a list's look at the mirror starts the
+        status scan, a refresh that found another process refreshing follows it, and a
+        stopped job that a request joined is started again once it has unwound. Waiting only
+        for the jobs running when the drain began would leave those to the close that
+        follows it, which cancels them. So each round waits for every job then running, and
+        the next looks again, until the coordinator holds no job at all. A job that has
+        ended is held until its done callbacks have run, the first of which forgets it, so a
+        job one of them starts, as a restart does, is on the books before the drain can
+        find none. Every round counts against the one deadline, so a chain of jobs that
+        never ends costs the command no more than one job that never ends would.
+        """
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_s
+        while self._jobs:
+            left = deadline - loop.time()
+            if left <= 0:
+                return
+            live = [job for job in self._jobs.values() if not job.done()]
+            if live:
+                await asyncio.wait(live, timeout=left)
+            else:
+                # Only ended jobs whose done callbacks are still to run: let them run.
+                await asyncio.sleep(0)
 
     async def aclose(self) -> None:
         """Cancel every running job and wait for each to finish unwinding."""
@@ -2357,7 +2378,8 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
 
 
 async def drain_refreshes(app: Any, *, timeout_s: float) -> None:
-    """Let a one-shot command finish the refresh its own request started."""
+    """Let a one-shot command finish the work its own request started, and every job that
+    work starts in turn, within *timeout_s* in all (:meth:`RefreshCoordinator.drain`)."""
 
     coordinator = refresh_coordinator(app)
     if coordinator is not None:

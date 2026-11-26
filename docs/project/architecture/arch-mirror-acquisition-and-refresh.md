@@ -306,6 +306,9 @@ store a repository folder keeps of its checkout’s origin
   A job outlives the request that started it, and its failures are typed outcomes.
   Graceful shutdown cancels the jobs, which kills their Git; Ctrl-C kills the process
   groups and exits at once.
+  A one-shot command drains the coordinator before it shuts down, until no job is left,
+  so a job that a job started finishes too, with every round under one deadline
+  (`RefreshCoordinator.drain`).
 - **Turns at the store:** within one server, jobs that fetch into the store take turns
   (`StoreTurn`) before its fetch lock, so none finds another holding it.
   The mirror’s fetch and the attended pull request’s go first, since a page of code
