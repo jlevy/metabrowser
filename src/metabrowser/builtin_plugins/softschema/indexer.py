@@ -121,11 +121,11 @@ class CollectionIndex:
         except Exception:
             LOG.exception("SoftSchema collection refresh failed")
             with self._lock:
-                self._view = CollectionVersion(
-                    prior.snapshot, prior.generation, False, prior.cache_available, True
-                )
+                self._view = replace(self._view, indexing=False, failed=True)
         finally:
-            self._ready.set()
+            with self._lock:
+                self._started = time.monotonic()
+                self._ready.set()
 
     def _database(self) -> Path | None:
         key = "\0".join((_FORMAT, version("softschema"), str(self.served_root), str(self.root)))

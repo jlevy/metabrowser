@@ -508,9 +508,12 @@ The table works end to end over any folder of records, with every state visible,
 browses as Paraverse’s does.
 
 The folder preview uses the collection API from
-[SoftSchema PR #78](https://github.com/jlevy/softschema/pull/78). It opens the Patch the
-Conference corpus as nine contract tables covering all 132 records, with a reusable
-index and the shared table grid.
+[SoftSchema PR #78](https://github.com/jlevy/softschema/pull/78). The shared grid opened
+nine contract tables covering 132 records on Patch the Conference and 18 contract tables
+covering 4,971 records on Universe.
+The first Universe scan under concurrent test load exceeded the CLI request deadline.
+The background index subsequently supplied all 18 cached tables while another refresh
+ran.
 The preview tests pin cross-folder links, exact inbound relationship filters, source
 links, and stable generations.
 The full rollout requires a released SoftSchema dependency.
