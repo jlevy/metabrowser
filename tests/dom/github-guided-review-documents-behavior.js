@@ -172,6 +172,11 @@ function step(body, number, references, extra = {}) {
 
 /** The page and the production diff plugin, with every request the plugin makes recorded. */
 async function harness() {
+  // The diff plugin's own bar and chevron, which a patch hands the card drawn around it;
+  // the query passes the stand-in for diff-view.js above.
+  const { fileDisclosure } = await import(
+    `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href}?own`
+  );
   /** What the diff view was asked to draw: each view and each patch, and whether disposed. */
   const views = [];
   const patches = [];
@@ -214,6 +219,7 @@ async function harness() {
         dispose() {
           drawn.disposed = true;
         },
+        disclose: (section, folded) => fileDisclosure(section, folded),
       };
     },
   };

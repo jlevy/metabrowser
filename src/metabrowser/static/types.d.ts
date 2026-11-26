@@ -1508,13 +1508,28 @@ type AgentsExports = {
 type DiffExports = {
   /** One file's hunks, as the diff route answers them, drawn as Changes draws a file's
    * body: each hunk under its header bar, long changed runs behind fold bars, then changed
-   * runs paired and syntax colored. Unified only. `dispose` stops what is still to come. */
+   * runs paired and syntax colored. Unified only. `dispose` stops what is still to come.
+   * `disclose` makes the bar and the chevron that fold a file's card in Changes, for the
+   * card the caller draws around the body: *section* is that card and *folded* what the bar
+   * shows or hides, the body or a box that holds it. The caller names the file in `toggle`,
+   * places it first in `bar`, and puts `bar` and *folded* in the card, which starts open. */
   mountFilePatch: (
     body: HTMLElement,
     change: Record<string, unknown>,
     patch: Record<string, unknown>,
     api: MetabrowserPublicSdk,
-  ) => { dispose(): void };
+  ) => {
+    dispose(): void;
+    disclose(
+      section: HTMLElement,
+      folded: HTMLElement,
+    ): {
+      bar: HTMLElement;
+      toggle: HTMLButtonElement;
+      expanded(): boolean;
+      setExpanded(next: boolean): void;
+    };
+  };
   /** One changed file of a comparison drawn whole from the comparison route's one-file
    * answer by the diff view's own `render`, rendered layer included, *ctx* as a host passes
    * that view. `settled` is true once the file is drawn, and false when it is not: the

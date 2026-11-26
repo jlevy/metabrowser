@@ -49,6 +49,15 @@ ahead or kept, where no loading state shows either; on pull request 7's guide, w
 on documents (``--guided-documents``), and on stack 70's (``--guided-stack``, with the
 stack page's native stacks).
 
+A step's file that shows a diff folds by the diff view's own bar and chevron, and where the
+chevron sits, how it turns, the body's travel, a real press, Enter and Space on the trigger,
+and the reader's place in the scroller are the browser's, so
+``tests/dom/github-guided-review-fold-chrome.mjs`` measures the card against the same
+server's Changes tab, a file's bar there and the card's here, open and folded, on pull
+request 7's guide. Browserless, the bar's state machine is pinned in
+``tests/dom/diff-view-behavior.js`` and the card built from it in
+``tests/dom/github-guided-review-mount-behavior.js``.
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process
 leads a process group of its own, which Chrome joins (tests/process_group.py).
@@ -85,6 +94,7 @@ DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-docu
 KINDS = Path(__file__).resolve().parent / "dom" / "github-guided-review-kinds-chrome.mjs"
 OUTLINE = Path(__file__).resolve().parent / "dom" / "github-guided-review-outline-chrome.mjs"
 MOTION = Path(__file__).resolve().parent / "dom" / "github-guided-review-motion-chrome.mjs"
+FOLD = Path(__file__).resolve().parent / "dom" / "github-guided-review-fold-chrome.mjs"
 # The stack page's native stacks, and 300, which holds 9 and then 50, so a pull request the
 # kinds guide cites has a place in a stack other than 7's, which its row names.
 KINDS_STACKS = (*STACKS, (300, (9, 50)))
@@ -251,4 +261,12 @@ def test_a_stack_guide_holds_still_in_chrome(tmp_path: Path, chrome_profile: Pat
     passed = re.fullmatch(
         r"guided review motion in Chrome \(stack\): (\d+) checks passed\n", stdout
     )
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_a_guided_file_folds_as_a_changes_file_in_chrome(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided-documents", FOLD)
+    passed = re.fullmatch(r"guided review fold in Chrome: (\d+) checks passed\n", stdout)
     assert passed is not None and int(passed.group(1)) > 0, stdout

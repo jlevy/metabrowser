@@ -154,6 +154,10 @@ function grouped(more = {}) {
 /** The document's keep of step answers (guide-reads.js), which each host empties: each is a
  * fresh load of the page. */
 let guideReads = null;
+/** The diff plugin's own `fileDisclosure` (diff-view.js), which its `mountFilePatch` hands a
+ * page for the card it draws around a patch: the stand-in below hands the same one, so the
+ * bar a step's file folds by here is the production one. */
+let fileDisclosure = null;
 
 function host({ allowlist = true } = {}) {
   guideReads?.clear();
@@ -189,6 +193,7 @@ function host({ allowlist = true } = {}) {
         dispose() {
           drawn.disposed = true;
         },
+        disclose: (section, folded) => fileDisclosure(section, folded),
       };
     },
   };
@@ -471,7 +476,37 @@ async function run() {
   ({ guideReads } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
   ));
+  ({ fileDisclosure } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href
+  ));
   const steps = [];
+  /** The card of the shown step's file with a diff, as a reader finds it: its bar, the
+   * trigger that leads it, what the bar folds, and how it stands, which its trigger, its
+   * body, and its card must each say alike. */
+  const fileCard = (container) => {
+    const section = container
+      .querySelectorAll(".github-pull-guide-reference")
+      .find((card) => card.querySelector(".github-pull-guide-excerpt") !== null);
+    const bar = section.querySelector(".diff-file-bar");
+    const toggle = section.querySelector(".diff-file-toggle");
+    const body = section.querySelector(".github-pull-guide-reference-body");
+    return {
+      section,
+      bar,
+      toggle,
+      body,
+      /** A press anywhere on the bar, or a key on its trigger, whose click reaches the bar. */
+      press: (target = bar) => bar.events.get("click")({ target }),
+      stands() {
+        const open = toggle.getAttribute("aria-expanded") === "true";
+        assert.equal(body.classes.has("diff-file-body-collapsed"), !open, "the body agrees");
+        assert.equal(section.classes.has("diff-file-collapsed"), !open, "the card agrees");
+        assert.equal(toggle.classes.has("expanded"), open, "the chevron agrees");
+        assert.equal(toggle.classes.has("collapsed"), !open, "the chevron agrees");
+        return open ? "open" : "folded";
+      },
+    };
+  };
 
   // The front page of a pull request with a guide is Guided Review.
   {
@@ -640,6 +675,49 @@ async function run() {
       `Open full diff: ${first.opened.map((route) => `${route.tab} ${route.file}`).join("; ")}`,
     );
 
+    // The excerpt's card folds as a file's does in Changes, by the diff plugin's own bar and
+    // chevron: the trigger is a button that leads the bar and names the file, everything
+    // under the bar folds, and folding disposes nothing the diff drew. A card that holds a
+    // sentence in a diff's place has no trigger. The bar's motion and where it sits are
+    // Chrome's (tests/dom/github-guided-review-chrome.mjs).
+    const fileOne = fileCard(view.container);
+    assert.equal(
+      fileOne.toggle.tag,
+      "button",
+      "the trigger is a button, which takes focus and keys",
+    );
+    assert.equal(fileOne.bar.children[0], fileOne.toggle, "the trigger leads the bar");
+    assert.equal(fileOne.toggle.getAttribute("aria-controls"), fileOne.body.getAttribute("id"));
+    assert.ok(fileOne.toggle.children[0].classes.has("diff-file-chevron"), "the chevron leads");
+    assert.equal(fileOne.toggle.textContent, "src/app.txt", "the trigger names the file");
+    assert.ok(link.classes.has("diff-file-view"), "Open full diff is the bar's view control");
+    assert.ok(
+      fileOne.body.querySelector(".github-pull-guide-excerpt") !== null,
+      "the bar folds the excerpt",
+    );
+    const folds = [fileOne.stands()];
+    fileOne.press();
+    folds.push(`its bar pressed: ${fileOne.stands()}, ${lines.length} rows kept`);
+    assert.equal(
+      view.container.querySelector(".github-pull-guide-excerpt").querySelectorAll(".diff-line")
+        .length,
+      lines.length,
+    );
+    assert.equal(first.patches[0].disposed, false, "folding disposes nothing");
+    fileOne.press(fileOne.toggle);
+    folds.push(`its trigger pressed: ${fileOne.stands()}`);
+    const sentence = view.container
+      .querySelectorAll(".github-pull-guide-reference")
+      .find((section) => section !== fileOne.section);
+    assert.equal(sentence.querySelector(".diff-file-toggle").tag, "span");
+    folds.push(
+      `a card with no diff: ${sentence.querySelector(".diff-file-chevron") === null ? "no chevron" : "a chevron"}`,
+    );
+    steps.push(`step 1's file: ${folds.join("; ")}`);
+    // Left folded, to be found open when the step is drawn again (below).
+    fileOne.press();
+    assert.equal(fileOne.stands(), "folded");
+
     // Next asks for step 2 alone, and the step shown stays, its diff with it, until step 2
     // is in hand to show in its place. Leaving the tab with that read on its way disposes
     // the view and its diff; the read goes on for the document's keep, and its late answer
@@ -667,6 +745,9 @@ async function run() {
     await settle();
     steps.push(`its tab again: ${view.position()}; asked ${asked(first.reads.slice(before))}`);
     view.press("Next step");
+    // A step shown again is drawn again, and its file's card is open: the card's state
+    // lasts as long as the card, as a file's in Changes lasts as long as its view.
+    steps.push(`step 1 again, its file left folded: ${fileCard(view.container).stands()}`);
     view.press("Next step");
     steps.push(
       `and its kept steps at once: step shown ${view.shown()}; asked ${asked(first.reads.slice(before))}`,
@@ -1449,7 +1530,7 @@ async function run() {
         shortCommit: (sha) => sha.slice(0, 7),
         identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
-        loadDrawPatch: async () => () => ({ dispose() {} }),
+        loadDrawPatch: async () => () => ({ dispose() {}, disclose: fileDisclosure }),
         loadDrawDocument: async () => null,
         loadDrawProse: async () => null,
         refusalNote: () => null,
@@ -1536,7 +1617,7 @@ async function run() {
         shortCommit: (sha) => sha.slice(0, 7),
         identity: (login) => Object.assign(new Element("span"), { textContent: login }),
         loadStyles: async () => {},
-        loadDrawPatch: async () => () => ({ dispose() {} }),
+        loadDrawPatch: async () => () => ({ dispose() {}, disclose: fileDisclosure }),
         loadDrawDocument: async () => null,
         loadDrawProse: async () => null,
         refusalNote: () => null,

@@ -38,10 +38,14 @@ import { stackMemberRow } from "./stack-member-row.js";
  *   *rendered* is the format of a file named alone that the rendered route renders, by
  *   that route's own rule (`rendered_format` in pull_rendered_diff.py): the page draws it
  *   whole, and the route sends no hunks for it.
+ * @typedef {{bar: HTMLElement, toggle: HTMLElement}} Disclosure A file card's bar and the
+ *   trigger that leads it, as the diff plugin's `fileDisclosure` makes them.
  * @typedef {(body: HTMLElement, change: Record<string, unknown>,
- *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
+ *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void,
+ *   disclose: (section: HTMLElement, folded: HTMLElement) => Disclosure}} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
- *   them.
+ *   them, and, from what it drew, *disclose*, the bar and chevron that fold a file's card in
+ *   Changes (`fileDisclosure`), for the card and what it folds.
  * @typedef {{merge_base: string | null, head: string}} Pins
  * @typedef {{
  *   draws(pins: Pins | PullComparison): boolean,
@@ -684,14 +688,20 @@ function commitRow(reference, words) {
 /**
  * The bar the guide draws above a reference it draws itself: the file's path, after the
  * number of the pull request it is in when that is another, and its Open full diff, which
- * goes to the file in that pull request's Changes.
+ * goes to the file in that pull request's Changes. With *disclosure*, the bar is the diff
+ * plugin's own, whose chevron leads the name and folds the card as a file's does in Changes
+ * (docs/design-system.md, "Guided Review"); Open full diff is a control that views the file,
+ * so a press on it is not the bar's. Without one, on a card that holds a sentence and no
+ * diff, the bar only names the file.
  *
  * @param {Reference} reference @param {() => void} open
+ * @param {Disclosure | null} disclosure
  */
-function referenceBar(reference, open) {
+function referenceBar(reference, open, disclosure) {
   const path = reference.path ?? "";
-  const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
-  const name = element("span", "", "diff-file-toggle");
+  const bar = disclosure?.bar ?? element("div", "", "diff-file-bar");
+  bar.classList.add("github-pull-guide-reference-header");
+  const name = disclosure?.toggle ?? element("span", "", "diff-file-toggle");
   const other = reference.kind === "pull_file" ? reference.pull : null;
   if (other !== null) {
     name.append(element("span", `#${other}`, "github-pull-guide-reference-pull"));
@@ -745,7 +755,7 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawi
   drawing.waits.push(
     view.settled.then((drawnFile) => {
       if (!drawnFile) {
-        section.prepend(referenceBar(reference, open));
+        section.prepend(referenceBar(reference, open, null));
       }
     }),
   );
@@ -759,6 +769,13 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawi
  * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
  * named alone is its whole patch, or, one the rendered route renders, the whole file drawn
  * by the diff view (`referenceDrawing`). A pull request or a commit is a row naming it.
+ *
+ * A card that shows a diff folds as a file's does in Changes, by the same bar and chevron
+ * (`fileDisclosure` in the diff plugin, which `mountFilePatch` hands over): everything under
+ * the bar is its body, the excerpt and a note that the file changed. It starts open, and its
+ * state lasts as long as the card does, as a file's in Changes lasts as long as its view: a
+ * step shown again is drawn again, open. A card that holds one sentence in a diff's place
+ * has nothing to fold, and its bar only names its file.
  *
  * @param {Reference} reference @param {ReferenceWays} ways
  * @param {Change} change Whether the file changed after the guide was written.
@@ -789,27 +806,32 @@ function renderReference(reference, ways, change, drawers, drawing) {
     return renderDocument(reference, format, changed, open, drawers.document, pins, drawing);
   }
   const section = element("section", "", "diff-file github-pull-guide-reference");
-  section.append(referenceBar(reference, open));
+  const drawPatch = drawers.patch;
+  if (how === "patch" && drawPatch !== null) {
+    const excerpt = element("div", "", "diff-file-body github-pull-guide-excerpt");
+    excerpt.setAttribute("role", "group");
+    excerpt.setAttribute("aria-label", `Diff excerpt for ${path}`);
+    const side = { path };
+    const view = drawPatch(
+      excerpt,
+      { id: path, old: side, new: side },
+      { hunks: reference.hunks, truncated: reference.truncated },
+    );
+    drawing.drawn.push(view);
+    // What the bar folds: everything under it, the note that the file changed too, so a
+    // folded card is its bar alone, as in Changes.
+    const body = element("div", "", "diff-file-body github-pull-guide-reference-body");
+    body.append(...(changed === null ? [] : [changed]), excerpt);
+    section.append(referenceBar(reference, open, view.disclose(section, body)), body);
+    return section;
+  }
+  section.append(referenceBar(reference, open, null));
   if (changed !== null) {
     section.append(changed);
   }
-  const drawPatch = drawers.patch;
   if (reference.state === "ready" && format === null && reference.hunks.length === 0) {
     // A rename, a mode change, or a binary file: a change with no text to show.
     section.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
-  } else if (how === "patch" && drawPatch !== null) {
-    const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
-    body.setAttribute("role", "group");
-    body.setAttribute("aria-label", `Diff excerpt for ${path}`);
-    section.append(body);
-    const side = { path };
-    drawing.drawn.push(
-      drawPatch(
-        body,
-        { id: path, old: side, new: side },
-        { hunks: reference.hunks, truncated: reference.truncated },
-      ),
-    );
   } else {
     /** @type {Readonly<Record<string, string | undefined>>} */
     const said =

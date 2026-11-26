@@ -1122,11 +1122,16 @@ export function renderFileBody(state, layout) {
  * syntax. For another plugin that shows part of a change in its own place: Guided Review's
  * excerpts (`mountFilePatch` in index.js). Unified only, since its host is a column.
  *
+ * The host draws its own card around the body, and takes the card's bar from here:
+ * *disclose* is `fileDisclosure`, the bar and chevron that fold a file in Changes, for the
+ * host's card and whatever of it the bar folds, the body alone or a box that holds it.
+ *
  * @param {HTMLElement} body The element the hunks are drawn into.
  * @param {Record<string, unknown>} change A changed file: its `old` and `new` paths.
  * @param {Record<string, unknown>} patch Its `hunks`, as the diff route answers them.
  * @param {DiffViewApi} api
- * @returns {{dispose: () => void}}
+ * @returns {{dispose: () => void,
+ *   disclose: (section: HTMLElement, folded: HTMLElement) => FileDisclosure}}
  */
 export function mountFilePatch(body, change, patch, api) {
   const controller = new AbortController();
@@ -1148,6 +1153,7 @@ export function mountFilePatch(body, change, patch, api) {
       controller.abort();
       cancelFoldMaterializations(state);
     },
+    disclose: (section, folded) => fileDisclosure(section, folded),
   };
 }
 
@@ -2123,29 +2129,19 @@ function repaintViewFileControls(view) {
  * bar's far end. Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
- * @param {string} toggleId
- * @param {string} bodyId
+ * @param {Pick<FileDisclosure, "bar" | "toggle">} disclosure The file's bar and its trigger,
+ *   which this fills (`fileDisclosure`).
  * @param {string} factsId The id of the stats and notes, which describe the trigger.
  * @param {MountedDiffState} view
- * @returns {{bar: HTMLElement, end: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
+ * @returns {{end: HTMLElement, notice: HTMLElement | null}}
  */
-function renderFileBar(change, toggleId, bodyId, factsId, view) {
+function renderFileBar(change, disclosure, factsId, view) {
   const api = view.api;
   // The path is shown as the Diff summary shows it, by the server's display rule, and the
   // raw path stays for the copy control and the jump; without the shared tree it is raw.
   const model = view.changedFiles;
   const { letter, label, notes } = fileChangeLabel(change, model?.displayPath);
-  const bar = el("div", "diff-file-bar disclosure-toggle");
-  const toggle = el("button", "diff-file-toggle expanded");
-  toggle.setAttribute("type", "button");
-  toggle.setAttribute("id", toggleId);
-  toggle.setAttribute("aria-controls", bodyId);
-  toggle.setAttribute("aria-expanded", "true");
-  // The same disclosure glyph the nav tree leads with, rotated by the
-  // same expanded/collapsed rules.
-  const chevron = el("span", "diff-file-chevron");
-  chevron.innerHTML = shellIcon("toggle");
-  toggle.append(chevron);
+  const { bar, toggle } = disclosure;
   const status = el("span", "diff-file-kind file-change-status", letter);
   status.dataset.fileStatus = String(change.kind);
   toggle.append(status);
@@ -2215,7 +2211,79 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   // The View file controls sit between the name's group and the end group, in neither:
   // where the bar wraps, they take the next line, and the name keeps the first.
   bar.append(lead, ...controls, end);
-  return { bar, end, toggle, notice };
+  return { end, notice };
+}
+
+/**
+ * @typedef {{bar: HTMLElement, toggle: HTMLButtonElement, sequence: number,
+ *   expanded: () => boolean, setExpanded: (next: boolean) => void}} FileDisclosure
+ *   A file card's disclosure: its *bar*, empty, and its *toggle*, holding the chevron, for
+ *   the caller to name the file in and place first on the bar; *sequence*, the card's own
+ *   number in the document, which its other ids are made from; and its state.
+ */
+
+/**
+ * A file card's disclosure, the one every card that shows a file's changes has
+ * (docs/design-system.md, "Diff File Bar"): Changes' files, and a guided review step's
+ * excerpts, which draw their own card around `mountFilePatch` and take this from it. It
+ * makes the card's bar and the button that leads it, with the shell's disclosure chevron,
+ * and binds them to *section* and *body*: the whole bar is one activation surface, like a
+ * tree row, and the
+ * button stays the semantic trigger for focus and the keyboard, whose synthesized click
+ * bubbles to the bar. Only a control on the bar that acts for itself opts out: the copy
+ * control, a file's view chooser, and a link or control that views the file
+ * (`.diff-file-view`). A card starts open. Collapsing keeps the body in the document, at no
+ * height, so nothing it drew is disposed, and the bar stays where it was.
+ *
+ * The caller appends what names the file to *toggle*, places *toggle* and its other
+ * controls in *bar*, and puts *bar* and *body* in *section*.
+ *
+ * @param {HTMLElement} section The card. @param {HTMLElement} body What the bar shows or hides.
+ * @param {(expanded: boolean) => void} [changed] Hears each change, after it is drawn.
+ * @returns {FileDisclosure}
+ */
+export function fileDisclosure(section, body, changed) {
+  sectionSequence += 1;
+  const sequence = sectionSequence;
+  const toggleId = `diff-file-toggle-${sequence}`;
+  const bodyId = `diff-file-body-${sequence}`;
+  section.setAttribute("aria-labelledby", toggleId);
+  body.setAttribute("id", bodyId);
+  const bar = el("div", "diff-file-bar disclosure-toggle");
+  const toggle = /** @type {HTMLButtonElement} */ (el("button", "diff-file-toggle expanded"));
+  toggle.setAttribute("type", "button");
+  toggle.setAttribute("id", toggleId);
+  toggle.setAttribute("aria-controls", bodyId);
+  toggle.setAttribute("aria-expanded", "true");
+  // The same disclosure glyph the nav tree leads with, rotated by the
+  // same expanded/collapsed rules.
+  const chevron = el("span", "diff-file-chevron");
+  chevron.innerHTML = shellIcon("toggle");
+  toggle.append(chevron);
+  let expanded = true;
+  /** @param {boolean} next */
+  const setExpanded = (next) => {
+    expanded = next;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.classList.toggle("expanded", expanded);
+    toggle.classList.toggle("collapsed", !expanded);
+    body.classList.toggle("diff-file-body-collapsed", !expanded);
+    section.classList.toggle("diff-file-collapsed", !expanded);
+    changed?.(expanded);
+  };
+  bar.addEventListener("click", (event) => {
+    const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
+    if (
+      typeof origin?.closest === "function" &&
+      (origin.closest("[data-mb-copy]") ||
+        origin.closest(".diff-file-view") ||
+        origin.closest(".diff-markdown-control"))
+    ) {
+      return;
+    }
+    setExpanded(!expanded);
+  });
+  return { bar, toggle, sequence, expanded: () => expanded, setExpanded };
 }
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
@@ -4832,25 +4900,22 @@ function rememberFile(view, change, section, expand) {
  * @returns {HTMLElement}
  */
 function renderFileSection(change, patch, context, view, draw) {
-  sectionSequence += 1;
-  const toggleId = `diff-file-toggle-${sectionSequence}`;
-  const bodyId = `diff-file-body-${sectionSequence}`;
-  const factsId = `diff-file-facts-${sectionSequence}`;
   const section = el("section", "diff-file");
-  section.setAttribute("aria-labelledby", toggleId);
-  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, factsId, view);
   const body = el("div", "diff-file-body");
-  body.setAttribute("id", bodyId);
+  // The card's bar and trigger, and the state they keep, are the shared disclosure's.
+  const disclosure = fileDisclosure(section, body, (expanded) => {
+    markdown?.setExpanded(expanded);
+    view.notifyCurrentFile();
+  });
+  const { bar } = disclosure;
+  const factsId = `diff-file-facts-${disclosure.sequence}`;
+  const { end, notice } = renderFileBar(change, disclosure, factsId, view);
   if (notice) {
     section.append(bar, notice, body);
   } else {
     section.append(bar, body);
   }
 
-  // The whole bar is one activation surface, like a tree row; the
-  // button stays the semantic trigger for focus and keyboard, whose
-  // synthesized click bubbles here. Only the copy control, a file's
-  // view chooser, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
   const availability = String(change.availability);
   const markdown =
@@ -4871,33 +4936,9 @@ function renderFileSection(change, patch, context, view, draw) {
             ? {}
             : { unavailable: AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY }),
         });
-  let expanded = true;
-  /** @param {boolean} next */
-  const setExpanded = (next) => {
-    expanded = next;
-    toggle.setAttribute("aria-expanded", String(expanded));
-    toggle.classList.toggle("expanded", expanded);
-    toggle.classList.toggle("collapsed", !expanded);
-    body.classList.toggle("diff-file-body-collapsed", !expanded);
-    section.classList.toggle("diff-file-collapsed", !expanded);
-    markdown?.setExpanded(expanded);
-    view.notifyCurrentFile();
-  };
-  bar.addEventListener("click", (event) => {
-    const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
-    if (
-      typeof origin?.closest === "function" &&
-      (origin.closest("[data-mb-copy]") ||
-        origin.closest(".diff-file-view") ||
-        origin.closest(".diff-markdown-control"))
-    ) {
-      return;
-    }
-    setExpanded(!expanded);
-  });
   rememberFile(view, change, section, () => {
-    if (!expanded) {
-      setExpanded(true);
+    if (!disclosure.expanded()) {
+      disclosure.setExpanded(true);
     }
   });
 

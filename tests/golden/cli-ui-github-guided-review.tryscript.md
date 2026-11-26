@@ -269,6 +269,12 @@ own.
 A stack’s guide, as the stack’s page mounts it, has no introduction and no overview:
 it opens on its first step, asks the route by `stack=`, goes no further back, and says
 of the stack what a pull request’s guide says of the pull request.
+A step’s file that shows a diff is a card that folds as a file’s does in Changes, by the
+diff plugin’s own bar and chevron, which the patch hands the card drawn around it: it
+starts open, a press on its bar or its trigger folds it and opens it, and folding keeps
+the rows the diff drew.
+A card that holds a sentence in a diff’s place has no chevron.
+A step shown again is drawn again, so a file left folded is open.
 
 ```console
 $ node tests/dom/github-guided-review-mount-behavior.js
@@ -286,9 +292,11 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "step 1: Step 1; rows context one, del <i>two</i>, add three",
   "a path outside the comparison says: This path is not in the comparison.",
   "Open full diff: files src/app.txt",
+  "step 1's file: open; its bar pressed: folded, 3 rows kept; its trigger pressed: open; a card with no diff: no chevron",
   "Next with step 2 on its way: step shown Step 1",
   "left for Conversation with step 2 on its way: read aborted false; guide gone",
   "its tab again: Overview; asked nothing",
+  "step 1 again, its file left folded: open",
   "and its kept steps at once: step shown Step 2; asked nothing",
   "opened on its tab: asked step 1",
   "a newer record arrives with the read on its way: old read aborted false; asked step 1, step 1",

@@ -658,11 +658,12 @@ private storage.
 A plugin offers helpers to others by exporting them from its `index.js`, which is an ES
 module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
 structured data exports `renderInlineTree` and the tree’s helpers, diff exports
-`mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
-Review draws its excerpts with, GitHub exports `pullStateIcon`, which the shell’s ref
-selector draws a branch’s pull request with, and PDF exports `mountPdfCard`, which draws
-a PDF’s first page, name, and page count where a viewer does not belong, as a diff’s
-binary `.pdf` change and a Markdown document’s embedded `.pdf` do.
+`mountFilePatch`, which draws one file’s hunks as Changes does, hands back the bar and
+chevron that fold a file’s card there (`disclose`), and which GitHub’s Guided Review
+draws its excerpts with, GitHub exports `pullStateIcon`, which the shell’s ref selector
+draws a branch’s pull request with, and PDF exports `mountPdfCard`, which draws a PDF’s
+first page, name, and page count where a viewer does not belong, as a diff’s binary
+`.pdf` change and a Markdown document’s embedded `.pdf` do.
 `mountPdfCard(host, {path | oid, name, links?})` asks the PDF plugin’s
 `/api/plugin/pdf/preview` route when the card nears the viewport and shows the image it
 names, or the route’s reason when there is none; it never starts a viewer, and its
