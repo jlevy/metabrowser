@@ -8,8 +8,10 @@
 // member row, and `namedStackPosition` the "300 2/2" of a place that names its stack, which
 // `namedStackPositionNodes` draws after the Layers glyph; `stackPositionHint` is the tip
 // that names both, which `stackPlaceHint` writes from a stack's number and length, as the
-// guide's row has them; and `stackMenuOrder` is the one member order, top of the stack
-// first. `groupByStack` is the Pulls tab's grouping of its rows.
+// guide's row has them; `stackMenuOrder` is the one member order, top of the stack first;
+// and `stackEntries` is the one order of a stack's rows, its Whole stack row first, then its
+// members, in the stack menu and under an open stack in the Pulls tab alike. `groupByStack`
+// is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
 /** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[]}} NativeStack */
@@ -39,8 +41,9 @@ export function stackLabel(number) {
   return `Stack #${number}`;
 }
 
-/** The words of the row that opens a stack's own page, the stack menu's first row and the
- * Pulls tab's last under an open stack (docs/design-system.md, "Stacks"). */
+/** The words of the row that opens a stack's own page, the first of a stack's rows in the
+ * stack menu and under an open stack in the Pulls tab (`stackEntries`; docs/design-system.md,
+ * "Stacks"). */
 export const WHOLE_STACK = "Whole stack";
 
 /** A member's place in its stack, as GitHub numbers it from the base: "2/4".
@@ -102,6 +105,17 @@ export function stackPlaceHint(number, at, length) {
  */
 export function stackMenuOrder(stack) {
   return stack.pulls.slice().reverse();
+}
+
+/** A stack's rows in the one order every surface that lists them draws: its Whole stack row,
+ * null here, which opens the stack's own page, then *members*. The stack menu and an open
+ * stack's rows in the Pulls tab both take their order from it, so the Whole stack row has one
+ * place in both, and the stack's set counts it (docs/design-system.md, "Stacks").
+ * @param {number[]} members The members to list, in `stackMenuOrder`.
+ * @returns {Array<number | null>}
+ */
+export function stackEntries(members) {
+  return [null, ...members];
 }
 
 /**
@@ -207,10 +221,10 @@ export function stackRowKey(number) {
   return -number;
 }
 
-/** The row key of a stack's Whole stack row in the Pulls list, under its members: half a step
- * past its stack's row's key, so it collides with no stack's row and no pull request's, and
- * it is negative, as every row that is not a pull request's is (docs/design-system.md, "Stack
- * Groups in the Pulls Tab").
+/** The row key of a stack's Whole stack row in the Pulls list: half a step past its stack's
+ * row's key, so it collides with no stack's row and no pull request's, and it is negative,
+ * as every row that is not a pull request's is (docs/design-system.md, "Stack Groups in the
+ * Pulls Tab").
  * @param {number} number
  */
 export function wholeStackRowKey(number) {
@@ -236,7 +250,7 @@ export function wholeStackOfKey(key) {
  * }} PullGroupRow
  * @typedef {{
  *   kind: "whole", key: number, stack: number, level: 2, posinset: number, setsize: number,
- * }} WholeStackRow A stack's Whole stack row, the last under its open stack, which opens the
+ * }} WholeStackRow A stack's Whole stack row, the first under its open stack, which opens the
  *   stack's own page.
  * @typedef {StackGroupRow | PullGroupRow | WholeStackRow} GroupedRow
  */
@@ -253,9 +267,10 @@ export function wholeStackOfKey(key) {
  * a stack whose listed pull requests all sit under earlier stacks has no row; their
  * places name it. Pull requests in no stack follow the stacks, in the list's order.
  *
- * Under an open stack's pull requests, at their level, is its Whole stack row, which opens
- * the stack's own page (`/stack/<n>`, stack-page.js), as the stack menu's first row does;
- * it is one of the stack's rows, so they count it in their set.
+ * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
+ * in `stackEntries`' order, the stack menu's: the Whole stack row, which opens the stack's own
+ * page (`/stack/<n>`, stack-page.js), is one of the stack's rows, so they count it in their
+ * set.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
@@ -326,25 +341,29 @@ export function groupByStack(numbers, index, identity, options = {}) {
       elsewhere,
     });
     if (expanded) {
-      for (const [place, number] of members.entries()) {
-        rows.push({
-          kind: "pull",
-          key: number,
-          number,
-          level: 2,
-          stack: stack.number,
-          posinset: place + 1,
-          setsize: members.length + 1,
-        });
+      const entries = stackEntries(members);
+      for (const [place, number] of entries.entries()) {
+        rows.push(
+          number === null
+            ? {
+                kind: "whole",
+                key: wholeStackRowKey(stack.number),
+                stack: stack.number,
+                level: 2,
+                posinset: place + 1,
+                setsize: entries.length,
+              }
+            : {
+                kind: "pull",
+                key: number,
+                number,
+                level: 2,
+                stack: stack.number,
+                posinset: place + 1,
+                setsize: entries.length,
+              },
+        );
       }
-      rows.push({
-        kind: "whole",
-        key: wholeStackRowKey(stack.number),
-        stack: stack.number,
-        level: 2,
-        posinset: members.length + 1,
-        setsize: members.length + 1,
-      });
     }
   }
   for (const [at, number] of rest.entries()) {

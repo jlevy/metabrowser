@@ -1078,7 +1078,7 @@ function twoTreesPage() {
     "data-tree-id": "Stack #286",
   });
   const stackItem = make("li", { role: "none" }, [stackRow]);
-  // Its Whole stack row, the last under it: a row link to the stack's own page.
+  // Its Whole stack row, the first under it: a row link to the stack's own page.
   const wholeRow = make("a", {
     class: "github-pulls-row github-pulls-whole-row",
     role: "treeitem",
