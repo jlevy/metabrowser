@@ -128,6 +128,7 @@ against one that did.
 | exp-105 | [Selected PR Conversation During Checkout Acquisition](experiments/exp-105-conversation-during-acquisition.md) | H126 | `verified Conversation before acquisition release` | diagnostic |
 | exp-106 | [Focused HTTP Loop for Named API Cases](experiments/exp-106-focused-http-loop.md) | H129 | `requests recorded for the short API iteration` | diagnostic |
 | exp-107 | [Upstream KPress Sanitizer Diagnostics](experiments/exp-107-upstream-kpress-diagnostics.md) | H130 | `first seeded PR description through the real server` | diagnostic |
+| exp-108 | [Integrated Chrome and Native Startup Diagnostics](experiments/exp-108-integrated-browser-native-diagnostics.md) | H125, H131 | `first useful content after ready` | diagnostic |
 
 ## Absolute numbers, per condition
 

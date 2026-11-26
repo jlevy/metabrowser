@@ -247,9 +247,10 @@ Two control starts took 1.69 and 3.83 s, and two candidate starts took 1.92 and 
 with matching checked HTML. The host was busy.
 This experiment assigns no end-to-end or browser verdict.
 
-The [protocol](exp-107-protocol.txt) records the seed refusal and the follow-up CPU
-test. The [samples](exp-107-upstream-kpress-diagnostics.jsonl) keep the two regimes
-available for separate charts.
+The [protocol](exp-107-protocol.txt) covers the HTTP and CPU measurements.
+The seed refusal is recorded in this experiment’s limitation annotations.
+The [samples](exp-107-upstream-kpress-diagnostics.jsonl) keep the two regimes available
+for separate charts.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
