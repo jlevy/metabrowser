@@ -314,6 +314,9 @@ function step(carried, at, pins) {
 const pinsOf = (comparison) => ({ merge_base: comparison.left, head: comparison.right });
 
 async function run() {
+  const { fileDisclosure } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href
+  );
   const page = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/stack-page.js")).href
   );
@@ -325,7 +328,10 @@ async function run() {
   const patches = [];
   const diff = {
     guidePatchDrawer() {
-      return (body, change, patch) => this.mountFilePatch(body, change, patch);
+      // With the diff view's own bar and chevron, which fold the cards the guide draws.
+      return Object.assign((body, change, patch) => this.mountFilePatch(body, change, patch), {
+        disclose: (section, folded, changed) => fileDisclosure(section, folded, changed),
+      });
     },
     mountFilePatch(_body, change, patch) {
       const drawn = { path: change.new.path, lines: patch.hunks[0].lines.length, disposed: false };

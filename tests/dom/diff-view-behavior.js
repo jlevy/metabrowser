@@ -1329,6 +1329,7 @@ async function main() {
     anchorRow,
     composeTextRuns,
     currentAbsence,
+    fileDisclosure,
     hunkGaps,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
@@ -2366,6 +2367,16 @@ async function main() {
       toggle.getAttribute("aria-expanded") === "false",
   );
   toggle.click();
+  // What Changes' bar and trigger are made of, which a card another page draws around a
+  // file must match (below, at `fileDisclosure`).
+  const classesOf = (node) => String(node.className).split(" ").filter(Boolean).sort().join(" ");
+  const changesDisclosure = {
+    bar: classesOf(bar),
+    toggle: classesOf(toggle),
+    chevron: classesOf(toggle.children[0]),
+    type: toggle.getAttribute("type"),
+    tag: toggle.tagName,
+  };
 
   // Disposal removes everything the mount added.
   handle.dispose();
@@ -2995,8 +3006,71 @@ async function main() {
     intraline(patchBody) > 0 && tokens(patchBody) > 0 && patchLexes > 0,
     `${intraline(patchBody)} intraline, ${tokens(patchBody)} tokens, ${patchLexes} lexes`,
   );
+  // A page that draws its own card for a file, as Guided Review does, takes the card's bar
+  // from the diff view's builder (`fileDisclosure`, which `guidePatchDrawer` hands over), and
+  // it is Changes' own: the same bar, trigger, and chevron, which fold whatever the page
+  // hands them, here a box holding a note and the patch.
+  {
+    const card = new FakeElement("section");
+    const folded = new FakeElement("div");
+    folded.append(new FakeElement("p"), patchBody);
+    const disclosure = fileDisclosure(card, folded);
+    const viewLink = new FakeElement("a");
+    viewLink.className = "diff-file-view";
+    disclosure.bar.append(disclosure.toggle, viewLink);
+    card.append(disclosure.bar, folded);
+    check(
+      "a page's own card takes the bar, trigger, and chevron Changes draws",
+      JSON.stringify({
+        bar: classesOf(disclosure.bar),
+        toggle: classesOf(disclosure.toggle),
+        chevron: classesOf(disclosure.toggle.children[0]),
+        type: disclosure.toggle.getAttribute("type"),
+        tag: disclosure.toggle.tagName,
+      }) === JSON.stringify(changesDisclosure),
+    );
+    const cardFolds = () => ({
+      said: disclosure.toggle.getAttribute("aria-expanded"),
+      body: folded.classList.contains("diff-file-body-collapsed"),
+      card: card.classList.contains("diff-file-collapsed"),
+      turned: disclosure.toggle.classList.contains("collapsed"),
+      open: disclosure.toggle.classList.contains("expanded"),
+    });
+    const shut = { said: "false", body: true, card: true, turned: true, open: false };
+    const opened = { said: "true", body: false, card: false, turned: false, open: true };
+    check(
+      "a page's own card starts open, its trigger naming what it folds",
+      JSON.stringify(cardFolds()) === JSON.stringify(opened) &&
+        disclosure.toggle.getAttribute("aria-controls") === folded.getAttribute("id") &&
+        card.getAttribute("aria-labelledby") === disclosure.toggle.getAttribute("id"),
+    );
+    const patchRows = patchBody.find("diff-line").length;
+    disclosure.bar.click();
+    check(
+      "a press on the card's bar folds it, and keeps what the patch drew",
+      JSON.stringify(cardFolds()) === JSON.stringify(shut) &&
+        patchBody.find("diff-line").length === patchRows &&
+        !patchBody.classList.contains("diff-file-body-collapsed"),
+      JSON.stringify(cardFolds()),
+    );
+    viewLink.click();
+    check(
+      "a press on the card's link to the file is the link's, not the bar's",
+      JSON.stringify(cardFolds()) === JSON.stringify(shut),
+    );
+    disclosure.toggle.click();
+    check(
+      "the trigger, which a key presses, opens it again",
+      JSON.stringify(cardFolds()) === JSON.stringify(opened),
+    );
+    const otherCard = fileDisclosure(new FakeElement("section"), new FakeElement("div"));
+    check(
+      "each card's ids are its own",
+      otherCard.toggle.getAttribute("id") !== disclosure.toggle.getAttribute("id") &&
+        otherCard.toggle.getAttribute("aria-controls") !== folded.getAttribute("id"),
+    );
+  }
   patchHandle.dispose();
-
   // Disposed before its enhancement runs, a file patch stays as first painted, and a fold
   // still materializing stops.
   const lexedBefore = patchLexes;

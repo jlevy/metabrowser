@@ -9,9 +9,9 @@
 
 import { changeSummaryRow, validateDocument, validateManifest } from "./diff-model.js";
 import {
+  fileDisclosure,
   mountDiffSummary,
   mountDiffView,
-  mountExcerptDisclosure,
   mountFilePatch,
   presentationControlHtml,
   setChangeLoader,
@@ -1071,7 +1071,14 @@ export function guidePatchDrawer() {
      */
     (body, change, patch, fullFile) => mountFilePatch(body, change, patch, mb, fullFile),
     {
-      disclose: mountExcerptDisclosure,
+      /**
+       * The bar and chevron that fold a file's card in Changes, for a card the guide draws
+       * itself: the diff view's own builder (`fileDisclosure`).
+       *
+       * @param {HTMLElement} section @param {HTMLElement} folded
+       * @param {(expanded: boolean) => void} [changed] Hears each fold and each opening.
+       */
+      disclose: (section, folded, changed) => fileDisclosure(section, folded, changed),
       /**
        * @param {HTMLElement} host @param {boolean} full
        * @param {"diff" | "current" | "full" | null} initial

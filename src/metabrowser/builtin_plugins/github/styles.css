@@ -2248,16 +2248,24 @@
   margin-inline-start: auto;
 }
 
-/* Each excerpt is the diff plugin's file card and rows (guided-review.js, `renderReference`),
-   which set its type and fills. An excerpt's bar names its file and does not fold it, so it
-   takes no pointer. Three classes outrank the plugin's two-class bar rules, which load after
-   this sheet, and every selector here stays the page's own. */
-.github-pull-guided-review .github-pull-guide-references .github-pull-guide-reference-header,
-.github-pull-guided-review .github-pull-guide-reference-header .diff-file-toggle {
+/* Each card a step draws for a file is the diff plugin's file card (guided-review.js,
+   `renderReference`), which sets its type and fills, and its bar is the plugin's own
+   disclosure, which folds the card as a file's does in Changes and takes every rule of it,
+   its pointer among them, from the plugin's sheet. Only where the diff plugin did not load
+   is the bar the guide's own, which names its file and folds nothing, so that bar, which is
+   no `.disclosure-toggle`, takes no pointer. The selectors outrank the plugin's two-class
+   bar rules, which load after this sheet, and every one here stays the page's own. */
+.github-pull-guided-review .github-pull-guide-references
+  .github-pull-guide-reference-header:not(.disclosure-toggle),
+.github-pull-guided-review
+  .github-pull-guide-reference-header:not(.disclosure-toggle)
+  .diff-file-toggle {
   cursor: auto;
 }
 
-.github-pull-guide-reference > p {
+/* A sentence in a card, under the bar or in what the bar folds. */
+.github-pull-guide-reference > p,
+.github-pull-guide-reference > .diff-file-body > p {
   padding-inline: 10px;
 }
 /* A step's excerpts sit inside its card at its text's inset, as a review comment's hunk

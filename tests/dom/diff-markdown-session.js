@@ -44,7 +44,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = () => {}; export const setGapLoader = () => {}; export const mountDiffView = (_host, _document, _api, options) => ({ options, dispose() {} }); export const mountDiffSummary = () => ({ dispose() {} }); export const mountExcerptDisclosure = () => {}; export const presentationControlHtml = () => ''; export const mountFilePatch = () => ({ dispose() {} });",
+          "export const setChangeLoader = () => {}; export const setGapLoader = () => {}; export const mountDiffView = (_host, _document, _api, options) => ({ options, dispose() {} }); export const mountDiffSummary = () => ({ dispose() {} }); export const fileDisclosure = () => {}; export const presentationControlHtml = () => ''; export const mountFilePatch = () => ({ dispose() {} });",
       };
     }
     return nextLoad(url, context);

@@ -154,6 +154,10 @@ function grouped(more = {}) {
 /** The document's keep of step answers (guide-reads.js), which each host empties: each is a
  * fresh load of the page. */
 let guideReads = null;
+/** The diff plugin's own `fileDisclosure` (diff-view.js), which its `guidePatchDrawer` hands
+ * the guide for the cards it draws: the stand-in below hands the same one, so the bar a
+ * step's file folds by here is the production one. */
+let fileDisclosure = null;
 
 function host({ allowlist = true } = {}) {
   guideReads?.clear();
@@ -171,7 +175,9 @@ function host({ allowlist = true } = {}) {
    * syntax) is its own, pinned by its tests and painted in the Chrome check. */
   const diff = {
     guidePatchDrawer() {
-      return (body, change, patch) => this.mountFilePatch(body, change, patch);
+      return Object.assign((body, change, patch) => this.mountFilePatch(body, change, patch), {
+        disclose: (section, folded, changed) => fileDisclosure(section, folded, changed),
+      });
     },
     mountFilePatch(body, change, patch) {
       const drawn = { path: change.new.path, patch, disposed: false };
@@ -473,7 +479,38 @@ async function run() {
   ({ guideReads } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guide-reads.js")).href
   ));
+  ({ fileDisclosure } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href
+  ));
   const steps = [];
+  /** The card of the shown step's file with a diff, or, without *excerpt*, of its file with
+   * a sentence in a diff's place, as a reader finds it: its bar, the
+   * trigger that leads it, what the bar folds, and how it stands, which its trigger, its
+   * body, and its card must each say alike. */
+  const fileCard = (container, excerpt = true) => {
+    const section = container
+      .querySelectorAll(".github-pull-guide-reference")
+      .find((card) => (card.querySelector(".github-pull-guide-excerpt") !== null) === excerpt);
+    const bar = section.querySelector(".diff-file-bar");
+    const toggle = section.querySelector(".diff-file-toggle");
+    const body = section.querySelector(".diff-file-body");
+    return {
+      section,
+      bar,
+      toggle,
+      body,
+      /** A press anywhere on the bar, or a key on its trigger, whose click reaches the bar. */
+      press: (target = bar) => bar.events.get("click")({ target }),
+      stands() {
+        const open = toggle.getAttribute("aria-expanded") === "true";
+        assert.equal(body.classes.has("diff-file-body-collapsed"), !open, "the body agrees");
+        assert.equal(section.classes.has("diff-file-collapsed"), !open, "the card agrees");
+        assert.equal(toggle.classes.has("expanded"), open, "the chevron agrees");
+        assert.equal(toggle.classes.has("collapsed"), !open, "the chevron agrees");
+        return open ? "open" : "folded";
+      },
+    };
+  };
 
   // The front page of a pull request with a guide is Guided Review.
   {
@@ -642,6 +679,51 @@ async function run() {
       `Open full diff: ${first.opened.map((route) => `${route.tab} ${route.file}`).join("; ")}`,
     );
 
+    // The excerpt's card folds as a file's does in Changes, by the diff plugin's own bar and
+    // chevron: the trigger is a button that leads the bar and names the file, everything
+    // under the bar folds, and folding disposes nothing the diff drew. The bar's motion and where it sits are
+    // Chrome's (tests/dom/github-guided-review-fold-chrome.mjs).
+    const fileOne = fileCard(view.container);
+    assert.equal(
+      fileOne.toggle.tag,
+      "button",
+      "the trigger is a button, which takes focus and keys",
+    );
+    assert.equal(fileOne.bar.children[0], fileOne.toggle, "the trigger leads the bar");
+    assert.equal(fileOne.toggle.getAttribute("aria-controls"), fileOne.body.getAttribute("id"));
+    assert.ok(fileOne.toggle.children[0].classes.has("diff-file-chevron"), "the chevron leads");
+    assert.equal(
+      fileOne.toggle.querySelector(".diff-file-path").textContent,
+      "src/app.txt",
+      "the trigger names the file",
+    );
+    assert.ok(link.classes.has("diff-file-view"), "Open full diff is the bar's view control");
+    assert.ok(
+      fileOne.body.querySelector(".github-pull-guide-excerpt") !== null,
+      "the bar folds the excerpt",
+    );
+    const folds = [fileOne.stands()];
+    fileOne.press();
+    folds.push(`its bar pressed: ${fileOne.stands()}, ${lines.length} rows kept`);
+    assert.equal(
+      view.container.querySelector(".github-pull-guide-excerpt").querySelectorAll(".diff-line")
+        .length,
+      lines.length,
+    );
+    assert.equal(first.patches[0].disposed, false, "folding disposes nothing");
+    fileOne.press(fileOne.toggle);
+    folds.push(`its trigger pressed: ${fileOne.stands()}`);
+    // A card that holds a sentence in a diff's place is built on the same bar, and folds.
+    const sentence = fileCard(view.container, false);
+    assert.equal(sentence.toggle.tag, "button");
+    sentence.press();
+    folds.push(`a card with no diff, its bar pressed: ${sentence.stands()}`);
+    sentence.press();
+    steps.push(`step 1's file: ${folds.join("; ")}`);
+    // Left folded, to be found open when the step is drawn again (below).
+    fileOne.press();
+    assert.equal(fileOne.stands(), "folded");
+
     // Next asks for step 2 alone, and the step shown stays, its diff with it, until step 2
     // is in hand to show in its place. Leaving the tab with that read on its way disposes
     // the view and its diff; the read goes on for the document's keep, and its late answer
@@ -669,11 +751,29 @@ async function run() {
     await settle();
     steps.push(`its tab again: ${view.position()}; asked ${asked(first.reads.slice(before))}`);
     view.press("Next step");
+    // A file the reader folded stays folded for the document, as the answers are kept
+    // (guide-reads.js, mb-ez0x): the guide mounted again on its tab draws step 1's file
+    // folded, and so does a step the reader leaves and comes back to; opened, it stays open.
+    const kept = [`back on the tab ${fileCard(view.container).stands()}`];
+    view.press("Next step");
+    view.press("Previous step");
+    kept.push(`after Next and Back ${fileCard(view.container).stands()}`);
+    fileCard(view.container).press();
     view.press("Next step");
     steps.push(
       `and its kept steps at once: step shown ${view.shown()}; asked ${asked(first.reads.slice(before))}`,
     );
+    view.press("Previous step");
+    kept.push(`opened, then Next and Back ${fileCard(view.container).stands()}`);
+    steps.push(`step 1's file, left folded: ${kept.join("; ")}`);
     view.handle.dispose();
+    // The folds are a guide's at one head: the same guide read at a new head, whose files
+    // may differ, starts with none, and so does another guide.
+    const atHead = guideReads.folds("number=7", "b".repeat(40));
+    atHead.set("1\n0\nsrc/app.txt", true);
+    steps.push(
+      `a fold kept for a guide at its head: the same head ${guideReads.folds("number=7", "b".repeat(40)).has("1\n0\nsrc/app.txt")}, another guide ${guideReads.folds("number=8", "b".repeat(40)).has("1\n0\nsrc/app.txt")}, a new head ${guideReads.folds("number=7", "c".repeat(40)).has("1\n0\nsrc/app.txt")}, the first head again ${guideReads.folds("number=7", "b".repeat(40)).has("1\n0\nsrc/app.txt")}`,
+    );
   }
 
   // Replacement: a new record revision asks for the step on screen again, and drops the read
