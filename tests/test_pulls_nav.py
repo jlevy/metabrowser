@@ -92,7 +92,23 @@ def _toolbars(html: str) -> dict[str, bool]:
         assert "tally-pending" in body, opening
     assert list(toolbars.values()).count(True) == 1, toolbars
     assert set(toolbars) == set(_tabs(html)), (toolbars, _tabs(html))
+    _assert_refresh_drawn(html)
     return toolbars
+
+
+def _assert_refresh_drawn(html: str) -> None:
+    """The navigation's one Refresh is in the page's header under every tab, glyph and all.
+
+    It is shown and offered from the first paint, so nothing in the header appears or moves
+    after it, whichever tab is in front (server.py, `nav_refresh`).
+    """
+
+    refresh = re.search(r'(<button [^>]*id="nav-refresh"[^>]*>)(.*?)</button>', html, re.S)
+    assert refresh is not None
+    opening = refresh.group(1)
+    assert 'aria-label="Refresh"' in opening, opening
+    assert not re.search(r"hidden|visibility|aria-disabled|disabled", opening), opening
+    assert refresh.group(2).lstrip().startswith("<svg"), refresh.group(2)
 
 
 def _shell_tools(html: str) -> list[str]:
@@ -106,7 +122,10 @@ def _startup_scripts(html: str) -> list[str]:
 
 
 def test_a_folder_draws_no_tab_and_lists_no_script(tmp_path: Path) -> None:
-    """A plain folder's shell is the mutation check on all of it: nothing of the tab reaches it."""
+    """A plain folder's shell is the mutation check on all of it: nothing of the tab reaches it.
+
+    The navigation's Refresh does, since it refreshes whatever the page shows.
+    """
 
     reset_source_session()
     from metabrowser import server
@@ -118,6 +137,7 @@ def test_a_folder_draws_no_tab_and_lists_no_script(tmp_path: Path) -> None:
             html = client.get(route).text
             assert _tabs(html) == {"files": True}, route
             assert 'id="tab-pulls"' not in html, route
+            _assert_refresh_drawn(html)
             assert "pulls-nav.js" not in html, route
             assert "/static/pulls-nav.js" not in _shell_tools(html), route
             assert "/static/pulls-nav.js" not in _startup_scripts(html), route

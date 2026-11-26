@@ -107,8 +107,9 @@ commit has it, or at the root when it does not.
 Chosen on the Commits tab, it reloads the page on Commits, at the newest commit of the
 new history. The switch lasts until the server stops.
 
-The foot of the navigation pane says when the mirror was last fetched from its origin;
-click it to fetch now.
+The foot of the navigation pane says when the mirror was last fetched from its origin.
+**Refresh**, the circular arrow at the top of the navigation pane, fetches it now and
+then reads the files and history again, what is on screen first.
 A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
 when a fetch moves the served branch, the page follows it to the new commit by itself,
 on the same file or folder when the new commit has it, or at the root when it does not.
@@ -143,9 +144,11 @@ Click the chevron in that row or press `W` to browse the other branches and tags
   at another commit, which is a branch you have not fetched since it moved, or have
   pushed since Metabrowser last fetched, and “not in checkout” when you have never
   fetched it; hover over the row for your commit and which of the two was committed
-  later. The row at the foot of the navigation pane says when the origin was last
-  fetched, and pressing it refreshes, on your working tree’s page too; it fetches
-  Metabrowser’s store, never your checkout.
+  later. On a branch’s or tag’s page, the row at the foot of the navigation pane says
+  when the origin was last fetched, and **Refresh** at the top of the navigation pane
+  fetches it again; it fetches Metabrowser’s store, never your checkout.
+  The working tree’s page has no such row, and **Refresh** there reads your files and
+  history again without fetching from the origin.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
   nothing asks for one.

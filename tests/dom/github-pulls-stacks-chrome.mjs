@@ -302,16 +302,20 @@ const LIST = `(() => {
     labelRoomRight: box(stackRow?.querySelector(".github-pulls-stack-heading"))?.right ?? null,
     flatRunRight: box(flat?.querySelector(".github-pulls-heading"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
-    // the filters and Refresh, which sits at the line's end.
+    // the filters and the line's end.
     toolbar: (() => {
       const bar = document.getElementById("nav-toolbar-pulls");
-      const group = box(document.querySelector(".github-pulls-filters .chip-group"));
-      const reload = box(document.querySelector(".github-pulls-refresh"));
-      const gap = parseFloat(getComputedStyle(document.querySelector(".github-pulls-filters")).columnGap) || 0;
+      const row = document.querySelector(".github-pulls-filters");
+      const group = box(row?.querySelector(".chip-group"));
+      const style = row === null ? null : getComputedStyle(row);
+      const end =
+        row === null || style === null
+          ? null
+          : row.getBoundingClientRect().right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
       return {
         width: bar?.clientWidth ?? null,
         overflow: bar === null ? null : bar.scrollWidth - bar.clientWidth,
-        spare: group === null || reload === null ? null : Math.round(reload.left - group.right - gap),
+        spare: group === null || end === null ? null : Math.round(end - group.right),
         chip: document.querySelector(".github-pulls-group-toggle") !== null,
       };
     })(),
@@ -1277,7 +1281,6 @@ try {
           gap,
           column: gap,
           cluster,
-          trailing: "github-pulls-refresh",
         });
         check(
           `${label}: the toolbar keeps the wrap rule`,

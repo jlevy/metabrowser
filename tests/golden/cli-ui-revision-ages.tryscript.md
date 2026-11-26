@@ -270,7 +270,7 @@ $ node tests/dom/revision-ages-session.js
         "fileCache.clear",
         "loadTree {\"reconcileMountedRoot\":true}",
         "loadRecent",
-        "selectFile docs/guide.md"
+        "selectFile docs/guide.md in rendered"
       ]
     },
     "theRedrawnTreeSaysReady": {
@@ -314,6 +314,34 @@ $ node tests/dom/revision-ages-session.js
       "events": [
         "patchOpenRecencyTallyCounts",
         "ensureAsset revision-ages"
+      ]
+    },
+    "aRereadKeepsWhatThePaneShows": {
+      "aFileInSource": [
+        "subtreeCache.clear",
+        "fileCache.clear",
+        "loadTree {\"reconcileMountedRoot\":true}",
+        "loadRecent",
+        "selectFile docs/guide.md in source"
+      ],
+      "aFolderInTreemap": [
+        "subtreeCache.clear",
+        "fileCache.clear",
+        "loadTree {\"reconcileMountedRoot\":true}",
+        "loadRecent",
+        "selectFile docs in treemap"
+      ],
+      "aPullRequestPage": [
+        "subtreeCache.clear",
+        "fileCache.clear",
+        "loadTree {\"reconcileMountedRoot\":true}",
+        "loadRecent"
+      ],
+      "nothingChosen": [
+        "subtreeCache.clear",
+        "fileCache.clear",
+        "loadTree {\"reconcileMountedRoot\":true}",
+        "loadRecent"
       ]
     }
   },

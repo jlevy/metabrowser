@@ -4680,6 +4680,96 @@ async function run() {
     container.scrollTop = 0;
   }
 
+  // ── The navigation's Refresh reads the history in place ─────
+  //
+  // The reader has scrolled the list and selected a row. Refresh (static/refresh-plan.js)
+  // reads the history again, and the rows stay on screen, with no skeleton, while the new
+  // walk is read as far as the reader had scrolled; then the new rows take their place at
+  // the same scroll offset, the selected row still selected.
+  {
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 6000).toString(16).padStart(40, "0"),
+    );
+    const walk = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `in place ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const shown = internals.emptyState();
+    shown.headRevision = revisions[0];
+    shown.headRef = "refs/heads/main";
+    internals.setStateForTests(shown);
+    for (let page = 0; page < 2; page += 1) {
+      const wire = historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+      internals.appendPage(walk.slice(page * 2, page * 2 + 2), wire.cursor, wire);
+    }
+    const scrolled = internals.stateForTests();
+    scrolled.selectedId = revisions[2];
+    delete scrolled.rows;
+    delete scrolled.commits;
+    internals.setStateForTests(scrolled);
+    container.clientHeight = 44;
+    container.scrollTop = 0;
+    internals.renderPanel();
+    container.scrollTop = 49;
+    internals.renderVirtualRows();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rowsBefore = [...container.querySelectorAll(".git-graph-row")].map(
+      (row) => row.dataset.revision,
+    );
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    responses.set("/api/git/summary", { is_repo: true, commit_count: total });
+    let pagesAsked = 0;
+    responses.set("/api/git/log", (url) => {
+      pagesAsked += 1;
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    // The repository read is held, so the list can be looked at while the walk is read.
+    const repo = {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    };
+    let releaseRepo = () => {};
+    const repoHeld = new Promise((resolve) => (releaseRepo = resolve));
+    responses.set("/api/git/repo", async () => {
+      await repoHeld;
+      return repo;
+    });
+    const refreshed = panel.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertTrue(
+      "in place: no skeleton while the history is read again",
+      container.querySelector(".git-history-skeleton") === null,
+    );
+    assertEqual(
+      "in place: the rows on screen stay while it is read",
+      [...container.querySelectorAll(".git-graph-row")].map((row) => row.dataset.revision),
+      rowsBefore,
+    );
+    assertEqual("in place: the scroll offset stays while it is read", container.scrollTop, 49);
+    releaseRepo();
+    await refreshed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertTrue("in place: the history was read again", pagesAsked >= 2);
+    assertEqual("in place: the scroll offset is where it was", container.scrollTop, 49);
+    assertEqual(
+      "in place: the selected row is still selected",
+      internals.stateForTests().selectedId,
+      revisions[2],
+    );
+    assertTrue(
+      "in place: the selected row is drawn selected",
+      container
+        .querySelector(`.git-graph-row[data-revision="${revisions[2]}"]`)
+        ?.classList.contains("selected") === true,
+    );
+    delete container.clientHeight;
+    container.scrollTop = 0;
+  }
+
   // ── Bounded session recovery ───────────────────────────────
   //
   // A reaped session replays its prefix one request per page against a

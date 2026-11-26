@@ -1018,7 +1018,22 @@ $ node tests/dom/source-freshness-session.js
       "initial": true,
       "means": "failed"
     }
-  ]
+  ],
+  "refreshNow": {
+    "a fetch that runs: settled while it runs, then once it has ended": [
+      false,
+      true
+    ],
+    "a poll that fails while it runs: settled while it runs, then once it failed": [
+      false,
+      true
+    ],
+    "a row disposed while it runs: settled while it runs, then once disposed": [
+      false,
+      true
+    ],
+    "a refused refresh: settled at once": true
+  }
 }
 ? 0
 ```
