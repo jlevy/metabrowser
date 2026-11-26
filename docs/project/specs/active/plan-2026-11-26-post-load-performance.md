@@ -123,6 +123,11 @@ GitHub. Run cold startup and large-corpus checks as guards for work moved before
   startup, raising memory without bound, starving reads on screen, or increasing
   rate-limit spending without a corresponding first-visit benefit.
 
+Record each attempt in the existing experiment ledger, with annotations for the change,
+findings, and limits.
+Keep diagnostic observations separate from paired results so the chart export can show
+both without assigning a verdict to an unjudged run.
+
 ## Testing Strategy
 
 Use the existing browserless and golden tests for navigation, prefetch ownership,

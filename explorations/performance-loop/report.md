@@ -30,6 +30,15 @@ fast -- only that it moved.
 | `browser_event_stream_overflows_per_run` | 0 | **0** (accepted on other grounds; see the round) | exp-031 |
 | `browser_inventory_delivery_batch_items_max` | 17,787 | **4,096** | exp-032 |
 | `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round; measured without compiled bytecode) | exp-037 |
+| `first_text_ms_pr_29121` | 1,350 | **519** | exp-041 |
+| `selected_description_ms` | 4,082 | **1,324** | exp-045 |
+| `reentry_comparisons` | 1 | **0** | exp-046 |
+| `trusted_git_click_to_paint_ms` | 366 | **238** | exp-047 |
+| `sampled_server_tree_rss_mib` | 353 | **313** | exp-049 |
+| `publication_to_full_conversation_paint_ms` | 283 | **28** | exp-051 |
+| `ready_window_description_ms` | 1,094 | **38** | exp-052 |
+| `ready_window_description_ms` | 1,134 | **38** | exp-054 |
+| `description_observed_driver_ms` | 1,320 | **73** | exp-055 |
 | `Conversation transitions per run whose description showed before its final form` | 5 | **1** | exp-080 |
 | `first_row_ms_loopback_220kb` | 92 | **99** (accepted on other grounds; see the round) | exp-084 |
 
@@ -58,15 +67,15 @@ against one that did.
 | exp-015 | [Merged main preserves the release performance win](experiments/exp-015-merged-main-preserves-the-release-performance-win.md) | H58 | `every candidate run passes the hard responsiveness and correctness gates` | accepted |
 | exp-016 | [Release stabilization bounds tally work without losing the performance win](experiments/exp-016-release-stabilization-bounds-tally-work.md) | H58, H59, H61, H62, H63 | `every exact candidate backend and browser run passes its responsiveness and correctness gates` | accepted |
 | exp-017 | [v0.7.1 preserves release correctness and responsiveness](experiments/exp-017-v071-preserves-release-correctness-and-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
-| exp-018 | [Git revisions swap without blanking](experiments/exp-018-git-revisions-swap-without-blanking.md) | - | `blank frames and pointer-prepared transition time` | accepted |
+| exp-018 | [Git revisions swap without blanking](experiments/exp-018-git-revisions-swap-without-blanking.md) | H64 | `blank frames and pointer-prepared transition time` | accepted |
 | exp-019 | [v0.8.0 preserves release correctness and responsiveness](experiments/exp-019-v080-preserves-release-correctness-and-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-020 | [v0.9 Git history preserves release correctness and responsiveness](experiments/exp-020-v090-history-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-021 | [The v0.9 candidate preserves release correctness and responsiveness](experiments/exp-021-v090-candidate-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-022 | [The v0.9.1 lazy-plugin-tab fix preserves release correctness and responsiveness](experiments/exp-022-v091-lazy-plugin-tabs-preserve-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-023 | [The v0.9.1 final candidate preserves release correctness and responsiveness](experiments/exp-023-v091-final-candidate-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
-| exp-024 | [The walker builds each entry once instead of three times](experiments/exp-024-the-walker-builds-each-entry-once.md) | - | `walk_to_settled_ms` | accepted |
-| exp-025 | [The instrument was measuring the order it ran in](experiments/exp-025-the-instrument-was-measuring-the-order-it-ran-in.md) | - | `walk_to_settled_ms` | rejected |
-| exp-026 | [The refactor added a rule that forced a second build of every entry](experiments/exp-026-the-refactor-added-a-rule-that-forced-a-second-build.md) | - | `require_canonical_inventory_path_calls_per_entry` | accepted |
+| exp-024 | [The walker builds each entry once instead of three times](experiments/exp-024-the-walker-builds-each-entry-once.md) | H65, H66, H67 | `walk_to_settled_ms` | accepted |
+| exp-025 | [The instrument was measuring the order it ran in](experiments/exp-025-the-instrument-was-measuring-the-order-it-ran-in.md) | H68, H69, H70, H71 | `walk_to_settled_ms` | rejected |
+| exp-026 | [The refactor added a rule that forced a second build of every entry](experiments/exp-026-the-refactor-added-a-rule-that-forced-a-second-build.md) | H72 | `require_canonical_inventory_path_calls_per_entry` | accepted |
 | exp-027 | [The first v0.9.1-to-current candidate is rejected on a second root repaint](experiments/exp-027-v091-candidate-rejected-on-root-repaint.md) | - | `browser_tree_region_repaints` | rejected |
 | exp-028 | [The repainted-tree fix is rejected on an avoidable cold shell import](experiments/exp-028-v091-candidate-rejected-on-cold-shell-import.md) | - | `browser_ttfb_ms` | rejected |
 | exp-029 | [The cold-shell fix is rejected on a catalog-completion gap](experiments/exp-029-v091-candidate-rejected-on-catalog-completion-gap.md) | - | `browser_file_catalog_incomplete` | rejected |
@@ -80,18 +89,18 @@ against one that did.
 | exp-037 | [Deferring unused Git imports and view-phase browser code brings v0.12 start-up within 1.05x of v0.11.0 and back under its startup-script gate, except --doctor](experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) | - | `cli_show_instr_millions` | accepted |
 | exp-038 | [A release rehearsal under load finds the v0.12 candidate equivalent to v0.11.0 and does not clear it](experiments/exp-038-v012-rehearsal-under-load-does-not-clear-the-candidate.md) | - | `project10_browser_first_row_ms` | unresolved |
 | exp-040 | [Files changed on a large pull request recomputes the whole patch on every request, and one deleted empty file makes it fail outright](experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md) | - | `files_changed_first_diff_line_ms` | baseline |
-| exp-041 | [PR Files Start from a Prepared Manifest and a Visible Patch Prefix](experiments/exp-041-pr-files-use-a-prepared-manifest-and-visible-prefix.md) | - | `first_text_ms_pr_29121` | accepted |
-| exp-045 | [Publish the Selected PR Description Before the Full Conversation](experiments/exp-045-publish-selected-pr-description-before-full-conversation.md) | - | `selected_description_ms` | accepted |
-| exp-046 | [Reuse the Rendered Git Revision on Hover](experiments/exp-046-reuse-the-rendered-git-revision-on-hover.md) | - | `reentry_comparisons` | accepted |
-| exp-047 | [Connect the Git Stage Before Rendering the First Screen](experiments/exp-047-connect-the-git-stage-before-rendering.md) | - | `trusted_git_click_to_paint_ms` | accepted |
-| exp-048 | [Measure Provider Cost for a Visible PR Core Batch](experiments/exp-048-measure-provider-cost-of-preparing-visible-pr-core.md) | - | `catalog_response_decoded_bytes` | baseline |
-| exp-049 | [Bind the Missing Selected PR Core to the GraphQL Viewer](experiments/exp-049-bind-the-missing-selected-pr-core-to-the-graphql-viewer.md) | - | `sampled_server_tree_rss_mib` | accepted |
-| exp-050 | [Prepare Visible PR Descriptions After Summary Paint](experiments/exp-050-prepare-visible-pr-descriptions-after-summary-paint.md) | - | `prepared_description_ms` | rejected |
-| exp-051 | [Wake a Selected PR Cache Read When Its Refresh Settles](experiments/exp-051-wake-selected-pr-cache-read-on-settlement.md) | - | `publication_to_full_conversation_paint_ms` | accepted |
-| exp-052 | [Confirm Visible PR Description Preparation After Settlement](experiments/exp-052-confirm-visible-pr-descriptions-after-settlement.md) | - | `ready_window_description_ms` | accepted |
-| exp-053 | [Reject Whole-Window Validation After an Unrelated PR Update](experiments/exp-053-reject-whole-window-catalog-validation.md) | - | `actual_prepared_ready_reads` | rejected |
-| exp-054 | [Keep Prepared Descriptions Through an Unrelated Catalog Update](experiments/exp-054-keep-prepared-descriptions-through-a-catalog-update.md) | - | `ready_window_description_ms` | accepted |
-| exp-055 | [Progressive PR Metadata Warming](experiments/exp-055-progressive-pr-metadata-warming.md) | - | `description_observed_driver_ms` | accepted |
+| exp-041 | [PR Files Start from a Prepared Manifest and a Visible Patch Prefix](experiments/exp-041-pr-files-use-a-prepared-manifest-and-visible-prefix.md) | H49, H58, H73 | `first_text_ms_pr_29121` | accepted |
+| exp-045 | [Publish the Selected PR Description Before the Full Conversation](experiments/exp-045-publish-selected-pr-description-before-full-conversation.md) | H77 | `selected_description_ms` | accepted |
+| exp-046 | [Reuse the Rendered Git Revision on Hover](experiments/exp-046-reuse-the-rendered-git-revision-on-hover.md) | H78 | `reentry_comparisons` | accepted |
+| exp-047 | [Connect the Git Stage Before Rendering the First Screen](experiments/exp-047-connect-the-git-stage-before-rendering.md) | H79 | `trusted_git_click_to_paint_ms` | accepted |
+| exp-048 | [Measure Provider Cost for a Visible PR Core Batch](experiments/exp-048-measure-provider-cost-of-preparing-visible-pr-core.md) | H77 | `catalog_response_decoded_bytes` | baseline |
+| exp-049 | [Bind the Missing Selected PR Core to the GraphQL Viewer](experiments/exp-049-bind-the-missing-selected-pr-core-to-the-graphql-viewer.md) | H80 | `sampled_server_tree_rss_mib` | accepted |
+| exp-050 | [Prepare Visible PR Descriptions After Summary Paint](experiments/exp-050-prepare-visible-pr-descriptions-after-summary-paint.md) | H81 | `prepared_description_ms` | rejected |
+| exp-051 | [Wake a Selected PR Cache Read When Its Refresh Settles](experiments/exp-051-wake-selected-pr-cache-read-on-settlement.md) | H82 | `publication_to_full_conversation_paint_ms` | accepted |
+| exp-052 | [Confirm Visible PR Description Preparation After Settlement](experiments/exp-052-confirm-visible-pr-descriptions-after-settlement.md) | H81 | `ready_window_description_ms` | accepted |
+| exp-053 | [Reject Whole-Window Validation After an Unrelated PR Update](experiments/exp-053-reject-whole-window-catalog-validation.md) | H81 | `actual_prepared_ready_reads` | rejected |
+| exp-054 | [Keep Prepared Descriptions Through an Unrelated Catalog Update](experiments/exp-054-keep-prepared-descriptions-through-a-catalog-update.md) | H81, H83 | `ready_window_description_ms` | accepted |
+| exp-055 | [Progressive PR Metadata Warming](experiments/exp-055-progressive-pr-metadata-warming.md) | H84 | `description_observed_driver_ms` | accepted |
 | exp-056 | [Previous-Release Rehearsal](experiments/exp-056-previous-release-rehearsal.md) | H85 | `first_row_ms` | unresolved |
 | exp-058 | [Transition Navigation Baseline](experiments/exp-058-transition-baseline.md) | H86, H88, H90, H92, H94, H95, H98, H101, H105 | `painted_ready_ms` | baseline |
 | exp-059 | [Every Region’s Box at First Paint](experiments/exp-059-every-region-box-at-first-paint.md) | H86 | `region_movement_px` | accepted |
@@ -114,6 +123,7 @@ against one that did.
 | exp-100 | [Asking for a Held First Screen’s Markdown at Once Does Not Shorten the Hold](experiments/exp-100-held-markdown-at-once-rejected.md) | H120 | `pr-warm title_after_pull, the title's first frame minus the first GET pull's response end, pair ratio candidate/control under 1/1.3 in at least 3 of 5 pairs` | rejected |
 | exp-101 | [Painting a Held Page’s Header at Once Brings the Title Back to the Record’s Arrival](experiments/exp-101-header-at-once-accepted.md) | H121 | `pr-warm title_after_pull, the title's first frame minus the first GET pull's response end, pair ratio candidate/control under 1/1.3 in at least 3 of 5 pairs` | accepted |
 | exp-102 | [CLI 0.13.0 Startup Under Matched HTTP Readiness](experiments/exp-102-cli-013-release-comparison.md) | H57 | `browser_first_row_ms` | rejected |
+| exp-103 | [Post-Load Navigation and Preparation Diagnostics](experiments/exp-103-post-load-diagnostics.md) | H88, H104, H106, H114, H117 | `first useful destination after startup` | diagnostic |
 
 ## Absolute numbers, per condition
 

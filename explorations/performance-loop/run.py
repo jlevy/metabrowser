@@ -1954,36 +1954,36 @@ def cmd_probe(_args: argparse.Namespace) -> int:
 
 
 def _experiment_records() -> list[dict[str, Any]]:
-    """The YAML front matter of every experiment artifact, id-ordered.
+    """Read experiment YAML for both the Markdown table and the JSONL export."""
 
-    Parsed with a deliberately small reader rather than a YAML dependency:
-    the ledger needs a few scalars out of the front matter, and the artifacts
-    are schema-validated by `softschema validate` anyway, which is where a
-    malformed one should fail.
-    """
+    from softschema import read_frontmatter_doc
+
     records: list[dict[str, Any]] = []
     paths_by_id: dict[str, str] = {}
     for path in sorted(EXPERIMENTS.glob("exp-*.md")):
-        text = path.read_text(encoding="utf-8")
-        if not text.startswith("---"):
+        _, document = read_frontmatter_doc(path)
+        if not isinstance(document, dict):
             continue
-        front = text.split("---", 2)[1]
-        record: dict[str, Any] = {"path": path.name}
-        for key in ("id", "title", "date"):
-            match = re.search(rf"^  {key}: \"?([^\"\n]+)\"?$", front, re.MULTILINE)
-            if match:
-                record[key] = match.group(1).strip()
-        hyps = re.search(r"^  hypotheses:\n((?:    - \w+\n)+)", front, re.MULTILINE)
-        record["hypotheses"] = re.findall(r"- (\w+)", hyps.group(1)) if hyps else []
-        verdict = front.split("  verdict:", 1)
-        if len(verdict) == 2:
-            for key in ("decision", "primary_metric", "commit"):
-                match = re.search(rf"^    {key}: \"?([^\"\n]+)\"?$", verdict[1], re.MULTILINE)
-                if match:
-                    record[key] = match.group(1).strip()
-        bytecode = re.search(r"^    bytecode: [\"']?(\w+)[\"']?$", front, re.MULTILINE)
-        if bytecode:
-            record["bytecode"] = bytecode.group(1)
+        frontmatter = cast("dict[str, Any]", document)
+        payload = frontmatter.get("experiment")
+        if not isinstance(payload, dict):
+            continue
+        experiment = cast("dict[str, Any]", payload)
+        method = cast("dict[str, Any]", experiment.get("method") or {})
+        verdict = cast("dict[str, Any]", experiment.get("verdict") or {})
+        record: dict[str, Any] = {
+            "path": path.name,
+            "document": frontmatter,
+            "experiment": experiment,
+            "hypotheses": experiment.get("hypotheses", []),
+            "bytecode": method.get("bytecode"),
+        }
+        record.update(
+            (key, experiment[key]) for key in ("id", "title", "date") if key in experiment
+        )
+        record.update(
+            (key, verdict[key]) for key in ("decision", "primary_metric") if key in verdict
+        )
         experiment_id = record.get("id")
         if isinstance(experiment_id, str):
             earlier = paths_by_id.get(experiment_id)
@@ -1994,17 +1994,16 @@ def _experiment_records() -> list[dict[str, Any]]:
     return records
 
 
-def _headline_for(artifact: str, metric: str) -> tuple[str | None, str | None]:
+def _headline_for(experiment: dict[str, Any], metric: str) -> tuple[str | None, str | None]:
     """The control and candidate medians an artifact recorded for *metric*."""
-    text = (EXPERIMENTS / artifact).read_text(encoding="utf-8")
-    block = re.search(rf"- metric: {re.escape(metric)}\n(?:      \w+:.*\n)+", text)
-    if block is None:
-        return None, None
-    control = re.search(r"control_median: ([0-9.]+)", block.group(0))
-    candidate = re.search(r"candidate_median: ([0-9.]+)", block.group(0))
-    if control is None or candidate is None:
-        return None, None
-    return f"{float(control.group(1)):,.0f}", f"{float(candidate.group(1)):,.0f}"
+
+    for result in cast("list[dict[str, Any]]", experiment.get("results", [])):
+        if result.get("metric") == metric:
+            control = result.get("control_median")
+            candidate = result.get("candidate_median")
+            if isinstance(control, int | float) and isinstance(candidate, int | float):
+                return f"{control:,.0f}", f"{candidate:,.0f}"
+    return None, None
 
 
 _DECISION_MARK = {
@@ -2013,6 +2012,7 @@ _DECISION_MARK = {
     "superseded": "superseded",
     "baseline": "baseline",
     "unresolved": "unresolved",
+    "diagnostic": "diagnostic",
 }
 _BYTECODE_MARK = {
     "cached": "measured with compiled bytecode",
@@ -2020,13 +2020,45 @@ _BYTECODE_MARK = {
 }
 
 
-def cmd_report(_args: argparse.Namespace) -> int:
+def _export_experiment_ledger() -> int:
+    """Export complete YAML payloads with their structural validation status."""
+
+    from softschema import Contract, validate_artifact
+
+    contract = Contract(
+        id="metabrowser.loadtime:Experiment/v1",
+        envelope_key="experiment",
+        schema_path=EXPERIMENTS / "experiment.schema.yaml",
+    )
+    records = _experiment_records()  # Also checks that experiment IDs are unique.
+    for record in records:
+        path = EXPERIMENTS / record["path"]
+        document = record["document"]
+        result = validate_artifact(
+            path, contract=contract, document=document, require=("structural",)
+        )
+        print(
+            json.dumps(
+                {
+                    "artifact": path.relative_to(REPO).as_posix(),
+                    "structurally_valid": result.ok,
+                    "experiment": document["experiment"],
+                },
+                ensure_ascii=False,
+            )
+        )
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
     """Regenerate report.md from the recorded runs and the artifacts.
 
     Absolute numbers, not just deltas. A change recorded only as "-67%" cannot
     be checked against a later run on the same corpus, and cannot say whether
     the thing is fast now -- only that it moved.
     """
+    if getattr(args, "format", "markdown") == "jsonl":
+        return _export_experiment_ledger()
     runs = _load_runs()
     experiments = _experiment_records()
     lines: list[str] = []
@@ -2056,7 +2088,7 @@ def cmd_report(_args: argparse.Namespace) -> int:
         add("| --- | ---: | ---: | --- |")
         for record in accepted:
             metric = str(record.get("primary_metric", ""))
-            before, after = _headline_for(str(record["path"]), metric)
+            before, after = _headline_for(record["experiment"], metric)
             if before is None or after is None:
                 continue
             # A round accepted on other grounds still shows the metric it named,
@@ -2356,7 +2388,8 @@ def main(argv: list[str] | None = None) -> int:
     count.add_argument("tree")
     count.set_defaults(func=cmd_count)
 
-    report = sub.add_parser("report", help="regenerate report.md from runs and artifacts")
+    report = sub.add_parser("report", help="regenerate report.md or export the experiment ledger")
+    report.add_argument("--format", choices=("markdown", "jsonl"), default="markdown")
     report.set_defaults(func=cmd_report)
 
     args = parser.parse_args(argv)

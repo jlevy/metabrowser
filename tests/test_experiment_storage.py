@@ -25,6 +25,7 @@ from urllib.parse import unquote
 import jsonschema
 import pytest
 import yaml
+from softschema import Contract, validate_artifact
 
 ROOT = Path(__file__).resolve().parents[1]
 LOOP = ROOT / "explorations" / "performance-loop"
@@ -324,3 +325,17 @@ def test_the_analysis_check_refuses_what_it_must() -> None:
 def test_an_unclosed_fence_is_refused() -> None:
     with pytest.raises(AssertionError, match="never closed"):
         _transient_lines("```shell\n/tmp/x\n")
+
+
+def test_annotated_or_diagnostic_records_match_the_contract() -> None:
+    contract = Contract(
+        id="metabrowser.loadtime:Experiment/v1",
+        envelope_key="experiment",
+        schema_path=SCHEMA,
+    )
+    for path in _records():
+        front, _ = _split(path)
+        if "observations" in front or "annotations" in front:
+            result = validate_artifact(path, contract=contract, require=("structural",))
+            assert result.structural.execution == "completed", path.name
+            assert result.ok, result.structural.errors

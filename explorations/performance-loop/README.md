@@ -49,8 +49,31 @@ answer forever, and only the second one earns a place in the release gate.
 6. RECORD      experiments/exp-NNN-<slug>.md, and update the hypothesis status.
 ```
 
-Rejected rounds are worth as much as accepted ones and cost more to re-derive, so a
-refuted hypothesis gets the same write-up as a confirmed one.
+Rejected rounds get the same write-up as accepted ones.
+Record the change and its reason in the existing
+[Experiment contract](experiments/experiment.schema.yaml).
+Put chart annotations in `annotations`, using `change`, `finding`, or `limitation`. Keep
+accepted, rejected, and superseded verdicts in the ledger.
+
+A diagnostic round uses `verdict.decision: diagnostic` and records its readings as
+`observations`, with the phase, scenario, condition, unit, statistic, and sample count.
+Paired results keep their existing meaning and stay in `results`. A diagnostic has no
+paired results or acceptance decision.
+Its protocol states which runs, builds, and cache regimes were observed, and names any
+limit on comparison.
+
+### Exporting the Ledger
+
+```shell
+uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py report --format jsonl
+```
+
+Each line carries the repository-relative artifact, the complete YAML payload with its
+verdict and annotations, and a `structurally_valid` flag.
+Legacy records that fail the current contract are retained and flagged.
+Filter on that flag and the verdict before charting paired improvements.
+Chart diagnostic observations in their own series.
+`report` without a format flag regenerates the Markdown ledger.
 
 ## Building the corpus
 
