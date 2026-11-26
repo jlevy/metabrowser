@@ -199,7 +199,10 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   async function render() {
     // What a link into the served repository opens (static/repository-links.js), fetched
     // beside the render on a page that has a repository's identity. Without it, such a
-    // link stays the github.com link it is.
+    // link stays the github.com link it is. Measured 2026-11-26 in headless Chromium 152 on
+    // a checkout's README, nine cold loads from 127.0.0.1: the script, 6,764 bytes
+    // compressed, arrived 4 to 21 ms after it was asked for, before the render request
+    // began in every load, so waiting for it here adds nothing to the first paint.
     const repositoryLinks = mb.repository
       ? mb.ensureAsset("repository-links").catch((error) => {
           console.warn("metabrowser markdown: repository links are unavailable", error);

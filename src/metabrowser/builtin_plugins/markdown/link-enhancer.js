@@ -148,15 +148,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             window.MetabrowserRepositoryLinks?.localize(authoredTarget, mb.repository, {
               sourceKind,
             }) ?? null;
-          if (localized?.kind === "view" || localized?.kind === "route") {
-            // An in-app page does not leave the page, so it loses what an inert render gives
-            // an outside link; a plain click on a `/view/` target then opens it here.
-            anchor.removeAttribute("target");
-            anchor.removeAttribute("rel");
-            anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
-          }
+          // A document has no text context, so the answer is in-app or nothing. An in-app
+          // page does not leave the page, so it loses what an inert render gives an outside
+          // link, once its address is spelled; a plain click on a `/view/` target, spelled
+          // in the GitPath wire on a pin, then opens it here, and a pull request's or a
+          // commit's page is followed as a link.
           if (localized?.kind === "view") {
-            // Spelled in the GitPath wire on a pin, as every internal link on it is.
             const target = navigationTarget(localized.target);
             anchor.setAttribute("href", mb.navigation.href(target));
             if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
@@ -167,10 +164,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             }
             internalTargets.set(anchor, target);
           } else if (localized?.kind === "route") {
-            // A pull request's or a commit's page, which a plain click follows as a link.
             anchor.setAttribute("href", localized.href);
-          } else if (localized?.kind === "external") {
-            anchor.setAttribute("href", localized.url);
+          }
+          if (localized?.kind === "view" || localized?.kind === "route") {
+            anchor.removeAttribute("target");
+            anchor.removeAttribute("rel");
+            anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
           }
           mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
         } else {

@@ -26,7 +26,11 @@ from metabrowser.view_routes import decode_safe_commit_route, decode_safe_pull_r
 from tests.required_tools import require_node
 
 SESSION_JS = Path(__file__).resolve().parent / "dom" / "repository-links-session.js"
-OTHER_HEAD = "b" * 40
+# The head each pull request text of the session describes.
+TEXT_HEADS = {
+    "text away from its head": "b" * 40,
+    "text at the served head, from a subfolder": "a" * 40,
+}
 
 
 @functools.cache
@@ -96,16 +100,17 @@ def test_a_pinned_revisions_address_is_the_servers_spelling_of_the_path() -> Non
 
 
 def test_a_texts_path_off_its_head_is_that_file_at_the_head() -> None:
-    """A pull request text's path-relative reference names the head's file on github.com."""
+    """A pull request text's path-relative reference names the head's file on github.com,
+    where Metabrowser cannot show it: at another commit, or outside a served folder."""
 
     external = _rows("external")
     assert external
     for context, row in external:
-        assert context == "text away from its head", row
+        assert context in TEXT_HEADS, row
         selection = _reduced(row["result"]["url"]).selection
         relative = unquote(urlsplit(row["url"]).path.split("/pull/", 1)[1])
         assert selection.kind == ("tree" if relative == "" or relative.endswith("/") else "blob")
-        assert selection.ref_and_path[0] == OTHER_HEAD.encode(), row
+        assert selection.ref_and_path[0] == TEXT_HEADS[context].encode(), row
         assert b"/".join(selection.ref_and_path[1:]) == relative.rstrip("/").encode(), row
 
 

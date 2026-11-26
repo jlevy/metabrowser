@@ -55,14 +55,19 @@
   // `diff-` and the SHA-256 of its path (builtin_plugins/github/urls.py), optionally with a
   // line. Only the server can name its file (pull_file_anchor.py), so a link with one opens
   // the page, as `metab URL` does for a commit.
-  const FILE_ANCHOR = /^diff-[0-9a-f]{64}(?:[LR][0-9]+(?:-[LR][0-9]+)?)?$/;
+  const FILE_ANCHOR = /^diff-[0-9a-f]{64}(?:[LR][0-9]+(?:-[LR][0-9]+)?)?$/i;
   const HOSTS = new Set(["github.com", "www.github.com"]);
+  // A `%` that starts no escape, which the URL parser leaves in a query as written and the
+  // navigation codec refuses (`canonicalizeQuery` in static/navigation.js): such a link is
+  // left as it is rather than given an address that cannot be spelled.
+  const MALFORMED_ESCAPE = /%(?![0-9A-Fa-f]{2})/;
+  // GitHub's owner and repository names are ASCII; compared without case only once both
+  // are, so a character that folds to an ASCII letter (U+212A KELVIN SIGN to `k`) names no
+  // repository here, as it names none on github.com.
+  const OWNER_NAME = /^[A-Za-z0-9-]+$/;
+  const REPOSITORY_NAME = /^[A-Za-z0-9._-]+$/;
 
-  /**
-   * @typedef {Readonly<{kind: "view", target: MetabrowserPublicNavigationTarget, localization: "revision" | "working-tree"}>
-   *   | Readonly<{kind: "route", href: string, localization: "pull" | "commit" | "pulls", pull: Readonly<{number: number, tab: "" | "files" | "checks"}> | null}>
-   *   | Readonly<{kind: "external", url: string}>} RepositoryLinkTarget
-   */
+  /** @typedef {MetabrowserRepositoryLinkTarget} RepositoryLinkTarget */
 
   /**
    * @typedef {{
@@ -105,13 +110,15 @@
     if (
       !segments ||
       segments.length < 2 ||
+      !OWNER_NAME.test(segments[0]) ||
+      !REPOSITORY_NAME.test(segments[1]) ||
       !sameIdentity(segments[0], context.owner) ||
       !sameIdentity(segments[1].replace(/\.git$/i, ""), context.name)
     ) {
       return null;
     }
     const fragment = parsed.hash.length > 1 ? safeDecode(parsed.hash.slice(1)) : "";
-    if (fragment === null || fragment.includes("\0")) {
+    if (fragment === null || fragment.includes("\0") || MALFORMED_ESCAPE.test(parsed.search)) {
       return null;
     }
     const link = {
@@ -207,9 +214,10 @@
 
   /**
    * A pull request's page, its Changes or Checks tab, or one of its commits. An address
-   * whose first segment is a number is a pull request's, mapped or not; with a text
-   * context, any other address under `pull/` is the repository path a path-relative
-   * reference named.
+   * whose first segment is a number, or GitHub's own `new` (`pull/new/<branch>`, the page
+   * that opens a pull request, which `git push` prints), is a pull request's, mapped or not;
+   * with a text context, any other address under `pull/` is the repository path a
+   * path-relative reference named.
    *
    * @param {RepositoryLink} link
    * @param {MetabrowserPublicRepositoryContext} context
@@ -219,6 +227,9 @@
    */
   function pullLink(link, context, sourceKind, text) {
     const [number, tab, ...more] = link.rest.slice(1);
+    if (number === "new") {
+      return null;
+    }
     if (number === undefined || !PULL_NUMBER.test(number)) {
       return text ? textPath(link, context, sourceKind, text.head) : null;
     }
@@ -257,16 +268,22 @@
       return null;
     }
     const path = link.rest.slice(1);
-    if (head.toLowerCase() === context.revision.toLowerCase()) {
-      return view(
-        path,
-        link.directory || path.length === 0,
-        link.query,
-        link.fragment,
-        "revision",
-        context,
-        sourceKind,
-      );
+    // In place when the served tree is the head and serves the path; a path outside a
+    // served folder is shown on github.com, as one at another commit is.
+    const here =
+      head.toLowerCase() === context.revision.toLowerCase()
+        ? view(
+            path,
+            link.directory || path.length === 0,
+            link.query,
+            link.fragment,
+            "revision",
+            context,
+            sourceKind,
+          )
+        : null;
+    if (here !== null) {
+      return here;
     }
     const url = fileUrl(context, head, path, link.directory, `${link.search}${link.hash}`);
     return url === null ? null : Object.freeze({ kind: "external", url });
@@ -285,13 +302,25 @@
    * @returns {string | null}
    */
   function fileUrl(context, revision, path, directory = false, suffix = "") {
-    if (!isRepositoryContext(context) || !FULL_REVISION.test(revision)) {
+    if (
+      !isRepositoryContext(context) ||
+      !FULL_REVISION.test(revision) ||
+      path.some(
+        (segment) => segment === "" || segment === "." || segment === ".." || segment.includes("/"),
+      )
+    ) {
       return null;
     }
     const kind = directory || path.length === 0 ? "tree" : "blob";
-    const encoded = [context.owner, context.name, kind, revision.toLowerCase(), ...path]
-      .map(encodeURIComponent)
-      .join("/");
+    let encoded;
+    try {
+      encoded = [context.owner, context.name, kind, revision.toLowerCase(), ...path]
+        .map(encodeURIComponent)
+        .join("/");
+    } catch (_error) {
+      // A lone surrogate, which no URL can spell.
+      return null;
+    }
     return `https://github.com/${encoded}${directory && path.length > 0 ? "/" : ""}${suffix}`;
   }
 
@@ -420,17 +449,27 @@
       if (resolved === null || (resolved.kind === "view" && options.views === false)) {
         continue;
       }
-      changed += 1;
       if (resolved.kind === "external") {
         anchor.setAttribute("href", resolved.url);
+        changed += 1;
         continue;
       }
       const target = resolved.kind === "view" ? resolved.target : null;
       const routed = resolved.kind === "route" ? resolved : null;
-      anchor.setAttribute(
-        "href",
-        resolved.kind === "view" ? mb.navigation.href(resolved.target) : resolved.href,
-      );
+      let href;
+      try {
+        href =
+          target === null
+            ? /** @type {{href: string}} */ (resolved).href
+            : mb.navigation.href(target);
+      } catch (error) {
+        // An address the codec will not spell leaves this link as written, and the text's
+        // other links are still read.
+        console.warn("metabrowser: a link was left as written", error);
+        continue;
+      }
+      changed += 1;
+      anchor.setAttribute("href", href);
       anchor.removeAttribute("target");
       anchor.removeAttribute("rel");
       anchor.setAttribute("data-metabrowser-github-localization", resolved.localization);

@@ -255,6 +255,8 @@ A Mermaid block in a note shows as code.
 Write a link to a file in a note as its path from the repository’s root, such as
 `docs/plan.md`: it opens that file at the pull request’s head, in Metabrowser when the
 head is what it serves and on GitHub otherwise.
+A path whose first folder is named with digits reads as a pull request’s address, so
+write that file’s full GitHub link instead.
 A full GitHub link into the repository opens its page in Metabrowser when there is one
 ([Links in a Pull Request’s Text](#links-in-a-pull-requests-text)). A note whose render
 takes too long, or fails, shows as typed, with its line breaks kept and the line a

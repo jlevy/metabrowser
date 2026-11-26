@@ -3895,8 +3895,6 @@ declare global {
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 
-  /** What the freshness label says and offers; see static/source-freshness.js. */
-  /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserPublicNavigationTarget = MetabrowserNavigationTarget;
   type MetabrowserPublicRepositoryContext = MetabrowserRepositoryContext;
   /** static/repository-links.js, the `repository-links` on-demand bundle. */
@@ -3942,6 +3940,8 @@ declare global {
     ): string | null;
   }>;
 
+  /** What the freshness label says and offers; see static/source-freshness.js. */
+  /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserInertHtmlRuntime = Readonly<{
     ALIGN_VALUES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;

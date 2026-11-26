@@ -110,15 +110,19 @@ are at their transfer budget (`performance-budgets.toml`).
 - `enhance(root, mb, options)` applies `localize` to every `a[href]` of an inert text
   already reduced to the allowlist, rewrites each in-app link’s `href`, drops its
   `target` and `rel`, opens a `/view/` target through `mb.navigation.open` on a plain
-  click, and returns a disposer.
+  click, and returns how many links it changed.
+  A link whose address the navigation codec will not spell is left as written, and the
+  text’s other links are still read.
   The Markdown link enhancer keeps its own DOM pass and calls only `localize`.
 
 ### Resolution Rules
 
 A URL is a **repository link** when its scheme is `http` or `https`, its host is
 `github.com` or `www.github.com`, it carries no credentials or port, and its first two
-path segments name the served repository, compared without case and with one trailing
-`.git` removed. Anything else is left as it is.
+path segments are ASCII names of the served repository, compared without case and with
+one trailing `.git` removed. Anything else is left as it is, and so is a link whose query
+holds a `%` that starts no escape, which a raw HTML link can carry and no `/view/`
+address can spell.
 
 | Repository link | In-app target |
 | --- | --- |
@@ -149,11 +153,13 @@ request’s page as its base on the server, unchanged, so the page receives the 
 absolute URLs github.com would, and `localize` reads them with a **text context**: the
 pull request’s page and the commit its text describes, the head.
 
-A URL under `/<o>/<r>/pull/` whose rest is not a pull-request address (a number, then
-nothing or a tab) is what a path-relative reference becomes against that page, and is
-read as the repository path it names, at the head:
+A URL under `/<o>/<r>/pull/` whose rest is not a pull-request address (one that begins
+with a number, or with GitHub’s `new`, the page that opens a pull request) is what a
+path-relative reference becomes against that page, and is read as the repository path it
+names, at the head:
 
-- when the served revision is the head, it opens in place at `/view/<path>`;
+- when the served revision is the head and the path is inside the served root, it opens
+  in place at `/view/<path>`;
 - otherwise it becomes the external link to that path at the head,
   `github.com/<o>/<r>/blob/<head>/<path>`, or `tree/` for a path ending in `/`, which
   shows exactly the file the author meant, where github.com itself showed a missing
@@ -162,6 +168,8 @@ read as the repository path it names, at the head:
 So `docs/x.md` and `./docs/x.md` name the head’s file, `../blob/main/x.md` and
 `/<o>/<r>/blob/main/x.md` mean what they mean on github.com, and `7/files` is still pull
 request 7’s Changes.
+A path whose first folder is named with digits, such as `2024/notes.md`, reads as a pull
+request’s address and stays as written, since `pull/2024/...` is one on github.com.
 A stack’s Guided Review notes use the stack page’s drawn comparison head as their
 commit, since the stack’s guide describes the whole stack.
 

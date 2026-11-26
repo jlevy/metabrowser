@@ -412,7 +412,8 @@ async function viewFileOpener(comparison) {
  * Whether a link in rendered Markdown to a file of the head may open at its `/view/`
  * address: only while this page shows that head, the one commit at which the address
  * names that file. The rendered answer is the same for every page (its cache key names no
- * pin), so the page decides, and a link it does not keep is plain text.
+ * pin), so the page decides, and a link it does not keep opens the file on github.com
+ * (`headFile`).
  *
  * @param {Comparison | undefined} comparison
  * @returns {() => boolean}

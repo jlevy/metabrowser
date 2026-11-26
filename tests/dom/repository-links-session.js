@@ -85,6 +85,17 @@ const contexts = {
     },
     options: { sourceKind: "git_revision", text: { head: OTHER } },
   },
+  "text at the served head, from a subfolder": {
+    context: {
+      branch: null,
+      host: "github.com",
+      name: "docs",
+      owner: "example",
+      revision: SERVED,
+      served_prefix: "packages/handbook",
+    },
+    options: { sourceKind: "filesystem", text: { head: SERVED } },
+  },
   "text with no head yet": {
     context: {
       branch: "main",
@@ -144,6 +155,18 @@ const cases = {
     ["a port", "https://github.com:8443/example/docs"],
     ["a malformed escape", `${repo}/blob/feature/navigation/%zz.md`],
     ["a dot segment, escaped", `${repo}/blob/feature/navigation/%2e%2e/secret.md`],
+    // A raw HTML link keeps its address byte for byte, and the navigation codec refuses a
+    // `%` that starts no escape.
+    ["a query with a stray percent sign", `${repo}/blob/feature/navigation/a.md?a=50%`],
+    ["a query with a malformed escape", `${repo}/blob/feature/navigation/a.md?q=%zz`],
+    [
+      "an owner spelled with a sign that folds to a letter",
+      "https://github.com/exampl%E2%84%AAe/docs",
+    ],
+    [
+      "its Changes, at a file anchor in capitals",
+      `${repo}/pull/12/files#${ANCHOR.toUpperCase().replace("DIFF-", "diff-")}`,
+    ],
     ["not a URL", "docs/new.md"],
   ],
   subfolder: [
@@ -166,6 +189,8 @@ const cases = {
     ["with a query and fragment", `${repo}/pull/src/app.py?plain=1#L2`],
     ["a pull request's Changes, still", `${repo}/pull/7/files`],
     ["a number first is a pull request's address", `${repo}/pull/2024/notes.md`],
+    ["GitHub's page that opens a pull request", `${repo}/pull/new/feature/navigation`],
+    ["a stray percent sign", `${repo}/pull/docs/a.md?q=%zz`],
     ["a file on another branch, still external", `${repo}/blob/main/README.md`],
   ],
   "text away from its head": [
@@ -175,6 +200,10 @@ const cases = {
     ["with a query and fragment", `${repo}/pull/src/app.py?plain=1#L2`],
     ["a name that needs escaping", `${repo}/pull/docs/space%20name.md`],
     ["a file on the pinned branch, in place", `${repo}/blob/main/README.md`],
+  ],
+  "text at the served head, from a subfolder": [
+    ["a file inside the served folder", `${repo}/pull/packages/handbook/a.md`],
+    ["a file outside it, on github.com", `${repo}/pull/README.md`],
   ],
   "text with no head yet": [["a path-relative reference", `${repo}/pull/docs/new.md`]],
 };

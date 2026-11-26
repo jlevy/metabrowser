@@ -2409,8 +2409,10 @@ async def index(
         # What a link in authored text opens (static/repository-links.js): only a page with a
         # GitHub repository's identity reads one, beside the text that holds it, a Markdown
         # render, a pull request's text, a commit's message, or a rendered diff. As a startup
-        # script it would cost every folder's shell its compressed size, and the startup
-        # scripts were 109 bytes under their budget when it was written (2026-11-26).
+        # script it would cost every folder's shell its compressed size, 6,764 bytes, and the
+        # startup scripts were 109 bytes under their budget when it was written (2026-11-26).
+        # On demand it arrives before a Markdown file's render is asked for
+        # (builtin_plugins/markdown/rendered.js has the measurement).
         "repository-links": [
             {
                 "src": _static_asset_url("repository-links.js"),

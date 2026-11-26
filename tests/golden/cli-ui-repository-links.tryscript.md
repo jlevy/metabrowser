@@ -28,8 +28,9 @@ null, for a link left as written.
   repository’s root; a pull request, its Changes and Checks, one of its commits, a
   commit by its full ID, and the pull request list open their pages.
   Another branch, a tag, an abbreviated commit, an issue, a comparison, a comment’s
-  fragment, a query the page would lose, another repository or host, and a malformed
-  address stay external.
+  fragment, a query the page would lose, another repository or host, an owner spelled
+  with a sign that folds to a letter, and a malformed address stay external, a query with
+  a `%` that starts no escape among them, since the navigation codec cannot spell it.
 - `subfolder` serves `packages/handbook` of the same checkout: a path outside it, the
   repository’s root among them, stays external.
 - `pin` is a mirror pinned at `main`, whose addresses spell each path in the GitPath
@@ -37,8 +38,10 @@ null, for a link left as written.
 - The three text contexts are a pull request’s text, whose links the server resolved
   against the pull request’s page: an address under `pull/` that is not a pull
   request’s, which is what a path-relative reference becomes there, names the head’s
-  file. It opens in place when the served tree is the head, as the file on github.com at
-  the head when it is not, and stays as written while the head is not known.
+  file. It opens in place when the served tree is the head and serves the path, as the
+  file on github.com at the head otherwise, and stays as written while the head is not
+  known. An address whose first segment is a number, or GitHub’s `new`, the page that
+  opens a pull request, is a pull request’s.
 
 `enhanced` runs `enhance` over four links of an inert text, as a pull request’s page and
 a commit’s page call it, and clicks each plainly and with a modifier.
@@ -386,6 +389,34 @@ $ node tests/dom/repository-links-session.js
         "result": null
       },
       {
+        "label": "a query with a stray percent sign",
+        "url": "https://github.com/example/docs/blob/feature/navigation/a.md?a=50%",
+        "result": null
+      },
+      {
+        "label": "a query with a malformed escape",
+        "url": "https://github.com/example/docs/blob/feature/navigation/a.md?q=%zz",
+        "result": null
+      },
+      {
+        "label": "an owner spelled with a sign that folds to a letter",
+        "url": "https://github.com/exampl%E2%84%AAe/docs",
+        "result": null
+      },
+      {
+        "label": "its Changes, at a file anchor in capitals",
+        "url": "https://github.com/example/docs/pull/12/files#diff-0000000000000000000000000000000000000000000000000000000000000000",
+        "result": {
+          "kind": "route",
+          "href": "/pull/12/files",
+          "localization": "pull",
+          "pull": {
+            "number": 12,
+            "tab": "files"
+          }
+        }
+      },
+      {
         "label": "not a URL",
         "url": "docs/new.md",
         "result": null
@@ -549,6 +580,16 @@ $ node tests/dom/repository-links-session.js
         "result": null
       },
       {
+        "label": "GitHub's page that opens a pull request",
+        "url": "https://github.com/example/docs/pull/new/feature/navigation",
+        "result": null
+      },
+      {
+        "label": "a stray percent sign",
+        "url": "https://github.com/example/docs/pull/docs/a.md?q=%zz",
+        "result": null
+      },
+      {
         "label": "a file on another branch, still external",
         "url": "https://github.com/example/docs/blob/main/README.md",
         "result": null
@@ -604,6 +645,27 @@ $ node tests/dom/repository-links-session.js
             "path": "g1-UkVBRE1FLm1k"
           },
           "localization": "working-tree"
+        }
+      }
+    ],
+    "text at the served head, from a subfolder": [
+      {
+        "label": "a file inside the served folder",
+        "url": "https://github.com/example/docs/pull/packages/handbook/a.md",
+        "result": {
+          "kind": "view",
+          "target": {
+            "path": "a.md"
+          },
+          "localization": "revision"
+        }
+      },
+      {
+        "label": "a file outside it, on github.com",
+        "url": "https://github.com/example/docs/pull/README.md",
+        "result": {
+          "kind": "external",
+          "url": "https://github.com/example/docs/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/README.md"
         }
       }
     ],

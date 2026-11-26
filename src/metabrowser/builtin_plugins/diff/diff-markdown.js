@@ -2300,6 +2300,8 @@ export function createMarkdownViews(deps) {
             link.removeAttribute("href");
           }
         }
+        // Marked as the outside links it now holds, as one drawn after the change is.
+        deps.enhanceLinks?.(file.rendered);
       }
     },
     dispose() {

@@ -5266,7 +5266,8 @@ export function mountDiffView(container, document_, api, options = {}) {
         view.viewFileBusy = null;
       },
       // Another tab switched the server's pin: a link opens the same path at that pin now,
-      // so each becomes the switch back, and rendered Markdown's links plain text.
+      // so each becomes the switch back, and rendered Markdown's links to a file of the head
+      // open it on github.com.
       changed() {
         repaintViewFileControls(view);
         view.markdown?.controller.closeHeadLinks();
