@@ -4233,9 +4233,13 @@ declare global {
     schedule(callback: () => void, delayMs: number): unknown;
     cancel(handle: unknown): void;
     render(model: MetabrowserSourceRefSelectorModel): void;
-    navigate(href: string): void;
+    /** Go to *href*, or, with *state*, reload there as that history entry: the Commits tab's
+     * landing, which has no address of its own. */
+    navigate(href: string, state?: Readonly<{ gitLanding: true }>): void;
     /** The page's own pathname, sent so a switch can keep it. */
     currentView(): string | null;
+    /** The main tab in front (`MAIN_TABS` in static/main-tabs.js), whose place a switch keeps. */
+    tab?(): string | null;
     /** A switch is asked: *going* settles true when the page goes, false when it stays. */
     hold?(going: Promise<boolean>): boolean | undefined;
   };

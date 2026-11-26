@@ -200,10 +200,9 @@ assuming a `.git` directory.
 A pinned revision is not a working tree.
 Its `GitLocation` is a `RepositoryStoreTarget` plus the pinned commit ID; discovery
 reports a detached `HEAD` at that commit and an empty `root`, and history walks that
-commit by default rather than the store’s `HEAD`. The Commits tab’s routes do not take
-the served pin as that commit (`history_git_location` in `git/routes.py`): a mirror’s
-use its default branch’s commit, and a checkout’s read its folder, so the tab is the
-same whichever revision the Files tab shows.
+commit by default rather than the store’s `HEAD`. Every route of the Commits tab reads
+the served pin as that commit (`session_git_location` in `git/routes.py`), a mirror’s
+and a checkout’s alike, so the tab shows the revision the Files tab shows.
 
 The identity is cached per location for `GIT_REPO_INFO_TTL_S`. Past it, a repository the
 reader owns keeps its identity while the refs’ state (below) is unchanged, and
