@@ -5,13 +5,16 @@ base:
     - linear
     - Feature
   priority: 2
+  slot: in_progress
   status: in_progress
   title: Lean language support and a repeatable language recipe
 bead_id: is-01m8ahev7t0174z3a2vhhnpw81
 external_id: 6f903eec-ab37-494d-8aa0-dde216250a32
 external_key: OS-634
 external_url: https://linear.app/finterm-ai/issue/OS-634/lean-language-support-and-a-repeatable-language-recipe
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
 remote_updated_at: 2026-11-25T23:52:18.119Z
 state: linked
-synced_at: 2026-11-25T23:52:18.398Z
+synced_at: 2026-11-26T00:03:57.122Z
 type: lk
