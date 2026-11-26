@@ -1,0 +1,51 @@
+created_at: 2026-11-26T10:16:59.658Z
+ops:
+  - bead_id: is-01m78ftefp9ks9100ebsm7sm29
+    block: |-
+      ⟦tbd⟧
+      `mb-xbw3` · epic · in_progress · P1
+      Spec: [plan-2026-11-12-plugin-sources.md](https://github.com/jlevy/metabrowser/blob/codex/metabrowser-pr-380/docs/project/specs/active/plan-2026-11-12-plugin-sources.md)
+      Children: 26 (6 ready)
+      Bead: `tbd show mb-xbw3`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
+    kind: splice_description
+  - bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
+    block: |-
+      ⟦tbd⟧
+      `mb-3s19` · epic · in_progress · P2
+      Children: 38 (27 ready)
+      Bead: `tbd show mb-3s19`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    kind: splice_description
+  - bead_id: is-01m82h0qrnw9vg6vrj597asgpv
+    block: |-
+      ⟦tbd⟧
+      `mb-dip2` · epic · open · P1
+      Spec: [plan-2026-11-22-pull-request-update-cadence.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md)
+      Children: 47 (1 ready)
+      Bead: `tbd show mb-dip2`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0c7789d9-960d-4814-a23b-d2a26e474369
+    kind: splice_description
+  - bead_id: is-01m8be438xa5kc27fpbd5rkbcy
+    block: |-
+      ⟦tbd⟧
+      `mb-u16j` · epic · in_progress · P2
+      Children: 3 (0 ready)
+      Bead: `tbd show mb-u16j`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: cdbe63d3-7e97-4a12-b62d-a72c900972ef
+    kind: splice_description
+provider: linear
+run_id: 01m8bnqh07q40sv8qwj0tg02jb
+type: in
