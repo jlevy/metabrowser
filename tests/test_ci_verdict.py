@@ -143,11 +143,11 @@ def test_a_chrome_job_skipped_because_the_plan_decided_none_is_accepted_and_said
     assert any(line.startswith("stack-integration skipped: ") for line in result.lines)
 
 
-@pytest.mark.parametrize("chrome", ["whole", "fast", ""])
+@pytest.mark.parametrize("chrome", ["whole", ""])
 def test_a_chrome_job_skipped_when_the_plan_decided_to_run_it_fails(
     tmp_path: Path, chrome: str
 ) -> None:
-    """Whole on main, fast on a pull request, or no decision at all, as when the plan
+    """The whole tier, or no decision at all, as when the plan
     job failed: a Chrome job that did not run is a check that did not happen."""
 
     result = verdict(tmp_path, results(chrome="skipped"), chrome=chrome)

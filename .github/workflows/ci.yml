@@ -52,7 +52,7 @@ jobs:
   plan:
     # Reads whether main is red, and decides which path the run takes, the short one of
     # a pull request or main's whole matrix: each tier's interpreters and parts, whether
-    # the Chrome tier runs and with its slow tests, the admitted Gits, and whether
+    # the Chrome tier runs, the admitted Gits, and whether
     # stack-integration has anything to check (devtools/ci_plan.sh). It always runs and
     # writes the event, the base, main's state, both trees, and its decisions to its
     # summary, so a skipped chrome or stack-integration still says why.
@@ -69,7 +69,6 @@ jobs:
       path: ${{ steps.decide.outputs.path }}
       pythons: ${{ steps.decide.outputs.pythons }}
       chrome: ${{ steps.decide.outputs.chrome }}
-      chrome-target: ${{ steps.decide.outputs.chrome-target }}
       unit-shards: ${{ steps.decide.outputs.unit-shards }}
       goldens-shards: ${{ steps.decide.outputs.goldens-shards }}
       chrome-shards: ${{ steps.decide.outputs.chrome-shards }}
@@ -335,13 +334,12 @@ jobs:
         run: make test-serial SHARD=${{ matrix.shard }}
 
   chrome:
-    # The Chrome tier in four parts. A push to main, and a pull request while main is
-    # red, run all of it on every interpreter (make test-chrome). A pull request while
-    # main is green runs it on PR_CHROME_PYTHON without its slow tests (make
-    # test-chrome-fast), and not at all when its change touches no browser path; the
-    # plan job decides (chrome, chrome-target, pythons, and chrome-shards) and its
-    # summary says from which paths, and ci-ok accepts the skip only when it decided
-    # none.
+    # The Chrome tier, always all of it (make test-chrome). A push to main, and a pull
+    # request while main is red, run it on every interpreter. A pull request while main
+    # is green runs it on PR_CHROME_PYTHON in more, shorter parts, and not at all when
+    # its change touches no browser path; the plan job decides (chrome, pythons, and
+    # chrome-shards) and its summary says from which paths, and ci-ok accepts the skip
+    # only when it decided none.
     needs: plan
     if: needs.plan.outputs.chrome != 'none'
     name: chrome (${{ matrix.python-version }}, ${{ matrix.shard }})
@@ -355,8 +353,8 @@ jobs:
     # every part alike, since the parts are dealt by measured time
     # (devtools/shard_weights.json). Dealt by rank in node-ID order, the first part took
     # 6.0 to 6.6 minutes on run 45062416967 and the others 2.7 to 4.7. The main path
-    # sets the limit: a pull request's parts, without the slow tests, took 2.5 to 2.7
-    # minutes (run 45069289704).
+    # sets the limit: a pull request deals the same tests into more parts
+    # (CHROME_SHARDS_PR in devtools/ci_plan.sh, with the measurement).
     timeout-minutes: 7
     steps:
       - name: Checkout
@@ -396,7 +394,7 @@ jobs:
         run: uv python install
 
       - name: Run the Chrome tier
-        run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}
+        run: make test-chrome SHARD=${{ matrix.shard }}
 
   admitted-git:
     # Production refuses repository acquisition below the Git security floor

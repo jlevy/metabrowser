@@ -354,7 +354,7 @@ says why each check runs where it does.
 | `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the run’s path, each tier’s interpreters and parts, whether the Chrome tier runs, the admitted Gits, and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
 | `unit` | `make test-parallel`, in parts by `SHARD` | the plan’s interpreters and parts |
 | `goldens and serial` | `make test-goldens`, then `make test-serial`, each in parts by `SHARD` | the same |
-| `chrome` | the plan’s target, in parts by `SHARD`: `make test-chrome` on the main path; on the pull-request path `make test-chrome-fast`, or nothing when the change touches no browser path | the same |
+| `chrome` | `make test-chrome`, in parts by `SHARD`; on the pull-request path, nothing when the change touches no browser path | the same |
 | `admitted-git` | `make test-admitted-git`, in parts by `SHARD` | the plan’s Git releases: all three on the main path, the lowest on the pull-request path |
 | `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
 | `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded, and says why it accepted a skipped `stack-integration` | every run |
@@ -366,20 +366,22 @@ A pull request while `main` is green takes the *pull-request path*, which the ow
 asked on 2026-11-22 to finish in about three minutes:
 
 - one interpreter, `PR_CHROME_PYTHON`, for every tier, in more and shorter parts;
-- the Chrome tier without its slow tests (`make test-chrome-fast`): those measured at
-  `SLOW_TEST_S` or more in `devtools/shard_weights.json` (`tests/suite_tiers.py`). A
-  test is slow by its measurement, never by a marker, and one with no measurement yet
-  runs;
-- no Chrome job at all when the change touches no path a Chrome test can observe.
+- the whole Chrome tier, slow tests included, when the change touches a path a Chrome
+  test can observe, and no Chrome job at all when it touches none.
+  Until 2026-11-25 a pull request left out the slowest Chrome tests, and three pull
+  requests in one week merged green and broke one of them on `main`, which blocked every
+  merge until it was fixed.
+  No narrower choice was safe: one of the three changed a key in the shell’s scripts and
+  broke a test of another view that pressed it.
   `BROWSER_PATHS` in `devtools/ci_plan.sh` is the list, each entry with its reason, and
   the `plan` job’s summary names the paths that decided it.
   A change to the backend alone can still break a Chrome test, since each drives a real
   server: the push to `main` that follows runs the whole tier and is where that shows;
 - `admitted-git` on the lowest admitted release, which is the security floor.
 
-Every Chrome test, slow or not, runs on every push to `main`, in the nightly soak, and
-in `make test` and `make verify`. `devtools/ci_plan.sh` holds the parts each path deals
-a tier into, with the measurements that set them, and `tests/test_ci_plan.py` holds that
+Every Chrome test also runs on every push to `main`, in the nightly soak, and in
+`make test` and `make verify`. `devtools/ci_plan.sh` holds the parts each path deals a
+tier into, with the measurements that set them, and `tests/test_ci_plan.py` holds that
 the main path narrows nothing.
 
 `ci-ok` is the one check to require.
