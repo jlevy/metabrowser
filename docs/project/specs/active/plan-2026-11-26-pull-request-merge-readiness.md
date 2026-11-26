@@ -4,8 +4,8 @@
 
 **Author:** Drafted with LLM assistance for the project owner’s review
 
-**Status:** Draft, for review.
-Being built as a stack of pull requests.
+**Status:** Implemented in review: layers 0 to 6 are open as one stack.
+
 Epic `mb-u16j`; Phase 1 is `mb-pcvm` and Phase 2 is `mb-ntnz`, built as one stack (see
 [Implementation Plan](#implementation-plan)); Phase 3, `mb-om2v`, follows it.
 
@@ -895,41 +895,42 @@ The two phases are the data, which `metab` shows, and the surfaces that draw it.
 
 **Layer 1: the status model and readiness** (`mb-epm3`).
 
-- [ ] `pull_status.py`: `PullStatus`, `ChecksSummary`, and `PullChecks`, with their
+- [x] `pull_status.py`: `PullStatus`, `ChecksSummary`, and `PullChecks`, with their
   bounds, their wire forms, and GitHub’s buckets for each check state.
-- [ ] `pull_readiness.py`: requirements and verdict, with the invariant tests in
+- [x] `pull_readiness.py`: requirements and verdict, with the invariant tests in
   [Testing Strategy](#testing-strategy).
 
 **Layer 2: reading and keeping the status** (`mb-8bp1`).
 
-- [ ] The page’s `PullStatus` GraphQL read, started on every full read and where a
+- [x] The page’s `PullStatus` GraphQL read, started on every full read and where a
   `checks_only` read is started today, with fixtures and the fake GraphQL answering it.
-- [ ] The `pull_status` table in the catalog database and `pulls/<n>.checks.json`,
+- [x] The `pull_status` table in the catalog database and `pulls/<n>.checks.json`,
   cleared with the cache.
-- [ ] The envelope’s `status`, `readiness`, and `checks`, and the `--show` model line.
-- [ ] Goldens, the parity registry, and
+- [x] The envelope’s `status`, `readiness`, and `checks`, and the `--show` model line.
+- [x] Goldens, the parity registry, and
   [the map](../../architecture/arch-views-models-routes.md).
-- [ ] Measure the read’s cost and latency, and record them beside its constants.
-- [ ] Check whether `mergeStateStatus` depends on the viewer.
-- [ ] A changelog fragment.
+- [x] Measure the read’s cost and latency, and record them beside its constants.
+- [x] Check whether `mergeStateStatus` depends on the viewer: not settled, since no
+  protected branch was at hand to measure against (`pull_status_read.py`).
+- [x] A changelog fragment.
 
 **Layer 3: the core without operational status** (`mb-1iru`).
 
-- [ ] Take `mergeable` out of `PullRequest` and cores, and the checks parts out of
+- [x] Take `mergeable` out of `PullRequest` and cores, and the checks parts out of
   `PullRecord`, and raise `PULL_RECORD_SCHEMA`. The full read stops reading `check-runs`
   and `status` over REST; the probes stay.
-- [ ] `mergeability_pending`, `checks_settling`, `record_freshness`, and
+- [x] `mergeability_pending`, `checks_settling`, `record_freshness`, and
   `_same_mergeability` read the status.
-- [ ] The Checks tab draws its list from the envelope’s `checks`, in GitHub’s buckets.
-- [ ] [GitHub Pull Requests](../../architecture/arch-github-pull-requests.md) describes
+- [x] The Checks tab draws its list from the envelope’s `checks`, in GitHub’s buckets.
+- [x] [GitHub Pull Requests](../../architecture/arch-github-pull-requests.md) describes
   the split.
 
 **Layer 4: every open pull request’s status** (`mb-0vb0`).
 
-- [ ] The Pulls tab’s `PullStatuses` scan, started by `pulls-refresh` when due, with the
+- [x] The Pulls tab’s `PullStatuses` scan, started by `pulls-refresh` when due, with the
   `MERGEABLE_SETTLE_S` re-read and the base-moved trigger, measured.
-- [ ] The `pull-statuses` route, its parity row, golden, and route-table row.
-- [ ] A changelog fragment.
+- [x] The `pull-statuses` route, its parity row, golden, and route-table row.
+- [x] A changelog fragment.
 
 ### Phase 2: Readiness on the Page, the List, and Stacks
 
@@ -1093,7 +1094,8 @@ The owner’s decisions of 2026-11-26:
 4. **Stack header.** Should the stack page’s state tally gain a readiness tally, such as
    “3 Ready · 1 Merge conflicts”?
 5. **Viewer.** Does `mergeStateStatus` depend on the viewer, such as an admin who may
-   bypass? Layer 2 checks it.
+   bypass? Layer 2 could not settle it: its only reader was an admin of a repository
+   whose `main` has no protection or ruleset (`pull_status_read.py`).
 6. **Behind without a rule.** Should the pull request say how far behind its base it is
    when no rule requires updating?
    The mirror can count it locally from the comparison’s base commit.
