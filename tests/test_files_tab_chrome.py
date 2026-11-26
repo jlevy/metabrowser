@@ -523,10 +523,10 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # watcher reads (watch_backends.py). A host whose events do not arrive fails here, by
     # name: on a Mac up 8 days whose fseventsd had used 4,654 CPU minutes, `watchfiles`
     # alone saw no event for a file written under three directories in 30 s, while its
-    # polling saw each in 1 to 2 s, and the page's store never held the file (mb-em6e).
-    assert measured["refreshDelivered"], (
-        "the written file never reached the page: no file event came through the server's "
-        "watcher in 15 s. Check the host's native file events before the page's refresh; "
+    # polling saw each in 1 to 2 s, and the server's watcher logged no batch (mb-em6e).
+    assert refresh["after"]["written"] or measured["refreshDelivered"], (
+        "the written file never reached the page: no change came down its event stream in "
+        "15 s. Check the host's native file events before the page's refresh; "
         "on macOS, a `watchfiles.awatch` of a temporary directory that reports no write "
         "means fseventsd is not delivering."
     )
