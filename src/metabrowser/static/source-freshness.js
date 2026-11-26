@@ -22,8 +22,12 @@
 // tab switched it, or a restart -- the row offers a reload.
 //
 // A repository folder that keeps a store of its checkout's origin has the row on every
-// page, its working tree's too: what is fetched there is that store, never the checkout,
-// and the row says so (`describe` with `checkout`). Its ref selector offers the reload.
+// page of a revision: what is fetched there is that store, never the checkout, and the
+// row says so (`describe` with `checkout`). Its ref selector offers the reload. Its
+// working tree's page has no row, since it shows the disk and nothing of the store: the
+// row mounts only on a pinned revision (app.js, `startSourceFreshness`). The store is
+// fetched from that page by the navigation's Refresh (static/refresh-plan.js, `origin`)
+// and by an open chooser list (static/source-ref-selector.js, `askForOrigin`).
 //
 // A repository folder's page on one of the checkout's own branches follows that branch
 // too, when the reader's commit or fetch moves it. The status says how often to ask
@@ -166,8 +170,7 @@
    * @param {{shown: MetabrowserSourcePage | null, nowMs: number, error?: string | null, checkout?: boolean}} page
    *   *shown* is the pin and ref the page was rendered for. *checkout* is whether the page
    *   is a repository folder's: what is fetched is then the store Metabrowser keeps of the
-   *   checkout's origin, on every page of the folder, its working tree's too, and the row
-   *   says so where a mirror's says "mirror".
+   *   checkout's origin, and the row says so where a mirror's says "mirror".
    * @returns {MetabrowserSourceFreshnessModel}
    */
   function describe(status, page) {
@@ -289,7 +292,8 @@
     }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
-    // A folder's ref selector makes this offer itself, for its working tree's page too.
+    // A folder's ref selector makes this offer itself, as it does on its working tree's
+    // page, which has no row.
     if (
       !folder &&
       page.shown !== null &&

@@ -1042,17 +1042,18 @@ def test_ref_opens_an_origin_branch_from_the_store_once_the_cache_has_one(
     assert f'"pin": "{folder.behind}"' in local.stdout and "ref:" not in local.stderr
 
 
-def test_every_page_of_a_folder_with_a_store_has_the_freshness_row_and_its_status(
+def test_every_page_of_a_folder_with_a_store_has_its_status_and_a_revisions_the_row(
     folder: _Folder, served: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The working tree's page and a local branch's say when the origin's store was
-    fetched and can refresh it. The working tree follows nothing; the local branch
-    follows the checkout's own ref, and its page's ask reads that ref beside the store's
-    own answer."""
+    """The working tree's status and a local branch's say when the origin's store was
+    fetched and that it can be refreshed. The working tree follows nothing and its page
+    has no freshness row, since it shows the disk: the navigation's Refresh fetches the
+    store from there. The local branch follows the checkout's own ref, its page has the
+    row, and its page's ask reads that ref beside the store's own answer."""
 
     read_refs_at_every_ask(monkeypatch)
     _ready(served)
-    assert 'id="source-freshness"' in served.get("/view/").text
+    assert 'id="source-freshness"' not in served.get("/view/").text
     status = served.get("/api/source/status").json()
     assert status["subject"] == "attached_filesystem"
     assert status["refreshable"] is True and status["last_fetch_at"] is not None
@@ -1061,6 +1062,7 @@ def test_every_page_of_a_folder_with_a_store_has_the_freshness_row_and_its_statu
     folder.clock.advance(3600)
     assert served.get("/api/source/status").json()["stale"] is True
     local = _post(served, "/api/source/pin", {"ref": "refs/heads/trunk"}).json()["status"]
+    assert 'id="source-freshness"' in served.get("/view/").text
     assert local["refreshable"] is True and local["follows"] is True
     assert local["probe_every_s"] == CHECKOUT_REFS_POLL_S
     # The reader commits on trunk: the page's ask finds it, and the store, an hour old

@@ -68,6 +68,9 @@ async function planSteps() {
     ["Pulls in front, a file still in the pane", { front: "pulls", owner: "file" }],
     ["Commits in front, a commit in the pane", { front: "git", owner: "git" }],
     ["Commits in front, a file still in the pane", { front: "git", owner: "file" }],
+    // The branch and tag chooser's list is on screen while it is open, under Files or
+    // Commits, and a working tree's fetch of its origin never is.
+    ["Files in front, the chooser's list open", { front: "files", owner: "file", chooser: true }],
   ];
   steps.push({
     step: "each screen's order: the parts on screen, then the rest, each half in plan order",
@@ -173,9 +176,15 @@ function stub(attributes = {}) {
  * The glue on a stand-in page with *front* in front and *owner* holding the pane: a
  * mirror's, with its freshness row and the Pulls tab, or, without *store*, a local
  * repository's, with neither. With *sourceFails*, the freshness row's script fails to load
- * that many times first, as a dropped connection fails it.
+ * that many times first, as a dropped connection fails it. With *chooser*, the page has
+ * the branch and tag chooser, its list "open" or "closed"; with *workingTree* it is a
+ * checkout's working tree's page, which has no freshness row and fetches its origin last.
  */
-async function pageSteps(front, owner, { store = true, sourceFails = 0 } = {}) {
+async function pageSteps(
+  front,
+  owner,
+  { store = true, sourceFails = 0, chooser = null, workingTree = false } = {},
+) {
   const asked = [];
   let failures = sourceFails;
   const record = (what) => async () => {
@@ -199,8 +208,15 @@ async function pageSteps(front, owner, { store = true, sourceFails = 0 } = {}) {
   const preview = stub();
   preview.dataset.previewOwner = owner;
   const tab = stub({ "data-tab": front });
+  const selector = stub();
+  selector.dataset.open = String(chooser === "open");
+  const elements = {
+    "nav-refresh": button,
+    "preview-pane": preview,
+    ...(chooser === null ? {} : { "source-ref-selector": selector }),
+  };
   const document = {
-    getElementById: (id) => ({ "nav-refresh": button, "preview-pane": preview })[id] ?? null,
+    getElementById: (id) => elements[id] ?? null,
     querySelector: (selector) => (selector === ".nav-tab-bar .tab-btn.active" ? tab : null),
   };
   const context = load({
@@ -216,11 +232,21 @@ async function pageSteps(front, owner, { store = true, sourceFails = 0 } = {}) {
           return Promise.reject(new Error("Failed to load asset"));
         }
         return Promise.resolve(
-          store ? { refreshNow: record("source: the freshness row's refreshNow") } : null,
+          store && !workingTree
+            ? { refreshNow: record("source: the freshness row's refreshNow") }
+            : null,
         );
       },
     },
     MetabrowserGitPanel: { refresh: record("git: the Commits panel's refresh") },
+    // The chooser the page mounted, whose two parts the plan asks it for at each press.
+    MetabrowserSourceRefSelector: {
+      mounted: () => ({
+        reread: record("refs: the chooser's reread"),
+        fetchOrigin: record("origin: the chooser's fetchOrigin"),
+      }),
+    },
+    ...(workingTree ? { METABROWSER_SOURCE_CHECKOUT: { working_tree: true } } : {}),
   });
   await turn();
   const plan = context.MetabrowserRefreshPlan.plan();
@@ -228,7 +254,7 @@ async function pageSteps(front, owner, { store = true, sourceFails = 0 } = {}) {
   // each part then asks, and when it asks nothing, is the list's own: the Pulls panel's
   // session runs the production list's parts, behind another tab too
   // (github-pulls-panel-session.js, "Refresh behind the Files tab").
-  if (store) {
+  if (store && !workingTree) {
     plan.provide("page", record("page: the part the Pulls list lends for the page beside it"));
     plan.provide("pulls", record("pulls: the part the Pulls list lends for itself"));
   }
@@ -237,7 +263,7 @@ async function pageSteps(front, owner, { store = true, sourceFails = 0 } = {}) {
     await turn();
   }
   return {
-    step: `a click with ${front} in front and the pane's owner "${owner}"${store ? "" : ", a local repository with no store and no Pulls tab"}${sourceFails ? `, after the freshness row's script failed to load ${sourceFails === 1 ? "once" : `${sourceFails} times`}` : ""}`,
+    step: `a click with ${front} in front and the pane's owner "${owner}"${store ? "" : ", a local repository with no store and no Pulls tab"}${sourceFails ? `, after the freshness row's script failed to load ${sourceFails === 1 ? "once" : `${sourceFails} times`}` : ""}${workingTree ? ", a checkout's working tree" : chooser === null ? "" : ", a revision"}${chooser === null ? "" : ` with the chooser's list ${chooser}`}`,
     parts: plan.parts(),
     asked,
   };
@@ -250,6 +276,13 @@ async function main() {
   steps.push(await pageSteps("git", "git"));
   steps.push(await pageSteps("files", "file", { store: false }));
   steps.push(await pageSteps("files", "file", { sourceFails: 1 }));
+  // A page with the chooser. A revision's fetches, then reads again, the open list
+  // straight after the fetch; a working tree's reads the disk and the history again, and
+  // only then fetches its origin, once the button is offered again.
+  steps.push(await pageSteps("files", "file", { chooser: "open" }));
+  steps.push(await pageSteps("files", "file", { chooser: "closed" }));
+  steps.push(await pageSteps("files", "file", { chooser: "open", workingTree: true }));
+  steps.push(await pageSteps("git", "git", { chooser: "closed", workingTree: true }));
   process.stdout.write(`${JSON.stringify({ steps }, null, 2)}\n`);
 }
 

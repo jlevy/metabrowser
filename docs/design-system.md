@@ -1415,10 +1415,14 @@ the control does, not from where the answer comes from:
 - **One Refresh for the page.** The Refresh at the top of the navigation refreshes
   everything the page holds that can be read again, each part through the path it
   already had: the mirror’s or origin’s fetch, the pull request page in the main pane,
-  the Files tree with the file or folder the pane shows, the Pulls list, and the Commits
-  history, which follows the revision the server serves.
-  It refreshes what is on screen first, the tab in front and what holds the main pane,
-  then what is behind the other tabs, so a tab turned to next is already fresh.
+  the Files tree with the file or folder the pane shows, the Pulls list, the Commits
+  history, which follows the revision the server serves, and the branch and tag
+  chooser’s list while it is open.
+  A checkout’s working tree has no fetch its page waits for, so there the origin is
+  fetched last, in the background, after the disk and the history are read again
+  ([The Ref Selector](#the-ref-selector)). It refreshes what is on screen first, the tab
+  in front and what holds the main pane, then what is behind the other tabs, so a tab
+  turned to next is already fresh.
   Within each half the fetch comes first, since every other part reads what it brings.
   The glyph waits while the parts on screen refresh, and only then; each part shows its
   own busy state while it runs.
@@ -7015,9 +7019,9 @@ children. Visually similar surfaces do not borrow the wrong role merely to share
 
 A served mirror or a served checkout has a revision row directly below the tab bar,
 above the Files filters, including Group by, and above the Commits tally
-(`static/source-ref-selector.js`). A checkout’s row first says which view the page
-shows, **Working tree** or **Revision**, in words; a mirror’s names the ref alone.
-The row has these targets:
+(`static/source-ref-selector.js`). The row names what the page shows in one form: a ref
+alone, and, for a checkout’s files on disk, **Working tree** and the branch they are on.
+The row has two targets, and the same two whatever the page shows:
 
 - **The branch or tag chip** names the ref the page shows, or, on a checkout’s working
   tree, the branch its `HEAD` is on.
@@ -7027,10 +7031,16 @@ The row has these targets:
   The `W` shortcut opens the same list.
   It remains visible beside the chip and keeps its open highlight while the chooser is
   open. The list spans the pane to give ref names, commit IDs, and ages room.
-- **The back button**, on a checkout’s revision only, returns to the working tree in one
-  click, as described below.
 
-The chooser has a filter box and one row per ref.
+The chooser has a tab for each list, a filter box, and one row per ref.
+A mirror’s tabs are **Branches** and **Tags**, and a checkout’s are **Working tree**,
+**Branches**, **Remotes**, and **Tags**.
+
+- **The list opens on the tab that holds what the page shows** (`openKind`): the working
+  tree’s on a page of the files on disk, and a branch’s, a remote-tracking branch’s, or
+  a tag’s own list on a page of that ref, where its row is marked current.
+  A commit with no ref, or a pull request’s head, which no list holds, opens on
+  Branches. It opens there each time, whichever tab it was closed on.
 
 - **One choice heads Files and Commits.** The server serves one source at a time, and
   both tabs show it: Files its files, and Commits its history, from the chosen commit,
@@ -7122,18 +7132,45 @@ The chooser has a filter box and one row per ref.
 A checkout also has the live working tree and can switch between it and pinned
 revisions.
 
-- **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
-  like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
-  below it, because it is the one choice that is not a ref: the filter and the list
-  shown do not apply to it, so it stays where it is whichever list is open.
-  Its name is “Working tree”, and where a ref’s row has its commit and age, this one has
-  the folder’s path as the page names the folder, with the home directory as `~`, in the
-  same muted ink, and the folder’s own name in the row’s ink.
+- **The working tree is the first tab, and its panel is one entry.** It is the one
+  choice that is not a ref, so it has a tab of its own and no filter or list.
+  The entry is a `.menu-item` like a ref’s (`.source-ref-selector-working-tree`): where
+  a ref’s row has its name it has the branch `HEAD` is on, as that branch’s
+  [chip](#branch-chips), or the [short ID](#short-commit-ids) of the commit a detached
+  `HEAD` is at, and where a ref’s row has its commit and age it has the folder’s path as
+  the page names the folder, with the home directory as `~`, in the same muted ink, and
+  the folder’s own name in the row’s ink.
   It has no age, since it is the files on disk now.
-  Where the pane is too narrow, the path before the folder’s name gives way, and the
-  folder’s name stays whole.
+  Where the pane is too narrow, the path before the folder’s name gives way first, and
+  the branch and the folder’s name stay whole.
+  A screen reader hears “Working tree, on main”, and the path as the entry’s
+  description. The entry shows no count of uncommitted changes: counting them is a
+  `git status`, whose cost grows with the working tree, and it would be out of date at
+  the next save.
 
-- **The served choice is marked one way.** A ref’s row and the working-tree row both
+- **Choosing the working tree switches the page to the files on disk, and changes
+  nothing on disk.** Nothing is checked out: the branch is whichever one `HEAD` is on,
+  which is why the entry names it.
+  The owner asked for the tab to “show the actual branch of the working tree, because we
+  should not be changing the working tree but rather just switching to it” (2026-11-25).
+
+- **A press on the Working tree tab switches; an arrow key onto it does not.** A
+  pointer’s click on the tab, or Enter or Space with focus on it, from a page that shows
+  a ref, asks for the working tree at once, as choosing the tab’s entry does
+  (`pressKind`). The tabs are a radio group
+  ([Choosing Among Values](#choosing-among-values)), where an arrow key moves the
+  selection, so an arrow key onto Working tree shows its entry and leaves the page where
+  it is (`setKind`): a reader moving along the tabs to look never loses their page.
+  The entry is there for the same reason.
+  A tab that switched the page as focus passed over it would be a trap for a keyboard or
+  screen-reader user, and one that could only be pressed would leave them nothing to
+  read first. With both, the arrow keys read, the entry says what will be shown, and
+  Enter on either one switches.
+  A press on the tab while the page already shows the working tree has nothing to
+  switch, and shows the tab.
+  `cli-ui-source-ref-selector-keys.tryscript.md` presses and arrows the mounted tab.
+
+- **The served choice is marked one way.** A ref’s row and the working tree’s entry both
   carry `aria-current` when they are what the server shows, and exactly one of them
   does. It is drawn as a Pulls row and a stack’s member are drawn current: the medium
   weight, `--highlight-bg`, and the 2px `--highlight-bar` inset at its left edge,
@@ -7141,42 +7178,68 @@ revisions.
   revision looking the same (2026-11-25). The highlight takes the place of the hover
   tint a menu row shows focus with, so keyboard focus on the current row draws the one
   [focus ring](#focus-ring) instead.
-  The checked-out branch is not that row unless it was chosen: it says “checked out” in
-  the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
-- **A checkout’s row says which view the page shows, in words, before the ref.** A
+- **The checked-out branch stays in Branches, as its last commit.** It is a ref like any
+  other: it lists first, says “checked out” in the `.source-ref-selector-badge` a
+  mirror’s default branch says “default” in, and choosing it shows what is committed on
+  it, without the uncommitted changes the working tree has.
+  It is current there only once it was chosen.
+  Dropping it would leave Branches without the branch a reader is most likely to look
+  for, and the filter unable to find it; and its committed state beside the files on
+  disk is a view worth having.
+  The two no longer read alike, since each is under its own tab and names itself
+  differently in the row.
+
+- **The row says “Working tree” exactly when the page shows the files on disk.** A
   checkout has two views, the working tree and a revision, and the checked-out branch
   names both: its live files, and its last commit chosen from the list.
-  So the ref alone cannot say which one the page is, and the row starts with the view’s
-  word (`.source-ref-selector-view`), a muted dot (`.source-ref-selector-sep`), and then
-  the ref. The owner found choosing **Working tree** changed nothing on screen when the
-  row named only the branch, on the working tree and on the branch’s revision alike
-  (2026-11-25). On a revision, the main heading’s note also says “committed revision of”
-  the folder, and the Info button’s menu describes the pinned source beside its local
-  path.
-  - **Working tree · `main`**: the live files, with the branch `HEAD` is on as its chip,
-    which opens its actions.
+  So the ref alone cannot say which one the page is.
+  The owner found choosing **Working tree** changed nothing on screen when the row named
+  only the branch, on the working tree and on the branch’s revision alike (2026-11-25).
+  - **Working tree · `main`**: the live files.
+    The words (`.source-ref-selector-view`), a muted dot (`.source-ref-selector-sep`),
+    then the branch `HEAD` is on as its chip, which opens its actions.
     A detached `HEAD` names its commit, in the commit-ID face; a `HEAD` the server
-    cannot read leaves the word alone.
-    The word’s tooltip says the files are live on disk and which branch or commit they
-    are on. The chooser’s **Working tree** entry is current.
-    The server names `HEAD` when it draws the page, and every listing the chooser loads
-    reads it again, so a branch switched in a terminal shows in the row and its tooltip
-    once the list is opened, as it does in the list’s “checked out” badge.
-    A listing carries no commit for a detached `HEAD`, so a page drawn on a branch then
-    shows the word alone.
-  - **Revision · `feature`**: one commit chosen from the list, read-only, whichever ref
-    it came from, the checked-out branch included.
-    The row ends with a `.btn`, `.source-ref-selector-back`, “← Working tree”, named
-    “Back to the working tree”, which asks for the working tree as the chooser’s entry
-    does: one click back from any revision.
-    The word’s tooltip says the files on disk are unchanged.
-    If the switch fails while the list is closed, the reason shows in the row, on its
-    own line under the button (`.source-ref-selector-back-error`).
-  - The words are the view’s, not the ref’s: a mirror has only revisions, so its row
-    names the ref alone and has no way back.
-  - Where the pane is too narrow for the row, the button goes under it, at its end, and
-    the chip is cut before the words are.
+    cannot read leaves the words alone.
+    The words’ tooltip says the files are live on disk and which branch or commit they
+    are on.
+  - **`feature`**: one commit chosen from the list, read-only, whichever ref it came
+    from, the checked-out branch included.
+    The row names it alone, as a mirror’s row does, so there is one form for a ref
+    wherever it is served.
+    An earlier row said “Revision” before it and ended with a “← Working tree” button.
+    The word told a reader nothing the absence of “Working tree” does not, and the
+    button was a second way to do what the list does, on some pages only, which made the
+    row a different shape on them; the owner asked for both to go (2026-11-25). The main
+    heading’s note still says “committed revision of” the folder, and the Info button’s
+    menu describes the pinned source beside its local path.
+
+- **The working tree’s branch is kept current.** The server names `HEAD` when it draws
+  the page. After that the page watches the checkout’s `HEAD` on the event stream it
+  already holds, as a
+  [file watch](project/architecture/arch-live-delivery.md#file-watches) on
+  `HEAD_WATCH_PATH`, and when a terminal or an agent checks out another branch, detaches
+  `HEAD`, or commits, it asks where `HEAD` is now and names it in the row, its tooltip,
+  and the open tab’s entry, in place (`headChanged`). Nothing reloads, and an open list
+  keeps its scroll and focus; an open Branches list moves its “checked out” mark too.
+  The ask is the refs route’s `kind=working_tree`, which runs no Git.
+  The server’s poll of its watches sets how soon the row follows, and its measurement is
+  beside `HEAD_WATCH_PATH` in `file_watches.py`. A page that shows a ref has no event
+  stream, so there the entry names `HEAD` as each listing reads it: when the list opens
+  and when the tab is shown.
+
+- **Refresh reads the list again and fetches the origin.** The navigation’s
+  [Refresh](#refresh-retry-and-reload-page) reads an open list again in place, with its
+  scroll and focus kept (`reread`). A press on Refresh is therefore the one press beside
+  the list that does not close it ([Every Menu Closes Alike](#every-menu-closes-alike)):
+  closing it would hide what the press asked to read again.
+  The row or box that had focus has it back once the list is read.
+  On a page that shows a ref it does so after the fetch of the mirror or the origin’s
+  store, so the list holds what the fetch brought.
+  On the working tree’s page nothing on screen waits for a fetch, so Refresh reads the
+  disk and the history first and only then fetches the store of the origin, in the
+  background (`fetchOrigin`); an open Remotes or Tags list follows that fetch to its
+  end.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload page”
@@ -7185,8 +7248,13 @@ revisions.
   history’s, which is the revision’s, and the Pulls tab’s and a comparison’s. It appears
   only after another tab has switched the server.
 
-- **The revision row keeps its box from first paint.** The server draws the row, its
-  view’s word and a revision’s button back included, before the chooser module loads.
+- **The revision row is one shape, from first paint.** It is its label and the chooser’s
+  button on every page, with nothing else in it, so it is one line of one height
+  whatever the page shows, and nothing in it moves when the list opens, when the page
+  switches, or when `HEAD` moves.
+  A switch that fails says why in the open list, where every switch is asked from, not
+  in the row. The server draws the row, the working tree’s words included, before the
+  chooser module loads.
   The module adopts the chevron button, preserving focus that reaches it early
   ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Changes to filters or tallies
   leave the open chooser’s query, scroll position, and focus in place.

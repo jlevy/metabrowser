@@ -10,14 +10,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -56,14 +58,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -142,14 +146,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -188,14 +194,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -247,6 +255,32 @@
       ]
     }
   },
+  "working_tree": {
+    "status": 200,
+    "body": {
+      "kind": "working_tree",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "working_tree",
+        "branch",
+        "remote",
+        "tag"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": []
+    }
+  },
   "branches": {
     "status": 200,
     "body": {
@@ -255,14 +289,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -305,14 +341,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -515,14 +553,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -582,14 +622,16 @@
       "pin": null,
       "ref": null,
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": true,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
@@ -763,14 +805,16 @@
       "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
       "ref": "refs/remotes/origin/trunk",
       "kinds": [
+        "working_tree",
         "branch",
-        "tag",
-        "remote"
+        "remote",
+        "tag"
       ],
       "working_tree": {
         "current": false,
         "head": "refs/heads/trunk",
         "head_name": "trunk",
+        "head_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
