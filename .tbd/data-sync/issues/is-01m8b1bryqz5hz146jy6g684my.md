@@ -3,9 +3,9 @@ type: is
 id: is-01m8b1bryqz5hz146jy6g684my
 title: Unify diff presentation across Metabrowser reviews
 kind: epic
-status: in_progress
+status: closed
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-25-diff-presentation.md
 refs:
   - kind: pr
@@ -23,6 +23,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T04:21:03.039Z
-updated_at: 2026-11-26T06:45:44.793Z
+updated_at: 2026-11-26T06:57:06.044Z
 started_at: 2026-11-26T04:21:30.635Z
+closed_at: 2026-11-26T06:57:06.041Z
+close_reason: "Delivered as Metabrowser PR #871. Published Guided Review and all nine references were verified. GitHub CI passed."
+resolution: null
+duplicate_of: null
 ---
