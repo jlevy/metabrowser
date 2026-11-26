@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Sequence
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -60,6 +61,25 @@ def test_nested_lifespan_on_another_loop_keeps_the_active_history_walk(tmp_path:
             assert serving.session_count == 1
             assert current_history_sessions(fallback) is serving
         assert serving.session_count == 0
+
+    asyncio.run(run())
+
+
+def test_shared_loop_closes_history_after_its_last_lifespan(tmp_path: Path) -> None:
+    location = GitLocation.filesystem(_history(tmp_path / "history"))
+    fallback = HistorySessionRegistry()
+
+    async def run() -> None:
+        async with AsyncExitStack() as first:
+            await first.enter_async_context(lifespan_history_sessions())
+            registry = current_history_sessions(fallback)
+            assert await registry.prepare_default_page(location)
+            async with lifespan_history_sessions():
+                await first.aclose()
+                assert current_history_sessions(fallback) is registry
+                assert registry.session_count == 1
+            assert current_history_sessions(fallback) is fallback
+            assert registry.session_count == 0
 
     asyncio.run(run())
 

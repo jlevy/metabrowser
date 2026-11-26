@@ -1218,9 +1218,15 @@ class HistorySessionRegistry:
             await session.close()
 
 
+@dataclass
+class _ServingHistory:
+    registry: HistorySessionRegistry
+    lifespans: int = 0
+
+
 # Direct handler calls without ASGI startup can supply their own registry.
 HISTORY_SESSIONS = HistorySessionRegistry()
-_SERVING_REGISTRIES: dict[asyncio.AbstractEventLoop, HistorySessionRegistry] = {}
+_SERVING_REGISTRIES: dict[asyncio.AbstractEventLoop, _ServingHistory] = {}
 _REGISTRY_LOCK = threading.Lock()
 
 
@@ -1228,25 +1234,29 @@ def current_history_sessions(fallback: HistorySessionRegistry) -> HistorySession
     """The history reader owned by the current application lifespan."""
     loop = asyncio.get_running_loop()
     with _REGISTRY_LOCK:
-        return _SERVING_REGISTRIES.get(loop, fallback)
+        serving = _SERVING_REGISTRIES.get(loop)
+        return fallback if serving is None else serving.registry
 
 
 @contextlib.asynccontextmanager
 async def lifespan_history_sessions() -> AsyncGenerator[None]:
-    """Keep a nested app on another event loop from closing this server's walks."""
+    """Share history walks until the last serving lifespan on the loop exits."""
     loop = asyncio.get_running_loop()
     with _REGISTRY_LOCK:
-        registry = _SERVING_REGISTRIES.get(loop)
-        owner = registry is None
-        if registry is None:
-            registry = _SERVING_REGISTRIES[loop] = HistorySessionRegistry()
+        serving = _SERVING_REGISTRIES.get(loop)
+        if serving is None:
+            serving = _SERVING_REGISTRIES[loop] = _ServingHistory(HistorySessionRegistry())
+        serving.lifespans += 1
     try:
         yield
     finally:
-        if owner:
-            with _REGISTRY_LOCK:
-                _SERVING_REGISTRIES.pop(loop, None)
-            await registry.close_all()
+        with _REGISTRY_LOCK:
+            serving.lifespans -= 1
+            last_lifespan = serving.lifespans == 0
+            if last_lifespan:
+                del _SERVING_REGISTRIES[loop]
+        if last_lifespan:
+            await serving.registry.close_all()
 
 
 __all__ = [
