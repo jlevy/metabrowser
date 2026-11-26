@@ -105,7 +105,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 71,
@@ -135,7 +137,9 @@ status: 200
         null,
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 72,
@@ -160,7 +164,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 73,
@@ -185,7 +191,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }

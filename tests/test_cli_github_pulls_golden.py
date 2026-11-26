@@ -279,10 +279,10 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 
     # Windows stay small even though the catalog has more than the first displayed 500.
     newest = session.get("?limit=2")
-    assert _numbers(newest) == [606, 605]
-    assert newest.payload()["next_after"] == 605
+    assert _numbers(newest) == [10, 7]
+    assert newest.payload()["next_after"] == 7
     assert _numbers(session.get("?limit=2&after=605")) == [604, 603]
-    assert _numbers(session.get("?limit=2&after=10")) == [7]
+    assert _numbers(session.get("?limit=2&after=10")) == [7, 606]
     generation = newest.payload()["generation"]
     no_network = session.post({"target": 1000})
     assert no_network.exit_code == 0
@@ -343,8 +343,11 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     assert (after["total"], after["repository_total"], after["catalog_fetched"]) == (599, 601, 601)
     assert "catalog state=updated" in session.blocks[-1]
     assert "catalog state=all" not in session.blocks[-1]
-    assert _numbers(session.get("?limit=2")) == [607, 606]
-    assert session.get("?after=11&limit=1").payload()["rows"][0]["title"] == changed["title"]
+    assert _numbers(session.get("?limit=2")) == [607, 10]
+    assert _numbers(session.get("?after=10&limit=2")) == [7, 606]
+    sought = session.get("?state=all&at=10&limit=2").payload()
+    assert sought["position"] == 1
+    assert sought["rows"][0]["title"] == changed["title"]
 
     # A failed account switch preserves the old catalog and its reader label.
     session.answer(

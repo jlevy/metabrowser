@@ -5,8 +5,8 @@ server's catalog worker yields its network slot after each page, resumes durable
 and never fetches a PullRecord, comparison, blob, comment, check or review.
 
 Nothing caps how many rows the catalog holds. A reader's pages come first: the scan that
-keeps the list current, and its filter's prefix as far as the reader has scrolled. The
-backfill past that prefix, newest first to the oldest pull request, is background work,
+keeps the list current, and its filter's activity prefix as far as the reader has scrolled.
+The backfill, from newest to oldest by creation, is background work,
 which runs only while :mod:`.gh_budget` admits GraphQL work (:func:`backfill_admitted`).
 Held, the job stops at a page boundary, and a later ask resumes it from the saved cursor.
 """
@@ -54,6 +54,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     failure_line,
     publish_page,
     read_catalog,
+    upgrade_catalog,
     write_catalog_refresh_timing,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
@@ -68,7 +69,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
 )
 from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp, cut_escaped
 from metabrowser.cache.locks import run_lock_section
-from metabrowser.cache.paths import PullListName
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PULL_LIST_NAMES, PullListName
 from metabrowser.home import PrivateStorageError
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
@@ -91,6 +92,7 @@ _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
     open:pullRequests(first:1,states:OPEN) { totalCount }
     closed:pullRequests(first:1,states:[CLOSED,MERGED]) { totalCount }
     latest:pullRequests(first:1,orderBy:{field:UPDATED_AT,direction:DESC}) { nodes { updatedAt } }
+    PREFIX_HEAD
     page:pullRequests(first:100,after:$cursor,orderBy:{field:ORDER,direction:DESC} FILTER) {
       pageInfo { hasNextPage endCursor }
       nodes {
@@ -102,6 +104,10 @@ _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   }
 }"""
 _FILTERS = {"all": "", "open": ",states:OPEN", "closed": ",states:[CLOSED,MERGED]"}
+_PREFIX_HEAD = (
+    "prefixHead:pullRequests(first:1,orderBy:{field:UPDATED_AT,direction:DESC} FILTER)"
+    " { nodes { number updatedAt } }"
+)
 
 
 def _required_ref(value: object) -> tuple[str, bool]:
@@ -185,6 +191,7 @@ class CatalogPage:
     cursor: str | None
     done: bool
     latest: str | None
+    prefix_head: tuple[str, int] | None
     truncated: bool
 
 
@@ -221,10 +228,16 @@ async def _read_page(
     *,
     login: str,
     updated: bool = False,
+    backfill: bool = False,
 ) -> CatalogPage:
-    query = _QUERY.replace("ORDER", "UPDATED_AT" if updated else "CREATED_AT").replace(
-        "FILTER", "" if updated else _FILTERS[name]
+    foreground = not updated and not backfill
+    query = (
+        _QUERY.replace("PREFIX_HEAD", _PREFIX_HEAD if foreground else "")
+        .replace("ORDER", "CREATED_AT" if backfill else "UPDATED_AT")
+        .replace("FILTER", _FILTERS[name])
     )
+    if foreground:
+        query = query.replace("query Catalog(", "query CatalogActivity(", 1)
     try:
         data = await gh_graphql(
             query,
@@ -279,11 +292,23 @@ async def _read_page(
         latest = as_dict(latest_rows[0])["updatedAt"] if latest_rows else None
         if latest is not None:
             pull_list.parse_stamp(latest)
+        prefix_head = None
+        if foreground:
+            prefix_rows = as_dict(repo["prefixHead"])["nodes"]
+            if prefix_rows:
+                head = as_dict(prefix_rows[0])
+                number, stamp = head["number"], head["updatedAt"]
+                if type(number) is not int or not 1 <= number <= MAX_PULL_REQUEST_NUMBER:
+                    raise ValueError("invalid activity prefix head")
+                pull_list.parse_stamp(stamp)
+                prefix_head = (stamp, number)
         truncated = truncated or any(
             as_dict(as_dict(as_dict(value)["labels"])["pageInfo"])["hasNextPage"]
             for value in values
         )
-        return CatalogPage(repository_id, rows, totals, following, not more, latest, truncated)
+        return CatalogPage(
+            repository_id, rows, totals, following, not more, latest, prefix_head, truncated
+        )
     except (*READ_FAILURES, ValueError, IndexError) as exc:
         raise PullDataError(
             "gh_failed", "GitHub answered with an unreadable metadata page"
@@ -352,8 +377,14 @@ async def _publish(
     proposed: CatalogState,
     rows: tuple[PullListRow, ...],
 ) -> bool:
+    return await _write_catalog(
+        repository, partial(publish_page, repository, previous, proposed, rows)
+    )
+
+
+async def _write_catalog[T](repository: ListedRepository, write: Callable[[], T]) -> T:
     try:
-        return await run_lock_section(partial(publish_page, repository, previous, proposed, rows))
+        return await run_lock_section(write)
     except NewerCatalogError as exc:
         raise newer_cache(
             _LIST, str(exc), source=repository.source, checkout=repository.checkout
@@ -429,9 +460,12 @@ async def refresh_pull_list(
         repository = await claim_source(repository)
         source_claimed = True
         await _stop_at_kept_catalog(repository)
+        await _write_catalog(repository, partial(upgrade_catalog, repository))
         login = await active_account()
         reader = f"gh:{login}"
-        restarted: set[str] = set()
+        restarted: set[tuple[str, bool]] = set()
+        activity_restarted: set[PullListName] = set()
+        activity_deferred: set[PullListName] = set()
         while True:
             previous = await asyncio.to_thread(read_catalog, repository.home, repository.slug)
             state = (
@@ -443,13 +477,12 @@ async def refresh_pull_list(
             )
             if state is not None and state.projection_version < CATALOG_PROJECTION:
                 # Enrich already cached rows once without discarding their offline view.
-                # Only ALL restarts: filtered progress and the mutable-data watermark
-                # remain useful. A losing writer rereads the accepted checkpoint.
+                # Only the full backfill restarts. Filtered activity progress and the
+                # mutable-data watermark remain useful. A losing writer rereads.
                 upgraded = state.model_copy(
                     update={
                         "projection_version": CATALOG_PROJECTION,
-                        "cursors": {**state.cursors, "all": None},
-                        "covered": {**state.covered, "all": 0},
+                        "backfill_cursor": None,
                         "done": {**state.done, "all": False},
                     }
                 )
@@ -466,9 +499,16 @@ async def refresh_pull_list(
             if scan is None:
                 break
             updated = scan == "updated"
-            cursor = (
-                state.delta_cursor if state and updated else state.cursors[scan] if state else None
-            )
+            cursor = None
+            if state is not None:
+                if backfill:
+                    cursor = state.backfill_cursor
+                elif scan == "updated":
+                    cursor = state.delta_cursor
+                elif scan in activity_deferred:
+                    return state
+                else:
+                    cursor = state.cursors[scan]
             try:
                 async with slot if slot is not None else contextlib.nullcontext():
                     last_refresh = await asyncio.to_thread(
@@ -495,15 +535,16 @@ async def refresh_pull_list(
                             cursor,
                             login=login,
                             updated=updated,
+                            backfill=backfill,
                         )
                     # The query's viewer identifies the reader of these rows. A settings
                     # switch after that response cannot relabel it; the next page must
                     # still match this job's reader before it can advance the checkpoint.
             except GhCursorError as exc:
-                if state is None or cursor is None or scan in restarted:
+                key = (scan, backfill)
+                if state is None or cursor is None or key in restarted:
                     raise PullDataError("gh_failed", str(exc)) from exc
-                restarted.add(scan)
-                cursors, covered = dict(state.cursors), dict(state.covered)
+                restarted.add(key)
                 if updated:
                     retry_state = state.model_copy(
                         update={
@@ -513,9 +554,15 @@ async def refresh_pull_list(
                         }
                     )
                     retry = True
+                elif backfill:
+                    retry_state = state.model_copy(update={"backfill_cursor": None})
                 else:
-                    cursors[scan], covered[scan] = None, 0
-                    retry_state = state.model_copy(update={"cursors": cursors, "covered": covered})
+                    retry_state = state.model_copy(
+                        update={
+                            "cursors": {**state.cursors, scan: None},
+                            "covered": {**state.covered, scan: 0},
+                        }
+                    )
                 await _publish(repository, previous, retry_state, ())
                 continue
             now = utc_stamp(pull_list.utc_now())
@@ -558,6 +605,21 @@ async def refresh_pull_list(
                 )
                 if reached:
                     changes.update(fetched_at=started_at, watermark=watermark or state.watermark)
+            elif backfill:
+                changes.update(
+                    backfill_cursor=None if page.done else page.cursor,
+                    done=dict.fromkeys(PULL_LIST_NAMES, True) if page.done else state.done,
+                )
+            elif cursor is not None and state.prefix_heads[scan] != page.prefix_head:
+                # The provider's activity window moved while the cursor was open.
+                # Keep its rows and restart coverage from the new head.
+                changes.update(
+                    cursors={**state.cursors, scan: None},
+                    covered={**state.covered, scan: 0},
+                )
+                if scan in activity_restarted:
+                    activity_deferred.add(scan)
+                activity_restarted.add(scan)
             else:
                 cursors, covered, done = dict(state.cursors), dict(state.covered), dict(state.done)
                 cursors[scan], covered[scan], done[scan] = (
@@ -565,7 +627,12 @@ async def refresh_pull_list(
                     covered[scan] + len(page.rows),
                     page.done,
                 )
-                changes.update(cursors=cursors, covered=covered, done=done)
+                changes.update(
+                    cursors=cursors,
+                    covered=covered,
+                    done=done,
+                    prefix_heads={**state.prefix_heads, scan: page.prefix_head},
+                )
             proposed = state.model_copy(update=changes)
             accepted = await _publish(repository, previous, proposed, page.rows)
             if accepted:

@@ -110,7 +110,7 @@ $ node tests/dom/github-pulls-panel-session.js
       "step": "the top cache page arrives",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-3\"",
-        "GET /api/plugin/github/pulls?state=all&limit=100&after=7"
+        "GET /api/plugin/github/pulls?state=all&limit=100&after=9"
       ],
       "marks": [
         "anchor null -> 106"
@@ -132,8 +132,8 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Open] Work item 106 | #106 · contributor | /pull/106",
           "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
-          "[Open] Count to two in the app | #7 · forker | /pull/7"
+          "[Draft] WIP: draft the next page | #10 · maintainer | /pull/10",
+          "[Closed] spam | #9 · ghost | /pull/9"
         ]
       },
       "refreshDetail": "Refreshed 2 min ago in 300ms"
@@ -161,8 +161,8 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Open] Work item 106 | #106 · contributor | /pull/106",
           "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor | /pull/6",
-          "[Open] Work item 5 | #5 · contributor | /pull/5"
+          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
+          "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
       }
     },
@@ -209,8 +209,8 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Open] Work item 106 | #106 · contributor | /pull/106",
           "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor | /pull/6",
-          "[Open] Work item 5 | #5 · contributor | /pull/5"
+          "[Draft] WIP: draft the next page | #10 · maintainer | /pull/10",
+          "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
       }
     },
@@ -695,7 +695,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "step": "a current list is shown: its first probe ask is due at once",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100",
-        "GET /api/plugin/github/pulls?state=all&limit=100&after=7",
+        "GET /api/plugin/github/pulls?state=all&limit=100&after=9",
         "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
       ],
       "poll": "slow",
@@ -738,7 +738,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "step": "the scan's rows are read",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100",
-        "GET /api/plugin/github/pulls?state=all&limit=2&after=7",
+        "GET /api/plugin/github/pulls?state=all&limit=2&after=9",
         "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
       ],
       "poll": "slow",
@@ -1043,7 +1043,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     ],
     "rows held": 102,
     "an age, before": "2h",
-    "an age, two hours on": "2h",
+    "an age, two hours on": "4h",
     "rows built to tell it": 0,
     "a passive retry over cached rows breathes the announced outage, with no spinner": "Could not reach GitHub. Showing the pull requests last loaded.",
     "closing twelve expanded trees enforces retention immediately": {

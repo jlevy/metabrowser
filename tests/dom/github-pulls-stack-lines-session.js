@@ -41,6 +41,7 @@ const rowsOf = (rows) =>
     ? rows.map((row) => JSON.parse(row))
     : [rows.same_as].flat().flatMap((holder) => rowsOf(lists[holder].body.rows));
 const listed = { ...lists.current.body, rows: rowsOf(lists.current.body.rows) };
+const more = { ...lists.more_window.body, rows: rowsOf(lists.more_window.body.rows) };
 const SOURCE = "https://github.com/octo/demo";
 // A head the catalog reports once a stack's top has moved: no commit of the recording.
 const MOVED = "1".repeat(40);
@@ -104,7 +105,9 @@ async function laneStory(lines, prefetch) {
     changed: (number) => repaints.push(number),
   });
   // Each stack as the list draws it: its members, and each one's head from the recorded rows.
-  const heads = new Map(listed.rows.map((row) => [row.number, row.head_oid ?? null]));
+  const heads = new Map(
+    [...listed.rows, ...more.rows].map((row) => [row.number, row.head_oid ?? null]),
+  );
   let shared = stacks.shared.body.stacks.map(({ number, pulls }) => ({
     number,
     pulls,
@@ -392,7 +395,7 @@ async function headingStory() {
         );
       }
       if (route.startsWith("/api/plugin/github/pulls?")) {
-        return respond(listed);
+        return respond(route.includes("&after=") ? more : listed);
       }
       if (route === "/api/plugin/github/stacks") {
         return respond(stacks.shared.body);

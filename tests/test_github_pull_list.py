@@ -37,6 +37,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     CatalogState,
     UnknownCatalogError,
+    catalog_members,
     catalog_row,
     catalog_search,
     catalog_window,
@@ -133,9 +134,12 @@ def _provider(
 
     async def graphql(query: str, variables: Any, **kwargs: Any) -> dict[str, Any]:
         tail = query.split("page:pullRequests", 1)[1]
+        foreground = query.startswith("query CatalogActivity(")
+        if foreground:
+            assert "field:UPDATED_AT" in tail
         name = (
             "updated"
-            if "field:UPDATED_AT" in tail
+            if "field:UPDATED_AT" in tail and not foreground
             else "closed"
             if "states:[CLOSED,MERGED]" in tail
             else "open"
@@ -144,6 +148,8 @@ def _provider(
         )
         key = f"graphql:{name}:{variables.get('cursor') or 'start'}"
         calls.append(key)
+        if name == "all" and foreground:
+            key = key.replace(":all:", ":activity:", 1)
         return entries[key]["body"]["data"]
 
     monkeypatch.setattr(pull_list_refresh, "active_account", active)
@@ -187,6 +193,9 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
             "duration_ms": 150 * len(calls),
         }
         assert pull_list_envelope(view, window)["refresh_timing"] == expected
+        exact = pull_list_envelope(view, ListWindow("all", limit=1, at=101))
+        assert [row["number"] for row in exact["rows"]] == [101]
+        assert exact["refresh_timing"] == expected
 
         calls.clear()
         asyncio.run(refresh_pull_list(repository, "open"))
@@ -299,6 +308,228 @@ def test_closed_rows_page_through_every_old_cap_in_bounded_windows(
     )
     assert [row["number"] for row in widest["rows"] + rest["rows"]] == closed[:2000]
     assert rest["next_after"] == closed[1999]
+
+
+def test_activity_orders_all_filters_and_keeps_numeric_cursors_stable_across_ties(
+    repository: ListedRepository,
+) -> None:
+    def item(number: int, minute: int, state: str = "open") -> dict[str, Any]:
+        updated = utc_stamp(FETCHED_AT + timedelta(minutes=minute))
+        return generated_item(number) | {
+            "updated_at": updated,
+            "state": state,
+            "closed_at": updated if state == "closed" else None,
+        }
+
+    state = _seed(
+        repository,
+        [item(90, 1), item(5, 3), item(4, 3), item(89, 2, "closed"), item(2, 4, "closed")],
+    )
+    view = ListView(repository, None, False)
+    for name, expected in (("all", [2, 5, 4, 89, 90]), ("open", [5, 4, 90]), ("closed", [2, 89])):
+        after = None
+        numbers: list[int] = []
+        while True:
+            envelope = pull_list_envelope(
+                view,
+                list_window(
+                    {
+                        "state": name,
+                        "limit": "1",
+                        **({"after": str(after)} if after is not None else {}),
+                    }
+                ),
+            )
+            numbers.extend(row["number"] for row in envelope["rows"])
+            after = envelope["next_after"]
+            if after is None:
+                break
+        assert numbers == expected
+
+    def seek(limit: int) -> int | None:
+        window = list_window({"state": "all", "at": "89", "limit": str(limit)})
+        envelope = pull_list_envelope(view, window)
+        assert [row["number"] for row in envelope["rows"]] == [89]
+        return envelope.get("position")
+
+    assert seek(5) == 3
+    assert seek(2) == 2
+    assert publish_page(repository, state, state, (_row(item(90, 5))[0],))
+    first = pull_list_envelope(view, ListWindow("open", 1))
+    assert [row["number"] for row in first["rows"]] == [90]
+    assert first["generation"] != state.generation("open")
+    updated = read_catalog(repository.home, repository.slug)
+    assert updated is not None
+    assert publish_page(repository, updated, updated, (_row(item(1, 6))[0],))
+    first = pull_list_envelope(view, ListWindow("all", 1))
+    assert [row["number"] for row in first["rows"]] == [1]
+    assert first["generation"] != updated.generation("all")
+
+
+def test_activity_indexes_upgrade_the_v1_catalog_without_reloading_rows(
+    repository: ListedRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [generated_item(20), generated_item(1) | {"updated_at": STAMP}]
+    initial = _seed(repository, items)
+    _make_legacy_catalog(repository)
+    write_list_refresh(
+        repository.home,
+        repository.slug,
+        "all",
+        PullRefreshStamp(
+            outcome="rate_limited",
+            at=STAMP,
+            reader=initial.reader,
+            reset_at=utc_stamp(FETCHED_AT + timedelta(hours=1)),
+        ),
+    )
+    calls = _provider(monkeypatch, items)
+    view = ListView(repository, None, False)
+    assert not refresh_wanted(view, RefreshRequest("all", 2))
+    assert catalog_search(repository, "#1")["rows"][0]["number"] == 1
+    response = pull_list_envelope(view, ListWindow("all", limit=2))
+    assert response["complete"]
+    assert [row["number"] for row in response["rows"]] == [1, 20]
+    state = read_catalog(repository.home, repository.slug)
+    assert state is not None
+    assert (state.epoch, state.cached, state.totals) == (
+        initial.epoch,
+        initial.cached,
+        initial.totals,
+    )
+    with sqlite3.connect(_path(repository)) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == pull_catalog.CATALOG_SCHEMA
+        (checkpoint,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        assert json.loads(checkpoint)["schema_version"] == pull_catalog.CHECKPOINT_SCHEMA
+    assert not refresh_wanted(view, RefreshRequest("all", 2))
+    assert calls == []
+
+
+def _make_legacy_catalog(repository: ListedRepository, **updates: object) -> None:
+    """Restore the released creation-ordered indexes and v1 cursor layout."""
+    with sqlite3.connect(_path(repository)) as db:
+        db.execute("DROP INDEX pulls_updated_number")
+        db.execute("DROP INDEX pulls_state_updated_number")
+        db.execute("CREATE INDEX pulls_state_number ON pulls(state, number DESC)")
+        db.execute("PRAGMA user_version=1")
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        checkpoint = json.loads(value) | {"schema_version": 1} | updates
+        del checkpoint["backfill_cursor"]
+        del checkpoint["prefix_heads"]
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
+
+
+def test_legacy_creation_cursor_resumes_only_the_creation_backfill(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 251)]
+    old = _seed(repository, items[-100:], complete=False)
+    _make_legacy_catalog(
+        repository,
+        cursors={"all": "all-100", "open": "open-100", "closed": None},
+        totals={"all": 250, "open": 250, "closed": 0},
+    )
+    assert pull_list_envelope(ListView(repository, None, False), ListWindow("all"))["rows"]
+    migrated = read_catalog(repository.home, repository.slug)
+    assert migrated is not None and migrated.epoch == old.epoch
+    assert migrated.backfill_cursor == "all-100"
+    assert not any(migrated.cursors.values()) and not any(migrated.covered.values())
+
+    items[0]["updated_at"] = STAMP
+    calls = _provider(monkeypatch, items)
+    full = asyncio.run(refresh_pull_list(repository, "open", target=100))
+    assert calls == ["graphql:open:start", "graphql:all:all-100", "graphql:all:all-200"]
+    assert full.done["all"] and full.cached["all"] == 250
+
+
+@pytest.mark.parametrize("name", ["all", "closed", "open"])
+def test_foreground_fills_recently_updated_prefix_while_creation_backfill_is_held(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, name: PullListName
+) -> None:
+    items = _mostly_closed(1200)
+    # These old PRs' recent updates take priority over half the repository's new PRs.
+    for item in items[:600]:
+        item["updated_at"] = utc_stamp(FETCHED_AT + timedelta(days=2, seconds=item["number"]))
+    _provider(monkeypatch, items)
+    _graphql_budget(1000)
+
+    target = 50 if name == "open" else 250
+    state = asyncio.run(refresh_pull_list(repository, name, target=target))
+    assert not state.done["all"] and state.backfill_cursor is None
+    _, rows, _ = catalog_window(repository.home, repository.slug, name, limit=target)
+    expected = sorted(
+        (item for item in items if name == "all" or item["state"] == name),
+        key=lambda item: (item["updated_at"], item["number"]),
+        reverse=True,
+    )[:target]
+    assert min(item["number"] for item in expected) <= 600
+    assert [row["number"] for row in rows] == [item["number"] for item in expected]
+
+
+def test_activity_scan_restarts_when_a_pr_moves_ahead_of_its_cursor(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 261)]
+    before = _provider(monkeypatch, items)
+    _graphql_budget(1000)
+    read_page = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+    after: list[str] | None = None
+
+    async def changing(*args: Any, **kwargs: Any) -> Any:
+        nonlocal after
+        if args[2] is not None and after is None:
+            items[0]["updated_at"] = utc_stamp(FETCHED_AT + timedelta(days=1))
+            after = _provider(monkeypatch, items)
+        return await read_page(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "_read_page", changing)
+    state = asyncio.run(refresh_pull_list(repository, "all", target=200))
+    assert state.covered["all"] == 200
+    assert before == ["graphql:all:start"]
+    assert after == ["graphql:all:all-100", "graphql:all:start", "graphql:all:all-100"]
+    _, rows, _ = catalog_window(repository.home, repository.slug, "all", limit=200)
+    assert [row["number"] for row in rows] == [1, *range(260, 61, -1)]
+
+
+def test_activity_scan_continues_when_another_tab_moves(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 261)]
+    closed = generated_item(261) | {"state": "closed", "closed_at": STAMP}
+    before = _provider(monkeypatch, [*items, closed])
+    _graphql_budget(1000)
+    read_page = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+    after: list[str] | None = None
+
+    async def changing(*args: Any, **kwargs: Any) -> Any:
+        nonlocal after
+        if args[2] == "open-100" and after is None:
+            closed["updated_at"] = utc_stamp(FETCHED_AT + timedelta(days=1))
+            after = _provider(monkeypatch, [*items, closed])
+        return await read_page(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "_read_page", changing)
+    state = asyncio.run(refresh_pull_list(repository, "open", target=200))
+    assert state.covered["open"] == 200
+    assert before == ["graphql:open:start"]
+    assert after == ["graphql:open:open-100"]
+
+
+def test_catalog_members_finds_eight_prs_within_its_read_budget(
+    repository: ListedRepository,
+) -> None:
+    checkpoint = _seed(repository, [generated_item(1)])
+    # A state-index plan walks tens of thousands of rows before finding these keys.
+    with sqlite3.connect(_path(repository)) as db:
+        (summary,) = db.execute("SELECT body FROM pulls WHERE number=1").fetchone()
+        db.executemany(
+            "INSERT INTO pulls VALUES (?, 'open', ?, ?)",
+            ((number, STAMP, summary) for number in range(2, 20_001)),
+        )
+    numbers = (1, 51, 500, 3000, 12_000, 15_000, 19_000, 20_000)
+    state, members = catalog_members(repository.home, repository.slug, "open", numbers)
+    assert state == checkpoint and set(members) == set(numbers)
 
 
 def test_backfill_past_the_prefix_pauses_below_the_budget_floor_and_resumes(
@@ -692,13 +923,13 @@ def test_cancelled_backfill_keeps_checkpoint_and_resumes(
         waiting = asyncio.Event()
 
         async def held(*args: Any, **kwargs: Any) -> Any:
-            if args[2] == "all-100":
+            if kwargs["backfill"] and args[2] == "all-100":
                 waiting.set()
                 await asyncio.Event().wait()
             return await real(*args, **kwargs)
 
         monkeypatch.setattr(pull_list_refresh, "_read_page", held)
-        task = asyncio.create_task(refresh_pull_list(repository, "all"))
+        task = asyncio.create_task(refresh_pull_list(repository, "all", target=100))
         await waiting.wait()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -706,10 +937,10 @@ def test_cancelled_backfill_keeps_checkpoint_and_resumes(
 
     asyncio.run(exercise())
     state = read_catalog(repository.home, repository.slug)
-    assert state is not None and state.cached["all"] == 100 and state.cursors["all"] == "all-100"
+    assert state is not None and state.cached["all"] == 100 and state.backfill_cursor == "all-100"
     monkeypatch.setattr(pull_list_refresh, "_read_page", real)
     calls.clear()
-    final = asyncio.run(refresh_pull_list(repository, "all"))
+    final = asyncio.run(refresh_pull_list(repository, "all", target=100))
     assert calls == ["graphql:all:all-100", "graphql:all:all-200"]
     assert final.cached["all"] == 250 and final.done["all"]
 
@@ -721,15 +952,19 @@ def test_saved_cursor_can_restart_without_losing_or_looping(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, replacement: bool
 ) -> None:
     state = _seed(repository, [generated_item(9)], complete=False)
-    state2 = state.model_copy(update={"cursors": {"all": "expired", "open": None, "closed": None}})
+    state2 = state.model_copy(update={"backfill_cursor": "expired"})
     assert publish_page(repository, state, state2, ())
     calls = _provider(
         monkeypatch, [generated_item(2)], repository_id="R_new" if replacement else "R_demo"
     )
     real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
 
+    attempted = []
+
     async def changed(*args: Any, **kwargs: Any) -> Any:
         if args[2] == "expired":
+            assert kwargs["backfill"]
+            attempted.append(args[2])
             if not replacement:
                 raise GhCursorError("the cursor is invalid")
             return await real(args[0], args[1], None, **kwargs)
@@ -737,6 +972,7 @@ def test_saved_cursor_can_restart_without_losing_or_looping(
 
     monkeypatch.setattr(pull_list_refresh, "_read_page", changed)
     final = asyncio.run(refresh_pull_list(repository, "all"))
+    assert attempted == ["expired"]
     assert final.done["all"] and len(calls) <= 2
     assert (catalog_row(repository.home, repository.slug, 9) is None) == replacement
 
@@ -821,7 +1057,10 @@ def test_empty_initialization_recovers_but_future_schema_refuses_explicitly(
     with pytest.raises(PullDataError, match="newer Metabrowser") as caught:
         asyncio.run(refresh_pull_list(repository, "all", retry=True))
     assert caught.value.state == "newer_cache"
-    assert "catalog schema 999, where this release reads up to 1" in str(caught.value)
+    assert (
+        f"catalog schema 999, where this release reads up to {pull_catalog.CATALOG_SCHEMA}"
+        in str(caught.value)
+    )
     assert _path(repository).read_bytes() == before
     assert calls == []
 
@@ -843,8 +1082,9 @@ def _newer_checkpoint(repository: ListedRepository, **fields: object) -> None:
             f"{CATALOG_PROJECTION}",
         ),
         (
-            {"schema_version": 2, "delta_finished_at": None},
-            "checkpoint schema 2, where this release reads up to 1",
+            {"schema_version": pull_catalog.CHECKPOINT_SCHEMA + 1, "delta_finished_at": None},
+            f"checkpoint schema {pull_catalog.CHECKPOINT_SCHEMA + 1}, where this release reads up to "
+            f"{pull_catalog.CHECKPOINT_SCHEMA}",
         ),
     ],
 )
@@ -982,7 +1222,7 @@ def _to_wal(repository: ListedRepository, *, live_log: dict[str, object] | None 
     ("fields", "declared"),
     [
         ({"projection_version": CATALOG_PROJECTION + 1}, "row projection"),
-        ({"schema_version": 2}, "checkpoint schema"),
+        ({"schema_version": pull_catalog.CHECKPOINT_SCHEMA + 1}, "checkpoint schema"),
     ],
 )
 @pytest.mark.parametrize("log", ["checkpointed", "live"])
@@ -1926,10 +2166,12 @@ def test_page_publication_cas_and_counts_do_not_walk_the_catalog(
     assert not any("COUNT(" in query.upper() for query in queries)
     with original(_path(repository)) as db:
         plans = db.execute(
-            "EXPLAIN QUERY PLAN SELECT body FROM pulls WHERE state=? AND number<? ORDER BY number DESC LIMIT 100",
-            ("open", 1000),
+            "EXPLAIN QUERY PLAN SELECT body FROM pulls "
+            "WHERE state=? AND updated_at=? AND number<? ORDER BY number DESC LIMIT 100",
+            ("open", STAMP, 1000),
         ).fetchall()
-    assert any("SEARCH pulls USING INDEX pulls_state_number" in plan[3] for plan in plans)
+    assert any("SEARCH pulls USING INDEX pulls_state_updated_number" in plan[3] for plan in plans)
+    assert any("AND number<?" in plan[3] for plan in plans)
 
 
 def test_hostile_bounded_rows_round_trip_without_dropped_rows(repository: ListedRepository) -> None:
@@ -2110,7 +2352,7 @@ def test_repository_reset_reports_known_provider_total_between_pages(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     old = _seed(repository, [generated_item(n) for n in range(1, 201)], complete=False)
-    resumed = old.model_copy(update={"cursors": {"all": "all-100", "open": None, "closed": None}})
+    resumed = old.model_copy(update={"backfill_cursor": "all-100"})
     assert publish_page(repository, old, resumed, ())
     _provider(monkeypatch, [generated_item(n) for n in range(1, 18)], repository_id="R_replaced")
     real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
@@ -2182,7 +2424,7 @@ def test_cancelled_stamp_waiter_cannot_publish_after_lock_release(
     "alter",
     [
         "CREATE TRIGGER unexpected AFTER INSERT ON pulls BEGIN DELETE FROM pulls WHERE number <> NEW.number; END",
-        "DROP INDEX pulls_state_number",
+        "DROP INDEX pulls_state_updated_number",
         "CREATE VIEW unexpected AS SELECT number FROM pulls",
         "CREATE TABLE unexpected(value TEXT)",
     ],
@@ -2203,7 +2445,8 @@ def test_incompatible_sqlite_schema_is_refused_by_reads_and_replaced_by_a_write(
         assert set(db.execute("SELECT type,name FROM sqlite_schema")) == {
             ("table", "checkpoint"),
             ("table", "pulls"),
-            ("index", "pulls_state_number"),
+            ("index", "pulls_state_updated_number"),
+            ("index", "pulls_updated_number"),
         }
         assert db.execute("SELECT count(*) FROM pulls").fetchone() == (0,)
     assert read_catalog(repository.home, repository.slug) is None
@@ -2263,8 +2506,8 @@ def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
         ),
         "rows, CATALOG_PROJECTION": (CATALOG_PROJECTION, _shape(PullListRow.model_json_schema())),
     } == {
-        "tables, CATALOG_SCHEMA": (1, "5f1b61292a43cde0"),
-        "checkpoint, CHECKPOINT_SCHEMA": (1, "e74f6ea5853f5c34"),
+        "tables, CATALOG_SCHEMA": (2, "af625b8c16761ee0"),
+        "checkpoint, CHECKPOINT_SCHEMA": (2, "4de1321ec0ef518d"),
         "rows, CATALOG_PROJECTION": (2, "327ef662914d936d"),
     }
     # A checkpoint writes the version it names, or an older release cannot see it.
@@ -2297,7 +2540,7 @@ def test_old_projection_enriches_once_and_resumes_without_losing_offline_rows(
     with sqlite3.connect(_path(repository)) as db:
         checkpoint = json.loads(db.execute("SELECT value FROM checkpoint").fetchone()[0])
         del checkpoint["projection_version"]
-        checkpoint["cursors"]["all"] = "all-250"
+        checkpoint["backfill_cursor"] = "all-250"
         checkpoint["cursors"]["open"] = "open-200"
         checkpoint["covered"]["open"] = 200
         db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
@@ -2348,7 +2591,7 @@ def test_old_projection_enriches_once_and_resumes_without_losing_offline_rows(
     asyncio.run(interrupt())
     partial = read_catalog(repository.home, repository.slug)
     assert partial is not None and partial.projection_version == CATALOG_PROJECTION
-    assert not partial.done["all"] and partial.cursors["all"] == "all-100"
+    assert not partial.done["all"] and partial.backfill_cursor == "all-100"
     assert partial.cached == old.cached and partial.totals == old.totals
     assert partial.epoch == old.epoch and partial.watermark == old.watermark
     assert partial.cursors["open"] == old.cursors["open"]
@@ -2393,12 +2636,7 @@ def test_projection_reset_loser_keeps_the_winners_resume_cursor(
         nonlocal attempted
         if not attempted and previous is not None and previous.projection_version == 0:
             attempted = True
-            winner = proposed.model_copy(
-                update={
-                    "cursors": {**proposed.cursors, "all": "all-100"},
-                    "covered": {**proposed.covered, "all": 100},
-                }
-            )
+            winner = proposed.model_copy(update={"backfill_cursor": "all-100"})
             assert await real(repo, previous, winner, ())
         return await real(repo, previous, proposed, rows)
 

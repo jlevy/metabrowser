@@ -845,6 +845,9 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         refresh()
         present = read("current")
         assert present["stacks"][0]["pulls"] == [6, 7, 8]
+        assert present["stacks"][0]["updated_at"] == generated_item(8)["updated_at"]
+        assert present["stacks"][0]["leaders"]["open"]["number"] == 8
+        assert present["stacks"][0]["leaders"]["all"]["number"] == 8
         response = client.get(
             "/api/plugin/github/stacks",
             headers={
@@ -885,13 +888,29 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         )
         seed_catalog(
             repository,
-            [generated_item(n) | {"title": f"Stack change {n}"} for n in range(6, 11)],
+            [generated_item(n) | {"title": f"Stack change {n}"} for n in (6, 7, 9)]
+            + [
+                generated_item(8) | {"title": "Stack change 8", "updated_at": utc_stamp(clock[0])},
+                generated_item(10)
+                | {
+                    "title": "Stack change 10",
+                    "state": "closed",
+                    "updated_at": utc_stamp(clock[0] + timedelta(seconds=1)),
+                },
+            ],
             fetched_at=utc_stamp(clock[0]),
         )
         install()
         refresh()
         shared = read("shared")
         assert [stack["pulls"] for stack in shared["stacks"]] == [[6, 7, 8], [8, 9, 10]]
+        earlier, newer = (stack["leaders"] for stack in shared["stacks"])
+        assert {name: row["number"] for name, row in earlier.items()} == {"open": 7, "all": 7}
+        assert {name: row["number"] for name, row in newer.items()} == {
+            "open": 8,
+            "closed": 10,
+            "all": 10,
+        }
     check_recording(
         "github-stacks-responses.json",
         _session_tags(recorded),

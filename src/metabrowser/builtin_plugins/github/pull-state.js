@@ -124,8 +124,9 @@ function listHolds(list, state) {
  * @param {string} source
  * @param {string} list The filter the answer is for: "open", "closed", or "all".
  * @param {{number: number, state: PullState, updatedAt: string | null, title?: string}[]} rows
+ * @param {{append?: boolean}} [options] An appended page keeps entries from earlier pages.
  */
-export function noteListed(source, list, rows) {
+export function noteListed(source, list, rows, { append = false } = {}) {
   const held = heldFor(source);
   const holds = new Set();
   for (const row of rows) {
@@ -139,6 +140,9 @@ export function noteListed(source, list, rows) {
       updatedAt: row.updatedAt,
       title: typeof row.title === "string" && row.title !== "" ? row.title : null,
     });
+  }
+  if (append) {
+    return;
   }
   for (const [number, entry] of held) {
     if (entry.state !== "merged" && !holds.has(number) && listHolds(list, entry.state)) {

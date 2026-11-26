@@ -641,9 +641,7 @@ try {
   measured.firstRowMs = Math.round((await now()) - asked);
   phase("first row");
   if (!before) {
-    // Open, the default list, paints flat and its stacks arrive after it: at the top of the
-    // list, the groups take the top, rather than the first row read keeping its place
-    // below them.
+    // Open starts flat. The recent stack joins the first viewport below the newest PR.
     await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
     measured.groupedMs = Math.round((await now()) - asked);
     phase("grouped");
@@ -653,6 +651,13 @@ try {
       "grouping that arrives after the first paint shows its first stack's row",
       measured.groupedInView.inView && measured.groupedInView.scrollTop === 0,
       JSON.stringify(measured.groupedInView),
+    );
+    check(
+      "the newer standalone pull request stays ahead of the stack",
+      (await evaluate(`
+        document.querySelector('.github-pulls-list :is(.github-pulls-item, .github-pulls-stack-row)')
+          ?.querySelector('a.github-pulls-row')?.dataset.number === "106"
+      `)) === true,
     );
   }
   await click('.github-pulls-filters [data-chip-value="all"]');
@@ -678,6 +683,10 @@ try {
   } else {
     await waitFor(
       `document.querySelector(".github-pulls-stack-row")?.getAttribute("aria-label")?.startsWith("Stack #286, 4 pull requests") === true`,
+    );
+    await waitFor(
+      `[7, 9].every((number) => document.querySelector('a.github-pulls-row[data-number="' + number + '"][aria-level="2"]') !== null)`,
+      "all members of Stack #286 have reached the column",
     );
     await frames();
     const list = await evaluate(LIST);

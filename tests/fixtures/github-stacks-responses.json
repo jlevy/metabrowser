@@ -83,7 +83,32 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T08:08:00Z",
+          "leaders": {
+            "open": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            },
+            "all": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         }
       ]
     }
@@ -140,7 +165,32 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T08:08:00Z",
+          "leaders": {
+            "open": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            },
+            "all": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:08:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         }
       ]
     }
@@ -213,7 +263,32 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T12:20:04Z",
+          "leaders": {
+            "open": {
+              "number": 7,
+              "title": "Stack change 7",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:07:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            },
+            "all": {
+              "number": 7,
+              "title": "Stack change 7",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T08:07:00Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         },
         {
           "number": 290,
@@ -243,7 +318,43 @@
             [],
             [],
             []
-          ]
+          ],
+          "updated_at": "2026-09-17T12:20:05Z",
+          "leaders": {
+            "open": {
+              "number": 8,
+              "title": "Stack change 8",
+              "state": "open",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T12:20:04Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            },
+            "closed": {
+              "number": 10,
+              "title": "Stack change 10",
+              "state": "closed",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T12:20:05Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            },
+            "all": {
+              "number": 10,
+              "title": "Stack change 10",
+              "state": "closed",
+              "draft": false,
+              "author": "contributor",
+              "author_avatar_url": null,
+              "updated_at": "2026-09-17T12:20:05Z",
+              "head_oid": "0000000000000000000000000000000000000000",
+              "merged": false
+            }
+          }
         }
       ]
     }
