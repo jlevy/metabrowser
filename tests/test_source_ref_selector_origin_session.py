@@ -155,6 +155,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["acquiring_remotes"] = _until(client, "acquiring")
             gate.set()
             recorded["remotes"] = _until(client, "ready")
+            recorded["working_tree"] = listing(client, "working_tree")
             recorded["branches"] = listing(client, "branch")
             recorded["tags"] = listing(client, "tag")
             # Just fetched: a visible page's own ask finds nothing due.

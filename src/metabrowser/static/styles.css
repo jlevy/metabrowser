@@ -3080,15 +3080,14 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 .source-ref-selector[hidden] {
   display: none;
 }
-/* A checkout's row says which view the page shows (docs/design-system.md, "The Ref
-   Selector"): "Working tree" or "Revision" in the row's ink, a muted dot, then the ref.
-   A revision ends the row with its way back, a .btn at the row's end, which goes under
-   the rest when the pane is too narrow for both, so the ref is never cut to make room. */
+/* The row is one line whatever it names, its label and the chooser's button, so nothing
+   in it moves when the page shows something else or the chooser opens. A checkout's row
+   on its files on disk says so before the branch (docs/design-system.md, "The Ref
+   Selector"): "Working tree" in the row's ink, a muted dot, then the ref, which is cut
+   short before the words are. */
 .source-ref-selector {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
   padding: var(--nav-toolbar-gap) var(--pane-header-padding-x) 0;
 }
 .source-ref-selector-view,
@@ -3098,21 +3097,6 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 }
 .source-ref-selector-sep {
   color: var(--muted);
-}
-.source-ref-selector-back {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-.source-ref-selector-back[hidden] {
-  display: none;
-}
-.source-ref-selector-back-arrow {
-  color: var(--muted);
-  line-height: 1;
 }
 .source-ref-selector-button {
   display: inline-flex;
@@ -3155,6 +3139,11 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   width: 100%;
   padding-block: 3px;
   font: inherit;
+}
+/* The working tree's tab has its one entry in place of a filter and a list. */
+.source-ref-selector-filter[hidden],
+.source-ref-selector-list[hidden] {
+  display: none;
 }
 /* The list holds every ref and draws only the rows near its view
    (static/source-ref-selector.js, `drawWindow`): the sizer is as tall as every row, and
@@ -3289,33 +3278,31 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 .source-ref-selector-error {
   color: var(--status-error-text);
 }
-/* Why the back button's switch failed, on a line of its own under the row and in line with
-   its words; the list's error line is padded as the list's rows are. */
-.source-ref-selector-back-error {
-  flex-basis: 100%;
-  padding: 0;
-}
 /* What a checkout's list says of the store its origin's refs are read from: a note, and
    a warning's colour when the origin could not be fetched. */
 .source-ref-selector-origin[data-tone="warning"] {
   color: var(--status-warning-text);
 }
-/* A checkout's working tree: a row like a ref's, above the lists and ruled off from
-   them, since it is the one choice that is not a ref. The folder's path stands where a
-   ref's commit does, muted, with its last part, the folder's own name, in the row's
-   colour. The path gives way before the name, and what is before the folder's name
+/* A checkout's working tree, the one entry of its tab: a row like a ref's, with the
+   branch its files are on where a ref's row has its name. The folder's path stands where
+   a ref's commit does, muted, with its last part, the folder's own name, in the row's
+   colour. The path gives way before the branch, and what is before the folder's name
    gives way before it, entirely: a share of the shortfall, however small, cut the
    folder's name too. */
 .source-ref-selector-working-tree {
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
 }
 .source-ref-selector-working-tree-name {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .source-ref-selector-location {
   display: flex;
+  /* Against the branch's 1: the path takes all of a shortfall it can before the branch
+     is cut at all. */
+  flex: 0 9999 auto;
   min-width: 0;
   margin-left: auto;
   color: var(--muted);

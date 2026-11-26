@@ -39,6 +39,31 @@ $ node tests/dom/source-ref-selector-origin-session.js
 {
   "steps": [
     {
+      "step": "the working tree's tab reads no store, so it asks nothing",
+      "requests": [
+        "GET /api/source/refs?kind=working_tree"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree · Branch: trunk",
+        "open": true,
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "working_tree",
+          "branch",
+          "remote",
+          "tag"
+        ],
+        "kind": "working_tree",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [],
+        "note": "",
+        "error": null
+      }
+    },
+    {
       "step": "the checkout's own branches read no store, so their list asks nothing",
       "requests": [
         "GET /api/source/refs?kind=branch"
@@ -48,11 +73,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "branch",
         "query": "",
@@ -76,11 +102,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -107,11 +134,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -139,11 +167,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
       "paint": {
         "button": "Working tree · Branch: trunk",
         "open": true,
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "tag",
         "query": "",
@@ -168,11 +197,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -199,11 +229,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -233,11 +264,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -266,11 +298,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -297,11 +330,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -328,8 +362,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       "requests": [],
       "filterPending": false,
       "paint": {
-        "button": "Revision · Remote branch: origin/trunk",
-        "back": "[← Working tree]",
+        "button": "Remote branch: origin/trunk",
         "open": false
       }
     },
@@ -344,11 +377,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -374,11 +408,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",
@@ -403,11 +438,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "workingTree": "Working tree on trunk: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
+          "working_tree",
           "branch",
-          "tag",
-          "remote"
+          "remote",
+          "tag"
         ],
         "kind": "remote",
         "query": "",

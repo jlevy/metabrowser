@@ -39,12 +39,18 @@ async function run() {
   const steps = [];
   const onFile = { view: recording.views.m };
 
-  // The folder is on its working tree. Its own branches are read from the checkout.
+  // The folder is on its working tree, whose tab its list opens on. That tab and the
+  // checkout's own branches are read from the checkout.
   let page = createPage(onFile);
   let selector = selectorRuntime.createSelector(page.deps, checkout(null));
   let opening = selector.open();
-  await page.answer(recording.branches);
+  await page.answer(recording.working_tree);
   await opening;
+  await settle();
+  steps.push(page.observe("the working tree's tab reads no store, so it asks nothing"));
+  const own = selector.setKind("branch");
+  await page.answer(recording.branches);
+  await own;
   await settle();
   steps.push(page.observe("the checkout's own branches read no store, so their list asks nothing"));
 
@@ -72,8 +78,11 @@ async function run() {
   // Opened again an hour on: the store is older than the server's window, so the ask
   // starts a fetch, and the list follows it to its end.
   opening = selector.open();
-  await page.answer(recording.remotes);
+  await page.answer(recording.working_tree);
   await opening;
+  const again = selector.setKind("remote");
+  await page.answer(recording.remotes);
+  await again;
   await settle();
   page.observe("opened again");
   await page.answer(recording.ask_started);
@@ -116,7 +125,7 @@ async function run() {
     page = createPage(onFile);
     selector = selectorRuntime.createSelector(page.deps, checkout(null));
     opening = selector.open();
-    await page.answer(recording.branches);
+    await page.answer(recording.working_tree);
     await opening;
     await settle();
     page.observe("opened");

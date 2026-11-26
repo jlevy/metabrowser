@@ -14,9 +14,11 @@
 //
 // The same module is a served checkout's selector, on the same two routes. `checkout` is
 // that conversation, recorded from a folder that is a repository's root in
-// tests/fixtures/source-ref-selector-checkout-responses.json: its working tree, its three
-// lists, a branch shown as a revision, the checked-out branch shown as its commit, the
-// way back to the working tree, and the reload it offers when the server shows something
+// tests/fixtures/source-ref-selector-checkout-responses.json: its working tree's tab and
+// its three lists, the tab each page's list opens on, a branch shown as a revision, the
+// checked-out branch shown as its commit, a press on the Working tree tab, which switches
+// to the files on disk, and an arrow key onto it, which does not, a `HEAD` moved in a
+// terminal and named in place, and the reload it offers when the server shows something
 // else.
 
 const fs = require("node:fs");
@@ -56,7 +58,13 @@ function shownOf(switched) {
   return { pin: switched.body.status.pin, ref: switched.body.status.ref };
 }
 
-async function run() {
+// The transcript is printed in two parts, each small enough for a golden to match:
+// `mirror`, a served mirror's conversation, and `checkout`, a served checkout's. With no
+// argument it is both, the checkout's under `checkout`, as the tests read it.
+async function run(part) {
+  if (part === "checkout") {
+    return { checkout: await runCheckout() };
+  }
   const steps = [];
   const branches = recorded.branches.body;
   const topicPage = { pin: branches.pin, ref: branches.ref };
@@ -293,7 +301,8 @@ async function run() {
     return `${count} rows ${plain} px tall${tallRows}, scrolled ${scrollTop} px in ${viewHeight} px, Tab on row ${roving}: rows ${start} to ${end}${beside}`;
   });
 
-  return { steps, labels, copies, keys, overscan, windows, checkout: await runCheckout() };
+  const mirror = { steps, labels, copies, keys, overscan, windows };
+  return part === "mirror" ? mirror : { ...mirror, checkout: await runCheckout() };
 }
 
 // A served checkout: a folder that is a repository's root.
@@ -312,19 +321,32 @@ async function runCheckout() {
   steps.push(page.observe("the button names the working tree and the branch it is on"));
 
   const opening = selector.open();
-  await page.answer(recording.branches);
+  steps.push(page.observe("opening asks where the working tree is, and for no refs"));
+  await page.answer(recording.working_tree);
   await opening;
-  steps.push(page.observe("the working tree is listed above the branches, and is what is served"));
+  steps.push(page.observe("the list opens on the working tree's tab, its one entry current"));
+
+  // An arrow key along the tabs shows each one's list (`setKind`).
+  const branchesListed = selector.setKind("branch");
+  await page.answer(recording.branches);
+  await branchesListed;
+  steps.push(page.observe("the checkout's branches, the checked-out one first and marked"));
 
   const remotes = selector.setKind("remote");
   await page.answer(recording.remotes);
   await remotes;
-  steps.push(page.observe("a checkout has a third list, its remote-tracking branches"));
+  steps.push(page.observe("a checkout has a list more, its remote-tracking branches"));
 
   const tags = selector.setKind("tag");
   await page.answer(recording.tags);
   await tags;
   steps.push(page.observe("tags"));
+
+  // A press on Working tree while the page already shows it has nothing to switch.
+  const pressedShown = selector.pressKind("working_tree");
+  await page.answer(recording.working_tree);
+  await pressedShown;
+  steps.push(page.observe("a press on Working tree while it is shown only shows its tab"));
   const branches = selector.setKind("branch");
   await page.answer(recording.branches);
   await branches;
@@ -341,13 +363,22 @@ async function runCheckout() {
   const onRevisionReadme = { view: recording.views.readme_revision };
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(page.deps, options(shownOf(recording.switch_branch)));
-  steps.push(
-    page.observe("the button names the branch shown, a revision, and offers the way back"),
-  );
+  steps.push(page.observe("the button names the branch shown, and nothing else"));
   const reopened = selector.open();
   await page.answer(recording.branches_on_revision);
   await reopened;
-  steps.push(page.observe("the branch shown is current, and the working tree no longer is"));
+  steps.push(page.observe("the list opens on Branches, where the branch shown is current"));
+
+  // An arrow key onto Working tree shows where the files on disk are, and leaves the page
+  // on the branch it shows.
+  const arrowed = selector.setKind("working_tree");
+  await page.answer(recording.working_tree_on_revision);
+  await arrowed;
+  steps.push(page.observe("an arrow key onto Working tree shows its entry and switches nothing"));
+  const backToBranches = selector.setKind("branch");
+  await page.answer(recording.branches_on_revision);
+  await backToBranches;
+  page.observe("back to branches");
 
   // The checked-out branch is a ref like any other: it shows its commit.
   const toCheckedOut = selector.choose("refs/heads/topic");
@@ -357,16 +388,20 @@ async function runCheckout() {
   selector.dispose();
 
   // The checked-out branch's own revision reads differently from its working tree: the
-  // row says "Revision", and its button goes back, as the list's Working tree row does
-  // (both call `chooseWorkingTree`).
+  // row names the branch alone. A press on the Working tree tab switches to the files on
+  // disk, as choosing the tab's entry does (both call `chooseWorkingTree`).
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(
     page.deps,
     options(shownOf(recording.switch_checked_out)),
   );
   steps.push(page.observe("the checked-out branch's revision is not its working tree"));
-  const toTree = selector.chooseWorkingTree();
-  steps.push(page.observe("the working tree is asked for by name, not by a ref"));
+  const onCheckedOut = selector.open();
+  await page.answer(recording.branches_on_checked_out);
+  await onCheckedOut;
+  steps.push(page.observe("the checked-out branch is current in Branches once it is shown"));
+  const toTree = selector.pressKind("working_tree");
+  steps.push(page.observe("a press on Working tree asks for the files on disk, not for a ref"));
   await page.answer(recording.switch_working_tree);
   await toTree;
   steps.push(page.observe("the page goes to the same file in the folder"));
@@ -392,65 +427,96 @@ async function runCheckout() {
   steps.push(page.observe("the reloaded Commits tab's row names the revision chosen there"));
   selector.dispose();
 
-  // The way back failed, with the list closed: the server is gone, since one that answers
-  // serves its working tree. The row says so under its button, and opening the list, or
-  // the next try, clears it.
+  // A switch to the working tree failed: the server is gone, since one that answers
+  // serves its working tree. The list says so, and closing it clears it.
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(
     page.deps,
     options(shownOf(recording.switch_checked_out)),
   );
-  const failedBack = selector.chooseWorkingTree();
+  const openedToFail = selector.open();
+  await page.answer(recording.branches_on_checked_out);
+  await openedToFail;
+  const failedSwitch = selector.pressKind("working_tree");
   await page.fail();
-  await failedBack;
-  steps.push(page.observe("a failed way back says so in the row, with the list closed"));
-  const openedOnRefusal = selector.open();
-  await page.answer(recording.branches_on_revision);
-  await openedOnRefusal;
+  await failedSwitch;
+  steps.push(page.observe("a switch that failed says so in the list, which stays open"));
   selector.close();
-  steps.push(page.observe("opening and closing the list clears it"));
+  steps.push(page.observe("closing the list clears it"));
   selector.dispose();
 
-  // HEAD moved in a terminal after the page was drawn on feature. The row and its tooltip
-  // name feature until a listing reads HEAD afresh, as the list's "checked out" badge does.
+  // HEAD moved in a terminal, or an agent's, after the page was drawn on topic. The page's
+  // watch on the checkout's HEAD says so (`headChanged`), and the row names the branch it
+  // is on now, in place: nothing is navigated, and the list stays as it was, closed or open.
   page = createPage(onReadme);
-  selector = selectorRuntime.createSelector(page.deps, {
-    shown: null,
-    checkout: true,
-    workingBranch: "feature",
-  });
-  const withTip = (step) => ({
-    ...page.observe(step),
-    tip: selectorRuntime.describe(selector.snapshot()).viewTip,
-  });
-  steps.push(withTip("a page drawn before a switch in a terminal names the branch it was on"));
-  const readsHead = selector.open();
-  await page.answer(recording.branches);
-  await readsHead;
-  selector.close();
-  steps.push(withTip("a listing names the branch HEAD is on now, in the row and its tooltip"));
-  // The listing has no commit for a detached HEAD, so the row names no ref then.
-  const readsDetached = selector.open();
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const withTip = (step) => {
+    const model = selectorRuntime.describe(selector.snapshot());
+    return { ...page.observe(step), tip: model.viewTip, renders: page.renders() };
+  };
+  steps.push(withTip("a page drawn before a checkout in a terminal names the branch it was on"));
+  const moved = selector.headChanged();
+  steps.push(withTip("a HEAD that moved asks where it is, and for no refs, with the list closed"));
+  await page.answer(recording.working_tree_moved);
+  await moved;
+  steps.push(withTip("the row names the branch HEAD is on now, in place"));
+  // An open list asks for itself again, and its entry follows.
+  const openedMoved = selector.open();
+  await page.answer(recording.working_tree_moved);
+  await openedMoved;
+  steps.push(withTip("the open tab's entry names it too"));
+  const same = selector.headChanged();
+  await page.answer(recording.working_tree_moved);
+  await same;
+  steps.push(withTip("an answer that says the same draws nothing"));
+  const detached = selector.headChanged();
+  await page.answer(recording.working_tree_detached);
+  await detached;
+  steps.push(withTip("a HEAD detached since names its commit, in the row and the entry"));
+  // The Branches list marks the branch checked out, so it follows as well.
+  const listedDetached = selector.setKind("branch");
+  await page.answer(recording.branches_moved);
+  await listedDetached;
+  steps.push(withTip("Branches as they were listed while HEAD was on feature"));
+  const followed = selector.headChanged();
   await page.answer(recording.branches_detached);
-  await readsDetached;
+  await followed;
+  steps.push(withTip("the open Branches list follows: no branch is checked out"));
+  // A change heard while a list the reader waits on is loading never replaces that ask,
+  // which may have read HEAD before it moved: the list is asked for once more after it.
+  const waited = selector.setKind("tag");
+  const during = selector.headChanged();
+  steps.push(withTip("a change heard during a load the reader waits on asks nothing yet"));
+  await page.answer(recording.tags);
+  await waited;
+  await during;
+  steps.push(withTip("and asks again once that load has answered"));
+  await page.answer(recording.tags);
   selector.close();
-  steps.push(withTip("a HEAD detached since is the working tree's word alone"));
+  selector.dispose();
+  // A refusal leaves what the row says.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const refusedHead = selector.headChanged();
+  await page.answer(recording.not_a_repository);
+  await refusedHead;
+  steps.push(withTip("a refused ask leaves the row as it was"));
   selector.dispose();
 
   // Back on the working tree.
   page = createPage(onReadme);
   selector = selectorRuntime.createSelector(page.deps, options(null));
   const openedAgain = selector.open();
-  await page.answer(recording.branches);
+  await page.answer(recording.working_tree);
   await openedAgain;
   page.observe("reopen");
-  const same = selector.chooseWorkingTree();
+  const sameTree = selector.chooseWorkingTree();
   await page.answer(recording.switch_working_tree_same);
-  await same;
-  steps.push(page.observe("choosing the working tree while it is shown only closes"));
+  await sameTree;
+  steps.push(page.observe("choosing the working tree's entry while it is shown only closes"));
 
   const reopenedForGone = selector.open();
-  await page.answer(recording.branches);
+  await page.answer(recording.working_tree);
   await reopenedForGone;
   page.observe("reopen");
   const missing = selector.choose("refs/heads/gone");
@@ -482,7 +548,10 @@ async function runCheckout() {
   // A Git too old to be trusted never to fetch into a checkout: the server's own words.
   page = createPage(onReadme);
   selector = selectorRuntime.createSelector(page.deps, options(null));
-  const refusedGit = selector.open();
+  const beforeRefusal = selector.open();
+  await page.answer(recording.working_tree);
+  await beforeRefusal;
+  const refusedGit = selector.setKind("branch");
   await page.answer(recording.unsupported_git);
   await refusedGit;
   steps.push(page.observe("an older Git is refused, and the page says so"));
@@ -500,7 +569,9 @@ async function runCheckout() {
 
   const pin = recording.switch_branch.body.status.pin;
   // The working tree on a branch, at a detached HEAD, and with a HEAD the server could not
-  // read; then each kind of revision, which offers the way back.
+  // read; then each kind of ref, which the row names alone, as a mirror's does. The row
+  // is its label and the chooser's button in every one: `describe` has nothing else to
+  // say of it.
   const labels = [
     [null, { workingBranch: "topic" }],
     [null, { workingCommit: pin }],
@@ -513,9 +584,22 @@ async function runCheckout() {
     const model = selectorRuntime.describe({ ...emptyState(), ...head, shown, checkout: true });
     const chip = model.selectedRef === null ? "" : ` (${model.selectedRef.kind} chip)`;
     const id = model.commitId === null ? "" : " (commit-ID face)";
-    const back = model.back ? " [← Working tree]" : "";
-    return `${model.button}${chip}${id}${back} | ${model.viewTip}`;
+    return `${model.button}${chip}${id} | ${model.viewTip}`;
   });
+
+  // The tab a list opens on, by what the page shows: the one that holds it.
+  const opens = Object.fromEntries(
+    [
+      ["a checkout's working tree", null, true],
+      ["a checkout's branch", { pin, ref: "refs/heads/feature" }, true],
+      ["a checkout's remote-tracking branch", { pin, ref: "refs/remotes/origin/feature" }, true],
+      ["a checkout's tag", { pin, ref: "refs/tags/v1" }, true],
+      ["a checkout's commit with no ref", { pin, ref: null }, true],
+      ["a mirror's branch", { pin, ref: "refs/remotes/origin/feature" }, false],
+      ["a mirror's tag", { pin, ref: "refs/tags/v1" }, false],
+      ["a mirror's pull request", { pin, ref: "refs/pull/7/head" }, false],
+    ].map(([what, shown, checkout]) => [what, selectorRuntime.openKind(shown, checkout)]),
+  );
 
   // What each kind of page names on its data requests, so a tab left behind is refused:
   // a commit, the working tree's word, or nothing, for a page with nothing to guard.
@@ -549,7 +633,14 @@ async function runCheckout() {
     ].map(([where, location, name]) => {
       const listing = {
         ...recording.branches.body,
-        working_tree: { current: true, head: null, head_name: null, name, location },
+        working_tree: {
+          current: true,
+          head: null,
+          head_name: null,
+          head_commit: null,
+          name,
+          location,
+        },
       };
       const tree = selectorRuntime.describe({
         ...emptyState(),
@@ -562,6 +653,7 @@ async function runCheckout() {
   return {
     steps,
     labels,
+    opens,
     guard,
     folders,
     hold: await runHold(recording, onReadme, options),
@@ -729,7 +821,7 @@ async function runHold(recording, onReadme, options) {
   return observed;
 }
 
-run()
+run(process.argv[2])
   .then((transcript) => {
     process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
   })
