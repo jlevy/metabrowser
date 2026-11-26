@@ -2423,7 +2423,13 @@ async def index(
         # and nothing loads it alone. Measured 2026-11-26 at gzip -6 (`delivery.GZIP_LEVEL`),
         # the bundle's scripts are 1,742, 9,866, and 9,181 bytes compressed (4,626, 34,808,
         # and 31,261 raw): the card would cost every folder's shell 9,181 bytes as a startup
-        # script, where it runs only once a pointer rests on a link it registered.
+        # script, where it runs only once a pointer rests on a link it registered. What it
+        # adds to the resolver's wait, measured the same day in headless Chrome 158 from
+        # 127.0.0.1 on a 4-core Linux container at load averages of 2 to 6, in two sessions
+        # of cold loads with the cache off, alternating the bundle with and without it (20
+        # and 30 loads of each): the whole bundle's medians went from 41.9 and 16.4 ms to
+        # 44.6 and 19.4 ms, at most 89 ms, inside `REPOSITORY_LINKS_WAIT_MS`
+        # (static/plugin-sdk-views.js); the card's own request took medians of 5.4 and 2.9 ms.
         # The link card's providers (static/link-preview-providers.js), what a card says of
         # each kind of page and what a rest on a link starts loading, follow the card's
         # registry they register with. Measured 2026-11-26 at `delivery.GZIP_LEVEL`, as
