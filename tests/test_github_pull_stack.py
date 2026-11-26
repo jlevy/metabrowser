@@ -3,7 +3,7 @@
 The routes are ``tests/test_cli_github_stack_golden.py``'s, on the GitHub stand-in. These
 are the rules on manifests of their own: a file two layers change, a file one layer renames
 and another changes, a key that moves with every member's pins and with the list, and the
-earlier comparisons a stack keeps admitted after it moves.
+earlier comparisons a stack keeps admitted after it moves, and what a member's move adds.
 """
 
 from __future__ import annotations
@@ -21,13 +21,16 @@ from metabrowser.builtin_plugins.github import pull_stack, pull_stack_retained
 from metabrowser.builtin_plugins.github.pull_stack import StackPair, stack_digest, stack_scope
 from metabrowser.builtin_plugins.github.pull_stack_retained import (
     MAX_RETAINED_STACK_PAIRS,
+    retained_stack_digest,
     retained_stack_pair,
 )
 from metabrowser.builtin_plugins.github.pull_stacks import NativeStack
 from metabrowser.cache.paths import source_pulls_directory, source_stack_snapshots
 from metabrowser.diff.format import ChangeSetManifest, EntrySide, FileChange, Totals
+from metabrowser.git.process import RepositoryStoreTarget
 from metabrowser.home import ensure_home, ensure_private_directory
 from metabrowser.view_routes import decode_safe_stack_route, format_stack_href
+from tests.diff_fixture_repo import git
 
 A, B, C, D = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
 
@@ -210,6 +213,10 @@ def test_a_drawn_stack_pair_stays_admitted_for_its_store_and_reader(tmp_path: Pa
     assert retained_stack_pair(published, 7, "gh:bob", A, C, None) is None
     assert retained_stack_pair(_published(tmp_path, "store-2"), 7, None, A, C, None) is None
     assert retained_stack_pair(published, 8, None, A, C, None) is None
+    # The stack route's ``since`` finds a drawn pair by its digest alone, for its reader.
+    assert retained_stack_digest(published, 7, "gh:alice", first.digest) == first
+    assert retained_stack_digest(published, 7, "gh:bob", first.digest) is None
+    assert retained_stack_digest(published, 7, "gh:alice", "0" * 32) is None
 
 
 def test_a_stack_keeps_its_last_eight_pairs_and_one_reader(tmp_path: Path) -> None:
@@ -225,6 +232,112 @@ def test_a_stack_keeps_its_last_eight_pairs_and_one_reader(tmp_path: Path) -> No
     pull_stack_retained.retain_stack_pair(published, _pair(C), "gh:bob")
     assert retained_stack_pair(published, 7, None, A, heads[-1], None) is None
     assert retained_stack_pair(published, 7, "gh:bob", A, C, None) == _pair(C)
+
+
+def test_a_stack_keeps_the_pair_its_page_draws_while_the_page_polls(tmp_path: Path) -> None:
+    # A page drew the first pair and names it in each poll (`since`): every write keeps it,
+    # and the oldest of the others goes, so it outlives the moves of a stack whose members'
+    # records arrive one by one.
+    published = _published(tmp_path)
+    drawn = _pair(C)
+    pull_stack_retained.retain_stack_pair(published, drawn, "gh:alice")
+    heads = [f"{index:040x}" for index in range(1, 2 * MAX_RETAINED_STACK_PAIRS + 1)]
+    for head in heads:
+        pull_stack_retained.retain_stack_pair(published, _pair(head), "gh:alice", drawn.digest)
+    assert retained_stack_pair(published, 7, "gh:alice", A, C, drawn.digest) == drawn
+    assert retained_stack_digest(published, 7, "gh:alice", drawn.digest) == drawn
+    kept = heads[-(MAX_RETAINED_STACK_PAIRS - 1) :]
+    for head in heads:
+        expected = _pair(head) if head in kept else None
+        assert retained_stack_pair(published, 7, None, A, head, None) == expected
+    # Once no page names it, it goes when it is the oldest, as any pair does.
+    later = [f"{index:040x}" for index in range(100, 100 + MAX_RETAINED_STACK_PAIRS - 1)]
+    for head in later:
+        assert retained_stack_pair(published, 7, "gh:alice", A, C, drawn.digest) == drawn
+        pull_stack_retained.retain_stack_pair(published, _pair(head), "gh:alice")
+    assert retained_stack_pair(published, 7, "gh:alice", A, C, drawn.digest) is None
+
+    # Another reader's pair starts the history over, whatever a page of the first draws.
+    pull_stack_retained.retain_stack_pair(published, _pair(C), "gh:bob", drawn.digest)
+    assert retained_stack_pair(published, 7, None, A, heads[-1], None) is None
+    assert retained_stack_pair(published, 7, "gh:bob", A, C, None) == _pair(C)
+
+
+def test_two_pages_on_one_stack_each_keep_the_pair_they_draw(tmp_path: Path) -> None:
+    # Page one draws X and page two Y. At each move page one's poll answers the new pair
+    # first, so the file already ends with it when page two's poll names Y: that poll writes
+    # too, keeping Y, and a poll that names the pair the last write kept writes nothing.
+    published = _published(tmp_path)
+    first, second = _pair("1" * 40), _pair("2" * 40)
+    pull_stack_retained.retain_stack_pair(published, first, "gh:alice")
+    pull_stack_retained.retain_stack_pair(published, second, "gh:alice", first.digest)
+    path = tmp_path / source_stack_snapshots(_SLUG, 7)
+    for move in range(1, 2 * MAX_RETAINED_STACK_PAIRS + 1):
+        pair = _pair(f"{100 + move:040x}")
+        pull_stack_retained.retain_stack_pair(published, pair, "gh:alice", first.digest)
+        pull_stack_retained.retain_stack_pair(published, pair, "gh:alice", second.digest)
+        stamp = path.stat().st_mtime_ns
+        pull_stack_retained.retain_stack_pair(published, pair, "gh:alice", second.digest)
+        assert path.stat().st_mtime_ns == stamp, "a poll that names the same pair writes nothing"
+        for drawn in (first, second):
+            found = retained_stack_digest(published, 7, "gh:alice", drawn.digest)
+            assert found == drawn, f"move {move}: the pair a polling page draws is kept"
+
+
+def test_a_moved_member_counts_the_commits_the_drawn_comparison_did_not_show(
+    tmp_path: Path,
+) -> None:
+    # 8's record lagged when the page drew the stack: it named a1, while 10, the top, already
+    # held b1, 8's head on GitHub. Then 8 gains c1, and 10 is restacked on it.
+    work = tmp_path / "repo"
+    work.mkdir()
+    git(work, "init", "-q", "-b", "main")
+
+    def commit(name: str) -> str:
+        (work / "file.txt").write_text(f"{name}\n")
+        git(work, "add", "file.txt")
+        git(work, "commit", "-qm", name)
+        return git(work, "rev-parse", "HEAD").decode().strip()
+
+    base, a1, b1, t1 = (commit(name) for name in ("base", "a1", "b1", "t1"))
+    # A record older still named a head 8's branch has since been rebased past.
+    git(work, "checkout", "-q", base)
+    a0 = commit("a0")
+    git(work, "checkout", "-q", b1)
+    c1, t2 = commit("c1"), commit("t2")
+    drawn_members = ((8, base, a1), (10, b1, t1))
+    moved_members = ((8, base, c1), (10, c1, t2))
+    drawn = StackPair(70, base, t1, stack_digest(drawn_members), drawn_members, (True, True))
+    moved = StackPair(70, base, t2, stack_digest(moved_members), moved_members, (True, True))
+    target = RepositoryStoreTarget(work / ".git", "sha1")
+
+    # b1 was in the comparison drawn, so 8 has one new commit, not two; 10's earlier head is
+    # not in its new one's history, so it was rewritten, and no count says what is new.
+    assert asyncio.run(pull_stack.stack_moves(target, drawn, moved)) == [
+        {"number": 8, "commits": 1},
+        {"number": 10, "commits": None},
+    ]
+    assert asyncio.run(pull_stack.stack_moves(target, drawn, drawn)) == []
+
+    # 8's record catches up to b1, which the drawn top held, as does one that had named a0:
+    # nothing is new to the reader, so each counts 0 rather than being called rewritten.
+    caught_members = ((8, base, b1), (10, b1, t1))
+    caught = StackPair(70, base, t1, stack_digest(caught_members), caught_members, (True, True))
+    assert asyncio.run(pull_stack.stack_moves(target, drawn, caught)) == [
+        {"number": 8, "commits": 0}
+    ]
+    older_members = ((8, base, a0), (10, b1, t1))
+    older = StackPair(70, base, t1, stack_digest(older_members), older_members, (True, True))
+    assert asyncio.run(pull_stack.stack_moves(target, older, caught)) == [
+        {"number": 8, "commits": 0}
+    ]
+    # 10, the top, is reset to b1: the drawn top held its new head and its earlier one, so
+    # its record did not catch up; its branch was rewritten, and no count says what is new.
+    reset_members = ((8, base, b1), (10, b1, b1))
+    reset = StackPair(70, base, b1, stack_digest(reset_members), reset_members, (True, True))
+    assert asyncio.run(pull_stack.stack_moves(target, caught, reset)) == [
+        {"number": 10, "commits": None}
+    ]
 
 
 def test_an_unreadable_file_answers_unknown_and_a_malformed_one_nothing(
