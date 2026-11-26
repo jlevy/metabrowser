@@ -5,7 +5,7 @@ title: "Spec: In-app link resolution for every rendered text"
 kind: epic
 status: closed
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-26-in-app-link-resolution.md
 refs:
   - kind: pr
@@ -23,8 +23,9 @@ child_order_hints:
   - is-01m8bathnhy6pkgn4hmjd87hb1
   - is-01m8bp7ce37pgee1zpr3wrq5q6
   - is-01m8bkxf108ayt40j2hhjkrxm5
+  - is-01m8cp5qa81nxgz1ecg9kggzx2
 created_at: 2026-11-26T07:06:10.598Z
-updated_at: 2026-11-26T10:46:34.703Z
+updated_at: 2026-11-26T19:43:59.303Z
 closed_at: 2026-11-26T10:46:34.703Z
 close_reason: "Merged Metabrowser PR #874 at 24d368b05dd3be0024305f126f96a4a207f74436 after passing CI and independent follow-up reviews."
 resolution: null
