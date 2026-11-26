@@ -46,6 +46,11 @@ null, for a link left as written.
   or one of a pull request’s pages, are pull requests’ addresses; a folder named with
   digits is a folder.
 
+`viewFiles` is what a rendered diff’s link to a file of the head, a pin’s
+`/view/<GitPath wire>` address, opens on github.com at the head when the page does not
+show it (`viewFileUrl`): the file the wire names, and nothing for a name that is not
+text or an address that is not a pin’s.
+
 `enhanced` runs `enhance` over four links of an inert text, as a pull request’s page and
 a commit’s page call it, and clicks each plainly and with a modifier.
 An in-app link loses the new tab the allowlist gave it; a plain click on a `/view/`
@@ -773,6 +778,28 @@ $ node tests/dom/repository-links-session.js
         "result": null
       }
     ]
+  },
+  "viewFiles": {
+    "a file": {
+      "href": "/view/g1-ZG9jcw/g1-6ZuqLm1k",
+      "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/%E9%9B%AA.md"
+    },
+    "a file, at a heading": {
+      "href": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-install",
+      "url": "https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md#user-content-install"
+    },
+    "a name that is not text": {
+      "href": "/view/g1-_w",
+      "url": null
+    },
+    "not a pin's address": {
+      "href": "/view/docs/setup.md",
+      "url": null
+    },
+    "not a view": {
+      "href": "/pull/7/files/docs/setup.md",
+      "url": null
+    }
   },
   "enhanced": {
     "a text at its served head": {

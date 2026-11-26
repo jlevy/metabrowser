@@ -431,10 +431,9 @@ function headLinksOpen(comparison) {
 
 /**
  * The file a link in rendered Markdown names at the comparison's head, on github.com, for
- * when the page does not show that head (`headLinksOpen`): the link's `/view/` address
- * spells the path in the GitPath wire, which static/git-path.js reads back, and
- * static/repository-links.js spells the github.com address. Null without a GitHub
- * repository, or for a name that is not text, which the address could not spell.
+ * when the page does not show that head (`headLinksOpen`): static/repository-links.js reads
+ * the link's `/view/` address back and spells the github.com one (`viewFileUrl`). Null
+ * without a GitHub repository, or for a name that is not text.
  *
  * @param {Comparison | undefined} comparison
  * @returns {(href: string) => string | null}
@@ -442,20 +441,9 @@ function headLinksOpen(comparison) {
 function headFile(comparison) {
   return (href) => {
     const head = comparison?.right;
-    const [wire = "", fragment] = href.slice("/view/".length).split("#", 2);
-    const path = window.MetabrowserGitPath?.display(wire) ?? null;
-    if (typeof head !== "string" || path === null || path.includes("\uFFFD")) {
-      return null;
-    }
-    return (
-      window.MetabrowserRepositoryLinks?.fileUrl(
-        mb.repository,
-        head,
-        path.split("/"),
-        false,
-        fragment === undefined ? "" : `#${fragment}`,
-      ) ?? null
-    );
+    return typeof head === "string"
+      ? (window.MetabrowserRepositoryLinks?.viewFileUrl(mb.repository, head, href) ?? null)
+      : null;
   };
 }
 

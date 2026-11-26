@@ -3960,6 +3960,11 @@ declare global {
       directory?: boolean,
       suffix?: string,
     ): string | null;
+    viewFileUrl(
+      context: MetabrowserRepositoryContext | null | undefined,
+      revision: string,
+      href: string,
+    ): string | null;
   }>;
 
   /** What the freshness label says and offers; see static/source-freshness.js. */

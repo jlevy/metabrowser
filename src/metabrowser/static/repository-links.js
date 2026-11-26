@@ -5,38 +5,42 @@
 // folder's README (builtin_plugins/markdown/link-enhancer.js), a pull request's
 // description, comments, reviews, and Guided Review notes (builtin_plugins/github), a
 // commit's message (static/git-panel.js), and Markdown rendered in a diff
-// (builtin_plugins/diff/diff-markdown.js). One decision, so the surfaces cannot drift
-// apart; docs/project/specs/active/plan-2026-11-26-in-app-link-resolution.md is its design.
+// (builtin_plugins/diff). One decision, so the surfaces cannot drift apart;
+// docs/project/specs/active/plan-2026-11-26-in-app-link-resolution.md is its design.
 //
-// `localize` reads one absolute URL against the served repository's identity,
-// `metabrowser.repository`, and answers:
+// A GitHub URL is `https://github.com/<owner>/<repo>/<page>/<args>`, and this module reads
+// it in that order: the host and the repository (`readRepositoryUrl`), then the page, each
+// one a handler in `PAGES`. Only a link into the served repository (`metabrowser.repository`,
+// read from Git metadata by repository_context.py) is read at all, and what it opens is:
 //
-// - a `view` target, a `/view/` address of the served tree, for the repository's root
-//   and for a `blob` or `tree` URL naming the served branch or the served commit;
-// - a `route`, for a pull request and its Changes and Checks tabs, a commit by its full
-//   ID, and the pull request list, which name no revision and so open whatever is served;
-// - an `external` URL in place of the one written, for a pull request's text only: the
-//   file a path-relative reference names, at the commit the text describes, on github.com;
-// - or null, and the link stays as it is: another repository, another branch or tag, an
-//   abbreviated commit, an issue, a comparison, or any address with nothing in-app to show.
+// | `github.com/<owner>/<repo>` and then | Opens |
+// | --- | --- |
+// | nothing, `#<heading>`, or `?tab=readme-ov-file` | `/view/`, the served root and its README |
+// | `/tree/<ref>[/<path>]`, `/blob/<ref>/<path>`, `<ref>` the served branch or commit | `/view/<path>` |
+// | `/pull/<n>` | `/pull/<n>` |
+// | `/pull/<n>/files` or `/changes`, with or without a file anchor | `/pull/<n>/files` |
+// | `/pull/<n>/checks` | `/pull/<n>/checks` |
+// | `/pull/<n>/commits/<id>`, `/commit/<id>`, with a full commit ID | `/commit/<id>` |
+// | `/pulls` | `/pulls` |
+// | `/pull/<path>`, in a pull request's text | the file at the head (`textPath`) |
+// | anything else | the link as written |
 //
-// No in-app address names a revision, and a link in authored text never switches the
-// served pin, so a link to another branch stays external: opening it here would show the
-// served branch's file under another branch's link (diff-markdown.js `markdownTargets`
-// holds the same rule).
+// A `/view/` address names whatever revision is served, so a link opens one only for the
+// served branch or commit; a pull request's, a commit's, or the list's page names no
+// revision. A link to another branch, a tag, another commit, an issue, a comparison, or a
+// particular comment stays as written: no in-app address names it, and a link in authored
+// text never switches the served pin (diff-markdown.js `markdownTargets` holds the same
+// rule).
 //
 // A pull request's text has its page as its base on the server (pull_text_render.py), so
-// a path-relative reference arrives as github.com would resolve it, under
-// `/<owner>/<repo>/pull/`, where github.com shows a missing page. With a text context, an
-// address there that is not a pull request's is read as the repository path it names, at
-// the text's commit: in place when the served tree is that commit, on github.com
-// otherwise.
+// a path-relative reference such as `docs/plan.md` arrives as github.com resolves it,
+// `github.com/<owner>/<repo>/pull/docs/plan.md`, where github.com shows a missing page.
+// Read with a text context, such an address names the repository's file at the text's
+// commit, the head, and opens where Metabrowser can show that file (`textPath`).
 //
-// `enhance` applies `localize` to every link of an inert text, already reduced to the
-// allowlist (static/inert-html.js): an in-app link loses `target` and `rel`, since it does
-// not leave the page, and a plain click on a `/view/` target opens it through
-// `metabrowser.navigation.open`, as a Markdown file's links do. A modified click, a new
-// tab, and a copied address use the same `href`.
+// The answers are in-app addresses, spelled in one place each (In-app addresses, below),
+// or a github.com address, spelled by `fileUrl`. `enhance` applies them to every link of
+// an inert text, already reduced to the allowlist (static/inert-html.js).
 //
 // Loaded on demand (`ensureAsset("repository-links")`) by the views that show authored text
 // from a GitHub repository: only a page with a repository identity uses it, and the startup
@@ -44,60 +48,53 @@
 // browserlessly in tests/dom/repository-links-session.js.
 
 (() => {
+  // ── Limits ─────────────────────────────────────────────────────
+
   /** Bounds URL parsing work for one authored link. */
   const MAX_URL_LENGTH = 16 * 1024;
   /** Bounds path comparison work for one authored link. */
   const MAX_PATH_SEGMENTS = 512;
-  const FULL_REVISION = /^[0-9a-f]{40}$/i;
-  // An abbreviated commit ID, as GitHub accepts one in a `blob` or `tree` URL; it names the
-  // served commit only when that commit's full ID begins with it.
-  const ABBREVIATED_REVISION = /^[0-9a-f]{7,39}$/i;
-  // The pages under a pull request's number on github.com. A path-relative reference in a
-  // pull request's text whose first folder is named with digits is a pull request's
-  // address only when its next segment is one of these, or absent.
-  const PULL_PAGES = new Set(["files", "changes", "checks", "commits"]);
-  // The repository page's own query when it shows the README (`?tab=readme-ov-file`, as
-  // github.com's README anchors copy), which the served root's Overview shows too.
-  const README_TAB = "tab=readme-ov-file";
-  // Where `enhance` keeps the address a link's text gave it, the first time it changes the
-  // link, so a later pass that knows more (the files a pull request changes, once they
-  // arrive) reads the authored link rather than its own answer. The allowlist keeps no
-  // attribute of the text's own, so only the page writes it.
-  const AUTHORED_HREF = "data-metabrowser-authored-href";
-  /**
-   * What a plain click on each link `enhance` made in-app opens, read at the click, so a
-   * later pass changes it without a second listener.
-   *
-   * @type {WeakMap<Element, {resolved: RepositoryLinkTarget, mb: Pick<MetabrowserPublicSdk, "navigation">, open: ((route: Extract<RepositoryLinkTarget, {kind: "route"}>) => boolean) | undefined}>}
-   */
-  const opens = new WeakMap();
-  // The tooltip of a link that opens whatever revision is served, not the one it named.
-  const WORKING_TREE_TITLE = "Open the corresponding path in the currently served working tree.";
-  // Keep aligned with view_routes._PULL_NUMBER and static/pull-route.js.
-  const PULL_NUMBER = /^[1-9][0-9]{0,9}$/;
-  // GitHub's anchor for one file of a pull request's Changes tab or a commit's page:
-  // `diff-` and the SHA-256 of its path (builtin_plugins/github/urls.py), optionally with a
-  // line. Only the server can name its file (pull_file_anchor.py), so a link with one opens
-  // the page, as `metab URL` does for a commit.
-  const FILE_ANCHOR = /^diff-[0-9a-f]{64}(?:[LR][0-9]+(?:-[LR][0-9]+)?)?$/i;
+
+  // ── GitHub's URL grammar ───────────────────────────────────────
+
   const HOSTS = new Set(["github.com", "www.github.com"]);
-  // A `%` that starts no escape, which the URL parser leaves in a query as written and the
-  // navigation codec refuses (`canonicalizeQuery` in static/navigation.js): such a link is
-  // left as it is rather than given an address that cannot be spelled.
-  const MALFORMED_ESCAPE = /%(?![0-9A-Fa-f]{2})/;
   // GitHub's owner and repository names are ASCII; compared without case only once both
   // are, so a character that folds to an ASCII letter (U+212A KELVIN SIGN to `k`) names no
   // repository here, as it names none on github.com.
   const OWNER_NAME = /^[A-Za-z0-9-]+$/;
   const REPOSITORY_NAME = /^[A-Za-z0-9._-]+$/;
+  const FULL_REVISION = /^[0-9a-f]{40}$/i;
+  // An abbreviated commit ID, as GitHub accepts one in a `blob` or `tree` URL; it names the
+  // served commit only when that commit's full ID begins with it.
+  const ABBREVIATED_REVISION = /^[0-9a-f]{7,39}$/i;
+  // Keep aligned with view_routes._PULL_NUMBER and static/pull-route.js.
+  const PULL_NUMBER = /^[1-9][0-9]{0,9}$/;
+  // The pages under a pull request's number on github.com. A path-relative reference in a
+  // pull request's text whose first folder is named with digits is a pull request's
+  // address only when its next segment is one of these, or absent.
+  const PULL_PAGES = new Set(["files", "changes", "checks", "commits"]);
+  // GitHub's page that opens a pull request, `pull/new/<branch>`, which `git push` prints.
+  const NEW_PULL = "new";
+  // GitHub's anchor for one file of a pull request's Changes tab or a commit's page:
+  // `diff-` and the SHA-256 of its path (builtin_plugins/github/urls.py), optionally with a
+  // line. Only the server can name its file (pull_file_anchor.py), so a link with one opens
+  // the page, as `metab URL` does for a commit.
+  const FILE_ANCHOR = /^diff-[0-9a-f]{64}(?:[LR][0-9]+(?:-[LR][0-9]+)?)?$/i;
+  // The repository page's own query when it shows the README (`?tab=readme-ov-file`, as
+  // github.com's README anchors copy), which the served root's Overview shows too.
+  const README_TAB = "tab=readme-ov-file";
+  // A `%` that starts no escape, which the URL parser leaves in a query as written and the
+  // navigation codec refuses (`canonicalizeQuery` in static/navigation.js): such a link is
+  // left as it is rather than given an address that cannot be spelled.
+  const MALFORMED_ESCAPE = /%(?![0-9A-Fa-f]{2})/;
+
+  // ── Types ──────────────────────────────────────────────────────
 
   /** @typedef {MetabrowserRepositoryLinkTarget} RepositoryLinkTarget */
+  /** @typedef {Extract<RepositoryLinkTarget, {kind: "route"}>} RouteTarget */
 
   /**
-   * @typedef {{
-   *   head: string | null,
-   *   changes?: {number: number, stack: boolean, files: ReadonlySet<string>},
-   * }} TextContext
+   * @typedef {MetabrowserRepositoryTextContext} TextContext
    *   A pull request's text: `head`, the commit it describes, or null when not known, and
    *   `changes`, the pull request's or stack's number and the paths its comparison changes,
    *   which its Changes tab shows at the head, when the page knows them.
@@ -109,9 +106,32 @@
    *   text?: TextContext,
    * }} LocalizeOptions
    *   `sourceKind` is what the served tree is (`metabrowser.sourceKind()`): a pinned
-   *   revision addresses its paths in the GitPath wire. `text` is a pull request's text,
-   *   whose base is its page, with `head`, the commit it describes, or null when not known.
+   *   revision addresses its paths in the GitPath wire. `text` is a pull request's text.
    */
+
+  /**
+   * One URL into the served repository, read: its page, the page's decoded path segments,
+   * whether the path ended in `/`, its query and fragment as a navigation target keeps them
+   * (the query serialized, the fragment decoded), and both as written (`search`, `hash`).
+   *
+   * @typedef {{
+   *   page: string, args: string[], directory: boolean,
+   *   query: string, fragment: string, search: string, hash: string,
+   * }} RepositoryLink
+   */
+
+  /**
+   * What a page reads a link against: the served repository, what its tree is, and a pull
+   * request's text, when the link is in one.
+   *
+   * @typedef {{
+   *   context: MetabrowserPublicRepositoryContext,
+   *   sourceKind: "filesystem" | "git_revision",
+   *   text: TextContext | undefined,
+   * }} Scope
+   */
+
+  // ── Reading a URL ──────────────────────────────────────────────
 
   /**
    * The in-app target of *url*, a replacement for it, or null to leave it as written.
@@ -122,7 +142,34 @@
    * @returns {RepositoryLinkTarget | null}
    */
   function localize(url, context, options = {}) {
-    if (typeof url !== "string" || url.length > MAX_URL_LENGTH || !isRepositoryContext(context)) {
+    if (!isRepositoryContext(context)) {
+      return null;
+    }
+    const link = readRepositoryUrl(url, context);
+    const page = link === null ? undefined : PAGES.get(link.page);
+    if (link === null || page === undefined) {
+      return null;
+    }
+    return page(link, {
+      context,
+      sourceKind: options.sourceKind === "git_revision" ? "git_revision" : "filesystem",
+      text: options.text,
+    });
+  }
+
+  /**
+   * *url* read as a link into the served repository: an `http` or `https` address on
+   * github.com, with no credentials or port, whose first two segments name the repository,
+   * compared without case and with one trailing `.git` removed. Null for anything else,
+   * and for a path or fragment that does not decode, a dot segment, an encoded separator,
+   * backslash, or NUL, and a query no in-app address could carry.
+   *
+   * @param {string} url
+   * @param {MetabrowserPublicRepositoryContext} context
+   * @returns {RepositoryLink | null}
+   */
+  function readRepositoryUrl(url, context) {
+    if (typeof url !== "string" || url.length > MAX_URL_LENGTH) {
       return null;
     }
     let parsed;
@@ -155,77 +202,75 @@
     if (fragment === null || fragment.includes("\0") || MALFORMED_ESCAPE.test(parsed.search)) {
       return null;
     }
-    const link = {
+    return {
+      page: segments[2] ?? "",
+      args: segments.slice(3),
       directory: parsed.pathname.endsWith("/"),
-      fragment,
       query: parsed.search.length > 1 ? parsed.search.slice(1) : "",
-      rest: segments.slice(2),
+      fragment,
       search: parsed.search,
       hash: parsed.hash,
     };
-    const sourceKind = options.sourceKind === "git_revision" ? "git_revision" : "filesystem";
-    const page = link.rest[0];
-    if (page === undefined) {
-      // The repository's page shows its default branch's README; here the served root does,
-      // in its Overview, whose fragment scrolls the README as the page's anchor does there.
-      return link.query && link.query !== README_TAB
-        ? null
-        : view([], true, "", link.fragment, "working-tree", context, sourceKind);
+  }
+
+  // ── GitHub's pages ─────────────────────────────────────────────
+
+  /**
+   * The page each URL names, by its third segment, and what it opens; a page not listed
+   * here has no in-app counterpart (`issues`, `compare`, `commits`, `wiki`, `raw`, ...).
+   *
+   * @type {ReadonlyMap<string, (link: RepositoryLink, scope: Scope) => RepositoryLinkTarget | null>}
+   */
+  const PAGES = new Map([
+    ["", repositoryPage],
+    ["blob", (link, scope) => revisionPage(link, scope, false)],
+    ["tree", (link, scope) => revisionPage(link, scope, true)],
+    ["pull", pullPage],
+    ["commit", commitPage],
+    ["pulls", pullsPage],
+  ]);
+
+  /**
+   * `github.com/<owner>/<repo>`: the repository's page, which shows its default branch's
+   * README. Here the served root does, in its Overview, whose fragment scrolls the README
+   * as the page's anchor does there. Only when the served root is the repository's root.
+   *
+   * @param {RepositoryLink} link
+   * @param {Scope} scope
+   * @returns {RepositoryLinkTarget | null}
+   */
+  function repositoryPage(link, scope) {
+    if (link.query && link.query !== README_TAB) {
+      return null;
     }
-    if (page === "blob" || page === "tree") {
-      return revisionPath(link, page === "tree", context, sourceKind);
-    }
-    if (page === "pull") {
-      return pullLink(link, context, sourceKind, options.text);
-    }
-    if (page === "commit") {
-      return link.rest.length === 2 ? commit(link.rest[1], link) : null;
-    }
-    if (page === "pulls") {
-      return link.rest.length === 1 && !link.query && !link.fragment
-        ? route("/pulls", "pulls")
-        : null;
-    }
-    return null;
+    return viewTarget(scope, [], true, "", link.fragment, "working-tree");
   }
 
   /**
-   * @typedef {{
-   *   directory: boolean, fragment: string, query: string, rest: string[],
-   *   search: string, hash: string,
-   * }} RepositoryLink
-   */
-
-  /**
-   * A `blob` or `tree` URL: in place when its reference is the served branch or the served
-   * commit, and only then. A branch name may hold slashes, so it is matched as a prefix of
-   * the reference and path, as GitHub's own routing reads it.
+   * `blob/<ref>/<path>` and `tree/<ref>[/<path>]`: a file, and a folder or a branch's root,
+   * in place when the reference is the served commit, by its full or abbreviated ID, or the
+   * served branch, and only then. A branch name may hold slashes, so it is matched as a
+   * prefix of the reference and path, as GitHub's own routing reads it.
    *
    * @param {RepositoryLink} link
+   * @param {Scope} scope
    * @param {boolean} tree
-   * @param {MetabrowserPublicRepositoryContext} context
-   * @param {"filesystem" | "git_revision"} sourceKind
    * @returns {RepositoryLinkTarget | null}
    */
-  function revisionPath(link, tree, context, sourceKind) {
-    const referenceAndPath = link.rest.slice(1);
+  function revisionPage(link, scope, tree) {
+    const { context } = scope;
+    const referenceAndPath = link.args;
     // A tree names a folder, its branch's root among them; a blob names a file.
     const least = tree ? 0 : 1;
+    const directory = tree || link.directory;
     const reference = referenceAndPath[0]?.toLowerCase() ?? "";
     if (
       referenceAndPath.length > least &&
       (FULL_REVISION.test(reference) || ABBREVIATED_REVISION.test(reference)) &&
       context.revision.toLowerCase().startsWith(reference)
     ) {
-      return view(
-        referenceAndPath.slice(1),
-        tree || link.directory,
-        link.query,
-        link.fragment,
-        "revision",
-        context,
-        sourceKind,
-      );
+      const path = referenceAndPath.slice(1);
+      return viewTarget(scope, path, directory, link.query, link.fragment, "revision");
     }
     const branch = context.branch ? safeRelativeSegments(context.branch) : null;
     if (
@@ -234,35 +279,25 @@
       referenceAndPath.length > branch.length + least - 1 &&
       startsWithSegments(referenceAndPath, branch)
     ) {
-      return view(
-        referenceAndPath.slice(branch.length),
-        tree || link.directory,
-        link.query,
-        link.fragment,
-        "working-tree",
-        context,
-        sourceKind,
-      );
+      const path = referenceAndPath.slice(branch.length);
+      return viewTarget(scope, path, directory, link.query, link.fragment, "working-tree");
     }
     return null;
   }
 
   /**
-   * A pull request's page, its Changes or Checks tab, or one of its commits. An address
-   * whose first segment is GitHub's own `new` (`pull/new/<branch>`, the page that opens a
-   * pull request, which `git push` prints), or a number followed by nothing or one of the
-   * pull request's pages, is a pull request's, mapped or not; with a text context, any
+   * `pull/<n>[/<page>]`: a pull request's page, its Changes or Checks tab, or one of its
+   * commits. `pull/new/<branch>`, and a number followed by nothing or one of the pull
+   * request's pages, is a pull request's address, mapped or not; with a text context, any
    * other address under `pull/` is the repository path a path-relative reference named.
    *
    * @param {RepositoryLink} link
-   * @param {MetabrowserPublicRepositoryContext} context
-   * @param {"filesystem" | "git_revision"} sourceKind
-   * @param {TextContext | undefined} text
+   * @param {Scope} scope
    * @returns {RepositoryLinkTarget | null}
    */
-  function pullLink(link, context, sourceKind, text) {
-    const [number, tab, ...more] = link.rest.slice(1);
-    if (number === "new") {
+  function pullPage(link, scope) {
+    const [number, tab, ...more] = link.args;
+    if (number === NEW_PULL) {
       return null;
     }
     if (
@@ -270,7 +305,7 @@
       !PULL_NUMBER.test(number) ||
       (tab !== undefined && !PULL_PAGES.has(tab))
     ) {
-      return text ? textPath(link, context, sourceKind, text) : null;
+      return scope.text ? textPath(link, scope, scope.text) : null;
     }
     if (link.query) {
       return null;
@@ -286,14 +321,15 @@
       return link.fragment ? null : pullRoute(pull, "checks");
     }
     if (more.length === 1 && tab === "commits") {
-      return commit(more[0], link);
+      return commitTarget(more[0], link);
     }
     return null;
   }
 
   /**
-   * The repository path a pull request's path-relative reference names, at the text's
-   * head, opened where Metabrowser can show that file without switching what it serves:
+   * `pull/<path>` in a pull request's text: the repository path a path-relative reference
+   * names, at the text's head, opened where Metabrowser can show that file without
+   * switching what it serves:
    *
    * 1. in place, when the served tree is the head and serves the path;
    * 2. in the pull request's or stack's Changes, when the comparison changes the file, so
@@ -303,21 +339,20 @@
    *    rather than the missing page under `pull/`.
    *
    * @param {RepositoryLink} link
-   * @param {MetabrowserPublicRepositoryContext} context
-   * @param {"filesystem" | "git_revision"} sourceKind
+   * @param {Scope} scope
    * @param {TextContext} text
    * @returns {RepositoryLinkTarget | null}
    */
-  function textPath(link, context, sourceKind, text) {
-    const head = text.head;
-    const path = link.rest.slice(1);
+  function textPath(link, scope, text) {
+    const { head } = text;
+    const path = link.args;
     // A bare `pull` is an absolute address, not a reference relative to the page.
     if (typeof head !== "string" || !FULL_REVISION.test(head) || path.length === 0) {
       return null;
     }
     const here =
-      head.toLowerCase() === context.revision.toLowerCase()
-        ? view(path, link.directory, link.query, link.fragment, "revision", context, sourceKind)
+      head.toLowerCase() === scope.context.revision.toLowerCase()
+        ? viewTarget(scope, path, link.directory, link.query, link.fragment, "revision")
         : null;
     if (here !== null) {
       return here;
@@ -326,14 +361,173 @@
     if (text.changes && !link.directory && !link.query && text.changes.files.has(file)) {
       return changesRoute(text.changes, file);
     }
-    const url = fileUrl(context, head, path, link.directory, `${link.search}${link.hash}`);
+    const url = fileUrl(scope.context, head, path, link.directory, `${link.search}${link.hash}`);
     return url === null ? null : Object.freeze({ kind: "external", url });
   }
 
   /**
+   * `commit/<id>`: a commit's page.
+   *
+   * @param {RepositoryLink} link
+   * @returns {RepositoryLinkTarget | null}
+   */
+  function commitPage(link) {
+    return link.args.length === 1 ? commitTarget(link.args[0], link) : null;
+  }
+
+  /**
+   * `pulls`: the repository's pull requests, when no query filters them, which the list
+   * here would not read.
+   *
+   * @param {RepositoryLink} link
+   * @returns {RepositoryLinkTarget | null}
+   */
+  function pullsPage(link) {
+    return link.args.length === 0 && !link.query && !link.fragment ? pullsRoute() : null;
+  }
+
+  /**
+   * A commit's page, for `commit/<id>` and `pull/<n>/commits/<id>`, by its full ID only:
+   * the route refuses anything else (`revision_not_full`). A file anchor is dropped, since
+   * only the server can name its file; any other fragment or a query leaves the link as
+   * written.
+   *
+   * @param {string} revision
+   * @param {RepositoryLink} link
+   * @returns {RepositoryLinkTarget | null}
+   */
+  function commitTarget(revision, link) {
+    if (
+      !FULL_REVISION.test(revision) ||
+      link.query ||
+      (link.fragment && !FILE_ANCHOR.test(link.fragment))
+    ) {
+      return null;
+    }
+    return commitRoute(revision);
+  }
+
+  // ── In-app addresses ───────────────────────────────────────────
+  //
+  // Each in-app address is spelled here and nowhere else in this module, as the shell's
+  // routes spell it (static/navigation.js for `/view/` and `/commit/`, static/pull-route.js
+  // for `/pull/`, `/stack/`, and `/pulls`; view_routes.py on the server).
+
+  /**
+   * A `/view/` target for *repositoryPath*, a path from the repository's root, or null
+   * when it is outside the served root or cannot be spelled on a pin. The navigation API
+   * spells its address (`metabrowser.navigation.href`).
+   *
+   * @param {Scope} scope
+   * @param {string[]} repositoryPath
+   * @param {boolean} directory
+   * @param {string} query Serialized, as the navigation target keeps it.
+   * @param {string} fragment Decoded, as the navigation target keeps it.
+   * @param {"revision" | "working-tree"} localization
+   * @returns {RepositoryLinkTarget | null}
+   */
+  function viewTarget(scope, repositoryPath, directory, query, fragment, localization) {
+    const prefix = safeRelativeSegments(scope.context.served_prefix);
+    if (!prefix || !startsWithSegments(repositoryPath, prefix)) {
+      return null;
+    }
+    const local = repositoryPath.slice(prefix.length);
+    let path = "";
+    if (local.length > 0) {
+      if (scope.sourceKind === "git_revision") {
+        // A pin's addresses carry each segment in the GitPath wire, as every internal link
+        // on it does; its shell loads the codec before any other script.
+        const wire = window.MetabrowserGitPath?.wire(local.join("/")) ?? null;
+        if (wire === null) {
+          return null;
+        }
+        path = wire;
+      } else {
+        // As a served folder's inventory spells a name (builtin_plugins/markdown/links.js).
+        path = local.map((segment) => segment.replaceAll("%", "%25")).join("/");
+      }
+      if (directory) {
+        path += "/";
+      }
+    }
+    /** @type {{path: string, query?: string, fragment?: string}} */
+    const target = { path };
+    if (query) {
+      target.query = query;
+    }
+    if (fragment) {
+      target.fragment = fragment;
+    }
+    return Object.freeze({ kind: "view", target: Object.freeze(target), localization });
+  }
+
+  /**
+   * A pull request's page, `/pull/<n>`, on *tab*.
+   *
+   * @param {number} number
+   * @param {"" | "files" | "checks"} tab
+   * @returns {RouteTarget}
+   */
+  function pullRoute(number, tab) {
+    return Object.freeze({
+      kind: "route",
+      href: tab ? `/pull/${number}/${tab}` : `/pull/${number}`,
+      localization: "pull",
+      pull: Object.freeze({ number, tab, file: "", stack: false }),
+    });
+  }
+
+  /**
+   * One changed file in a pull request's Changes, `/pull/<n>/files/<path>`, or a stack's,
+   * `/stack/<n>/changes/<path>`, each segment escaped as static/pull-route.js
+   * (`tabbedHref`) escapes it.
+   *
+   * @param {NonNullable<TextContext["changes"]>} changes
+   * @param {string} file
+   * @returns {RouteTarget}
+   */
+  function changesRoute(changes, file) {
+    const tab = changes.stack ? "changes" : "files";
+    const encoded = file.split("/").map(encodeURIComponent).join("/");
+    return Object.freeze({
+      kind: "route",
+      href: `/${changes.stack ? "stack" : "pull"}/${changes.number}/${tab}/${encoded}`,
+      localization: "pull",
+      pull: Object.freeze({ number: changes.number, tab, file, stack: changes.stack }),
+    });
+  }
+
+  /**
+   * A commit's page, `/commit/<id>`, by its full ID, lowercased.
+   *
+   * @param {string} revision
+   * @returns {RouteTarget}
+   */
+  function commitRoute(revision) {
+    return Object.freeze({
+      kind: "route",
+      href: `/commit/${revision.toLowerCase()}`,
+      localization: "commit",
+      pull: null,
+    });
+  }
+
+  /**
+   * The repository's pull requests, `/pulls`.
+   *
+   * @returns {RouteTarget}
+   */
+  function pullsRoute() {
+    return Object.freeze({ kind: "route", href: "/pulls", localization: "pulls", pull: null });
+  }
+
+  // ── github.com addresses ───────────────────────────────────────
+
+  /**
    * A file or folder of the repository at *revision* on github.com, or null without a
-   * repository identity or a full commit ID: `blob/` for a file and `tree/` for a folder or
-   * the root, each segment escaped, then *suffix*, a serialized query and fragment.
+   * repository identity, a full commit ID, or a path every segment of which is a name:
+   * `blob/` for a file and `tree/` for a folder or the root, each segment escaped, then
+   * *suffix*, a serialized query and fragment.
    *
    * @param {MetabrowserPublicRepositoryContext | null | undefined} context
    * @param {string} revision
@@ -366,129 +560,67 @@
   }
 
   /**
-   * A commit's page, by its full ID only: the route refuses anything else
-   * (`revision_not_full`). A file anchor is dropped, since only the server can name its
-   * file; any other fragment or a query leaves the link external.
+   * The file a pin's `/view/<GitPath wire>[#<fragment>]` address names, at *revision* on
+   * github.com: what a rendered diff's link to a file of the head opens when the page does
+   * not show that head (builtin_plugins/diff/index.js). Null for an address that is not a
+   * pin's, and for a name the wire holds that is not text, which github.com cannot spell.
+   * It reads the wire with the GitPath codec (static/git-path.js), which the caller loads.
    *
+   * @param {MetabrowserPublicRepositoryContext | null | undefined} context
    * @param {string} revision
-   * @param {RepositoryLink} link
-   * @returns {RepositoryLinkTarget | null}
-   */
-  function commit(revision, link) {
-    if (
-      !FULL_REVISION.test(revision) ||
-      link.query ||
-      (link.fragment && !FILE_ANCHOR.test(link.fragment))
-    ) {
-      return null;
-    }
-    return route(`/commit/${revision.toLowerCase()}`, "commit");
-  }
-
-  /**
    * @param {string} href
-   * @param {"commit" | "pulls"} localization
-   * @returns {RepositoryLinkTarget}
+   * @returns {string | null}
    */
-  function route(href, localization) {
-    return Object.freeze({ kind: "route", href, localization, pull: null });
-  }
-
-  /**
-   * A pull request's page, `/pull/<n>`, on *tab*, as static/pull-route.js spells it.
-   *
-   * @param {number} number
-   * @param {"" | "files" | "checks"} tab
-   * @returns {RepositoryLinkTarget}
-   */
-  function pullRoute(number, tab) {
-    return Object.freeze({
-      kind: "route",
-      href: tab ? `/pull/${number}/${tab}` : `/pull/${number}`,
-      localization: "pull",
-      pull: Object.freeze({ number, tab, file: "", stack: false }),
-    });
-  }
-
-  /**
-   * One changed file in a pull request's Changes, `/pull/<n>/files/<path>`, or a stack's,
-   * `/stack/<n>/changes/<path>`, each segment escaped as static/pull-route.js
-   * (`tabbedHref`) escapes it.
-   *
-   * @param {NonNullable<TextContext["changes"]>} changes
-   * @param {string} file
-   * @returns {RepositoryLinkTarget}
-   */
-  function changesRoute(changes, file) {
-    const tab = changes.stack ? "changes" : "files";
-    const encoded = file.split("/").map(encodeURIComponent).join("/");
-    return Object.freeze({
-      kind: "route",
-      href: `/${changes.stack ? "stack" : "pull"}/${changes.number}/${tab}/${encoded}`,
-      localization: "pull",
-      pull: Object.freeze({ number: changes.number, tab, file, stack: changes.stack }),
-    });
-  }
-
-  /**
-   * A `/view/` target for *repositoryPath*, a path from the repository's root, or null
-   * when it is outside the served root or cannot be spelled on a pin.
-   *
-   * @param {string[]} repositoryPath
-   * @param {boolean} directory
-   * @param {string} query Serialized, as the navigation target keeps it.
-   * @param {string} fragment Decoded, as the navigation target keeps it.
-   * @param {"revision" | "working-tree"} localization
-   * @param {MetabrowserPublicRepositoryContext} context
-   * @param {"filesystem" | "git_revision"} sourceKind
-   * @returns {RepositoryLinkTarget | null}
-   */
-  function view(repositoryPath, directory, query, fragment, localization, context, sourceKind) {
-    const prefix = safeRelativeSegments(context.served_prefix);
-    if (!prefix || !startsWithSegments(repositoryPath, prefix)) {
+  function viewFileUrl(context, revision, href) {
+    if (!href.startsWith("/view/")) {
       return null;
     }
-    const local = repositoryPath.slice(prefix.length);
-    let path = "";
-    if (local.length > 0) {
-      if (sourceKind === "git_revision") {
-        // A pin's addresses carry each segment in the GitPath wire, as every internal link
-        // on it does; its shell loads the codec before any other script.
-        const wire = window.MetabrowserGitPath?.wire(local.join("/")) ?? null;
-        if (wire === null) {
-          return null;
-        }
-        path = wire;
-      } else {
-        // As a served folder's inventory spells a name (builtin_plugins/markdown/links.js).
-        path = local.map((segment) => segment.replaceAll("%", "%25")).join("/");
-      }
-      if (directory) {
-        path += "/";
-      }
+    const [wire = "", fragment] = href.slice("/view/".length).split("#", 2);
+    const path = window.MetabrowserGitPath?.display(wire) ?? null;
+    if (path === null || path.includes("�")) {
+      return null;
     }
-    /** @type {{path: string, query?: string, fragment?: string}} */
-    const target = { path };
-    if (query) {
-      target.query = query;
-    }
-    if (fragment) {
-      target.fragment = fragment;
-    }
-    return Object.freeze({ kind: "view", target: Object.freeze(target), localization });
+    return fileUrl(
+      context,
+      revision,
+      path.split("/"),
+      false,
+      fragment === undefined ? "" : `#${fragment}`,
+    );
   }
+
+  // ── Applying it to a text ──────────────────────────────────────
+
+  // Where `enhance` keeps the address a link's text gave it, the first time it changes the
+  // link, so a later pass that knows more (the files a pull request changes, once they
+  // arrive) reads the authored link rather than its own answer. The allowlist keeps no
+  // attribute of the text's own, so only the page writes it.
+  const AUTHORED_HREF = "data-metabrowser-authored-href";
+  // The tooltip of a link that opens whatever revision is served, not the one it named.
+  const WORKING_TREE_TITLE = "Open the corresponding path in the currently served working tree.";
+  /**
+   * What a plain click on each link `enhance` made in-app opens, read at the click, so a
+   * later pass changes it without a second listener.
+   *
+   * @type {WeakMap<Element, {resolved: RepositoryLinkTarget, mb: Pick<MetabrowserPublicSdk, "navigation">, open: ((route: RouteTarget) => boolean) | undefined}>}
+   */
+  const opens = new WeakMap();
 
   /**
    * Make every link of *root*, an inert text already reduced to the allowlist, open what
-   * `localize` says. Returns how many links it changed. It may run again over the same
-   * text with more context, and then reads each link as the text wrote it and moves its
-   * one click handler to the new answer.
+   * `localize` says. An in-app link loses `target` and `rel`, since it does not leave the
+   * page, and a plain click on a `/view/` target opens it through
+   * `metabrowser.navigation.open`, as a Markdown file's links do; a modified click, a new
+   * tab, and a copied address use the same `href`. Returns how many links it changed.
+   *
+   * It may run again over the same text with more context, and then reads each link as the
+   * text wrote it and moves its one click handler to the new answer.
    *
    * @param {ParentNode} root
    * @param {Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">} mb
    * @param {{
    *   text?: TextContext,
-   *   open?: (route: Extract<RepositoryLinkTarget, {kind: "route"}>) => boolean,
+   *   open?: (route: RouteTarget) => boolean,
    *   views?: boolean,
    * }} [options]
    *   `text` as `localize` takes it. `open` may open an in-app route other than `/view/`
@@ -587,6 +719,8 @@
       mouse.preventDefault();
     }
   }
+
+  // ── Helpers ────────────────────────────────────────────────────
 
   /**
    * @param {unknown} value
@@ -703,5 +837,6 @@
     enhance,
     fileUrl,
     localize,
+    viewFileUrl,
   });
 })();

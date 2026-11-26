@@ -22,6 +22,7 @@ from urllib.parse import unquote, urlsplit
 from metabrowser.builtin_plugins.github.urls import GithubUrlReducer
 from metabrowser.cache.urls import ReducerOutcome
 from metabrowser.cli.selection_href import selection_view_href
+from metabrowser.git.tree_source import GitPath
 from metabrowser.view_routes import (
     decode_safe_commit_route,
     decode_safe_pull_route,
@@ -142,6 +143,28 @@ def test_a_texts_changed_file_opens_in_changes() -> None:
         route = decode_safe_stack_route(raw) if pull["stack"] else decode_safe_pull_route(raw)
         assert route is not None, row
         assert (route.number, route.tab, route.file) == (pull["number"], pull["tab"], relative)
+
+
+def test_a_rendered_diffs_head_link_on_github_is_the_file_its_wire_names() -> None:
+    """A pin's ``/view/`` link off its head opens on github.com the file its wire names.
+
+    The server reads the github.com address back as a blob at the head whose path is the
+    one the server's GitPath codec decodes from the wire; a wire that names no text, or an
+    address that is not a pin's, has no github.com address.
+    """
+
+    answered = 0
+    for label, case in _session()["viewFiles"].items():
+        href, url = case["href"], case["url"]
+        if url is None:
+            continue
+        answered += 1
+        wire = urlsplit(href).path.removeprefix("/view/")
+        selection = _reduced(url).selection
+        assert selection.kind == "blob", label
+        head = TEXT_HEADS["text away from its head"].encode()
+        assert selection.ref_and_path == (head, *GitPath.from_wire(wire).segments), label
+    assert answered == 2
 
 
 def test_an_in_app_link_opens_what_its_address_says() -> None:

@@ -335,11 +335,28 @@ function enhanced(context, sourceKind, options) {
   };
 }
 
+// A rendered diff's link to a file of the head, `/view/<GitPath wire>`, on github.com at the
+// head, for a page that does not show it.
+const head = contexts.pin.context;
+const viewFiles = Object.fromEntries(
+  [
+    ["a file", `/view/${sandbox.MetabrowserGitPath.wire("docs/雪.md")}`],
+    [
+      "a file, at a heading",
+      `/view/${sandbox.MetabrowserGitPath.wire("docs/setup.md")}#user-content-install`,
+    ],
+    ["a name that is not text", "/view/g1-_w"],
+    ["not a pin's address", "/view/docs/setup.md"],
+    ["not a view", "/pull/7/files/docs/setup.md"],
+  ].map(([label, href]) => [label, { href, url: links.viewFileUrl(head, OTHER, href) }]),
+);
+
 const textContext = contexts["text at the served head"].context;
 console.log(
   JSON.stringify(
     {
       localized,
+      viewFiles,
       enhanced: {
         "a text at its served head": enhanced(textContext, "filesystem", {
           text: { head: SERVED },
