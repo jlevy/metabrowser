@@ -387,8 +387,12 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   alike, and the history routes, `/api/git/repo`, `/api/git/refs`, `/api/git/summary`,
   and `/api/git/log`, read the revision’s store target as a commit’s page and its diffs
   do (`session_git_location` in `git/routes.py`), under the policies below: its commit’s
-  ancestry, or every ref of the checkout’s Git directory with `scope=all`, and a
-  detached `HEAD` at the commit.
+  ancestry, or with `scope=all` every ref of the Git directory the revision is read
+  from, and a detached `HEAD` at the commit.
+  That directory is the checkout’s, except for an origin branch or tag read from the
+  origin’s store (`read_from` `origin`, set in `CheckoutRevisions.switch_pin`, as
+  [Open Modes](arch-open-modes.md) says when one is), whose `scope=all` lists only the
+  store’s refs: the origin’s branches and tags, without the checkout’s own branches.
   A mirror’s Commits tab walks its pin the same way.
   Since every one of these answers depends on the revision served, the guard refuses a
   page’s `/api/git/` requests that name a revision no longer served, as it refuses its
