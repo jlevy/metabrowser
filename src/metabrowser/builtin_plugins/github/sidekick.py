@@ -1372,7 +1372,14 @@ async def gh_requests_handler(request: Request) -> JSONResponse:
     try:
         state, directory = event_log.log_directory()
     except ValueError as exc:
-        return JSONResponse({"error": str(exc), "code": "event_log_unconfigured"}, status_code=409)
+        return JSONResponse(
+            {
+                "error": "This server has no event log to report GitHub's requests from.",
+                "detail": str(exc),
+                "code": "event_log_unconfigured",
+            },
+            status_code=409,
+        )
     answer = await asyncio.to_thread(report, query, state=state, directory=directory)
     return JSONResponse(answer, headers=_NO_STORE)
 
