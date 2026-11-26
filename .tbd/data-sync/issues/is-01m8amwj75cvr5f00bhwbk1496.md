@@ -5,7 +5,7 @@ title: Upgrade to softschema 0.9.1 with ruamel.yaml.clib and benchmark collectio
 kind: task
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 refs:
   - kind: pr
@@ -17,10 +17,12 @@ dependencies:
   - type: blocks
     target: is-01m8amwjx1z7rpzb8emdknjxk1
 parent_id: is-01m8amwhv15ckjw7prckfmmggr
+child_order_hints:
+  - is-01m8cfryytexjgxes91bdg6wbs
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:43:01.733Z
-updated_at: 2026-11-26T17:34:38.229Z
+updated_at: 2026-11-26T17:52:09.689Z
 started_at: 2026-11-26T09:36:57.972Z
 ---
 Phase 1: supply-chain review of ruamel.yaml.clib; upgrade softschema 0.9.1 + frontmatter-format 0.5.1; adapt to 0.9.0 execution reporting and newly refused characters; metab --doctor shows parser mode; devtools/bench_softschema_collection.py sets the plan's bounds.
