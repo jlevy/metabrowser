@@ -977,14 +977,14 @@ async def _run_foreground(
 async def _read_selection_during_acquisition(
     coordinator: RefreshCoordinator, state: _CheckoutPulls, number: int, key: str
 ) -> bool:
-    """Use one ordinary provider slot for selected metadata that needs no Git store."""
+    """Prioritize one provider slot for selected metadata that needs no Git store."""
 
     if not state.turn.acquiring or key in _COMPARISON_WANTED:
         return False
     companion = state.pulls.held(number)
     if companion is None or companion.unattached_selection() is None:
         return False
-    async with coordinator.slot():
+    async with coordinator.selected_slot():
         # A companion can be evicted while a job waits for this slot.
         companion = state.pulls.held(number)
         if companion is None:

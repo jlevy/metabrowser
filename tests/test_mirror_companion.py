@@ -973,6 +973,65 @@ def test_a_readers_request_promotes_the_background_job_it_joins() -> None:
     assert asyncio.run(scenario()) == ["pull 8", "pull 9"]
 
 
+def test_selected_provider_slots_leave_room_for_ordinary_waiters() -> None:
+    async def scenario() -> list[str]:
+        coordinator = RefreshCoordinator(limit=1)
+        order: list[str] = []
+
+        async def record(name: str, *, selected: bool = False) -> None:
+            async with coordinator.selected_slot() if selected else coordinator.slot():
+                order.append(name)
+
+        await coordinator.slot().acquire()
+        async with asyncio.TaskGroup() as group:
+            group.create_task(record("ordinary first"))
+            group.create_task(record("ordinary second"))
+            for i in range(MAX_FIRST_IN_A_ROW + 1):
+                group.create_task(record(f"selected {i}", selected=True))
+            await asyncio.sleep(0)
+            assert order == []
+            coordinator.slot().release()
+        return order
+
+    assert asyncio.run(scenario()) == [
+        "selected 0",
+        "selected 1",
+        "ordinary first",
+        "selected 2",
+        "ordinary second",
+    ]
+
+
+def test_cancelling_a_selected_waiter_before_and_after_handoff_releases_the_slot() -> None:
+    async def scenario() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        order: list[str] = []
+
+        async def record(name: str, *, selected: bool = False) -> None:
+            async with coordinator.selected_slot() if selected else coordinator.slot():
+                order.append(name)
+
+        slot = coordinator.slot()
+        await slot.acquire()
+        queued = asyncio.create_task(record("cancelled while queued", selected=True))
+        granted = asyncio.create_task(record("cancelled at handoff", selected=True))
+        ordinary = asyncio.create_task(record("ordinary"))
+        await asyncio.sleep(0)
+        queued.cancel()
+        slot.release()
+        granted.cancel()
+        results = await asyncio.wait_for(
+            asyncio.gather(queued, granted, ordinary, return_exceptions=True), timeout=2
+        )
+        assert isinstance(results[0], asyncio.CancelledError)
+        assert isinstance(results[1], asyncio.CancelledError)
+        assert results[2] is None
+        assert order == ["ordinary"]
+        assert not slot.locked()
+
+    asyncio.run(scenario())
+
+
 def test_a_background_job_waits_behind_every_other_and_holds_no_slot() -> None:
     async def scenario() -> tuple[list[str], int]:
         stand = _Stand()

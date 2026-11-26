@@ -132,6 +132,7 @@ against one that did.
 | exp-109 | [Prepare the Git Diff Assets During Browser Idle](experiments/exp-109-browser-idle-diff-assets.md) | H131 | `first Commits click diff asset requests` | diagnostic |
 | exp-110 | [An Acquired Store Still Needs Comparison Admission](experiments/exp-110-existing-store-admission.md) | H127 | `exact idle comparison request admission` | diagnostic |
 | exp-111 | [Separate the First Visible Changes Hunk From File-Card Readiness](experiments/exp-111-visible-changes-hunk.md) | H127, H128 | `first visible hunk on the selected pull request` | diagnostic |
+| exp-112 | [Give Selected Conversation Metadata the Next Free Provider Slot](experiments/exp-112-selected-provider-handoff.md) | H128 | `optional admissions before exact selected Conversation` | diagnostic |
 
 ## Absolute numbers, per condition
 

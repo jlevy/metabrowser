@@ -412,7 +412,10 @@ async def _check_hold(repository: ListedRepository) -> None:
 
 
 async def refresh_labels(
-    repository: ListedRepository, *, slot: asyncio.Semaphore | None = None, retry: bool = False
+    repository: ListedRepository,
+    *,
+    slot: contextlib.AbstractAsyncContextManager[None] | None = None,
+    retry: bool = False,
 ) -> None:
     """Read the set when it is wanted, yielding the network slot after each bounded page.
 

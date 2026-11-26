@@ -1112,15 +1112,22 @@ def test_idle_comparison_never_starts_without_a_store(
 
 @pytest.mark.usefixtures("fresh_checkout_state")
 @pytest.mark.parametrize("queued_prefetch", [False, True])
+@pytest.mark.parametrize("contended", [False, True], ids=["free", "provider-contended"])
 def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_turn(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, queued_prefetch: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pull_origin: Origin,
+    queued_prefetch: bool,
+    contended: bool,
 ) -> None:
+    from functools import partial
+
     from metabrowser import server
     from metabrowser.builtin_plugins.github import checkout as checkout_module
     from metabrowser.builtin_plugins.github.gh import GhResponse
     from metabrowser.checkout_store import store_turn
-    from metabrowser.cli.asgi_client import InProcessClient
-    from metabrowser.mirror_refresh import refresh_coordinator
+    from metabrowser.cli.asgi_client import ApiResponse, InProcessClient
+    from metabrowser.mirror_refresh import RefreshCoordinator, refresh_coordinator
     from tests.github_pull_fixture import logged_gh_calls, pull_bodies
     from tests.golden_harness import isolate_cli
 
@@ -1146,6 +1153,26 @@ def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_
             return await read(path, etag=etag)
 
         monkeypatch.setattr(pulls, "_get", read_while_held)
+
+        attempted = asyncio.Event()
+        optional_order: list[int] = []
+        read_selection = checkout_module._read_selection_during_acquisition  # pyright: ignore[reportPrivateUsage]
+
+        async def selected_was_queued(
+            coordinator: RefreshCoordinator,
+            state: checkout_module._CheckoutPulls,  # pyright: ignore[reportPrivateUsage]
+            number: int,
+            key: str,
+        ) -> bool:
+            attempted.set()
+            return await read_selection(coordinator, state, number, key)
+
+        async def optional(number: int) -> None:
+            optional_order.append(number)
+
+        monkeypatch.setattr(
+            checkout_module, "_read_selection_during_acquisition", selected_was_queued
+        )
         async with InProcessClient(server.app) as client:
             coordinator = refresh_coordinator(server.app)
             assert coordinator is not None
@@ -1167,10 +1194,31 @@ def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_
                         assert pending.status_code == 200
                         assert pending.json()["state"] == "pending"
                         assert pending.json()["promotable_prefetch"] is True
-                    selected = await client.post(
-                        "/api/plugin/github/pull-refresh",
-                        body=b'{"number":7,"retry":true,"wait_core":true}',
-                    )
+
+                    async def select() -> ApiResponse:
+                        return await client.post(
+                            "/api/plugin/github/pull-refresh",
+                            body=b'{"number":7,"retry":true,"wait_core":true}',
+                        )
+
+                    if contended:
+                        slot = coordinator.slot()
+                        async with slot:
+                            await slot.acquire()
+                            try:
+                                for number in (1, 2):
+                                    coordinator.start(
+                                        f"optional-{number}", partial(optional, number)
+                                    )
+                                await asyncio.sleep(0)
+                                choosing = asyncio.create_task(select())
+                                await asyncio.wait_for(attempted.wait(), timeout=5)
+                            finally:
+                                slot.release()
+                            selected = await choosing
+                            assert optional_order == [], "optional work took the selected slot"
+                    else:
+                        selected = await select()
                     assert selected.status_code == 202
                     assert selected.json()["refresh"] == (
                         "joined" if queued_prefetch else "started"
@@ -1200,6 +1248,8 @@ def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_
                 assert checkout_module.checkout_pulls(repository).git_dir is None
                 release_parts.set()
                 await coordinator.drain(timeout_s=40)
+                if contended:
+                    assert optional_order == [1, 2]
                 answer = (await client.get("/api/plugin/github/pull?number=7")).json()
                 assert answer["record"]["reader"] == f"gh:{READER}"
                 assert answer["record"]["pull"]["body"] == expected["body"]

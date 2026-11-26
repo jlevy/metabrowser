@@ -417,7 +417,7 @@ async def scan_statuses(
     *,
     reader: str,
     cursors: Sequence[str | None] | None,
-    slot: asyncio.Semaphore | None,
+    slot: contextlib.AbstractAsyncContextManager[None] | None,
     progress: _Progress,
     repository_id: str | None = None,
 ) -> None:
@@ -526,7 +526,7 @@ async def run_scan(
     *,
     reader: str,
     previous: ScanStamp | None,
-    slot: asyncio.Semaphore | None = None,
+    slot: contextlib.AbstractAsyncContextManager[None] | None = None,
     tips: MirrorTips | None = None,
     remember: Callable[[ScanStamp], None] | None = None,
 ) -> ScanStamp:
