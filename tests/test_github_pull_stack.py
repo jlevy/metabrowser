@@ -27,10 +27,12 @@ from metabrowser.builtin_plugins.github.pull_stack_retained import (
 from metabrowser.builtin_plugins.github.pull_stacks import NativeStack
 from metabrowser.cache.paths import source_pulls_directory, source_stack_snapshots
 from metabrowser.diff.format import ChangeSetManifest, EntrySide, FileChange, Totals
-from metabrowser.git.process import RepositoryStoreTarget
+from metabrowser.git.process import GitLocation, RepositoryStoreTarget
 from metabrowser.home import ensure_home, ensure_private_directory
 from metabrowser.view_routes import decode_safe_stack_route, format_stack_href
 from tests.diff_fixture_repo import git
+from tests.test_github_pulls import _Stand
+from tests.test_github_pulls import stand as stand
 
 A, B, C, D = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
 
@@ -554,3 +556,115 @@ def test_both_stack_routes_name_a_members_labels_by_one_rule() -> None:
         drawn = pull_stack._details(record, listed).labels  # pyright: ignore[reportPrivateUsage]
         assert named == tuple(wire["name"] for wire in drawn)
         assert member_identity(record, listed).labels == named
+
+
+def _one_layer(stand: _Stand) -> tuple[Any, StackPair]:
+    """A stack of one layer in the stand-in's store: pull request 7 at the commit under its
+    head, a pair no refresh has measured."""
+
+    record = stand.refresh(7)
+    assert record.comparison is not None
+    base, head = record.comparison.base, stand.origin["fork_earlier"]
+    members = ((7, base, head),)
+    return stand.published, StackPair(7, base, head, stack_digest(members), members, (True,))
+
+
+def test_a_comparison_kept_with_no_size_is_measured_by_a_later_read_and_once(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A manifest kept beside the store outlives what measured it, so a read that finds one
+    with no size recorded measures it (B6 of review B on #861), and a measurement that ran
+    out of time is not run again by every read after."""
+
+    from metabrowser.git import change_size as sizes
+
+    published, pair = _one_layer(stand)
+    head = pair.head
+    measurements: list[str] = []
+    real = sizes.measure_change
+
+    async def counted(location: Any, left: str | None, right: str) -> Any:
+        measurements.append(right)
+        return await real(location, left, right)
+
+    monkeypatch.setattr(sizes, "measure_change", counted)
+
+    def read() -> Any:
+        """One read of the stack's comparison and its size, in a loop of its own, so the
+        comparison is loaded from beside the store as a new process loads it."""
+
+        async def both() -> Any:
+            await pull_stack.combined(published, pair)
+            return await pull_stack._size(published, pair)
+
+        return asyncio.run(both())
+
+    def restart() -> None:
+        sizes.KEPT_SIZES.clear()
+        pull_stack._ASKED.clear()
+
+    # The comparison is built by a measurement that runs out of time, so its manifest is
+    # kept and no size is, as a build that measured none left it.
+    restart()
+    monkeypatch.setattr(sizes, "MEASURE_TIMEOUT_S", 0.0)
+    assert read() is None
+    assert measurements == [head]
+    # While that answer is held, no later read measures again.
+    assert read() is None
+    assert measurements == [head]
+    # A new process finds the manifest kept and no size, and its first read measures it.
+    restart()
+    monkeypatch.setattr(sizes, "MEASURE_TIMEOUT_S", 15.0)
+    size = read()
+    assert measurements == [head, head]
+    kept = sizes.kept_change_size(
+        GitLocation.revision(
+            RepositoryStoreTarget(published.git_dir, published.object_format), head
+        ),
+        pair.base,
+        head,
+    )
+    assert kept is not None and kept["state"] == "measured"
+    assert size == {"pushed_bytes": kept["pushed_bytes"], "diff_bytes": kept["diff_bytes"]}
+    # And every read after says it with no measurement, in this process and the next.
+    assert read() == size
+    restart()
+    assert read() == size
+    assert measurements == [head, head]
+
+
+def test_a_kept_comparison_that_has_no_size_to_give_is_listed_again_once(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Whether a kept comparison is measured is asked of its plain listing. One that Git
+    cannot measure, or that is not its plain diff, has no size to keep, so the process
+    remembers having asked, and a later load lists nothing again."""
+
+    from metabrowser.diff.adapters.git import GitDiffSource
+    from metabrowser.git import change_size as sizes
+    from metabrowser.git.process import GitError
+
+    published, pair = _one_layer(stand)
+    sizes.KEPT_SIZES.clear()
+    pull_stack._ASKED.clear()
+
+    async def failing(_location: Any, _left: str, _right: str) -> Any:
+        raise GitError("no size")
+
+    monkeypatch.setattr(sizes, "change_size", failing)
+    listings: list[str] = []
+    real = GitDiffSource.manifest
+
+    async def counted(source: GitDiffSource, resolved: Any) -> Any:
+        listings.append(resolved.right)
+        return await real(source, resolved)
+
+    monkeypatch.setattr(GitDiffSource, "manifest", counted)
+    asyncio.run(pull_stack.combined(published, pair))
+    built = len(listings)
+    assert built
+    asyncio.run(pull_stack.combined(published, pair))
+    asked = len(listings)
+    assert asked == built + 1
+    asyncio.run(pull_stack.combined(published, pair))
+    assert len(listings) == asked

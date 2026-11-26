@@ -51,6 +51,11 @@ which a layer changes, is measured, so the size and the file count describe one 
 restricted to its layers' files has no size, since no pair of commits pushes just those
 files, and neither has one of more than :data:`MAX_SIZED_STACK_FILES` files.
 
+A comparison found kept beside the store with no size recorded, as one kept by a build that
+measured none or one whose measurement ran out of time in an earlier process, is measured
+by the read that loads it, within the same two bounds, and at most once a process
+(:func:`_measure_kept`), so its first read waits as a moved stack's does.
+
 A member with no usable record (none cached, another account's, or one with no
 comparison) leaves the stack ``pending``, with no comparison: the page asks ``pull-refresh``
 for it. A member whose catalog row names a newer head than its record is named in
@@ -126,6 +131,12 @@ MAX_KEPT_STACK_COMPARISONS: Final = 8
 # 147 files and 52, 2.4 to 3.5 s for 326 files and 180, and 3.5 to 4.0 s for 477 files and
 # 261. A larger comparison is not measured, and the stack's size line leaves its bytes out.
 MAX_SIZED_STACK_FILES: Final = 150
+# Kept comparisons this process has asked a missing size for (`_measure_kept`), so one that
+# has none to give, or that Git failed on, is listed again once and not on every load. Each
+# is a comparison's key, six short strings: 512 of them took 338 KB (measured 2026-11-25
+# with tracemalloc on Python 3.14, keys of a store's path, three hashes, and the digest).
+# One that falls out is asked once more.
+MAX_ASKED_STACK_SIZES: Final = 512
 # Ancestry answers kept for the process, least recently used out first: one per member a
 # stack's top head is asked about, and they never change, since both ends are commit IDs.
 # Measured 2026-11-24 with tracemalloc on Python 3.14.7 (Apple M1 Pro, macOS 26.5.2): 4,096
@@ -850,6 +861,61 @@ async def _measure(location: GitLocation, pair: StackPair) -> None:
         log.debug("a stack's size could not be measured: %r", exc)
 
 
+_ASKED: Final[OrderedDict[tuple[str, ...], None]] = OrderedDict()
+_ASKED_LOCK: Final = threading.Lock()
+
+
+def _first_ask(key: tuple[str, ...]) -> bool:
+    """Whether this process has not yet asked a missing size for the comparison *key*."""
+
+    with _ASKED_LOCK:
+        if key in _ASKED:
+            _ASKED.move_to_end(key)
+            return False
+        _ASKED[key] = None
+        while len(_ASKED) > MAX_ASKED_STACK_SIZES:
+            _ASKED.popitem(last=False)
+        return True
+
+
+async def _measure_kept(
+    source: GitDiffSource,
+    location: GitLocation,
+    pair: StackPair,
+    key: tuple[str, ...],
+    kept: ResolvedManifest,
+) -> None:
+    """Measure a comparison found kept with no size recorded, once a process.
+
+    A manifest kept beside the store outlives what measured it: a build that measured none,
+    or a process whose measurement ran out of time, which keeps that answer in memory only.
+    Whether it is measured is asked of the plain listing, as where it is built
+    (:func:`_sized`), so that listing runs again, for a comparison small enough to be
+    measured and no other. An answer of any kind is not asked again: a size and
+    ``too_costly`` are kept where ``kept_change_size`` reads them, and the rest by *key*.
+    A listing that fails leaves the kept comparison as it was, with no size.
+    """
+
+    from metabrowser.diff.adapters.base import DiffSourceError
+    from metabrowser.git.change_size import kept_change_size
+    from metabrowser.git.process import GitError
+
+    restricted = kept.manifest
+    if restricted.truncated or len(restricted.files) > MAX_SIZED_STACK_FILES:
+        return
+    if await asyncio.to_thread(kept_change_size, location, pair.base, pair.head) is not None:
+        return
+    if not _first_ask(key):
+        return
+    try:
+        plain = await source.manifest(kept.resolved)
+    except (DiffSourceError, GitError) as exc:
+        log.debug("a kept stack comparison could not be listed for its size: %r", exc)
+        return
+    if _sized(plain, restricted):
+        await _measure(location, pair)
+
+
 def _layers(
     manifest: ChangeSetManifest, members: tuple[tuple[int, int, dict[str, str]], ...]
 ) -> tuple[FileLayersWire, ...]:
@@ -896,8 +962,11 @@ async def combined(published: PublishedSource, pair: StackPair) -> Combined:
             RepositoryStoreTarget(published.git_dir, published.object_format), pair.head
         )
         source = GitDiffSource(location)
+        computed = False
 
         async def compute(resolved: ResolvedComparison) -> ChangeSetManifest:
+            nonlocal computed
+            computed = True
             plain = await source.manifest(resolved)
             restricted = _restricted(plain, members)
             if _sized(plain, restricted):
@@ -907,6 +976,8 @@ async def combined(published: PublishedSource, pair: StackPair) -> Combined:
         manifest = await load_stack_manifest(
             published, pair.number, source, _intent(pair), key, compute
         )
+        if not computed:
+            await _measure_kept(source, location, pair, key, manifest)
         return Combined(manifest, _layers(manifest.manifest, members))
 
     return await _kept().get(key, load)

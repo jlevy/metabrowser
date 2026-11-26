@@ -1010,8 +1010,12 @@ measurements that set them:
   The first read after a member moves builds the comparison, so it waits on the
   measurement too, which is bounded by the file cap and `MEASURE_TIMEOUT_S`; every later
   read takes it from `kept_change_size` and runs no Git for it.
-  `labels` is null while a member has neither a record nor a row, and its names are the
-  row’s wherever there is one (`member_identity`), as the stacks route’s are.
+  A comparison found kept with no size recorded, as one a build that measured none kept
+  or one whose measurement ran out of time in an earlier process, is measured by the
+  read that loads it, within the same bounds and at most once a process
+  (`_measure_kept`). `labels` is null while a member has neither a record nor a row, and
+  its names are the row’s wherever there is one (`member_identity`), as the stacks
+  route’s are.
 - **Admission.** `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
   `number` and admit the stack’s current pair, and `stack-comparison` lists it
   (`_stack_admission` in `pull_snapshot.py`). Each keeps answering a pair the `stack`
