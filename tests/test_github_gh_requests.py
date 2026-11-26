@@ -167,6 +167,35 @@ def test_what_gh_budget_counted_is_what_the_report_says_each_budget_spent(
             )
 
 
+def test_an_unchanged_answer_ends_its_span_answered_and_a_refusal_ends_it_failed(
+    sink: event_log.EventLog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gh exits 1 on a 304 as on a 404, but only the refusal is a failure: the failures
+    report counts no conditional read GitHub answered unchanged."""
+
+    _stand_in_gh(monkeypatch, _github)
+
+    async def reads() -> None:
+        await _read_pull()
+        await _read_pull(etag='W/"a"')
+        with pytest.raises(gh.GhError):
+            await gh.gh_api("repos/octo/demo/pulls/404", now=NOW)
+
+    asyncio.run(reads())
+    ends = {r["attrs"]["http_status"]: r for r in _gh_ends(sink)}
+    assert {status: end["attrs"]["exit"] for status, end in ends.items()} == {
+        200: 0,
+        304: 1,
+        404: 1,
+    }
+    assert {status: end["outcome"] for status, end in ends.items()} == {
+        200: "ok",
+        304: "ok",
+        404: "failed",
+    }
+    assert "failure" not in ends[304]["attrs"]
+
+
 def test_a_gh_span_lasts_as_long_as_gh_did_not_as_reading_its_answer(
     sink: event_log.EventLog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -300,7 +329,8 @@ def _call(
     attrs: dict[str, Any] = {"args": args, "budget": budget, "fingerprint": fingerprint}
     if status is not None:
         attrs |= {"http_status": status, "cost": 1 if graphql or status != 304 else 0}
-    failed = status is None or not 200 <= status < 300
+    # gh exits 1 on a 304 too, and its span still ends answered (gh._run).
+    failed = status is None or not (200 <= status < 300 or status == 304)
     return _end(
         pid,
         span,
