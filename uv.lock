@@ -424,13 +424,17 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
-    { name = "ruamel-yaml-clib", marker = "platform_python_implementation == 'CPython'" },
     { name = "softschema" },
     { name = "starlette" },
     { name = "strif" },
     { name = "typer" },
     { name = "uvicorn" },
     { name = "watchfiles" },
+]
+
+[package.optional-dependencies]
+yaml-accelerator = [
+    { name = "ruamel-yaml-clib", marker = "platform_python_implementation == 'CPython'" },
 ]
 
 [package.dev-dependencies]
@@ -468,7 +472,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruamel-yaml", specifier = ">=0.19.1" },
-    { name = "ruamel-yaml-clib", marker = "platform_python_implementation == 'CPython'", specifier = "==0.2.15" },
+    { name = "ruamel-yaml-clib", marker = "platform_python_implementation == 'CPython' and extra == 'yaml-accelerator'", specifier = "==0.2.15" },
     { name = "softschema", specifier = "==0.9.1" },
     { name = "starlette", specifier = ">=1.3.1" },
     { name = "strif", specifier = ">=3.1.0" },
@@ -476,6 +480,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.49.0" },
     { name = "watchfiles", specifier = ">=1.2.0" },
 ]
+provides-extras = ["yaml-accelerator"]
 
 [package.metadata.requires-dev]
 build = [

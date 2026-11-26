@@ -724,6 +724,15 @@
 /* Leads the chooser, toward the bar's free space. Keeps its place in the bar, so it
    never moves the controls, and appears only after the loading-state delay
    (.mb-delayed-loading). */
+/* Nothing shows after a file that waits for its first drawing (`WAITING_CLASS` in
+   diff-markdown.js): its body takes a height only its answer knows, so whatever followed
+   it would move when the answer came. Hidden things take no press, and `opacity` hides
+   what sets its own `visibility`, as a later file's progress mark does. */
+.metabrowser-diff-host .diff-file-awaiting-rendered ~ * {
+  visibility: hidden;
+  opacity: 0;
+}
+
 .metabrowser-diff-host .diff-markdown-progress {
   display: inline-flex;
   flex: none;

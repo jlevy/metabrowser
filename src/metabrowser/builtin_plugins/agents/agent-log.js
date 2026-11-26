@@ -333,8 +333,14 @@ function toggleKindFilter(kind, root, state) {
   });
 }
 
+// The filter bar's own element is bound, not the log around it (docs/plugins.md, "Menus");
+// a log with one kind of event draws no bar.
 function bindFilterBar(container, state) {
-  return fc.bind(container, {
+  const bar = container.querySelector(".agent-log-filter-bar");
+  if (bar === null) {
+    return () => {};
+  }
+  return fc.bind(bar, {
     onChange(key, value, select) {
       if (key !== "agent-event-kind" || select !== "many") {
         return;

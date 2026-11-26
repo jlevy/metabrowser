@@ -245,6 +245,9 @@ Its wheels contain the `_ruamel_yaml` extension and distribution metadata.
 The source archive builds that extension on platforms without a matching wheel.
 The macOS arm64 and Linux x86-64 CPython 3.14 wheel hashes and the source archive hash
 match PyPI. Non-CPython installs use the pure reader.
+Stock installs use the pure reader as well.
+The `yaml-accelerator` extra opts in on CPython.
+Free-threaded CPython 3.14 and Windows ARM64 have no wheel for this pin.
 These three packages are the entire lockfile package delta.
 
 ## Admitted Git in CI
