@@ -28,8 +28,8 @@ member's that has one (mb-ri96). 10's block is pinned to stack 70's pair, so 70'
 guide reads ready, and it is left out of 10's rendered description; 8's, pinned to 8's own
 head, is below 10 there and is 73's guide, out of date, since 73's top is 9. The guide's
 answers, each under the step of the stack's story it is read at, are
-``cli-github-stack-guide.txt``. Stack 70's comparison and the routes that admit it are
-``cli-github-stack.txt``; 71, 72, 73, a number no stack has, and 70's move are
+``cli-github-stack-guide.txt``. Stack 70's comparison and the routes that admit it, and
+71, are ``cli-github-stack.txt``; 72, 73, a number no stack has, and 70's move are
 ``cli-github-stack-states.txt``. So each transcript stays inside the review budget.
 
 A stack's size is its comparison's, measured where the comparison is built, and only where
@@ -82,6 +82,7 @@ from tests.golden_harness import (
     isolate_cli,
     label_home,
     mask_pushed_bytes,
+    operational_once,
     quoted,
     run_metab,
 )
@@ -223,7 +224,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     # The stack's guide (mb-ri96) has a transcript of its own, cli-github-stack-guide.txt,
     # which these collect, so each stays inside the review budget (devtools/check_goldens.py).
     guide_blocks: list[str] = []
-    # The stacks other than 70 whole, and 70's move, have one of their own too,
+    # The stacks other than 70 and 71, and 70's move, have one of their own too,
     # cli-github-stack-states.txt, which these collect.
     states: list[str] = []
     into = [blocks]
@@ -405,9 +406,6 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     )
     assert "snapshot_expired" in image_stale.stdout
 
-    # From here on, the stacks' other states, and 70's move, are their own transcript's.
-    first_blocks, blocks = blocks, states
-    into[0] = blocks
     blocks.append(
         "## A member the top's head lacks: 7's fork head is in no history of 10's, so it adds"
         " no file and is named in `lacking`.\n"
@@ -420,6 +418,9 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     assert [entry["path"] for entry in lacking["files"]] == ["docs/draft.md"]
     assert lacking["comparison"]["key"] != comparison["key"]
 
+    # From here on, the stacks' other states, and 70's move, are their own transcript's.
+    first_blocks, blocks = blocks, states
+    into[0] = blocks
     blocks.append("## Not linear: 10's merge base is not in 8's history.\n")
     linear = stack(72)
     assert linear["reason"] == "not_linear"
@@ -675,7 +676,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
         ("cli-github-stack-states.txt", states),
         ("cli-github-stack-guide.txt", guide_blocks),
     ):
-        rendered_text = _scoped("".join(written))
+        rendered_text = operational_once(_scoped("".join(written)))
         # A rendered document's anchors are named by its sandbox-derived namespace.
         rendered_text = re.sub(
             r"user-content-[0-9a-f]{24}-", "user-content-<ANCHORS>-", rendered_text

@@ -33,7 +33,10 @@
 // - nothing moves when the lines arrive: the item, the link, the run, the title, the state
 //   icon, the number, the author, the age, and the last line; the chevron keeps its line and
 //   follows the lines, which start where the placeholder did;
-// - the lines and the chevron are one line, the lines whole and in the row, never cut short;
+// - the lines and the chevron are one line, the lines whole and in the row wherever the last
+//   line has their room beside the readiness's column and the age (mb-3n21), and given way
+//   whole to an ellipsis only where it has not, at the narrowest panes; the chevron ends
+//   before the readiness's column;
 //   the line counts no files by status; nothing scrolls sideways;
 // - the lines' inks and weights are the component's, part for part, as the same line drawn by
 //   the SDK outside the row resolves them in that theme, and its item's name says it in words;
@@ -520,6 +523,12 @@ const READ = `(() => {
       pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(said), stats: box(stats), said: said?.textContent ?? null,
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
+      // The lines' own width, whole or not, and the readiness's column after the toggle
+      // (mb-3n21), which the toggle never runs into.
+      statsNatural: stats?.scrollWidth ?? null,
+      readiness: box(tail?.querySelector(":scope > .github-pulls-readiness") ?? null),
+      tailGap: tail ? parseFloat(getComputedStyle(tail).columnGap) : null,
+      toggleRoom: toggle ? toggle.getBoundingClientRect().width + parseFloat(getComputedStyle(toggle).marginInlineStart) : null,
       // The line counts no files by status (mb-lqkb).
       statuses: said?.querySelectorAll(".change-line-statuses, .change-line-group, .file-change-status").length ?? 0,
       text: line?.textContent ?? null, nodes: line?.childNodes.length ?? null,
@@ -1044,17 +1053,37 @@ async function main() {
             measured[at][number] = { runLines: now.runLines.length };
             continue;
           }
+          // The lines are whole, before the chevron, wherever the last line has their room
+          // beside the readiness's column and the age; at the narrowest panes, where it has
+          // not, they give way whole to an ellipsis, and the chevron, the column, and the age
+          // stay (docs/design-system.md, "The Pulls Tab"). Either way the toggle ends before
+          // the readiness's column.
+          const room =
+            now.readiness === null ? null : now.readiness.left - now.tailGap - now.lastStart;
+          const needs = (now.statsNatural ?? 0) + (now.toggleRoom ?? 0);
+          // Whole: the line's box holds the lines, and they end before the chevron.
+          const whole =
+            now.statsWhole &&
+            now.stats !== null &&
+            now.changeLine !== null &&
+            now.stats.right <= now.changeLine.right + TOLERANCE_PX &&
+            now.stats.right <= now.chevron.left + TOLERANCE_PX;
           check(
-            `${at}: #${number}'s lines are whole, before the chevron on the last line, and in the row`,
+            `${at}: #${number}'s lines are whole, before the chevron on the last line, and in the row, where the line has their room beside the readiness column, and give way only where it has not`,
             now.line !== null &&
-              now.statsWhole &&
+              room !== null &&
+              whole === room >= needs - TOLERANCE_PX &&
               within(now.line, now.tail) &&
-              now.stats.right <= now.chevron.left + TOLERANCE_PX &&
+              now.chevron.right <= now.readiness.left - now.tailGap + TOLERANCE_PX &&
               now.chevron.right <= now.tail.right + TOLERANCE_PX,
             JSON.stringify({
               line: now.line,
               stats: now.stats,
               chevron: now.chevron,
+              changeLine: now.changeLine,
+              readiness: now.readiness,
+              room,
+              needs,
               tail: now.tail,
             }),
           );

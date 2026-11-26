@@ -19,14 +19,26 @@
 //
 // A member whose state is not known yet keeps the icon's slot, empty, so every member's title
 // starts at one edge.
+//
+// A row that shows a pull request's readiness (mb-3n21; row-readiness.js) says it after the
+// state, in words out of view after the state icon, as the icon says the state, and draws its
+// glyph, hidden from assistive technology, where its layout puts it: at a line's end, after the
+// author, in a cell as wide as the glyph, empty for a member with no readiness, so every
+// member's fields end at one edge; and in a Pulls row, in its last line's readiness column, a
+// cell the builder draws and the row places (`readiness`), with the label after the glyph.
+// A surface that shows no readiness, as a guide's pull request row does not, passes none, and
+// its row has neither.
 
+import { readinessIcon } from "./pull-readiness.js";
 import { pullStateIcon } from "./pull-state.js";
 
 /**
  * A pull request's fields as a row shows them. `place` is its place in its stack, "14/15",
  * or null where it is in none; a row draws `placeNodes` for it where given, as a guide's row
  * and a Pulls row's run draw a place that names another stack (`namedStackPositionNodes` in
- * pull-stacks.js), and names it by `placeHint`, a line in its tip too.
+ * pull-stacks.js), and names it by `placeHint`, a line in its tip too. `readiness` is the
+ * verdict a row draws (row-readiness.js), null for a pull request with none, and absent on a
+ * surface that shows no readiness.
  *
  * @typedef {{
  *   number: number,
@@ -36,6 +48,7 @@ import { pullStateIcon } from "./pull-state.js";
  *   title: string | null,
  *   state: import("./pull-state.js").PullState | null,
  *   author: {login: string, avatar: string | null} | null,
+ *   readiness?: import("./pull-readiness.js").ShownReadiness | null,
  * }} StackMemberLine
  */
 
@@ -43,7 +56,9 @@ import { pullStateIcon } from "./pull-state.js";
  * How a surface lays the fields out: the classes of its parts, which its stylesheet lays out,
  * and whether they run as one wrapping flow (`flow`) or sit on one line, the title first and
  * the rest at its end. `row` is added to the element drawn into, and `copy`, in a line, wraps
- * the fields after the icon.
+ * the fields after the icon. `readiness` is the class of the readiness's cell, and
+ * `readinessLabel` that of the label after its glyph, or null where the cell is the glyph
+ * alone.
  *
  * @typedef {{
  *   flow: boolean,
@@ -53,6 +68,8 @@ import { pullStateIcon } from "./pull-state.js";
  *   place: string,
  *   number: string,
  *   by: string,
+ *   readiness: string,
+ *   readinessLabel: string | null,
  * }} MemberRowLayout
  */
 
@@ -66,6 +83,8 @@ export const MEMBER_LINE = /** @type {MemberRowLayout} */ (
     place: "github-pull-stack-member-position",
     number: "github-pull-stack-member-number",
     by: "github-pull-stack-member-by",
+    readiness: "github-pull-stack-member-readiness",
+    readinessLabel: null,
   })
 );
 
@@ -79,17 +98,21 @@ export const PULLS_RUN = /** @type {MemberRowLayout} */ (
     place: "github-pulls-place",
     number: "github-pulls-number",
     by: "github-pulls-by",
+    readiness: "github-pulls-readiness",
+    readinessLabel: "github-pulls-readiness-label",
   })
 );
 
 /**
- * A row drawn into its element, its title and place, which a surface may mark, and `show`,
+ * A row drawn into its element, its title and place, which a surface may mark, `readiness`,
+ * the readiness's cell, which a run's surface places and a line places itself, and `show`,
  * which draws a pull request's fields into it.
  *
  * @typedef {{
  *   link: HTMLElement,
  *   title: HTMLElement,
  *   place: HTMLElement,
+ *   readiness: HTMLElement,
  *   show(member: StackMemberLine): void,
  * }} StackMemberRow
  */
@@ -166,6 +189,13 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
     }
   }
   const holder = layout.copy === null ? null : make("span", layout.copy);
+  // The readiness: its words, out of view after the state icon, and its cell, hidden, which a
+  // run's surface places and a line ends with, each there from the first line that carries a
+  // readiness (`placeReadiness`).
+  const spoken = make("span", "sr-only github-pull-readiness-said");
+  const cell = make("span", layout.readiness);
+  cell.setAttribute("aria-hidden", "true");
+  let readinessPlaced = false;
   let icon = emptyIcon();
   // The fields after the icon. A run's place hides itself, its dot with it; a line's place and
   // the dot after it are laid out only while there is a place, so a pull request in no stack
@@ -182,12 +212,21 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
   };
   link.replaceChildren(icon, ...(holder === null ? [] : [holder]));
   lay(false);
-  /** @type {{words: string | null, place: string | null | undefined, state: StackMemberLine["state"] | undefined, author: string | null}} */
-  const shown = { words: null, place: undefined, state: undefined, author: null };
+  /** The readiness's words after the state icon, and, in a line, its cell at the line's end. */
+  const placeReadiness = () => {
+    link.insertBefore(spoken, icon.nextSibling);
+    if (!layout.flow) {
+      link.append(cell);
+    }
+    readinessPlaced = true;
+  };
+  /** @type {{words: string | null, place: string | null | undefined, state: StackMemberLine["state"] | undefined, author: string | null, readiness: string | null}} */
+  const shown = { words: null, place: undefined, state: undefined, author: null, readiness: null };
   return {
     link,
     title,
     place,
+    readiness: cell,
     show(member) {
       const words = member.title || `Pull request #${member.number}`;
       if (shown.words !== words) {
@@ -257,6 +296,29 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
         }
         by.hidden = drawn === null;
         shown.author = said;
+      }
+      if (member.readiness !== undefined) {
+        if (!readinessPlaced) {
+          placeReadiness();
+        }
+        const readiness = member.readiness;
+        const drawnReadiness =
+          readiness === null ? "" : `${readiness.verdict}\n${readiness.tone}\n${readiness.label}`;
+        if (shown.readiness !== drawnReadiness) {
+          // The words say the label, and the glyph, in the readiness's tone, and the label after
+          // it are the cell's, hidden (github/styles.css, "A pull request's readiness").
+          spoken.textContent = readiness === null ? "" : readiness.label;
+          const glyph = readinessIcon(readiness, { named: false });
+          /** @type {Node[]} */
+          const parts = glyph === null ? [] : [glyph];
+          if (readiness !== null && layout.readinessLabel !== null) {
+            const label = make("span", layout.readinessLabel);
+            label.textContent = readiness.label;
+            parts.push(label);
+          }
+          cell.replaceChildren(...parts);
+          shown.readiness = drawnReadiness;
+        }
       }
     },
   };

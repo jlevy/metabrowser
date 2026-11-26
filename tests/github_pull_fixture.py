@@ -61,6 +61,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import defaultdict
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -150,6 +151,12 @@ if args[:1] == ["api"]:
             path = "graphql:core:" + fields.get("number", "missing")
         elif fields.get("query", "").lstrip().startswith("query MetabrowserPullTimeline("):
             path = "graphql:timeline:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
+        elif fields.get("query", "").startswith("query PullStatus("):
+            path = "graphql:status:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
+        elif fields.get("query", "").startswith("query PullStatuses("):
+            # Its pages are in the Pulls tab's order, the only order they are answered in.
+            order = "" if "field:UPDATED_AT" in fields["query"] else "unordered-"
+            path = "graphql:statuses:" + order + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query VisiblePullCores("):
             slots = [f"n{{i}}" for i in range(8)]
             path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
@@ -689,7 +696,12 @@ def page(path: str) -> str:
 
 
 def logged_gh_calls(directory: Path) -> list[str]:
-    """What the fake ``gh`` was asked since the last call, as a transcript lists it."""
+    """What the fake ``gh`` was asked since the last call, as a transcript lists it.
+
+    The scan of every open pull request's status is a job of its own, which a list's ask
+    starts beside the list's, so its pages reach the log anywhere among the list's reads:
+    they are listed last, in the order they were read, one after another.
+    """
 
     log = directory / "fake-gh-log.jsonl"
     if not log.exists():
@@ -713,6 +725,15 @@ def logged_gh_calls(directory: Path) -> list[str]:
                     f"gh api graphql timeline number={fields.get('number', 'missing')} "
                     f"cursor={fields.get('cursor', 'start')}"
                 )
+                continue
+            if fields.get("query", "").startswith("query PullStatus("):
+                calls.append(
+                    f"gh api graphql status number={fields.get('number', 'missing')} "
+                    f"cursor={fields.get('cursor', 'start')}"
+                )
+                continue
+            if fields.get("query", "").startswith("query PullStatuses("):
+                calls.append(f"gh api graphql statuses cursor={fields.get('cursor', 'start')}")
                 continue
             if fields.get("query", "").startswith("query VisiblePullCores("):
                 slots = [f"n{i}" for i in range(8)]
@@ -741,7 +762,8 @@ def logged_gh_calls(directory: Path) -> list[str]:
         conditional = any(arg.startswith("If-None-Match: ") for arg in args)
         calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
     log.unlink()
-    return calls
+    scanned = [call for call in calls if call.startswith(_STATUS_SCAN)]
+    return [call for call in calls if not call.startswith(_STATUS_SCAN)] + scanned
 
 
 # What a first clone of octo/demo asks gh, in order: the GitHub status check, then the
@@ -763,12 +785,15 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     """
 
     # The list probe a page's automatic ask starts runs beside that ask's own work
-    # (`attend_list`), so it reaches the log anywhere among it: it is listed first.
+    # (`attend_list`), so it reaches the log anywhere among it: it is listed first. The scan
+    # of every open pull request's status, a job of its own a list's ask starts beside the
+    # list's, reaches it anywhere too, its pages one after another: they are listed last.
     beside = [call for call in calls if _LIST_PROBE.match(call)]
+    scanned = [call for call in calls if call.startswith(_STATUS_SCAN)]
     ordered: list[str] = list(beside)
     together: list[str] = []
     for call in calls:
-        if _LIST_PROBE.match(call):
+        if _LIST_PROBE.match(call) or call.startswith(_STATUS_SCAN):
             continue
         if _RECORD_PART.match(call):
             together.append(call)
@@ -777,11 +802,13 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
         together = []
         ordered.append(call)
     ordered.extend(sorted(together))
-    return ordered
+    return [*ordered, *scanned]
 
 
+_STATUS_SCAN: Final = "gh api graphql statuses "
 _LIST_PROBE = re.compile(r"gh api repos/[^/]+/[^/]+/(issues|pulls)\?state=all&sort=updated&")
-# The parts of a record a refresh reads together, after the pull itself.
+# The parts of a record a refresh reads together, after the pull itself, and the pages of
+# a head's checks a probe reads together.
 _RECORD_PART = re.compile(
     r"gh api repos/[^/]+/[^/]+/"
     r"(issues/\d+/comments|pulls/\d+/comments|pulls/\d+/reviews|commits/[0-9a-f]+/(status|check-runs))\?"
@@ -816,11 +843,6 @@ def graph_core_data(item: Mapping[str, Any], *, reader: str = READER) -> dict[st
                 "potentialMergeCommit": {"oid": merge_oid}
                 if not item.get("merged") and merge_oid
                 else None,
-                "mergeable": "MERGEABLE"
-                if item.get("mergeable") is True
-                else "CONFLICTING"
-                if item.get("mergeable") is False
-                else "UNKNOWN",
                 "labels": {"nodes": item.get("labels", [])},
                 "baseRefName": item["base"]["ref"],
                 "baseRefOid": item["base"]["sha"],
@@ -842,6 +864,295 @@ def graph_core_entry(item: Mapping[str, Any], *, reader: str = READER) -> dict[s
     return ok(f"graphql:core:{item['number']}", {"data": graph_core_data(item, reader=reader)})
 
 
+# GitHub's ``CheckRunState`` and ``StatusState``, every one of which its counts by state
+# name, zero or not.
+_CHECK_RUN_STATES: Final = (
+    "ACTION_REQUIRED",
+    "CANCELLED",
+    "COMPLETED",
+    "FAILURE",
+    "IN_PROGRESS",
+    "NEUTRAL",
+    "PENDING",
+    "QUEUED",
+    "SKIPPED",
+    "STALE",
+    "STARTUP_FAILURE",
+    "SUCCESS",
+    "TIMED_OUT",
+    "WAITING",
+)
+_STATUS_STATES: Final = ("EXPECTED", "ERROR", "FAILURE", "PENDING", "SUCCESS")
+# What the stand-in's base branch requires, a rule only the status read sees: its tests and
+# its docs build, and a review.
+REQUIRED_CHECKS: Final = frozenset({"tests (3.13)", "docs"})
+# The operational status of each pull request, as GitHub's merge verdict would give it
+# under that rule: 7 waits on its docs build and a review, with auto-merge on; 8 was
+# merged and 9 closed, which GitHub no longer judges; and 10, the draft, conflicts.
+STATUS_SHAPES: Final[Mapping[int, Mapping[str, Any]]] = {
+    7: {
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "BLOCKED",
+        "reviewDecision": "REVIEW_REQUIRED",
+        "autoMergeRequest": {
+            "mergeMethod": "SQUASH",
+            "enabledAt": "2026-09-16T17:40:00Z",
+            "enabledBy": {"login": "maintainer"},
+        },
+    },
+    8: {"mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN", "reviewDecision": "APPROVED"},
+    9: {"mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN", "reviewDecision": "REVIEW_REQUIRED"},
+    10: {"mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY", "reviewDecision": None},
+}
+
+
+def graph_status_data(
+    parts: Mapping[str, Any],
+    *,
+    reader: str = READER,
+    shape: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The status query's answer for one pull request, from its REST checks and status.
+
+    Each check run and commit status the REST answers list is one context, required as
+    :data:`REQUIRED_CHECKS` says, and GitHub's counts and rollup are taken from them, so
+    the two reads agree. A head with neither has no rollup, as GitHub answers ``null``.
+    *shape* is GitHub's verdict on it, :data:`STATUS_SHAPES`' for its number by default.
+    """
+
+    pull = parts["pull"]
+    runs = parts["check_runs"]["check_runs"]
+    statuses = (parts.get("status") or {}).get("statuses") or []
+    nodes: list[dict[str, Any]] = []
+    run_counts = dict.fromkeys(_CHECK_RUN_STATES, 0)
+    status_counts = dict.fromkeys(_STATUS_STATES, 0)
+    for minute, run in enumerate(runs):
+        state = (run["conclusion"] if run["status"] == "completed" else run["status"]).upper()
+        run_counts[state] += 1
+        nodes.append(
+            {
+                "__typename": "CheckRun",
+                "name": run["name"],
+                "status": run["status"].upper(),
+                "conclusion": run["conclusion"].upper() if run["conclusion"] else None,
+                "isRequired": run["name"] in REQUIRED_CHECKS,
+                "detailsUrl": run["details_url"],
+                "startedAt": f"2026-09-16T17:{30 + minute:02d}:00Z",
+                "checkSuite": {
+                    "app": {"name": run["app"]["name"]},
+                    # An Actions run's workflow and event, which tell its reruns apart.
+                    "workflowRun": {"event": "pull_request", "workflow": {"name": "CI"}}
+                    if run["app"]["name"] == "GitHub Actions"
+                    else None,
+                },
+            }
+        )
+    for status in statuses:
+        status_counts[status["state"].upper()] += 1
+        nodes.append(
+            {
+                "__typename": "StatusContext",
+                "context": status["context"],
+                "state": status["state"].upper(),
+                "isRequired": status["context"] in REQUIRED_CHECKS,
+                "targetUrl": status["target_url"],
+                "description": status["description"],
+            }
+        )
+    states = {state for state, count in (*run_counts.items(), *status_counts.items()) if count}
+    rollup = None
+    if nodes:
+        rollup = {
+            "state": "FAILURE"
+            if states & {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
+            else "PENDING"
+            if states - {"SUCCESS", "SKIPPED", "NEUTRAL"}
+            else "SUCCESS",
+            "contexts": {
+                "pageInfo": {"hasNextPage": False, "endCursor": "MTA"},
+                "checkRunCountsByState": [
+                    {"state": state, "count": count} for state, count in run_counts.items()
+                ],
+                "statusContextCountsByState": [
+                    {"state": state, "count": count} for state, count in status_counts.items()
+                ],
+                "nodes": nodes,
+            },
+        }
+    shape = STATUS_SHAPES[pull["number"]] if shape is None else shape
+    return {
+        "viewer": {"login": reader},
+        "rateLimit": {"cost": 1},
+        "repository": {
+            "id": "R_demo",
+            "nameWithOwner": "octo/demo",
+            "pull": {
+                "number": pull["number"],
+                "headRefOid": pull["head"]["sha"],
+                "baseRefName": pull["base"]["ref"],
+                "baseRefOid": pull["base"]["sha"],
+                "isDraft": pull.get("draft", False),
+                "mergeable": shape["mergeable"],
+                "mergeStateStatus": shape["mergeStateStatus"],
+                "reviewDecision": shape["reviewDecision"],
+                "isInMergeQueue": False,
+                "mergeQueueEntry": None,
+                "autoMergeRequest": shape.get("autoMergeRequest"),
+                "statusCheckRollup": rollup,
+            },
+        },
+    }
+
+
+# Three pull requests' status answers as GitHub gave them on 2026-11-26 to this query, each
+# beside what ``gh pr checks`` 2.97.0 listed of the same head (name, bucket, workflow,
+# event), trimmed to the fields a status keeps, with the viewer the stand-in's reader. Each
+# is BLOCKED: psf/requests#7619 waits on a review, with two failing ``lint`` runs of one
+# workflow that a push and a pull request each ran, neither required; kubernetes/
+# enhancements#6506 is approved, every required check passing and only ``tide`` pending; and
+# python/cpython#162697 fails two required checks, one of them run four times.
+LIVE_STATUS_ANSWERS: Final = Path(__file__).parent / "fixtures" / "github-status-answers.json"
+
+
+@dataclass(frozen=True)
+class LiveStatusAnswer:
+    """One recorded answer (:data:`LIVE_STATUS_ANSWERS`): the pull request, the status
+    query's answer to it, and the checks ``gh pr checks`` listed of it."""
+
+    owner: str
+    repo: str
+    number: int
+    data: dict[str, Any]
+    gh_pr_checks: tuple[tuple[str, str, str, str], ...]
+
+    @property
+    def name(self) -> str:
+        return f"{self.owner}/{self.repo}#{self.number}"
+
+
+def live_status_answers() -> list[LiveStatusAnswer]:
+    """The recorded answers of :data:`LIVE_STATUS_ANSWERS`, each as the query's ``data``."""
+
+    answers: list[LiveStatusAnswer] = []
+    for entry in json.loads(LIVE_STATUS_ANSWERS.read_text(encoding="utf-8")):
+        slug, number = entry["pull"].split("#")
+        owner, repo = slug.split("/")
+        rollup = {
+            "state": entry["rollup"],
+            "contexts": {
+                "pageInfo": entry["pageInfo"],
+                "checkRunCountsByState": entry["checkRunCountsByState"],
+                "statusContextCountsByState": entry["statusContextCountsByState"],
+                "nodes": entry["nodes"],
+            },
+        }
+        data = {
+            "viewer": {"login": READER},
+            "rateLimit": {"cost": 1},
+            "repository": {
+                **entry["repository"],
+                "pull": {**entry["fields"], "statusCheckRollup": rollup},
+            },
+        }
+        listed = tuple(
+            (name, bucket, workflow, event)
+            for name, bucket, workflow, event in entry["gh_pr_checks"]
+        )
+        answers.append(LiveStatusAnswer(owner, repo, int(number), data, listed))
+    return answers
+
+
+def graph_status_entry(
+    parts: Mapping[str, Any], *, reader: str = READER, shape: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """The fake-gh entry for one pull request's status query, its first page."""
+
+    path = f"graphql:status:{parts['pull']['number']}:start"
+    return ok(path, {"data": graph_status_data(parts, reader=reader, shape=shape)})
+
+
+# The open pull requests one page of the status scan holds (``SCAN_ROWS``).
+STATUS_SCAN_ROWS: Final = 25
+
+
+def scan_rollup(parts: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The rollup the status scan reads for one pull request: the page's read's, as
+    :func:`graph_status_data` builds it from its checks, with its counts and no check."""
+
+    rollup = graph_status_data(parts)["repository"]["pull"]["statusCheckRollup"]
+    if rollup is None:
+        return None
+    contexts = rollup["contexts"]
+    return {
+        "state": rollup["state"],
+        "contexts": {
+            "checkRunCountsByState": contexts["checkRunCountsByState"],
+            "statusContextCountsByState": contexts["statusContextCountsByState"],
+        },
+    }
+
+
+def scan_node(
+    item: Mapping[str, Any],
+    *,
+    rollup: Mapping[str, Any] | None = None,
+    shape: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One open pull request as the status scan's page holds it; *shape* is GitHub's
+    verdict, :data:`STATUS_SHAPES`' for its number, or a clean one, by default."""
+
+    shape = STATUS_SHAPES.get(item["number"], {}) if shape is None else shape
+    return {
+        "number": item["number"],
+        "headRefOid": item["head"]["sha"],
+        "baseRefName": item["base"]["ref"],
+        "baseRefOid": item["base"].get("sha"),
+        "mergeable": shape.get("mergeable", "MERGEABLE"),
+        "mergeStateStatus": shape.get("mergeStateStatus", "CLEAN"),
+        "reviewDecision": shape.get("reviewDecision"),
+        "isInMergeQueue": shape.get("isInMergeQueue", False),
+        "mergeQueueEntry": shape.get("mergeQueueEntry"),
+        "autoMergeRequest": shape.get("autoMergeRequest"),
+        "statusCheckRollup": rollup,
+    }
+
+
+def statuses_entries(
+    nodes: list[dict[str, Any]], *, updated_at: Mapping[int, str], reader: str = READER
+) -> dict[str, Any]:
+    """The status scan's pages of *nodes*, graphql:statuses:<cursor|start>, last updated
+    first as GitHub orders them by ``UPDATED_AT``: by *updated_at*, each number's time."""
+
+    entries: dict[str, Any] = {}
+    ordered = sorted(
+        nodes, key=lambda node: (updated_at[node["number"]], node["number"]), reverse=True
+    )
+    for offset in range(0, max(1, len(ordered)), STATUS_SCAN_ROWS):
+        cursor = f"statuses-{offset}" if offset else "start"
+        batch = ordered[offset : offset + STATUS_SCAN_ROWS]
+        key = f"graphql:statuses:{cursor}"
+        more = offset + STATUS_SCAN_ROWS < len(ordered)
+        body = {
+            "data": {
+                "viewer": {"login": reader},
+                "rateLimit": {"cost": 1},
+                "repository": {
+                    "id": "R_demo",
+                    "nameWithOwner": "octo/demo",
+                    "pullRequests": {
+                        "pageInfo": {
+                            "hasNextPage": more,
+                            "endCursor": f"statuses-{offset + len(batch)}" if batch else None,
+                        },
+                        "nodes": batch,
+                    },
+                },
+            }
+        }
+        entries[key] = ok(key, body)
+    return entries
+
+
 def api_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of pull requests 7 to 10 and its recorded answer."""
 
@@ -860,6 +1171,7 @@ def api_entries(origin: Origin) -> dict[str, Any]:
         for path, body in paths.items():
             entries[path] = ok(path, body)
         entries[f"graphql:core:{number}"] = graph_core_entry(parts["pull"])
+        entries[f"graphql:status:{number}:start"] = graph_status_entry(parts)
     return entries
 
 
@@ -1217,7 +1529,53 @@ def catalog_entries(
     )
     entries[LIST_PROBE_PATH] = ok(LIST_PROBE_PATH, as_issue)
     entries[NEWEST_PULL_PATH] = ok(NEWEST_PULL_PATH, [newest] if newest is not None else [])
+    # The status scan of the same open pull requests, each rolled up as its own page's read
+    # rolls up its checks, so a scan and a read of one head agree.
+    rollups = scan_rollups()
+    nodes = [
+        scan_node(item, rollup=rollups.get(item["number"]))
+        for item in items
+        if item["state"] == "open"
+    ]
+    updated_at = {item["number"]: item["updated_at"] for item in items}
+    entries.update(statuses_entries(nodes, updated_at=updated_at, reader=reader))
     return entries
+
+
+def scan_rollups() -> dict[int, dict[str, Any] | None]:
+    """What the status scan reads of each of pull requests 7 to 10's checks: the rollup of
+    the checks :func:`pull_bodies` gives them, which no commit of the origin changes."""
+
+    if not _SCAN_ROLLUPS:
+        placeholder = Origin(Path("."), defaultdict(lambda: "0" * 40))
+        _SCAN_ROLLUPS.update(
+            {number: scan_rollup(parts) for number, parts in pull_bodies(placeholder).items()}
+        )
+    return dict(_SCAN_ROLLUPS)
+
+
+_SCAN_ROLLUPS: dict[int, dict[str, Any] | None] = {}
+
+
+def make_released_catalog(repository: ListedRepository, **updates: object) -> None:
+    """Restore the released schema-1 catalog: creation-ordered, v1 cursors, no status.
+
+    *updates* replace checkpoint fields as that release wrote them.
+    """
+    import sqlite3
+
+    path = repository.home / f"sources/{repository.slug}/pulls/catalog.sqlite3"
+    with contextlib.closing(sqlite3.connect(path)) as db, db:
+        db.execute("DROP TABLE pull_status")
+        db.execute("DROP INDEX pulls_updated_number")
+        db.execute("DROP INDEX pulls_state_updated_number")
+        db.execute("CREATE INDEX pulls_state_number ON pulls(state, number DESC)")
+        db.execute("PRAGMA user_version=1")
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        checkpoint = json.loads(value) | {"schema_version": 1} | updates
+        del checkpoint["backfill_cursor"]
+        del checkpoint["prefix_heads"]
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
 
 
 def seed_catalog(

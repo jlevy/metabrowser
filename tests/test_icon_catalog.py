@@ -513,6 +513,28 @@ def test_a_plugins_pull_states_draw_the_plugins_glyphs() -> None:
     assert sorted(states.values()) == sorted(_svg_definitions(state))
 
 
+def test_a_plugins_readiness_verdicts_draw_the_plugins_glyphs() -> None:
+    """Every glyph pull-readiness.js defines is some verdict's, and every verdict's is defined.
+
+    A glyph two verdicts share is one row, so its meaning covers both
+    (docs/design-system-icons.md, "Git and GitHub Objects"). The design system's table of
+    each verdict's glyph is the vocabulary, by Lucide id (docs/design-system.md, "A Pull
+    Request’s Readiness").
+    """
+    readiness = (BUILTIN_PLUGINS / "github" / "pull-readiness.js").read_text(encoding="utf-8")
+    start = readiness.index("export const VERDICT_GLYPHS = Object.freeze({")
+    body = readiness[start : readiness.index("});", start)]
+    verdicts = dict(re.findall(r"^\s+(\w+): \"(\w+)\",$", body, flags=re.M))
+    assert verdicts, "the vocabulary is a frozen object literal of verdict to glyph"
+    definitions = _svg_definitions(readiness)
+    assert sorted(set(verdicts.values())) == sorted(definitions)
+    design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
+    section = design[design.index("### A Pull Request’s Readiness") :]
+    section = section[: section.index("\n### ")]
+    table = dict(re.findall(r"^\| `(\w+)` \| Lucide `([a-z0-9-]+)` \|$", section, flags=re.M))
+    assert table == {verdict: definitions[name][1] for verdict, name in verdicts.items()}
+
+
 def test_an_upstream_glyph_is_one_drawing_under_its_own_id() -> None:
     """Rows naming one upstream glyph draw it the same; a commented id is the row's."""
     drawings: dict[str, set[str]] = {}

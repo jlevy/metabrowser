@@ -3,11 +3,16 @@
 **Status:** Built: the GitHub provider (URL reducer, `gh` runner, and rate-budget
 governor), pull-request records with their commits fetched into the store, the
 repository catalog and its search, lightweight cores, changed-file lists, checks in the
-record, the Conversation timeline, native stack metadata, the repository’s label set,
-revision snapshots, rendered Markdown diffs, background prefetch, the page’s comparison
-keep, and pull requests beside a served checkout.
-Not built: opening a timeline commit in Metabrowser rather than on GitHub, and hosted
-releases and other providers, which the
+record, a pull request’s operational status and merge verdict beside its record, the
+Conversation timeline, native stack metadata, the repository’s label set, revision
+snapshots, rendered Markdown diffs, background prefetch, the page’s comparison keep, and
+pull requests beside a served checkout.
+Not built: opening a timeline commit in Metabrowser rather than on GitHub; the rest of
+the
+[merge readiness plan](../specs/active/plan-2026-11-26-pull-request-merge-readiness.md),
+whose record still holds its checks and mergeability, and whose Pulls tab reads no
+status and whose pages draw no verdict; and hosted releases and other providers, which
+the
 [GitHub provider plan](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md)
 leaves to later work.
 
@@ -175,7 +180,9 @@ Every file is disposable and carries its own schema version.
 | `<n>.snapshots.json` | Earlier comparison pairs a revision link may open | `pull_snapshot_cache.py` |
 | `stack-<n>.snapshots.json` | A native stack’s earlier comparison pairs, which its page keeps drawn | `pull_stack_retained.py` |
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
-| `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
+| `<n>.checks.json`, `<n>.status.refresh.json`, `<n>.checks.probe.json` | Its head’s checks as its status read found them, how that read ended, and what the probes of those checks last saw | `pull_status_store.py` |
+| `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, each pull request’s newest operational status in its `pull_status` table, and how the catalog’s refreshes ended | `pull_catalog.py`, `pull_list.py` |
+| `statuses.scan.json` | How the last scan of every open pull request’s status ended, and what the next needs of it | `pull_status_scan.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
 | `repos/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
@@ -184,12 +191,20 @@ Every file is disposable and carries its own schema version.
 ## Pull-Request Records
 
 `refresh_pull_request` in `pulls.py` is the whole network job for one pull request: the
-account, then the pull request, its issue comments, reviews, review comments, and the
-head’s check runs and combined status, a page at a time with `If-None-Match` from the
-same reader’s previous record; the account again, discarding a record read across an
-account switch; then the head fetch and the comparison endpoints; then the record.
-A part GitHub refuses, such as check runs, and a comparison whose base cannot be
-fetched, are named in the record’s `unavailable` rather than failing it.
+account, then the pull request, its issue comments, reviews, and review comments, a page
+at a time with `If-None-Match` from the same reader’s previous record; the account
+again, discarding a record read across an account switch; then the head fetch and the
+comparison endpoints; then the record; then its
+[operational status](#operational-status), kept apart from the record.
+A comparison whose base cannot be fetched is named in the record’s `unavailable` rather
+than failing it.
+
+The record is the pull request’s core, what changes when a person changes it.
+Whether it conflicts and how its checks stand are its operational status, which it does
+not hold: `PullRequest` has no `mergeable`, and `PullRecord` no check runs or combined
+status, so a check that finishes gives the record no new revision and the page keeps the
+conversation drawn from it.
+A core (`pull_core_cache.py`) holds none either.
 
 `pull_record.py` holds `PullRecord` and every bound, with the measurements beside the
 constants. A page larger than `gh`’s output cap is asked for again in smaller pages; an
@@ -241,6 +256,145 @@ refresh moves the record on.
 It holds one reader’s pairs, starts over when another reader writes the record, and
 admits each pair only for the store that computed it.
 
+## Operational Status
+
+Whether a pull request conflicts, how its checks stand, its review decision, GitHub’s
+merge verdict (`mergeStateStatus`), auto-merge, and the merge queue change without
+anyone touching the pull request: a check finishes, the base moves, or GitHub finishes a
+computation. So they are a model of their own beside the record, never in it
+([merge readiness plan](../specs/active/plan-2026-11-26-pull-request-merge-readiness.md)).
+`pull_status.py` holds `PullStatus`, one observation of one head, and `PullChecks`, that
+head’s checks, each in the bucket `gh pr checks` sorts it into.
+`pull_readiness.py` turns a lifecycle and a status into the rows github.com’s merge box
+would show and one verdict, and is the only place readiness is decided; its docstring
+has the rules.
+
+- **Reading.** The status is the only read of whether a pull request conflicts and how
+  its checks stand. `refresh_pull_request` reads it after it publishes the record, in the
+  same job, with one GraphQL query (`pull_status_read.py`), and `refresh_pull_status`
+  reads it alone, with one account check and that query and no REST read of the record,
+  for what changes the status and not the record: a change a probe finds in the checks
+  or the mergeability, a status a window old, and a record with no status of its head
+  ([Freshness Verdicts](#freshness-verdicts)). It goes through `gh_graphql`, as the core
+  read does, so its `rateLimit { cost }` counts toward the process’s ceiling and its
+  `viewer` must be the job’s reader.
+  It pages the rollup’s checks up to `MAX_CHECK_ITEMS` and keeps the latest run of each,
+  as `gh pr checks` does: a run by its name, workflow, and event, and a commit status by
+  its context (`latest_of_each`). Its module docstring has the rest, and its cost,
+  latency, and size are beside `_STATUS_QUERY`. Whether `mergeStateStatus` depends on
+  who asks is unsettled, and the note there says why.
+  GitHub answers a renamed repository’s old name under its new one, so the answer is the
+  repository asked for when its `id` is the catalog’s, or, with no catalog, as GitHub
+  names it (`asked_repository` in `gh_lists.py`, which the scan and the cores share).
+- **Scanning every open pull request.** The Pulls tab needs a verdict for every row, so
+  `pull_status_scan.py` reads the repository’s open pull requests, last updated first as
+  the tab orders its rows, with one GraphQL query a page, `PullStatuses`: the same
+  fields as the page’s read and the rollup’s counts by state, with no check listed.
+  It builds each status as the read does (`operational_status`, `observed_by` `scan`)
+  and keeps each page in one catalog transaction (`write_pull_statuses`), after the
+  network and under the lock.
+  `POST pulls-refresh` starts it as a job of its own, after the list’s refresh is
+  started and its answer read, when a probe found a change, when a fetch moved a base
+  branch the last walk’s pull requests target since that walk started, every
+  `FULL_REFRESH_S` otherwise, and once `MERGEABLE_SETTLE_S` after a scan that left
+  `unknown` answers, of only their pages.
+  A walk keeps the mirror’s tip of each base as it started, since GitHub’s `baseRefOid`
+  is each pull request’s own as of its last sync, and the ask never waits on Git: only
+  when a moved base alone could start a scan does it look at the mirror, in a job of its
+  own after its answer, and a mirror Git cannot read moves nothing.
+  Each page it reads spaces the next scan by `SCAN_POINT_GAP_S`, which bounds what the
+  scans of any repository spend an hour; the process keeps the stamp its last scan left
+  as well as the file, so the spacing holds when the cache cannot keep the file.
+  It reads as the catalog’s reader, with no account check of its own, and waits for the
+  catalog’s first rows.
+  The periodic scan waits below the GraphQL floor, and the rest go below it, as the
+  catalog’s scans do; the module docstring has the rules, and the page size, the bound
+  on pages, and their cost and latency on three repositories are beside `SCAN_ROWS` and
+  `MAX_SCAN_PAGES`. How the last scan ended, and what the next needs of it, is
+  `statuses.scan.json` (`ScanStamp`). The ask answers `status_scan`, whether it
+  `started` the scan, `joined` it, or found it `not_due`, and `status_scan_at`, when the
+  last scan ended (`scan_ended_at`), so a page learns of a scan that ended since its
+  last ask whoever started it, a look at the mirror after an ask had answered among
+  them.
+- **Failing alone.** A read that fails fails the status alone, as a refused part fails
+  only that part of a record: the record is published and its refresh succeeds, how the
+  read ended is kept in `<n>.status.refresh.json`, and what an earlier read kept stays.
+  That file keeps the outcome of the attempt that began last (`StatusOutcome`), so an
+  older read that fails after a newer one succeeded, as another process’s can, never
+  reports a failure beside the newer status.
+  A scan that fails keeps every status kept before it, and its stamp says why.
+- **Budget.** The prefetch’s records, which nobody is looking at, read no status
+  (`gh_budget.speculating`): its caps are priced without it (`POINTS_PER_RECORD` in
+  `pull_prefetch.py`), so a prefetched record’s page reads its status when it is shown.
+  Speculative work has no status read due (`ServedPull.status_due`), so the prefetch
+  starts a record only when the record itself is due (`ServedPull.record_due`). Below
+  `BACKGROUND_FLOOR` of either the REST or the GraphQL budget, a visible page’s
+  clock-driven full reads wait (`ServedPull.below_floor`); a status read alone spends
+  GraphQL, and waits below that floor alone (`ServedPull.status_below_floor`).
+- **Keeping.** The status is a row of the catalog’s `pull_status` table, one for each
+  pull request number, which keeps the newest observation whatever its head
+  (`kept_observation` and `observation_key` in `pull_status.py`). The page’s read lists
+  the checks and the scan does not, so a status’s checks summary names the read that
+  listed them (`listed_at`, with the required counts that only a list gives): the newest
+  keeps the latest list of an observation that summarizes the same checks, one head
+  against one base and the same rollup state and counts, as long as none kept beside
+  them summarized them otherwise since (`moved_at`). A scan that finds a read’s checks
+  as it left them takes nothing away from it, and the status kept is the same whatever
+  order the observations are written in.
+  It is a table of its own, so a check that finishes moves no catalog row, fingerprint,
+  core, or window generation; a catalog whose rows start over for another account keeps
+  it, as the records beside it are kept.
+  The checks are `<n>.checks.json` beside the record, within `MAX_PULL_CHECKS_BYTES`
+  (`pull_status_store.py`), cut from the end to fit, and kept exactly when the status
+  kept then counts them, so the file is always the list a status’s `listed_at` names.
+  What the probes of a head’s checks last saw, each page’s ETag and a digest of what a
+  status keeps of it, is `<n>.checks.probe.json` (`CheckProbes`), since the GraphQL read
+  has no ETag to probe with.
+  Both are in the `pulls` directory, so [clearing the cache](#clearing-the-cache)
+  removes them, and a checkout without a store keeps them as it keeps its catalog.
+- **Serving.** The pull envelope carries `status`, `checks`, and `readiness` beside
+  `record`, and `status_unavailable` while the last read had failed.
+  Each names its head, and the verdict judges a status only for the head and base of the
+  record or core shown (`describes` in `pull_status.py`, which the freshness verdict,
+  the served checks, and the Pulls tab’s rows ask too): another head’s, or one observed
+  into the base before GitHub retargeted the pull request, is `checking`, and a closed
+  or merged pull request has none.
+  `checks` is only the list the status counts, of the pull request shown
+  (`KeptStatus.listed_checks`): beside a scan’s status of a new head, or of checks that
+  moved, it is `null`, and the page reads its own at once, once (`listing_missing` in
+  `pull_freshness.py`), while its verdict is the scan’s. The entity tag covers all
+  three, so a read that moves the status’s head or `observed_at` moves it.
+  The page draws the verdict in its header, after the state’s badge, and in the Checks
+  tab’s Merge status section, each requirement with its status and its link
+  (`readinessModel` in `pull-page.js`), and only beside the state it judged: a page that
+  shows the list’s fresher state instead draws none (`readinessForState` in
+  `pull-readiness.js`), and the tab’s list from `checks`, each check in the ink of its
+  server-side bucket, failing first, then pending, then the rest, as `gh pr checks`
+  lists them, a required one marked, under `gh`’s headline for them (`checksSummary` in
+  `pull-page.js`, held to `checks_sentence` by `tests/test_github_check_summary.py`).
+  The verdict’s checks row counts the same list, so the two agree; without a whole list,
+  as on the Pulls tab, it counts GitHub’s rollup, as `gh pr status` does.
+  With a status of the head shown that counts no list, the tab shows the status’s counts
+  and says the list is being read.
+  A block that no required check explains, once the read knows every required one
+  passes, is a Rules row (`pull_readiness.py`). `metab --show /pull/<n>/checks` prints
+  the verdict and each requirement’s status on its model line.
+  `GET pull-statuses` answers the kept status and verdict of up to `MAX_STATUS_NUMBERS`
+  named pull requests from the cache alone, judged on the lifecycle, head, and base of
+  each one’s catalog row, or `absent` with why, `other_base` among the reasons, and how
+  the last scan ended (`pull_statuses_route.py`). A scan’s status from before the last
+  whole walk, of a pull request that walk did not read, is `not_scanned`: one past the
+  last updated the scan reads, or no longer open, whose verdict nothing keeps current.
+  The Pulls tab reads it for the rows it draws, and the stack menu and the stack’s page
+  for their members, each a glyph in the verdict’s tone (`row-readiness.js`, drawn by
+  `stack-member-row.js`;
+  [Design System](../../design-system.md#in-the-pulls-tab-and-on-stacks)). The document
+  keeps one answer a row, the server’s, with the catalog’s head and lifecycle it judged
+  and nothing of the surface that asked, so every surface draws it and one read settles
+  it for all; a row is read again when a scan starts or ends later than the document had
+  heard, when the head or state a surface asks it with moves, and when a pull request
+  page reads a newer status of its own (`heard`).
+
 ## Serving Pull Requests
 
 A server serves any pull request of its repository.
@@ -259,21 +413,36 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   (`StoreTurn` in `mirror_refresh.py`).
 - **What starts one:** a reader’s own action (`"retry": true`); a visible page whose
   record is stale and not tried within the window; a probe that finds a change; a
-  visible record last read in full `FULL_REFRESH_S` ago, a read of the checks alone not
-  counting; and a [prefetch](#background-prefetch) that names it.
-  A failed refresh is tried again after a window, and after `rate_limited` not before
-  `reset_at`. A branch or tag pin never runs `gh`.
+  visible record last read in full `FULL_REFRESH_S` ago, a read of the status alone not
+  counting; a visible page whose status alone is due (`ServedPull.status_due`), which
+  reads it alone and asks the probe first when one is due, so a change it finds reads
+  the record and its status in one job; and a [prefetch](#background-prefetch) that
+  names it. A failed refresh is tried again after a window, and after `rate_limited` not
+  before `reset_at`. A branch or tag pin never runs `gh`. A job decides what it reads
+  when its turn at the store comes (`ServedPull._reads`): one a page’s ask or a prefetch
+  started reads nothing if nothing is still due then, as when a hold was noted while it
+  waited.
 - **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
   current record the server answers with a probe (`ServedPull.probe`), a conditional
   read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`
-  without spending its rate limit, and, while checks are pending, of their first pages
+  without spending its rate limit, and, while the kept status says its checks settle
+  (`checks_settling`: a rollup `pending` or `expected`, a check in `gh`’s pending
+  bucket, or no checks within `NO_CHECKS_GRACE_S` of an update), of their first pages
   every `CHECKS_PROBE_S`. The issue’s `updated_at` is the pull request’s own, and its
   ETag does not move with the repository as the pull’s does; `PROBE_RESOURCE` records
-  the measurement. It carries neither `mergeable` nor the head, which the full read a
+  the measurement. It carries neither the mergeability nor the head, which the read a
   change starts reads.
-  GitHub computes `mergeable` after the read that first asks, so while an open record
-  holds `unknown` the probe asks the pull too, for `MERGEABLE_SETTLE_S`, and an answer
-  reads the checks alone; past that time no probe vouches for the record.
+  The status is read with GraphQL, which has no ETag, so the checks pages are probed on
+  ETags of their own, kept beside the status (`<n>.checks.probe.json`): the first probe
+  of a head asks each page unconditionally, a paid `200` that seeds the baseline and
+  counts as a change, one `core` a page and a status read, and every later one is
+  conditional. A `200` whose digest of what a status keeps is the one kept, as a run’s
+  output moving, is no change, and its ETag is kept; a page GitHub refuses marks the
+  head’s pages refused, and they are not probed again.
+  GitHub computes the mergeability after the read that first asks, so while the kept
+  status holds an `unknown` `conflicts` or `merge_state` the probe asks the pull too,
+  for `MERGEABLE_SETTLE_S`, and a known answer that differs reads the status alone; past
+  that time no probe vouches for the record.
   An issue answer older than the record is one that lags, and starts nothing.
   The page’s ask names the record it shows (`"held"`, its `record_revision`), and an
   answer about that record says `record_held` in place of `record`, so the page keeps
@@ -281,8 +450,9 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   `pull_route.py` records what the whole envelope cost at that cadence.
   A page that no longer holds that record reads the route instead.
   An unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it
-  current until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once,
-  a change to checks alone reads only them, and a failed probe waits a window.
+  current until the full read `FULL_REFRESH_S` asks, and so does one that found a change
+  in the status alone, whose issue is as the record has it; a change starts a refresh at
+  once, a change to the status alone reads only it, and a failed probe waits a window.
   Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
   window, unvouched. However many pages ask, probes of one pull request are one at a time
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
@@ -294,11 +464,12 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   network slot and no turn at the store, so shutdown cancels it.
 - **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
   finds, or the catalog reports, still starts its read.
-  The `FULL_REFRESH_S` read and an open record’s once-a-window checks read wait until
-  the budget is back above the floor, and meanwhile an unchanged probe keeps vouching
-  for a record whose full read is overdue, so the page keeps asking every
-  `probe_every_s`. What a probe cannot see is that much later below the floor.
-  The same ask keeps the repository’s list probed (see [The Catalog](#the-catalog)). The
+  The `FULL_REFRESH_S` read waits until the budget is back above the floor, and so does
+  an open record’s once-a-window status read below the GraphQL floor; meanwhile an
+  unchanged probe keeps vouching for a record whose full read is overdue, so the page
+  keeps asking every `probe_every_s`. What a probe cannot see is that much later below
+  the floor. The same ask keeps the repository’s list probed (see
+  [The Catalog](#the-catalog)). The
   [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
   records the measurements and the design.
 - **One-shot commands:** the CLI fetches a pull request only when it has no usable
@@ -339,11 +510,17 @@ always has; how the other tabs learn it is in
 The catalog’s delta scan reads pull requests by `UPDATED_AT`, and each row carries the
 head commit, so a record checked against its row is **changed** when the row is newer or
 names another head, **current** while the scan that published the row is recent,
-**checks** when an open record is past the window that its row still vouches for, since
-`updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
-otherwise; the module docstring states each rule.
-A [list probe](#the-catalog) that found the catalog unchanged counts as a scan run when
-it asked, so the catalog vouches between scans.
+**checks** when its row vouches for an open record whose kept status is missing, of
+another head, or observed longer ago than the window, since `updated_at` does not move
+for checks or mergeability, and **unverified** otherwise; the module docstring states
+each rule. A `checks` record is current: it holds nothing `updated_at` does not track,
+and only its status is read again, alone.
+Whatever the verdict, `status_missing` says no kept status of the record’s head counts a
+list of its checks, as a scan’s of a new head or of moved checks counts none, which a
+visible page then reads, at once for a scan’s status newer than its last read
+(`unlisted_at`); and `checks_pending` says the status’s checks or mergeability are still
+settling. A [list probe](#the-catalog) that found the catalog unchanged counts as a scan
+run when it asked, so the catalog vouches between scans.
 `verified_at` and `verified_by` say when and how the record was last known to describe
 GitHub: by the catalog’s scan or list probe, by its own fetch, or by a
 [probe](#serving-pull-requests) of the served pull request.
@@ -377,6 +554,8 @@ GraphQL errors, including partial data with HTTP 200, never advance a checkpoint
 Each page commits its rows, counts, and cursor in one short transaction under the
 source-alias lock, a checkpoint revision rejects a superseded publisher, and no network
 work runs under the lock.
+A pull request’s [status](#operational-status) is written the same way, into a table of
+its own, and moves no row, checkpoint, or generation.
 
 **Probing.** `pull_list_probe.py` asks GitHub whether the catalog is behind with one
 conditional request for the issue or pull request updated last (`probe_path`), which
@@ -420,15 +599,16 @@ database before SQLite opens it.
 A catalog a newer release wrote declares it, in `user_version`, the checkpoint’s schema,
 or a row’s projection, and is left as it is with the refresh ending `newer_cache`,
 because several builds can share one cache.
-One whose versions cannot all be read safely ends `unknown_cache`; anything else a
-writer cannot use is replaced with an empty catalog under the lock.
-The module docstring gives each case, and `tests/test_github_pull_list.py` pins the
-shape each version names.
-The first ranked list read or refresh can add activity indexes to a version 1 catalog
-under the source lock.
-The local upgrade preserves cached rows and needs no GitHub access.
+One whose versions cannot all be read safely ends `unknown_cache`. One an earlier
+release wrote, of a version `_UPGRADES` names and with exactly its schema, is brought to
+this schema in place, its activity indexes and status table added, by the first ranked
+list read or refresh or by the first writer, in that write’s transaction under the
+source lock. The local upgrade preserves cached rows and needs no GitHub access.
 The checkpoint retains the creation-order backfill cursor and clears incomplete prefix
 coverage so each filter can resume in update order.
+Anything else a writer cannot use is replaced with an empty catalog under the lock.
+The module docstring gives each case, and `tests/test_github_pull_list.py` pins the
+shape each version names.
 
 **Reading.** `GET pulls` answers an indexed window of up to `MAX_WINDOW` rows below the
 `after` row. Each filter orders by descending update time and then descending PR number.
@@ -942,8 +1122,9 @@ failure:
 ## Clearing the Cache
 
 `POST cache-clear` takes an empty object and removes every entry of the source’s `pulls`
-directory (`clear_pulls` in `pull_record.py`), under the source-alias lock every writer
-of those files takes; each is fetched again when next wanted.
+directory (`clear_pulls` in `pull_record.py`), the catalog with its statuses and each
+pull request’s checks among them, under the source-alias lock every writer of those
+files takes; each is fetched again when next wanted.
 The source’s own records, its store, and the store’s manifest bank stay.
 The `cache_unwritable`, `newer_cache`, and `unknown_cache` messages name it as the
 command to paste (`cache_clear_command` in `gh_lists.py`).
@@ -971,10 +1152,11 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
 | `guided-review` | `GET` | One ordered step and its excerpts from the cached PR description and pinned comparison |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
-| `pulls-refresh` | `POST` | The catalog job |
+| `pulls-refresh` | `POST` | The catalog job, and the scan of every open pull request’s status when it is due |
 | `pull-files` | `GET` | A pull request’s changed files |
 | `pull-files-refresh` | `POST` | That list’s refresh |
 | `pull-files-summary` | `GET` | What each named pull request’s cached list of changed files sums to, for its row’s change line |
+| `pull-statuses` | `GET` | Each named pull request’s operational status and verdict, for its row’s readiness ([Operational Status](#operational-status)) |
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
 | `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |

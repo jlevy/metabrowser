@@ -49,8 +49,10 @@ from typing import Any, Final
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
+    STATUS_SHAPES,
     _substitute,  # pyright: ignore[reportPrivateUsage]
     account,
+    graph_status_entry,
     install_fake_gh,
     ok,
     page,
@@ -198,11 +200,10 @@ def scenario_for(replica: Replica, *, base: str, head: str, earlier: str) -> dic
         page(f"{root}/commits/{head}/check-runs"): parts["check_runs"],
         page(f"{root}/commits/{head}/status"): parts["status"],
     }
-    return {
-        "auth": account(),
-        "api": {path: ok(path, body) for path, body in paths.items()},
-        "api_failure": None,
-    }
+    answers = {path: ok(path, body) for path, body in paths.items()}
+    # Its operational status, waiting on its docs build and a review as 7's does.
+    answers["graphql:status:1:start"] = graph_status_entry(parts, shape=STATUS_SHAPES[7])
+    return {"auth": account(), "api": answers, "api_failure": None}
 
 
 @contextlib.contextmanager

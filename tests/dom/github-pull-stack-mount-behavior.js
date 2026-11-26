@@ -314,14 +314,17 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     ["/stack/286", "/pull/8/files", "/pull/7/files", "/pull/6/files"],
   );
   assert.equal(allLinks()[0].textContent, "Stack Overview");
-  assert.deepEqual(
-    memberLinks().map((item) => item.textContent),
-    [
-      "Stack change 8 3/3 · #8 · contributor",
-      "Stack change 7 2/3 · #7 · forker",
-      "Stack change 6 1/3 · #6 · contributor",
-    ],
-  );
+  // What a member shows, its readiness's words aside, which are out of view (mb-3n21).
+  const shownText = (link) =>
+    link.children
+      .filter((node) => !String(node.getAttribute?.("class") ?? "").includes("sr-only"))
+      .map((node) => node.textContent)
+      .join("");
+  assert.deepEqual(memberLinks().map(shownText), [
+    "Stack change 8 3/3 · #8 · contributor",
+    "Stack change 7 2/3 · #7 · forker",
+    "Stack change 6 1/3 · #6 · contributor",
+  ]);
   // Every member is one line in one layout (mb-as06): the state icon, then the title, whose
   // whole is the member's tip, then, together at the line's end, the bold place, a muted dot,
   // the number, and another dot and the author, in a Pulls row's order, the title, the place,
@@ -332,7 +335,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const classOf = (node) => node.className || node.getAttribute("class");
   const layout = (link) => ({
     parts: link.children.map(classOf),
-    line: link.children[1].children
+    line: link.children[2].children
       .filter((node) => typeof node === "object")
       .map((node) => `${node.tag}.${classOf(node)}`),
     state: link.children[0].dataset.state ?? null,
@@ -346,15 +349,38 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "span.github-pull-stack-member-number",
     "span.github-pull-stack-member-by",
   ];
-  const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];
+  // The readiness's words follow the state icon, out of view, and its glyph's cell ends the
+  // line (mb-3n21): the page's own member says the readiness its header shows, and draws its
+  // glyph, hidden, in its tone; a member whose readiness the server has not given, as here,
+  // where its read is refused, says none and keeps its cell empty, so the lines end at one
+  // edge.
+  const parts = [
+    "github-pull-state-icon",
+    "sr-only github-pull-readiness-said",
+    "github-pull-stack-member-copy",
+    "github-pull-stack-member-readiness",
+  ];
   assert.deepEqual(memberLinks().map(layout), [
     { parts, line, state: null, named: null, tip: "Stack change 8" },
     { parts, line, state: "open", named: "Open", tip: "Stack change 7" },
     { parts, line, state: null, named: null, tip: "Stack change 6" },
   ]);
+  const readinessOf = (link) => {
+    const glyph = link.children[3].children[0];
+    return {
+      said: link.children[1].textContent,
+      glyph: glyph === undefined ? null : `${glyph.dataset.verdict} ${glyph.dataset.tone}`,
+      hidden: link.children[3].getAttribute("aria-hidden"),
+    };
+  };
+  assert.deepEqual(memberLinks().map(readinessOf), [
+    { said: "", glyph: null, hidden: "true" },
+    { said: "Checks pending", glyph: "checks_pending attention", hidden: "true" },
+    { said: "", glyph: null, hidden: "true" },
+  ]);
   assert.deepEqual(
     memberLinks().map((link) =>
-      link.children[1].children
+      link.children[2].children
         .filter((node) => typeof node === "object")
         .slice(-2)
         .map((node) => node.textContent),
@@ -423,6 +449,33 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "a member the Open list no longer holds is not drawn open",
   );
   assert.equal(page.stackMemberState(source, 8, 7, "open"), null);
+  // The page's own member draws the readiness the page shows, by the page's one rule
+  // (`readinessForState`): once the list says #7 is a draft, later than its record, the page
+  // shows a draft and draws no verdict, which judged it open, in its header or on its own
+  // member; once the list says it is open again, both draw the verdict again.
+  const ownMember = () => {
+    const link = memberLinks()[1];
+    return { state: link.children[0].dataset.state ?? null, ...readinessOf(link) };
+  };
+  for (const [state, at, expected] of [
+    ["draft", "2026-11-24T03:00:00Z", { state: "draft", said: "", glyph: null, hidden: "true" }],
+    [
+      "open",
+      "2026-11-24T04:00:00Z",
+      { state: "open", said: "Checks pending", glyph: "checks_pending attention", hidden: "true" },
+    ],
+  ]) {
+    pullState.noteListed(source, "open", [{ number: 7, state, updatedAt: at }]);
+    next.setTab("files");
+    await settle();
+    reopen();
+    assert.deepEqual(ownMember(), expected, `the list says #7 is ${state}`);
+    assert.equal(
+      warm.querySelector(".github-pull-readiness-slot") !== null,
+      state === "open",
+      `the header's readiness, the list saying ${state}`,
+    );
+  }
   // Each list takes back only the states it holds, never a merge, and an answer older than
   // what is noted of a row replaces nothing. A record fresher than the list is noted back;
   // one no list has noted is noted only when merged, as no list could take another back.

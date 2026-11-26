@@ -1,8 +1,9 @@
 """A cached record checked against the catalog's row: current, changed, checks, or unverified.
 
 The route transcripts show the envelope fields; these pin the verdict table, pending
-checks, and the held state's due rule, including its loop guard, the checks an open pull
-request reads once a window, and a cancelled attempt.
+checks and mergeability as the kept status says them, and the held state's due rules,
+including its loop guard, the status an open pull request reads once a window and a
+record without one reads at once, and a cancelled attempt.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -19,6 +20,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
 from metabrowser.builtin_plugins.github.pull_freshness import (
     NO_CHECKS_GRACE_S,
     SCAN_GRACE_S,
+    RecordFreshness,
     checks_pending,
     record_freshness,
 )
@@ -28,7 +30,19 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PULL_RECORD_SCHEMA,
     PullRecord,
 )
-from metabrowser.builtin_plugins.github.pull_route import pull_state
+from metabrowser.builtin_plugins.github.pull_route import (
+    judged_readiness,
+    pull_state,
+    shown_checks,
+)
+from metabrowser.builtin_plugins.github.pull_status import (
+    BUCKETS,
+    CheckItem,
+    PullChecks,
+    PullStatus,
+    kept_observation,
+)
+from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes, KeptStatus
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
     CHECKS_PROBE_S,
@@ -37,6 +51,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
 )
+from metabrowser.cli.show_cli import _describe_pull  # pyright: ignore[reportPrivateUsage]
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 SOURCE = "https://github.com/octo/demo"
@@ -57,9 +72,6 @@ def _record(
     fetched: datetime = NOW - timedelta(hours=2),
     head: str = HEAD,
     state: str = "open",
-    mergeable: str = "mergeable",
-    runs: tuple[str, ...] = ("completed",),
-    status: str | None = None,
     reader: str = READER,
     projection: int = PULL_RECORD_PROJECTION,
 ) -> PullRecord:
@@ -84,7 +96,6 @@ def _record(
                 "merged_by": None,
                 "commits": 1,
                 "merge_commit_sha": None,
-                "mergeable": mergeable,
                 "labels": [],
                 "author": "octo",
                 "created_at": _stamp(updated - timedelta(days=1)),
@@ -98,37 +109,68 @@ def _record(
             "issue_comments": [],
             "reviews": [],
             "review_comments": [],
-            "check_runs": [
-                {
-                    "id": index,
-                    "name": f"check {index}",
-                    "status": run,
-                    "conclusion": "success" if run == "completed" else None,
-                    "details_url": None,
-                    "app": None,
-                }
-                for index, run in enumerate(runs, start=1)
-            ],
-            "status": None
-            if status is None
-            else {
-                "state": status,
-                "statuses": [
-                    {"context": "ci", "state": status, "description": None, "target_url": None}
-                ],
-            },
             "comparison": None,
             "truncated": {
                 "issue_comments": False,
                 "reviews": False,
                 "review_comments": False,
-                "check_runs": False,
-                "statuses": False,
                 "text": False,
             },
             "unavailable": {},
         }
     )
+
+
+def _status(
+    record: PullRecord,
+    *,
+    observed: datetime | None = None,
+    head: str | None = None,
+    rollup: str = "success",
+    counts: dict[str, int] | None = None,
+    conflicts: str = "mergeable",
+    merge_state: str = "clean",
+    by: str = "read",
+) -> PullStatus:
+    """A kept status of *record*'s head, observed as the read after it kept it, by default
+    with one passing check and nothing for GitHub still to compute. A read lists its
+    checks; *by* ``scan`` lists none (``listed_at``)."""
+
+    stamp = record.fetched_at if observed is None else _stamp(observed)
+    tallies: dict[str, int] = dict.fromkeys(BUCKETS, 0)
+    if rollup != "none":
+        tallies.update({"pass": 1} if counts is None else counts)
+    return PullStatus.model_validate(
+        {
+            "number": record.number,
+            "head": head or record.pull.head.sha,
+            "base_ref": record.pull.base.ref,
+            "observed_at": stamp,
+            "observed_by": by,
+            "conflicts": conflicts,
+            "merge_state": merge_state,
+            "checks": {
+                "state": rollup,
+                "counts": tallies,
+                "listed_at": stamp if by == "read" else None,
+            },
+        }
+    )
+
+
+def _verdict(
+    record: PullRecord,
+    catalog: CatalogState | None,
+    row: PullListRow | None,
+    *,
+    status: PullStatus | None | Literal["as read"] = "as read",
+    now: datetime = NOW,
+    **kwargs: Any,
+) -> RecordFreshness:
+    """The verdict on *record*, with the status its own read kept unless *status* says."""
+
+    kept = _status(record) if status == "as read" else status
+    return record_freshness(record, catalog, row, status=kept, now=now, **kwargs)
 
 
 def _catalog(
@@ -169,7 +211,7 @@ def _row(*, updated: datetime = NOW - timedelta(hours=3), head: str | None = HEA
 
 def test_a_recent_scan_vouches_for_an_old_closed_record_it_has_not_seen_change() -> None:
     record = _record(state="closed")
-    verdict = record_freshness(record, _catalog(), _row(), now=NOW)
+    verdict = _verdict(record, _catalog(), _row(), now=NOW)
     assert verdict.verdict == "current" and verdict.verified_by == "catalog"
     assert verdict.verified_at == _stamp(NOW - timedelta(seconds=20))
     assert not verdict.head_moved and verdict.changed_row is None
@@ -180,41 +222,113 @@ def test_a_recent_scan_vouches_for_an_old_closed_record_it_has_not_seen_change()
 
 @pytest.mark.parametrize(
     "changes",
-    [{"runs": ()}, {"runs": ("completed",)}, {"mergeable": "mergeable"}],
+    [{"rollup": "none"}, {}, {"conflicts": "conflicting", "merge_state": "dirty"}],
     ids=["no checks registered yet", "completed checks a re-run restarts", "a base that moved"],
 )
-def test_an_open_record_past_the_window_has_its_checks_read_again(changes: dict[str, Any]) -> None:
-    """Review A1: ``updated_at`` vouches for the conversation and head, not for checks.
+def test_an_open_records_status_past_the_window_is_read_again(changes: dict[str, Any]) -> None:
+    """Review A1: ``updated_at`` vouches for the conversation and head, not for the status.
 
-    A check run, a commit status, and ``mergeable`` move without it: CI that registers
-    after the record was read, a re-run of settled checks, a conflict a moved base made.
-    So an open record read longer ago than the window is ``checks``, stale, and a fresh one
-    is current.
+    A check and the mergeability move without it: CI that registers after the status was
+    read, a re-run of settled checks, a conflict a moved base made. The record holds none
+    of them, so it is current; its status, observed longer ago than the window, is due on
+    its own (``checks``), and one observed within it is not.
     """
 
-    record = _record(**changes)
-    verdict = record_freshness(record, _catalog(), _row(), now=NOW)
+    record = _record()
+    old = _status(record, **changes)
+    verdict = _verdict(record, _catalog(), _row(), status=old)
     assert (verdict.verdict, verdict.verified_by, verdict.head_moved) == (
         "checks",
         "catalog",
         False,
     )
     assert verdict.verified_at == _stamp(NOW - timedelta(seconds=20))
-    assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
-    young = _record(fetched=NOW - WINDOW + timedelta(seconds=1), **changes)
-    assert record_freshness(young, _catalog(), _row(), now=NOW).verdict == "current"
+    assert not verdict.status_missing
+    assert pull_state(record, now=NOW, freshness=verdict) == ("current", None)
+    young = _status(record, observed=NOW - WINDOW + timedelta(seconds=1), **changes)
+    assert _verdict(record, _catalog(), _row(), status=young).verdict == "current"
+    # The record's age is not what decides: a young record whose status is a window old.
+    fresh = _record(fetched=NOW - timedelta(seconds=1))
+    late = _status(fresh, observed=NOW - WINDOW - timedelta(seconds=1), **changes)
+    assert _verdict(fresh, _catalog(), _row(), status=late).verdict == "checks"
+
+
+@pytest.mark.parametrize(
+    "kept",
+    [None, "another head"],
+    ids=["no status", "a status of another head"],
+)
+def test_a_record_with_no_status_of_its_head_says_so_whatever_the_verdict(
+    kept: str | None,
+) -> None:
+    """A prefetched record reads no status, and a read that failed after a push leaves the
+    one before it: either way no status describes the record's head."""
+
+    record = _record(fetched=NOW - timedelta(seconds=5))
+    status = None if kept is None else _status(record, head=NEWER_HEAD)
+    vouched = _verdict(record, _catalog(), _row(), status=status)
+    assert (vouched.verdict, vouched.status_missing) == ("checks", True)
+    assert pull_state(record, now=NOW, freshness=vouched) == ("current", None)
+    clock = _verdict(record, None, None, status=status)
+    assert (clock.verdict, clock.status_missing) == ("unverified", True)
+    closed = _record(state="closed", fetched=NOW - timedelta(seconds=5))
+    other = None if kept is None else _status(closed, head=NEWER_HEAD)
+    verdict = _verdict(closed, _catalog(), _row(), status=other)
+    assert (verdict.verdict, verdict.status_missing) == ("current", True)
+    assert not _verdict(record, _catalog(), _row()).status_missing
+
+
+def test_a_status_of_the_base_before_a_retarget_is_read_again_before_anything_judges_it() -> None:
+    """When the layer below a stacked pull request merges, GitHub retargets the one above at
+    the merged layer's base and keeps its head; its conflicts, merge verdict, and required
+    checks are then the new base's. A status observed against the old base, and the list
+    it counts, describe nothing current: the record has a status read due, the verdict is
+    ``checking``, the route serves none of its checks, and ``--show`` says so."""
+
+    record = _record(fetched=NOW - timedelta(seconds=5))
+    before = _status(record).model_copy(update={"base_ref": "layer-1"})
+    verdict = _verdict(record, _catalog(), _row(), status=before)
+    assert (verdict.verdict, verdict.status_missing, verdict.checks_pending) == (
+        "checks",
+        True,
+        False,
+    )
+    failing = CheckItem(name="build", kind="run", bucket="fail", required=True)
+    listed = PullChecks(number=7, head=HEAD, observed_at=before.observed_at, items=(failing,))
+    kept = KeptStatus(before, listed, None)
+    assert kept.listed_checks == listed
+    shown = record.pull.model_dump(mode="json")
+    judged = judged_readiness(shown, kept)
+    assert judged is not None and (judged["verdict"], judged["requirements"]) == ("checking", [])
+    assert shown_checks(shown, kept) is None
+    envelope = {
+        "state": "current",
+        "record": record.model_dump(mode="json"),
+        "readiness": judged,
+        "checks": shown_checks(shown, kept),
+        "status_unavailable": None,
+    }
+    said = _describe_pull(envelope, "checks").split()
+    assert {"readiness=checking", "checks=none"} <= set(said)
+    # Read again into the new base, the same head and list judge the pull request.
+    after = before.model_copy(update={"base_ref": record.pull.base.ref})
+    again = KeptStatus(after, listed, None)
+    current = judged_readiness(shown, again)
+    assert current is not None and current["verdict"] != "checking"
+    assert shown_checks(shown, again) == listed.model_dump(mode="json")
+    assert not _verdict(record, _catalog(), _row(), status=after).status_missing
 
 
 def test_a_record_fetched_after_the_scan_is_verified_by_its_own_fetch_time() -> None:
     record = _record(fetched=NOW - timedelta(seconds=5))
-    verdict = record_freshness(record, _catalog(), _row(), now=NOW)
+    verdict = _verdict(record, _catalog(), _row(), now=NOW)
     assert verdict.verdict == "current" and verdict.verified_at == record.fetched_at
 
 
 def test_a_newer_row_makes_the_record_changed_whatever_the_scan_age() -> None:
     record = _record()
     for scanned in (NOW - timedelta(seconds=5), NOW - timedelta(hours=1)):
-        verdict = record_freshness(
+        verdict = _verdict(
             record, _catalog(fetched=scanned), _row(updated=NOW - timedelta(minutes=30)), now=NOW
         )
         assert verdict.verdict == "changed" and not verdict.head_moved
@@ -225,10 +339,10 @@ def test_a_newer_row_makes_the_record_changed_whatever_the_scan_age() -> None:
 
 def test_a_newer_row_with_another_head_says_the_head_moved() -> None:
     newer = _row(updated=NOW - timedelta(minutes=1), head=NEWER_HEAD)
-    assert record_freshness(_record(), _catalog(), newer, now=NOW).head_moved
+    assert _verdict(_record(), _catalog(), newer, now=NOW).head_moved
     # A row written before the catalog read heads cannot say it moved.
     unknown = _row(updated=NOW - timedelta(minutes=1), head=None)
-    verdict = record_freshness(_record(), _catalog(), unknown, now=NOW)
+    verdict = _verdict(_record(), _catalog(), unknown, now=NOW)
     assert verdict.verdict == "changed" and not verdict.head_moved
 
 
@@ -238,9 +352,9 @@ def test_another_head_at_the_same_update_time_is_a_change() -> None:
 
     record = _record(state="closed")
     tie = _row(updated=NOW - timedelta(hours=3), head=NEWER_HEAD)
-    verdict = record_freshness(record, _catalog(), tie, now=NOW)
+    verdict = _verdict(record, _catalog(), tie, now=NOW)
     assert (verdict.verdict, verdict.head_moved) == ("changed", True)
-    same = record_freshness(record, _catalog(), _row(updated=NOW - timedelta(hours=3)), now=NOW)
+    same = _verdict(record, _catalog(), _row(updated=NOW - timedelta(hours=3)), now=NOW)
     assert same.verdict == "current"
 
 
@@ -259,7 +373,7 @@ def test_the_clock_decides_without_a_usable_recent_scan(
     catalog: CatalogState | None, row: PullListRow | None
 ) -> None:
     record = _record()
-    verdict = record_freshness(record, catalog, row, now=NOW)
+    verdict = _verdict(record, catalog, row, now=NOW)
     assert verdict.verdict == "unverified" and verdict.verified_by == "fetch"
     assert verdict.verified_at == record.fetched_at
     assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
@@ -279,13 +393,13 @@ def test_a_record_of_an_earlier_projection_is_never_vouched_for_so_it_is_refresh
 
     earlier = PULL_RECORD_PROJECTION - 1
     record = _record(state="closed", fetched=NOW - timedelta(days=30), projection=earlier)
-    verdict = record_freshness(record, _catalog(), _row(), now=NOW)
+    verdict = _verdict(record, _catalog(), _row(), now=NOW)
     assert (verdict.verdict, verdict.verified_by) == ("unverified", "fetch")
     assert verdict.verified_at == record.fetched_at
     assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
     # The same record at this projection is one the catalog vouches for.
     vouched = _record(state="closed", fetched=NOW - timedelta(days=30))
-    assert record_freshness(vouched, _catalog(), _row(), now=NOW).verdict == "current"
+    assert _verdict(vouched, _catalog(), _row(), now=NOW).verdict == "current"
     held = _held(record, tmp_path)
     held.saw_record(record.fetched_at, freshness=verdict)
     assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
@@ -294,63 +408,72 @@ def test_a_record_of_an_earlier_projection_is_never_vouched_for_so_it_is_refresh
     assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
     # An open one is read in full too, not for its checks alone.
     opened = _record(fetched=NOW - timedelta(days=30), projection=earlier)
-    assert record_freshness(opened, _catalog(), _row(), now=NOW).verdict == "unverified"
+    assert _verdict(opened, _catalog(), _row(), now=NOW).verdict == "unverified"
     newer = _row(updated=NOW - timedelta(minutes=1))
-    assert record_freshness(record, _catalog(), newer, now=NOW).verdict == "changed"
+    assert _verdict(record, _catalog(), newer, now=NOW).verdict == "changed"
     young = _record(state="closed", fetched=NOW - timedelta(seconds=10), projection=earlier)
-    clock = record_freshness(young, _catalog(), _row(), now=NOW)
+    clock = _verdict(young, _catalog(), _row(), now=NOW)
     assert clock.verdict == "unverified"
     assert pull_state(young, now=NOW, freshness=clock) == ("current", None)
 
 
 def test_another_readers_newer_row_says_nothing() -> None:
     newer = _row(updated=NOW - timedelta(minutes=1), head=NEWER_HEAD)
-    verdict = record_freshness(_record(), _catalog(reader="gh:someone-else"), newer, now=NOW)
+    verdict = _verdict(_record(), _catalog(reader="gh:someone-else"), newer, now=NOW)
     assert verdict.verdict == "unverified" and not verdict.head_moved
 
 
 @pytest.mark.parametrize(
     "changes",
     [
-        {"runs": ("completed", "in_progress")},
-        {"runs": ("queued",)},
-        {"status": "pending"},
-        {"mergeable": "unknown"},
+        {"rollup": "pending", "counts": {"pass": 1, "pending": 1}},
+        {"rollup": "failure", "counts": {"fail": 1, "pending": 1}},
+        {"rollup": "expected", "counts": {}},
+        {"conflicts": "unknown"},
+        {"merge_state": "unknown"},
     ],
-    ids=["a run in progress", "a queued run", "a pending status", "mergeability unknown"],
+    ids=[
+        "a run in progress",
+        "a run in progress beside a failure",
+        "an expected status",
+        "conflicts unknown",
+        "merge state unknown",
+    ],
 )
-def test_pending_checks_keep_their_own_age(changes: dict[str, Any]) -> None:
-    record = _record(**changes)
-    assert checks_pending(record)
-    verdict = record_freshness(record, _catalog(), _row(), now=NOW)
+def test_pending_checks_and_mergeability_are_the_status_s(changes: dict[str, Any]) -> None:
+    record = _record()
+    status = _status(record, **changes)
+    assert checks_pending(record, status)
+    verdict = _verdict(record, _catalog(), _row(), status=status)
     assert verdict.verdict == "checks" and verdict.checks_pending
-    assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
-    young = _record(fetched=NOW - timedelta(seconds=10), **changes)
-    assert pull_state(
-        young, now=NOW, freshness=record_freshness(young, _catalog(), _row(), now=NOW)
-    ) == (
-        "current",
-        None,
-    )
+    # A status of another head says nothing of this one's, and no status says nothing.
+    assert not checks_pending(record, _status(record, head=NEWER_HEAD, **changes))
+    assert not checks_pending(record, None)
 
 
 def test_settled_or_closed_checks_are_not_pending() -> None:
-    assert not checks_pending(_record(status="success"))
-    assert not checks_pending(_record(state="closed", runs=("in_progress",), mergeable="unknown"))
+    record = _record()
+    assert not checks_pending(record, _status(record))
+    assert not checks_pending(record, _status(record, rollup="failure", counts={"fail": 2}))
+    closed = _record(state="closed")
+    unsettled = _status(closed, rollup="pending", counts={"pending": 1}, conflicts="unknown")
+    assert not checks_pending(closed, unsettled)
 
 
 def test_no_checks_read_soon_after_an_update_are_pending_for_a_bounded_time() -> None:
-    """CI that has not registered yet: no check run and no status, read just after a push."""
+    """CI that has not registered yet: a status with no checks, read just after a push."""
 
     updated = NOW - timedelta(hours=3)
-    soon = _record(runs=(), updated=updated, fetched=updated + timedelta(seconds=5))
-    assert checks_pending(soon)
+    record = _record(updated=updated)
+    soon = _status(record, rollup="none", observed=updated + timedelta(seconds=5))
+    assert checks_pending(record, soon)
     bound = updated + timedelta(seconds=NO_CHECKS_GRACE_S)
-    assert checks_pending(_record(runs=(), updated=updated, fetched=bound))
-    later = _record(runs=(), updated=updated, fetched=bound + timedelta(seconds=1))
-    assert not checks_pending(later)
+    assert checks_pending(record, _status(record, rollup="none", observed=bound))
+    later = _status(record, rollup="none", observed=bound + timedelta(seconds=1))
+    assert not checks_pending(record, later)
     # A repository with no CI is not pending forever, and a closed one never.
-    assert not checks_pending(_record(runs=(), state="closed", updated=updated, fetched=updated))
+    closed = _record(state="closed", updated=updated)
+    assert not checks_pending(closed, _status(closed, rollup="none", observed=updated))
 
 
 # ── The held state's due rule ──────────────────────────────────
@@ -365,16 +488,12 @@ def test_a_vouched_record_is_not_due_and_a_changed_one_is_due_at_once(tmp_path: 
     record = _record(state="closed")
     held = _held(record, tmp_path)
     assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
-    held.saw_record(
-        record.fetched_at, freshness=record_freshness(record, _catalog(), _row(), now=NOW)
-    )
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row(), now=NOW))
     assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
     # Vouched twenty seconds ago, so fresh for forty more.
     assert held.is_stale(NOW + timedelta(seconds=41), window_s=FRESHNESS_WINDOW_S)
 
-    changed = record_freshness(
-        record, _catalog(), _row(updated=NOW - timedelta(minutes=1)), now=NOW
-    )
+    changed = _verdict(record, _catalog(), _row(updated=NOW - timedelta(minutes=1)), now=NOW)
     held.saw_record(record.fetched_at, freshness=changed)
     assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
 
@@ -384,7 +503,7 @@ def test_a_change_an_attempt_already_saw_waits_a_window(tmp_path: Path) -> None:
 
     record = _record(fetched=NOW - timedelta(seconds=30))
     held = _held(record, tmp_path)
-    changed = record_freshness(
+    changed = _verdict(
         record,
         _catalog(published=NOW - timedelta(seconds=20)),
         _row(updated=NOW - timedelta(seconds=25)),
@@ -420,51 +539,229 @@ def test_a_second_publication_of_the_same_change_does_not_rearm_it(tmp_path: Pat
     record = _record(fetched=NOW - timedelta(seconds=30))
     held = _held(record, tmp_path)
     reported = _row(updated=NOW - timedelta(seconds=25))
-    first = record_freshness(
-        record, _catalog(published=NOW - timedelta(seconds=20)), reported, now=NOW
-    )
+    first = _verdict(record, _catalog(published=NOW - timedelta(seconds=20)), reported, now=NOW)
     held.saw_record(record.fetched_at, freshness=first)
     held._attempted_row = first.changed_row  # pyright: ignore[reportPrivateUsage]
     held._last_attempt = NOW - timedelta(seconds=10)  # pyright: ignore[reportPrivateUsage]
-    again = record_freshness(
-        record, _catalog(published=NOW - timedelta(seconds=1)), reported, now=NOW
-    )
+    again = _verdict(record, _catalog(published=NOW - timedelta(seconds=1)), reported, now=NOW)
     held.saw_record(record.fetched_at, freshness=again)
     assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
     another = _row(updated=NOW - timedelta(seconds=2), head=NEWER_HEAD)
-    held.saw_record(
-        record.fetched_at, freshness=record_freshness(record, _catalog(), another, now=NOW)
-    )
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), another, now=NOW))
     assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
 
 
-def test_an_open_records_checks_are_read_once_a_window_on_their_own(
+def _reading(
+    monkeypatch: pytest.MonkeyPatch, record: PullRecord, clock: list[datetime]
+) -> list[str]:
+    """Answer each read: a record read in full as of *clock*, or the status alone; return
+    which each was, ``full`` or ``status``, and with what a full read was asked."""
+
+    read: list[str] = []
+
+    async def refresh(*_args: object, **kwargs: object) -> PullRecord:
+        read.append("full" if not kwargs or kwargs == {"adopt_current": False} else repr(kwargs))
+        return record.model_copy(update={"fetched_at": _stamp(clock[0])})
+
+    async def status(*_args: object) -> None:
+        read.append("status")
+
+    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
+    monkeypatch.setattr(pulls, "refresh_pull_status", status)
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    return read
+
+
+def test_an_open_records_status_is_read_once_a_window_on_its_own(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review A1: the visible page's automatic refresh asks for the checks alone."""
+    """Review A1: the visible page's automatic refresh asks for the status alone, and that
+    read moves none of the record's clocks."""
 
     record = _record()
     held = _held(record, tmp_path)
-    held.saw_record(
-        record.fetched_at, freshness=record_freshness(record, _catalog(), _row(), now=NOW)
-    )
-    assert held.checks_due and held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
-    asked: list[dict[str, object]] = []
-
-    async def refresh(*_args: object, **kwargs: object) -> PullRecord:
-        asked.append(kwargs)
-        return record.model_copy(update={"fetched_at": _stamp(NOW)})
-
-    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
-    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row()))
+    assert held.checks_due and held.status_due(NOW)
+    assert not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
     asyncio.run(held.refresh())
-    assert asked == [{"adopt_current": False, "checks_only": True}]
-    assert not held.checks_due and not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
-    # A reader's own refresh, and a changed record's, read everything.
-    held.checks_due = True
+    assert read == ["status"]
+    assert held.fetched_at == record.fetched_at and held._last_attempt is None  # pyright: ignore[reportPrivateUsage]
+    # Tried, whether or not it succeeded, it waits a window.
+    assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    assert held.status_due(NOW + WINDOW + timedelta(seconds=1))
+    # A reader's own refresh reads everything, and the status after it.
     held.request_recovery()
     asyncio.run(held.refresh())
-    assert asked[-1] == {"recover": True, "recovery_pair": None, "adopt_current": False}
+    assert read[-1] == repr({"recover": True, "recovery_pair": None, "adopt_current": False})
+    assert held._status_attempt == NOW  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_visible_record_with_no_status_of_its_head_reads_one_whatever_the_catalog_says(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A prefetched record reads no status, and its page shows no checks until one is read:
+    a status read alone, current record or not, and only GitHub's limit and the GraphQL
+    floor hold it, never the REST one."""
+
+    record = _record(state="closed", fetched=NOW - timedelta(seconds=5))
+    held = _held(record, tmp_path)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+    for catalog, row in ((_catalog(), _row()), (None, None)):
+        freshness = _verdict(record, catalog, row, status=None)
+        held.saw_record(record.fetched_at, freshness=freshness)
+        # The ask probes the record first, which GitHub answers for free, so a change it
+        # finds reads the record and its status in one job.
+        assert held.status_missing and held.status_due(NOW)
+        assert held.automatic_due(NOW) == "probe"
+    # Once a probe has run, as the ask's own just did, the status is read alone.
+    held._probe_attempt = NOW  # pyright: ignore[reportPrivateUsage]
+    assert held.automatic_due(NOW) == "full"
+    _observe_core(100)
+    assert held.below_floor(NOW) and held.automatic_due(NOW) == "full"
+    asyncio.run(held.refresh())
+    assert read == ["status"] and not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    # A status of another head is none, and one of its head ends the wait.
+    held._status_attempt = None  # pyright: ignore[reportPrivateUsage]
+    other = _verdict(record, None, None, status=_status(record, head=NEWER_HEAD))
+    held.saw_record(record.fetched_at, freshness=other)
+    assert held.status_due(NOW)
+    held.saw_record(record.fetched_at, freshness=_verdict(record, None, None))
+    assert not held.status_missing and not held.status_due(NOW)
+    gh_budget.hold(_stamp(NOW + timedelta(minutes=10)), now=NOW)
+    held.saw_record(record.fetched_at, freshness=other)
+    assert not held.status_due(NOW)
+
+
+def test_speculative_work_reads_no_status_and_nothing_while_its_record_is_not_due(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A background record reads no operational status, and the prefetch's caps are priced
+    without it. A changed record whose row an attempt already saw, prefetched with no
+    status, has a status read due on its page; a speculative refresh of it read that status
+    alone, spending a record's place in each cap, and now reads nothing. Once its record is
+    due it reads the record, and no status after it."""
+
+    record = _record(fetched=NOW - timedelta(seconds=30))
+    held = _held(record, tmp_path)
+    changed = _verdict(
+        record,
+        _catalog(published=NOW - timedelta(seconds=20)),
+        _row(updated=NOW - timedelta(seconds=25)),
+        status=None,
+    )
+    held.saw_record(record.fetched_at, freshness=changed)
+    held._attempted_row = changed.changed_row  # pyright: ignore[reportPrivateUsage]
+    held._last_attempt = NOW - timedelta(seconds=10)  # pyright: ignore[reportPrivateUsage]
+    assert changed.verdict == "changed" and held.status_missing and held.status_due(NOW)
+    assert not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+
+    async def speculative() -> bool:
+        with gh_budget.speculative():
+            stale = held.is_stale(clock[0], window_s=FRESHNESS_WINDOW_S)
+            await held.refresh()
+            return stale
+
+    assert not asyncio.run(speculative())
+    assert read == [] and held._status_attempt is None  # pyright: ignore[reportPrivateUsage]
+    clock[0] = NOW + WINDOW
+    assert asyncio.run(speculative())
+    assert read == ["full"] and held._status_attempt is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_pages_ask_reads_nothing_once_what_it_found_due_no_longer_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ask found the status alone due, and its job waited its turn at the store; a
+    rate-limit hold noted meanwhile holds the status and the record alike. The job read
+    the record in full all the same, about four ``core`` during the hold, and now reads
+    nothing. A reader's own action still reads everything, and a job another caller
+    started, a commit the mirror lacks, asks for a read of its own and reads the record."""
+
+    record = _record(fetched=NOW - timedelta(seconds=30))
+    held = _held(record, tmp_path)
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row(), status=None))
+    # A probe has just run, so the ask reads the status rather than probing first.
+    held._probe_attempt = NOW  # pyright: ignore[reportPrivateUsage]
+    assert held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    assert held.automatic_due(NOW) == "full"
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+    gh_budget.hold(_stamp(NOW + timedelta(minutes=10)), now=NOW)
+    assert not held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    asyncio.run(held.refresh())
+    assert read == [] and held._last_attempt is None  # pyright: ignore[reportPrivateUsage]
+    held.request_recovery()
+    asyncio.run(held.refresh())
+    assert read == [repr({"recover": True, "recovery_pair": None, "adopt_current": False})]
+    gh_budget.forget()
+    assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    asyncio.run(held.refresh())
+    assert read[1:] == ["full"]
+
+
+def test_a_record_adopted_while_the_status_alone_is_read_counts_as_read_in_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read of the status alone publishes no record, so one another process published
+    while it ran, which the page adopted, is another writer's: the next full read is due
+    FULL_REFRESH_S after that record, not up to that much earlier, after the one before."""
+
+    record = _record(fetched=NOW - timedelta(seconds=30))
+    held = _held(record, tmp_path)
+    held.full_read_at = record.fetched_at
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row(), status=None))
+    assert held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
+    published = NOW - timedelta(seconds=1)
+
+    async def status(*_args: object) -> None:
+        read.append("status")
+        held.saw_record(_stamp(published))
+
+    monkeypatch.setattr(pulls, "refresh_pull_status", status)
+    asyncio.run(held.refresh())
+    assert read == ["status"] and held.fetched_at == _stamp(published)
+    full = timedelta(seconds=FULL_REFRESH_S)
+    assert not held.full_read_overdue(published + full)
+    assert held.full_read_overdue(published + full + timedelta(seconds=1))
+
+
+def test_a_scans_status_the_page_has_no_list_for_is_read_at_once_and_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Pulls tab's scan keeps the newest status of every open pull request, without its
+    checks. Where it finds checks the page's read did not list, of a head the page never
+    read, as a prefetched record's, or checks that moved since, the page reads its own at
+    once, below the floor as a change a probe finds is, and only once."""
+
+    record = _record(fetched=NOW - timedelta(seconds=5))
+    held = _held(record, tmp_path)
+    read = _reading(monkeypatch, record, [NOW])
+    held._status_attempt = NOW - timedelta(seconds=3)  # pyright: ignore[reportPrivateUsage]
+    observed = NOW - timedelta(seconds=1)
+    status = _status(record, observed=observed, by="scan", rollup="pending", counts={"pending": 1})
+    freshness = _verdict(record, _catalog(), _row(), status=status)
+    assert (freshness.status_missing, freshness.unlisted_at) == (True, _stamp(observed))
+    held.saw_record(record.fetched_at, freshness=freshness)
+    _observe_core(100)
+    assert held.status_due(NOW) and held.automatic_due(NOW) == "full"
+    asyncio.run(held.refresh())
+    assert read == ["status"]
+    # The read that started after the scan's status answers it: no read again for it.
+    held.saw_record(record.fetched_at, freshness=freshness)
+    assert not held.status_due(NOW)
+    # A scan that finds the read's own checks keeps its list, and asks for nothing.
+    listed = _status(record, observed=NOW - timedelta(seconds=2))
+    same = _status(record, observed=NOW, by="scan")
+    kept = kept_observation(listed, same)
+    assert kept.observed_by == "scan" and kept.checks.listed_at == listed.checks.listed_at
+    assert not _verdict(record, _catalog(), _row(), status=kept).status_missing
 
 
 def test_a_verdict_on_another_record_is_not_adopted(tmp_path: Path) -> None:
@@ -472,9 +769,7 @@ def test_a_verdict_on_another_record_is_not_adopted(tmp_path: Path) -> None:
     held = _held(record, tmp_path)
     newer = _stamp(NOW - timedelta(seconds=1))
     held.saw_record(newer)
-    held.saw_record(
-        record.fetched_at, freshness=record_freshness(record, _catalog(), _row(), now=NOW)
-    )
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row(), now=NOW))
     assert held.verified_at is None and held.fetched_at == newer
 
 
@@ -518,18 +813,18 @@ def test_a_running_scan_keeps_the_last_verdict_for_a_bounded_time() -> None:
 
     record = _record(state="closed")
     old = _catalog(fetched=NOW - WINDOW - timedelta(seconds=5))
-    assert record_freshness(record, old, _row(), now=NOW).verdict == "unverified"
-    verdict = record_freshness(record, old, _row(), now=NOW, scanning=True)
+    assert _verdict(record, old, _row(), now=NOW).verdict == "unverified"
+    verdict = _verdict(record, old, _row(), now=NOW, scanning=True)
     assert verdict.verdict == "current" and verdict.verified_at == old.fetched_at
-    # A change the last scan saw still decides as before, and an open record's checks.
+    # A change the last scan saw still decides as before, and an open record's status.
     newer = _row(updated=NOW - timedelta(minutes=5))
-    assert record_freshness(record, old, newer, now=NOW, scanning=True).verdict == "changed"
-    assert record_freshness(_record(), old, _row(), now=NOW, scanning=True).verdict == "checks"
+    assert _verdict(record, old, newer, now=NOW, scanning=True).verdict == "changed"
+    assert _verdict(_record(), old, _row(), now=NOW, scanning=True).verdict == "checks"
     edge = _catalog(fetched=NOW - WINDOW - timedelta(seconds=SCAN_GRACE_S))
-    assert record_freshness(record, edge, _row(), now=NOW, scanning=True).verdict == "current"
+    assert _verdict(record, edge, _row(), now=NOW, scanning=True).verdict == "current"
     for age in (WINDOW + timedelta(seconds=SCAN_GRACE_S + 1), timedelta(hours=3)):
         stale = _catalog(fetched=NOW - age)
-        verdict = record_freshness(record, stale, _row(), now=NOW, scanning=True)
+        verdict = _verdict(record, stale, _row(), now=NOW, scanning=True)
         assert verdict.verdict == "unverified"
         assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
 
@@ -626,39 +921,55 @@ def test_a_change_a_probe_finds_is_due_at_once_and_does_not_loop(
     assert not held.probe_due(later)
 
 
-def test_a_change_to_checks_alone_reads_them_alone(
+def _unknown(record: PullRecord) -> PullStatus:
+    """The kept status of *record*'s head before GitHub has computed whether it can merge."""
+
+    return _status(record, conflicts="unknown", merge_state="unknown")
+
+
+def _settling(record: PullRecord) -> PullStatus:
+    """The kept status of *record*'s head while one of its two checks still runs."""
+
+    return _status(record, rollup="pending", counts={"pass": 1, "pending": 1})
+
+
+def test_a_change_to_checks_alone_reads_the_status_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A pending check run is probed with the pull, and a change reads only the checks."""
+    """A pending check is probed with the pull, a change reads only the status, and the
+    record, whose issue the probe found unchanged, stays vouched for."""
 
-    record = _record(state="open", runs=("in_progress",), fetched=NOW)
+    record = _record(state="open", fetched=NOW)
+    status = _settling(record)
     held = _held(record, tmp_path)
     asked = _probing(
         monkeypatch, [pulls.PullProbe("unchanged", {}), pulls.PullProbe("checks_changed", {})]
     )
     clock = [NOW]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status))
     # The checks are probed only once every CHECKS_PROBE_S.
     clock[0] = NOW + timedelta(seconds=ATTENDED_PROBE_S)
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status))
     assert asked == [True, False]
     clock[0] = NOW + timedelta(seconds=CHECKS_PROBE_S)
     _probing(monkeypatch, [pulls.PullProbe("checks_changed", {})])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status))
+    assert held.probed_at == _stamp(clock[0])
+    assert held.status_due(clock[0]) and not held.record_due(clock[0], window_s=FULL_REFRESH_S)
     assert held.automatic_due(clock[0]) == "full"
-    refreshed: list[dict[str, object]] = []
-
-    async def refresh(*_args: object, **kwargs: object) -> PullRecord:
-        refreshed.append(kwargs)
-        return record.model_copy(update={"fetched_at": _stamp(clock[0])})
-
-    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
+    read = _reading(monkeypatch, record, clock)
     asyncio.run(held.refresh())
-    assert refreshed == [{"adopt_current": False, "checks_only": True}]
-    # The new record is probed afresh, once ATTENDED_PROBE_S has passed since the last.
-    assert held.probed_at is None and held.automatic_due(clock[0]) is None
+    assert read == ["status"]
+    # The same record, still vouched for, is probed again once ATTENDED_PROBE_S has passed.
+    assert held.fetched_at == record.fetched_at and held.probed_at == _stamp(clock[0])
+    assert held.automatic_due(clock[0]) is None
     assert held.automatic_due(clock[0] + timedelta(seconds=ATTENDED_PROBE_S)) == "probe"
+    # A later change the probe finds is due again, once.
+    clock[0] += timedelta(seconds=CHECKS_PROBE_S)
+    _probing(monkeypatch, [pulls.PullProbe("checks_changed", {})])
+    asyncio.run(held.probe(record, status=status))
+    assert held.status_due(clock[0])
 
 
 def test_a_failed_probe_waits_a_window_and_a_rate_limit_holds_every_probe(
@@ -732,53 +1043,57 @@ def test_a_second_page_asking_while_a_probe_runs_starts_none(
     assert calls == [1] and held.probed_at == _stamp(NOW) and not held.probing
 
 
+@pytest.mark.parametrize("why", ["a page's worth of checks", "pages GitHub refused"])
 def test_settling_checks_a_probe_cannot_see_keep_the_window_cadence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, why: str
 ) -> None:
-    """With no status to probe, a pending record is read once a window, as before probes."""
+    """A head with more checks than a page holds, or whose pages GitHub refuses this reader,
+    is not probed for its checks: while they settle it is read once a window, as before
+    probes."""
 
-    record = _record(state="open", runs=("in_progress",), fetched=NOW).model_copy(
-        update={"status": None}
-    )
-    assert pulls.checks_probe_paths(_held(record, tmp_path).published, record) is None
+    record = _record(state="open", fetched=NOW)
     held = _held(record, tmp_path)
+    probes = None
+    if why == "pages GitHub refused":
+        status = _settling(record)
+        probes = CheckProbes(
+            number=7, head=HEAD, reader=READER, seen_at=_stamp(NOW), pages={}, refused=True
+        )
+    else:
+        status = _status(record, rollup="pending", counts={"pass": 99, "pending": 1})
+    assert pulls.checks_probe_paths(held.published, record, status, probes) is None
+    assert pulls.checks_probe_paths(held.published, record, _settling(record)) is not None
     _probing(monkeypatch, [pulls.PullProbe("unchanged", {})])
     monkeypatch.setattr(pulls, "utc_now", lambda: NOW + WINDOW - timedelta(seconds=1))
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status, probes=probes))
     assert held.probed_at is None
     assert held.automatic_due(NOW + WINDOW + timedelta(seconds=1)) == "full"
 
 
-def test_a_full_read_comes_due_every_full_refresh_s_whatever_reads_only_checks(
+def test_a_full_read_comes_due_every_full_refresh_s_whatever_reads_only_the_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """checks_only reads move fetched_at but not the full read's clock, and the read that
-    interval makes due reads everything, even for a record whose checks alone are due."""
+    """Status reads move neither fetched_at nor the full read's clock, and the read that
+    interval makes due reads everything, even for a record whose status alone is due."""
 
-    record = _record(state="open", runs=("in_progress",), fetched=NOW)
+    record = _record(state="open", fetched=NOW)
     held = _held(record, tmp_path)
-    held.saw_record(record.fetched_at)
+    held.full_read_at = held.probed_at = record.fetched_at
     clock = [NOW]
-    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    refreshed: list[bool] = []
-
-    async def refresh(*_args: object, **kwargs: object) -> PullRecord:
-        refreshed.append(bool(kwargs.get("checks_only")))
-        return record.model_copy(update={"fetched_at": _stamp(clock[0])})
-
-    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
-    # CI changes the checks every few seconds; each change is a checks_only read.
+    read = _reading(monkeypatch, record, clock)
+    # CI changes the checks every few seconds; each change a probe sees is a status read.
     for seconds in (10, 40, 70):
         clock[0] = NOW + timedelta(seconds=seconds)
-        held.checks_due = True
+        held.probed_at = _stamp(clock[0])
+        held._probe_saw, held._probe_saw_at = "checks", clock[0]  # pyright: ignore[reportPrivateUsage]
         asyncio.run(held.refresh())
-    assert refreshed == [True, True, True]
-    assert held.full_read_at == record.fetched_at
+    assert read == ["status", "status", "status"]
+    assert held.full_read_at == held.fetched_at == record.fetched_at
     clock[0] = NOW + timedelta(seconds=FULL_REFRESH_S + 1)
     assert held.automatic_due(clock[0]) == "full"
     held.checks_due = True
     asyncio.run(held.refresh())
-    assert refreshed[-1] is False and held.full_read_at == _stamp(clock[0])
+    assert read[-1] == "full" and held.full_read_at == _stamp(clock[0])
     # A failed full read is not retried on every ask, but once FULL_REFRESH_S later.
     held.full_read_at = _stamp(NOW)
     assert not held.full_read_due(clock[0] + timedelta(seconds=1))
@@ -874,24 +1189,25 @@ def test_a_record_a_running_refresh_published_is_not_taken_as_a_full_read(
     assert held.full_read_at == _stamp(NOW + timedelta(seconds=40))
 
 
-def test_the_checks_probes_keep_their_cadence_through_jitter_and_checks_only_reads(
+def test_the_checks_probes_keep_their_cadence_through_jitter_and_newer_records(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Review B7 on #709: a probe a little early still asks the checks once CHECKS_PROBE_S
-    is nearly up, and a checks_only read does not restart their clock."""
+    is nearly up, and a newer record does not restart their clock."""
 
-    record = _record(state="open", runs=("in_progress",), fetched=NOW)
+    record = _record(state="open", fetched=NOW)
+    status = _settling(record)
     held = _held(record, tmp_path)
     asked = _probing(monkeypatch, [pulls.PullProbe("unchanged", {})] * 3)
     clock = [NOW]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status))
     # Two probes PROBE_FLOOR_S apart reach the checks a little before CHECKS_PROBE_S.
     clock[0] = NOW + timedelta(seconds=PROBE_FLOOR_S)
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status))
     clock[0] = NOW + timedelta(seconds=2 * PROBE_FLOOR_S + 1)
     assert 2 * PROBE_FLOOR_S + 1 < CHECKS_PROBE_S
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=status))
     assert asked == [True, False, True]
     # A newer record keeps the checks probes' clock.
     held.saw_record(_stamp(clock[0] + timedelta(seconds=1)))
@@ -929,15 +1245,15 @@ def test_below_the_floor_probes_go_on_and_only_a_change_they_find_is_read_in_ful
     asyncio.run(held.probe(record))
     late = NOW + timedelta(seconds=FULL_REFRESH_S + 1)
     assert held.automatic_due(late) == "full"
-    held._full_asked = False  # pyright: ignore[reportPrivateUsage]
 
     _observe_core(int(gh_budget.BACKGROUND_FLOOR * 5000))
     assert held.below_floor(late)
-    # The full read is as overdue as it was, and waits; the probe is what is due.
+    # The full read is as overdue as it was, and waits; the probe is what is due, and the
+    # ask that found the full read due before leaves nothing for a refresh to read.
     assert held.full_read_overdue(late) and not held.full_read_due(late)
     assert not held.is_stale(late, window_s=FRESHNESS_WINDOW_S)
     assert held.automatic_due(late) == "probe"
-    assert not held._full_asked  # pyright: ignore[reportPrivateUsage]
+    assert not held._page_asked  # pyright: ignore[reportPrivateUsage]
     # A probe that finds a change starts its full read all the same.
     clock[0] = late
     asyncio.run(held.probe(record))
@@ -951,21 +1267,29 @@ def test_below_the_floor_probes_go_on_and_only_a_change_they_find_is_read_in_ful
     assert not unprobed.below_floor(late) and unprobed.automatic_due(late) == "full"
 
 
-def test_below_the_floor_a_change_the_catalog_reports_is_read_and_a_checks_window_is_not(
+def test_below_the_floor_a_change_the_catalog_reports_is_read_and_a_status_window_is_not(
     tmp_path: Path,
 ) -> None:
     record = _record(fetched=NOW - 2 * WINDOW)
     held = _held(record, tmp_path)
     _observe_core(100)
-    # An open record the catalog vouches for has its checks read once a window: periodic.
-    held.saw_record(
-        record.fetched_at, freshness=record_freshness(record, _catalog(), _row(), now=NOW)
+    # An open record the catalog vouches for has its status read once a window: periodic,
+    # and it spends GraphQL, not the REST budget below its floor.
+    held.saw_record(record.fetched_at, freshness=_verdict(record, _catalog(), _row()))
+    assert held.checks_due and held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    assert not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "100",
+            "x-ratelimit-reset": str(int((NOW + timedelta(hours=1)).timestamp())),
+            "x-ratelimit-resource": "graphql",
+        },
+        resource="graphql",
     )
     assert held.checks_due and not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
     # A row that says GitHub changed it is a change found on the page on screen.
-    changed = record_freshness(
-        record, _catalog(), _row(updated=NOW - timedelta(minutes=1)), now=NOW
-    )
+    changed = _verdict(record, _catalog(), _row(updated=NOW - timedelta(minutes=1)), now=NOW)
     held.saw_record(record.fetched_at, freshness=changed)
     assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
     assert held.automatic_due(NOW) == "full"
@@ -1148,66 +1472,69 @@ def _asking(
 def test_unknown_mergeability_is_asked_of_the_pull_for_a_bounded_time_and_not_vouched_after(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A1: the issue cannot say when GitHub finishes computing ``mergeable``, so a record
-    that holds ``unknown`` has the pull asked too, for MERGEABLE_SETTLE_S per head, and is
-    not vouched for once it is asked no more."""
+    """A1: the issue cannot say when GitHub finishes computing ``mergeable``, so a pull
+    request whose kept status holds ``unknown`` has the pull asked too, for
+    MERGEABLE_SETTLE_S per head, and is not vouched for once it is asked no more."""
 
-    record = _record(mergeable="unknown", fetched=NOW)
+    record = _record(fetched=NOW)
     held = _held(record, tmp_path)
     asked = _asking(monkeypatch, [pulls.PullProbe("unchanged", {})] * 6)
     clock = [NOW]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     # The pull is asked, and not the check pages, which cannot answer this.
     assert asked == [(True, False)] and held.probed_at == _stamp(NOW)
     clock[0] = NOW + timedelta(seconds=served_pull.MERGEABLE_SETTLE_S)
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     assert asked[-1] == (True, False) and held.probed_at == _stamp(clock[0])
     # Past the bound the pull is asked no more, and no probe vouches for "unknown".
     vouched = held.probed_at
     clock[0] = NOW + timedelta(seconds=served_pull.MERGEABLE_SETTLE_S + ATTENDED_PROBE_S)
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     assert asked[-1] == (False, False) and held.probed_at == vouched
     assert not held.probe_vouches(clock[0] + WINDOW)
-    # Another record of the same head, as a checks_only read publishes, starts no new wait.
+    # Another record of the same head, as a full read publishes, starts no new wait.
     again = record.model_copy(update={"fetched_at": _stamp(clock[0])})
     held.saw_record(again.fetched_at)
     clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
-    asyncio.run(held.probe(again))
+    asyncio.run(held.probe(again, status=_unknown(again)))
     assert asked[-1] == (False, False) and held.probed_at is None
-    # A record that holds an answer ends the wait; the next unknown has its own.
-    answered = _record(mergeable="mergeable", fetched=clock[0])
+    # A status that holds an answer ends the wait; the next unknown has its own.
+    answered = _record(fetched=clock[0])
     held.saw_record(answered.fetched_at)
-    asyncio.run(held.probe(answered))
+    asyncio.run(held.probe(answered, status=_status(answered)))
     assert asked[-1] == (False, False) and held.probed_at == _stamp(clock[0])
     clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
-    unknown = _record(mergeable="unknown", fetched=clock[0])
+    unknown = _record(fetched=clock[0])
     held.saw_record(unknown.fetched_at)
-    asyncio.run(held.probe(unknown))
+    asyncio.run(held.probe(unknown, status=_unknown(unknown)))
     assert asked[-1] == (True, False)
 
 
-def test_mergeability_a_probe_sees_resolve_reads_the_checks_alone_below_the_floor_too(
+def test_mergeability_a_probe_sees_resolve_reads_the_status_alone_below_the_floor_too(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A1: below the floor nothing else would ever read it."""
+    """A1: below the floor nothing else would ever read it, of either budget."""
 
-    record = _record(mergeable="unknown", fetched=NOW)
+    record = _record(fetched=NOW)
     held = _held(record, tmp_path)
     _asking(monkeypatch, [pulls.PullProbe("checks_changed", {})])
-    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    clock = [NOW]
+    read = _reading(monkeypatch, record, clock)
     _observe_core(100)
-    asyncio.run(held.probe(record))
-    assert held.below_floor(NOW) and held.automatic_due(NOW) == "full"
-    refreshed: list[dict[str, object]] = []
-
-    async def refresh(*_args: object, **kwargs: object) -> PullRecord:
-        refreshed.append(kwargs)
-        return _record(mergeable="mergeable", fetched=NOW + timedelta(seconds=1))
-
-    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "100",
+            "x-ratelimit-reset": str(int((NOW + timedelta(hours=1)).timestamp())),
+            "x-ratelimit-resource": "graphql",
+        },
+        resource="graphql",
+    )
+    asyncio.run(held.probe(record, status=_unknown(record)))
+    assert held.status_below_floor(NOW) and held.automatic_due(NOW) == "full"
     asyncio.run(held.refresh())
-    assert refreshed == [{"adopt_current": False, "checks_only": True}]
+    assert read == ["status"]
 
 
 def test_a_lagging_read_with_no_issue_etag_is_read_again_once_a_window(
@@ -1618,37 +1945,37 @@ def test_a_settle_wait_that_lapsed_unanswered_is_renewed_for_a_record_read_long_
     Ten minutes on its full read stores unknown again for the same head. Before, the pull
     was never asked for that record and no probe vouched for it."""
 
-    record = _record(mergeable="unknown", fetched=NOW)
+    record = _record(fetched=NOW)
     held = _held(record, tmp_path)
     asked = _asking(monkeypatch, [pulls.PullProbe("unchanged", {})] * 12)
     clock = [NOW]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     assert asked == [(True, False)]
     clock[0] = NOW + timedelta(minutes=10)
     again = record.model_copy(update={"fetched_at": _stamp(clock[0])})
     held.saw_record(again.fetched_at)
     for _probe in range(3):
         clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
-        asyncio.run(held.probe(again))
+        asyncio.run(held.probe(again, status=_unknown(again)))
     assert asked[1:] == [(True, False)] * 3 and held.probed_at == _stamp(clock[0])
     # The renewed wait is bounded as the first was, and records read meanwhile, as a
-    # checks_only read publishes every few seconds, renew nothing before FULL_REFRESH_S.
+    # refresh publishes after each push, renew nothing before FULL_REFRESH_S.
     renewed = clock[0] - timedelta(seconds=2 * ATTENDED_PROBE_S)
     clock[0] = renewed + timedelta(seconds=served_pull.MERGEABLE_SETTLE_S + ATTENDED_PROBE_S)
     newer = record.model_copy(update={"fetched_at": _stamp(clock[0])})
     held.saw_record(newer.fetched_at)
-    asyncio.run(held.probe(newer))
+    asyncio.run(held.probe(newer, status=_unknown(newer)))
     assert asked[-1] == (False, False)
     clock[0] = renewed + timedelta(seconds=FULL_REFRESH_S - 1)
-    asyncio.run(held.probe(newer))
+    asyncio.run(held.probe(newer, status=_unknown(newer)))
     assert asked[-1] == (False, False)
     clock[0] = renewed + timedelta(seconds=FULL_REFRESH_S)
-    asyncio.run(held.probe(newer))
+    asyncio.run(held.probe(newer, status=_unknown(newer)))
     assert asked[-1] == (True, False)
     # A record read before the wait ended is the one the wait was for: it renews nothing.
     clock[0] += timedelta(seconds=FULL_REFRESH_S)
-    asyncio.run(held.probe(newer))
+    asyncio.run(held.probe(newer, status=_unknown(newer)))
     assert asked[-1] == (False, False)
 
 
@@ -1660,7 +1987,7 @@ def test_a_probe_that_fails_does_not_spend_the_settle_wait(
     asked."""
 
     assert FRESHNESS_WINDOW_S > served_pull.MERGEABLE_SETTLE_S
-    record = _record(mergeable="unknown", fetched=NOW)
+    record = _record(fetched=NOW)
     held = _held(record, tmp_path)
     asked: list[bool] = []
     failing = [True]
@@ -1675,10 +2002,10 @@ def test_a_probe_that_fails_does_not_spend_the_settle_wait(
     monkeypatch.setattr(pulls, "probe_pull_request", probe)
     clock = [NOW]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     clock[0] = NOW + WINDOW + timedelta(seconds=1)
     assert held.probe_due(clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     assert asked == [True, True] and held.probed_at == _stamp(clock[0])
 
 
@@ -1687,19 +2014,19 @@ def test_a_head_that_moves_while_mergeability_is_unknown_has_a_wait_of_its_own(
 ) -> None:
     """B3: the wait is a head's, and GitHub computes afresh for a new one."""
 
-    record = _record(mergeable="unknown", fetched=NOW)
+    record = _record(fetched=NOW)
     held = _held(record, tmp_path)
     asked = _asking(monkeypatch, [pulls.PullProbe("unchanged", {})] * 3)
     clock = [NOW]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     clock[0] = NOW + timedelta(seconds=served_pull.MERGEABLE_SETTLE_S + ATTENDED_PROBE_S)
-    asyncio.run(held.probe(record))
+    asyncio.run(held.probe(record, status=_unknown(record)))
     assert asked == [(True, False), (False, False)]
-    pushed = _record(mergeable="unknown", fetched=clock[0], head=NEWER_HEAD)
+    pushed = _record(fetched=clock[0], head=NEWER_HEAD)
     held.saw_record(pushed.fetched_at)
     clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
-    asyncio.run(held.probe(pushed))
+    asyncio.run(held.probe(pushed, status=_unknown(pushed)))
     assert asked[-1] == (True, False)
 
 

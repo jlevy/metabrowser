@@ -1665,7 +1665,11 @@ try {
         const box = (el) => el.getBoundingClientRect();
         return [...menu.querySelectorAll(".github-pull-stack-member")].map((link) => {
           const number = new URL(link.href).pathname.split("/")[2];
-          const [icon, copy] = link.children;
+          // The readiness's words, out of view, follow the icon, and its glyph's cell ends the
+          // line (mb-3n21), so the icon and the line are read by their classes.
+          const icon = link.querySelector(":scope > .github-pull-state-icon");
+          const copy = link.querySelector(":scope > .github-pull-stack-member-copy");
+          const cell = link.querySelector(":scope > .github-pull-stack-member-readiness");
           const [title, position, dot, shown, by] = copy?.children ?? [];
           // The row's state icon starts its run (mb-85op, mb-pw8t).
           const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pulls-heading > .github-pull-state-icon\`);
@@ -1682,6 +1686,13 @@ try {
           return {
             number: Number(number),
             parts: [...link.children].map((el) => el.className),
+            // The readiness's cell, the glyph's width, ends the line after the author's copy.
+            readinessCell: cell === null ? null : {
+              width: Math.round(box(cell).width * 100) / 100,
+              afterCopy: box(cell).left >= box(copy).right - 0.5,
+              endGap: Math.round((link.getBoundingClientRect().right - parseFloat(getComputedStyle(link).paddingRight) - box(cell).right) * 100) / 100,
+              glyph: parseFloat(getComputedStyle(link).getPropertyValue("--icon-glyph")),
+            },
             line: [...(copy?.children ?? [])].map((el) => el.className),
             state: icon?.dataset.state ?? null,
             glyph: icon?.querySelector("svg") !== null,
@@ -1826,12 +1837,21 @@ try {
     const lines = menu.lines;
     const first = lines[0];
     check(
-      "every stack member is the state icon, then the title, and the place, the dot, the number, and the author",
+      "every stack member is the state icon, then the title, and the place, the dot, the number, and the author, and its line ends with its readiness's cell, the glyph's width",
       lines.length === menu.members.length &&
         lines.every(
           (line) =>
             JSON.stringify(line.parts) ===
-              JSON.stringify(["github-pull-state-icon", "github-pull-stack-member-copy"]) &&
+              JSON.stringify([
+                "github-pull-state-icon",
+                "sr-only github-pull-readiness-said",
+                "github-pull-stack-member-copy",
+                "github-pull-stack-member-readiness",
+              ]) &&
+            line.readinessCell !== null &&
+            Math.abs(line.readinessCell.width - line.readinessCell.glyph) <= 0.5 &&
+            line.readinessCell.afterCopy &&
+            Math.abs(line.readinessCell.endGap) <= 0.5 &&
             JSON.stringify(line.line) ===
               JSON.stringify([
                 "github-pull-stack-member-title",

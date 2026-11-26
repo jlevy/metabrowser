@@ -9,7 +9,7 @@ pins its transcript. So that the trees are the server's and not ones a test wrot
 they come from ``tests/fixtures/diff-structured-responses.json``: what
 :func:`metabrowser.diff.structured_projection.project_structured_diff` answers for these
 files. The route itself, admission and refusals included, is pinned by
-``tests/golden/cli-github-pull-rendered.txt``. The first test fails when the recording no
+``tests/golden/cli-github-pull-rendered-structured.txt``. The first test fails when the recording no
 longer matches; ``make golden-update`` rewrites it and then the transcript.
 """
 
