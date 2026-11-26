@@ -158,7 +158,7 @@ type MetabrowserPullsPanelHandle = Readonly<{
      * request again when the address names the one already current, for an open of the
      * pull request shown (docs/design-system.md, "Navigation Reveals the Item"). *stack*,
      * with no pull request, is the native stack whose own page the address names, whose
-     * Whole stack row the list marks.
+     * Stack Overview row the list marks.
      */
     options?: { preserveScroll?: boolean; again?: boolean; stack?: number | null },
   ): void;
@@ -171,14 +171,14 @@ type MetabrowserPullsPanelHandle = Readonly<{
   /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
   toggleStack(number: number): boolean;
   /**
-   * Space on a stack's Whole stack row toggles the stack's changed files in place, under
+   * Space on a stack's Stack Overview row toggles the stack's changed files in place, under
    * it, as `toggleFiles` does a pull request's.
    */
   toggleStackFiles(stack: number): boolean;
   /**
-   * Right and Left on a pull request's row, or a stack's Whole stack row: its changed files
+   * Right and Left on a pull request's row, or a stack's Stack Overview row: its changed files
    * open, or close, and Left from a closed one goes to the stack's row it is under. On a
-   * stack's row: it opens, or Right goes to its first row, Whole stack, and Left closes it.
+   * stack's row: it opens, or Right goes to its first row, Stack Overview, and Left closes it.
    */
   expand(): boolean;
   collapse(): boolean;
@@ -259,7 +259,7 @@ type MetabrowserViewSpec = {
   /**
    * The rows a comparison's Diff summary lists, from what `prefetch` or `render` read, for a
    * page that draws the comparison's files in a tree of its own, as the Pulls tab draws a
-   * stack's under its Whole stack row. The diff view has one; null for a comparison it
+   * stack's under its Stack Overview row. The diff view has one; null for a comparison it
    * cannot read.
    */
   summaryRows?: (raw: unknown) => Promise<MetabrowserChangedFileRow[] | null>;

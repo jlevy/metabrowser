@@ -98,7 +98,7 @@ def test_a_stack_files_list_is_fresh_as_long_as_a_pull_requests_is() -> None:
 
 def test_every_stack_word_comes_from_pull_stacks() -> None:
     """ "Stack #N", a position, and its tip are written once, in pull-stacks.js, and the
-    order a stack's rows are listed in, its Whole stack row among its members, is
+    order a stack's rows are listed in, its Stack Overview row among its members, is
     `stackEntries` over `stackMenuOrder`, in the stack menu and the Pulls tab's groups
     alike: no surface spells its own."""
 

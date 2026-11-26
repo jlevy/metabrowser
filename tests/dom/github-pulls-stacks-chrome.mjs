@@ -143,7 +143,7 @@ const LIST = `(() => {
       };
       stacks.push(open);
     } else if (row.classList.contains("github-pulls-whole-row") && open !== null) {
-      // The stack's Whole stack row, one of its set (mb-cm31): its words, then its stack's
+      // The stack's Stack Overview row, one of its set (mb-cm31): its words, then its stack's
       // change line, if the server could sum one (mb-9ekj), and the chevron after it, the
       // toggle of the stack's changed files (mb-odt4).
       const glyph = row.querySelector(".github-pull-stack-icon");
@@ -310,7 +310,7 @@ const LIST = `(() => {
     slotWidth: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")),
     rowGap: parseFloat(getComputedStyle(flat ?? document.body).columnGap),
     // A tree level's indent: one icon slot and the rows' column gap (mb-3vil). A stack's
-    // Whole stack row and its members are one in.
+    // Stack Overview row and its members are one in.
     memberIndent:
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")) +
       parseFloat(getComputedStyle(stackRow ?? document.body).columnGap),
@@ -343,7 +343,7 @@ const LIST = `(() => {
     })(),
     // A row's slots, the chevron's and the icon's, from the row's content edge: a pull
     // request's (#106, first level), whose chevron ends its run (mb-pw8t), a stack's, whose
-    // chevron leads its row (mb-hmv7, --tree-icon-slot), and its Whole stack row's, whose
+    // chevron leads its row (mb-hmv7, --tree-icon-slot), and its Stack Overview row's, whose
     // glyph leads the row and whose chevron follows its line (mb-odt4).
     slots: (() => {
       const round = (value) => Math.round(value * 100) / 100;
@@ -732,15 +732,15 @@ try {
       first?.name === `Stack #286, ${first?.countNumber} pull requests · ${first?.age}`,
       first?.name,
     );
-    // Each open stack's rows hold its Whole stack row (mb-cm31), a link to the stack's own
+    // Each open stack's rows hold its Stack Overview row (mb-cm31), a link to the stack's own
     // page, one of the stack's set, at its pull requests' level, its files closed, which
     // shows the stack's change line and says it in its name; the keys below say where it is.
     check(
-      "each open stack has its Whole stack row, one of its set, its files closed, its glyph in its text's ink, which links to the stack's page and says its change line",
+      "each open stack has its Stack Overview row, one of its set, its files closed, its glyph in its text's ink, which links to the stack's page and says its change line",
       list.stacks.every(
         (stack) =>
           stack.expanded !== "true" ||
-          (stack.whole?.text === "Whole stack" &&
+          (stack.whole?.text === "Stack Overview" &&
             stack.whole.href === `/stack/${stack.stack}` &&
             stack.whole.level === "2" &&
             stack.whole.expanded === "false" &&
@@ -749,10 +749,10 @@ try {
             (stack.whole.change === ""
               ? // No line, or its read on its way, which the name says is pending.
                 [
-                  `Whole stack, Stack #${stack.stack}`,
-                  `Whole stack, Stack #${stack.stack}: change pending`,
+                  `Stack Overview, Stack #${stack.stack}`,
+                  `Stack Overview, Stack #${stack.stack}: change pending`,
                 ].includes(stack.whole.name)
-              : stack.whole.name.startsWith(`Whole stack, Stack #${stack.stack}: `))),
+              : stack.whole.name.startsWith(`Stack Overview, Stack #${stack.stack}: `))),
       ),
       JSON.stringify(list.stacks.map(({ stack, expanded, whole }) => ({ stack, expanded, whole }))),
     );
@@ -846,11 +846,11 @@ try {
     // 40 (mb-hmv7). A pull request's row has one slot, the state icon's, on its inset, and its
     // chevron ends its run (mb-pw8t); a stack's row has one too, its chevron's, and its label
     // after it, with no icon (mb-68uk), where it had the Layers icon's slot as well (mb-3vil);
-    // its Whole stack row has one, the stack's Layers glyph's, where a member's state icon
+    // its Stack Overview row has one, the stack's Layers glyph's, where a member's state icon
     // is, and its chevron follows its line, as a pull request's does (mb-odt4).
     const slots = list.slots;
     check(
-      "a row's chevron and icon, a stack row's chevron, and its Whole stack row's glyph and chevron, are each the tree's 14 px icon slot",
+      "a row's chevron and icon, a stack row's chevron, and its Stack Overview row's glyph and chevron, are each the tree's 14 px icon slot",
       slots.token === "14px" &&
         [slots.pull, slots.stack, slots.whole].every(
           (row) => row !== null && row.toggle === 14 && row.chevron === 12,
@@ -859,8 +859,8 @@ try {
         slots.whole.glyph === 14 &&
         slots.stack.icon === null &&
         list.stackIcons === 0 &&
-        // A stack's chevron leads its row; a pull request's ends its run, and a Whole
-        // stack row's follows its words.
+        // A stack's chevron leads its row; a pull request's ends its run, and a Stack
+        // Overview row's follows its words.
         slots.stack.toggleFromInset === 0 &&
         slots.whole.toggleFromInset > slots.whole.text &&
         near(slots.pull.iconFromInset, 0) &&
@@ -897,20 +897,20 @@ try {
       }),
     );
     check(
-      "its label starts where its pull requests' state icons and its Whole stack row's glyph do, and their titles where that row's words do",
+      "its label starts where its pull requests' state icons and its Stack Overview row's glyph do, and their titles where that row's words do",
       near(list.stackLabel, list.memberIcon) &&
         near(list.wholeIcon, list.memberIcon) &&
         near(list.wholeTitle, list.memberTitle),
       `${list.stackLabel} ${list.wholeToggle} ${list.wholeIcon} ${list.memberIcon} ${list.wholeTitle} ${list.memberTitle}`,
     );
     check(
-      "its Whole stack row and its pull requests start one tree level in, one icon slot and gap",
+      "its Stack Overview row and its pull requests start one tree level in, one icon slot and gap",
       near(list.wholeIcon - list.stackToggle, list.memberIndent) &&
         near(list.memberIcon - list.stackToggle, list.memberIndent),
       `${list.wholeToggle} ${list.memberIcon} ${list.stackToggle} ${list.memberIndent} ${list.memberTitle}`,
     );
     check(
-      "a stack's row, and its Whole stack row, are one row tall",
+      "a stack's row, and its Stack Overview row, are one row tall",
       near(list.stackRowHeight, list.rowHeightToken) &&
         near(list.wholeRowHeight, list.rowHeightToken),
       `${list.stackRowHeight} ${list.wholeRowHeight} ${list.rowHeightToken}`,
@@ -948,7 +948,7 @@ try {
     await shot("after-pulls-grouped", await paneClip());
 
     // Real keys: off a stack's row and back, closing and opening it. J from the stack's row
-    // lands on its Whole stack row first, and so does Right on the open stack.
+    // lands on its Stack Overview row first, and so does Right on the open stack.
     await evaluate(`document.querySelector(".github-pulls-stack-row").focus()`);
     const keys = [];
     for (const key of ["j", "k", "ArrowLeft", "ArrowRight", "ArrowRight"]) {
@@ -969,7 +969,7 @@ try {
     }
     measured.keys = keys;
     check(
-      "J, K, Left and Right move real focus over a stack's row, J and Right onto its Whole stack row first",
+      "J, K, Left and Right move real focus over a stack's row, J and Right onto its Stack Overview row first",
       JSON.stringify(keys.map((k) => [k.focus, k.expanded])) ===
         JSON.stringify([
           ["whole 286", "true"],
@@ -1013,7 +1013,7 @@ try {
         ]),
       JSON.stringify(toggles),
     );
-    // The Whole stack row's children are its stack's changed files (mb-odt4), as a pull
+    // The Stack Overview row's children are its stack's changed files (mb-odt4), as a pull
     // request's row's are its own: Space, Right, and a press on its change line's chevron
     // open them under it, Space and Left close them, focus stays on the row, and none of
     // them opens a page, though the toggle is in the row's link. The stack's pull requests
@@ -1037,14 +1037,14 @@ try {
       // open (pull-files-tree.js, `FILES_OPEN_HOLD_MS`).
       await waitFor(
         `(document.querySelector(".github-pulls-whole-item > .github-pull-files:not(.tree-children-collapsed)") !== null) === (document.querySelector(".github-pulls-whole-row").getAttribute("aria-expanded") === "true")`,
-        `the Whole stack row's files follow its state after ${how}`,
+        `the Stack Overview row's files follow its state after ${how}`,
       );
       await frames();
       folds.push([how, ...(await wholeState())]);
     }
     measured.wholeFiles = folds;
     check(
-      "Space, Right, Left, and a press on its change line's chevron open and close a stack's changed files under its Whole stack row, its pull requests stay beside it, focus stays on it, and no page opens",
+      "Space, Right, Left, and a press on its change line's chevron open and close a stack's changed files under its Stack Overview row, its pull requests stay beside it, focus stays on it, and no page opens",
       JSON.stringify(folds) ===
         JSON.stringify([
           [" ", "true", true, "2", wholeAt, "whole 286"],
@@ -1121,7 +1121,7 @@ try {
       await focused(),
       await evaluate(`${ROW106}?.getAttribute("aria-expanded") ?? null`),
       await evaluate(
-        // A pull request's row with its files open: a Whole stack row is a link too, whose
+        // A pull request's row with its files open: a Stack Overview row is a link too, whose
         // files are its stack's, and is not one.
         `document.querySelectorAll('a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-whole-row)').length`,
       ),
@@ -1627,7 +1627,7 @@ try {
           place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
         };
       })(),
-      // The Whole stack row (mb-7cn4): its glyph and its words, measured as a member's are.
+      // The Stack Overview row (mb-7cn4): its glyph and its words, measured as a member's are.
       whole: (() => {
         const row = menu.querySelector(".github-pull-stack-whole");
         if (row === null) return null;
@@ -1891,15 +1891,15 @@ try {
       ),
       JSON.stringify(lines.map(({ number, by }) => ({ number, by }))),
     );
-    // The Whole stack row is in the members' row grid (mb-7cn4): the stack's Layers glyph,
+    // The Stack Overview row is in the members' row grid (mb-7cn4): the stack's Layers glyph,
     // in the text's ink as the stack page's title glyph is (mb-68uk), in the state icon's
     // slot, where every member's icon starts, and its words where every member's title
     // starts. With the menu row's own gap and an empty slot, its words started 2 px past the
     // titles.
     check(
-      "the Whole stack row's glyph and words start where the members' icons and titles do",
+      "the Stack Overview row's glyph and words start where the members' icons and titles do",
       menu.whole !== null &&
-        menu.whole.text === "Whole stack" &&
+        menu.whole.text === "Stack Overview" &&
         menu.whole.glyph &&
         menu.whole.ink === menu.whole.textInk &&
         Math.abs(menu.whole.iconLeft - first.iconLeft) <= 0.5 &&

@@ -6,11 +6,11 @@ env:
 ---
 # Golden Test: A Stack’s Brief Change Line
 
-Each stack’s Whole stack row in the Pulls tab shows its stack’s brief change line beside
-its words, “Whole stack · +5”: the lines of the stack’s combined change, its members’
-own changed files accumulated, each file once and their lines summed, which the server
-does from the cache (`GET stack-change`); the line counts no files by status (mb-lqkb),
-and leaves out a total of zero (mb-efum).
+Each stack’s Stack Overview row in the Pulls tab shows its stack’s brief change line
+beside its words, “Stack Overview · +5”: the lines of the stack’s combined change, its
+members’ own changed files accumulated, each file once and their lines summed, which the
+server does from the cache (`GET stack-change`); the line counts no files by status
+(mb-lqkb), and leaves out a total of zero (mb-efum).
 The stack’s own row, its heading, shows the stack’s size and its age instead, “Stack
 #286 · 3 pulls”, which are whole from its first paint and wait on no read (mb-tvhs).
 This browserless session runs the production code that decides what each stack shows,
@@ -44,12 +44,12 @@ will not come.
 
 `heading` mounts the panel over a stand-in for the DOM with the SDK’s own painters and
 prints each stack as drawn: under `heading`, its own row’s text, age, and accessible
-name, and beside it its Whole stack row’s change slot and name.
-First no read is sent and nothing waits; then #290’s read is on its way, its Whole stack
-row holding the shell’s pending placeholder and its name saying the change is pending,
-while #286’s, queued, holds none; then #290’s is unavailable, a member’s list not
-cached, and #286’s read is on its way; and last #286’s line has arrived, drawn through
-the SDK’s one component for it (`said`), its line totals alone.
+name, and beside it its Stack Overview row’s change slot and name.
+First no read is sent and nothing waits; then #290’s read is on its way, its Stack
+Overview row holding the shell’s pending placeholder and its name saying the change is
+pending, while #286’s, queued, holds none; then #290’s is unavailable, a member’s list
+not cached, and #286’s read is on its way; and last #286’s line has arrived, drawn
+through the SDK’s one component for it (`said`), its line totals alone.
 The row’s accessible name says the line in words after its words and its stack.
 Through every step each stack’s heading is as it was first drawn: its count and its age
 are there at once, and no read changes them.
@@ -60,7 +60,7 @@ zero left out, “−4” for a stack that only deletes lines, as “+5” is on
 them, and both where both are nonzero; a muted “0 lines”, said “no lines changed”, for a
 stack that changes none; and “?” for a total not known, beside a zero or a known one.
 No line shows a “+0” or a “−0”. The placeholder is one node across paints, the label and
-the Whole stack row’s words stay the nodes they were, and the line drawn is the
+the Stack Overview row’s words stay the nodes they were, and the line drawn is the
 component’s nodes, part for part.
 
 `retryMinutes` is when a stack whose answer keeps naming a member not yet settled is
@@ -545,7 +545,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             },
             "text": "",
             "change": [],
-            "name": "Whole stack, Stack #290"
+            "name": "Stack Overview, Stack #290"
           },
           "Stack #286": {
             "heading": {
@@ -555,13 +555,13 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             },
             "text": "",
             "change": [],
-            "name": "Whole stack, Stack #286"
+            "name": "Stack Overview, Stack #286"
           }
         },
         "requests": []
       },
       {
-        "step": "idle: #290's read is sent, and its Whole stack row waits; #286's is queued and does not",
+        "step": "idle: #290's read is sent, and its Stack Overview row waits; #286's is queued and does not",
         "headings": {
           "Stack #290": {
             "heading": {
@@ -581,7 +581,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Whole stack, Stack #290: change pending"
+            "name": "Stack Overview, Stack #290: change pending"
           },
           "Stack #286": {
             "heading": {
@@ -591,7 +591,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             },
             "text": "",
             "change": [],
-            "name": "Whole stack, Stack #286"
+            "name": "Stack Overview, Stack #286"
           }
         },
         "requests": [
@@ -609,7 +609,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             },
             "text": "",
             "change": [],
-            "name": "Whole stack, Stack #290"
+            "name": "Stack Overview, Stack #290"
           },
           "Stack #286": {
             "heading": {
@@ -629,7 +629,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Whole stack, Stack #286: change pending"
+            "name": "Stack Overview, Stack #286: change pending"
           }
         },
         "requests": [
@@ -637,7 +637,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         ]
       },
       {
-        "step": "#286's line arrives on its Whole stack row, and #290's shows nothing still",
+        "step": "#286's line arrives on its Stack Overview row, and #290's shows nothing still",
         "headings": {
           "Stack #290": {
             "heading": {
@@ -647,7 +647,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
             },
             "text": "",
             "change": [],
-            "name": "Whole stack, Stack #290"
+            "name": "Stack Overview, Stack #290"
           },
           "Stack #286": {
             "heading": {
@@ -681,7 +681,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Whole stack, Stack #286: 5 lines added"
+            "name": "Stack Overview, Stack #286: 5 lines added"
           }
         },
         "requests": []
@@ -727,7 +727,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Whole stack, Stack #286: 5 lines added, estimated"
+            "name": "Stack Overview, Stack #286: 5 lines added, estimated"
           }
         },
         "requests": [
@@ -750,7 +750,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "shows": [
           "diff-stat-del: −4"
         ],
-        "name": "Whole stack, Stack #286: 4 lines deleted"
+        "name": "Stack Overview, Stack #286: 4 lines deleted"
       },
       {
         "totals": {
@@ -762,7 +762,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
           "diff-stat-add: +5",
           "diff-stat-del: −4"
         ],
-        "name": "Whole stack, Stack #286: 5 lines added, 4 deleted"
+        "name": "Stack Overview, Stack #286: 5 lines added, 4 deleted"
       },
       {
         "totals": {
@@ -773,7 +773,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "shows": [
           "change-line-none: 0 lines"
         ],
-        "name": "Whole stack, Stack #286: no lines changed"
+        "name": "Stack Overview, Stack #286: no lines changed"
       },
       {
         "totals": {
@@ -784,7 +784,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         "shows": [
           "diff-stat-del: −?"
         ],
-        "name": "Whole stack, Stack #286: ? lines deleted"
+        "name": "Stack Overview, Stack #286: ? lines deleted"
       },
       {
         "totals": {
@@ -796,7 +796,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
           "diff-stat-add: +?",
           "diff-stat-del: −4"
         ],
-        "name": "Whole stack, Stack #286: ? lines added, 4 deleted"
+        "name": "Stack Overview, Stack #286: ? lines added, 4 deleted"
       },
       {
         "totals": {
@@ -808,7 +808,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
           "diff-stat-add: +?",
           "diff-stat-del: −?"
         ],
-        "name": "Whole stack, Stack #286: line counts unknown"
+        "name": "Stack Overview, Stack #286: line counts unknown"
       }
     ]
   },

@@ -9,10 +9,10 @@
 // `namedStackPositionNodes` draws after the Layers glyph; `stackPositionHint` is the tip
 // that names both, which `stackPlaceHint` writes from a stack's number and length, as the
 // guide's row has them; `stackMenuOrder` is the one member order, top of the stack first;
-// and `stackEntries` is the one order of a stack's rows, its Whole stack row first, then its
+// and `stackEntries` is the one order of a stack's rows, its Stack Overview row first, then its
 // members, in the stack menu and under an open stack in the Pulls tab alike. `groupByStack`
 // is the Pulls tab's grouping of its rows, `stackPullsCount` the count its stack's heading
-// shows, `stackUpdatedAt` the time its age tells, and `wholeStackHint` its Whole stack row's
+// shows, `stackUpdatedAt` the time its age tells, and `wholeStackHint` its Stack Overview row's
 // accessible name.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
@@ -47,7 +47,7 @@ export function stackLabel(number) {
 /** The words of the row that opens a stack's own page, the first of a stack's rows in the
  * stack menu and under an open stack in the Pulls tab (`stackEntries`; docs/design-system.md,
  * "Stacks"). */
-export const WHOLE_STACK = "Whole stack";
+export const STACK_OVERVIEW = "Stack Overview";
 
 /** A member's place in its stack, as GitHub numbers it from the base: "2/4".
  * @param {number} at The member's index in `pulls`, base first.
@@ -110,9 +110,9 @@ export function stackMenuOrder(stack) {
   return stack.pulls.slice().reverse();
 }
 
-/** A stack's rows in the one order every surface that lists them draws: its Whole stack row,
+/** A stack's rows in the one order every surface that lists them draws: its Stack Overview row,
  * null here, which opens the stack's own page, then *members*. The stack menu and an open
- * stack's rows in the Pulls tab both take their order from it, so the Whole stack row has one
+ * stack's rows in the Pulls tab both take their order from it, so the Stack Overview row has one
  * place in both, first, above the members, and the stack's set counts it
  * (docs/design-system.md, "Stacks").
  * @param {number[]} members The members to list, in `stackMenuOrder`.
@@ -248,7 +248,7 @@ export function stackRowKey(number) {
   return -number;
 }
 
-/** The row key of a stack's Whole stack row in the Pulls list: half a step past its stack's
+/** The row key of a stack's Stack Overview row in the Pulls list: half a step past its stack's
  * row's key, so it collides with no stack's row and no pull request's, and it is negative,
  * as every row that is not a pull request's is (docs/design-system.md, "Stack Groups in the
  * Pulls Tab").
@@ -258,7 +258,7 @@ export function wholeStackRowKey(number) {
   return -number - 0.5;
 }
 
-/** The stack whose Whole stack row *key* is, or null for any other row's key.
+/** The stack whose Stack Overview row *key* is, or null for any other row's key.
  * @param {number} key
  */
 export function wholeStackOfKey(key) {
@@ -278,7 +278,7 @@ export function wholeStackOfKey(key) {
  * }} PullGroupRow
  * @typedef {{
  *   kind: "whole", key: number, stack: number, level: 2, posinset: number, setsize: number,
- * }} WholeStackRow A stack's Whole stack row, the first under its open stack, which opens the
+ * }} WholeStackRow A stack's Stack Overview row, the first under its open stack, which opens the
  *   stack's own page; its children are the stack's changed files, as a pull request's row's
  *   are its own.
  * @typedef {StackGroupRow | PullGroupRow | WholeStackRow} GroupedRow
@@ -295,11 +295,11 @@ export function wholeStackOfKey(key) {
  * under its highest-ranked stack in the snapshot. A stack whose listed members all sit under earlier stacks
  * has no row; their places name it.
  *
- * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
- * in `stackEntries`' order, the stack menu's: the Whole stack row, which opens the stack's own
+ * An open stack's rows under it, at one level, are its Stack Overview row and its pull requests,
+ * in `stackEntries`' order, the stack menu's: the Stack Overview row, which opens the stack's own
  * page (`/stack/<n>`, stack-page.js), is one of the stack's rows, so they count it in their
  * set, "1/4" under a stack of three (docs/design-system.md, "Stack Groups in the Pulls
- * Tab"). No pull request is ever under the Whole stack row.
+ * Tab"). No pull request is ever under the Stack Overview row.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
@@ -473,7 +473,7 @@ function stackUpdatedAt(stack, updatedAt) {
  * size, the count its heading shows (`stackPullsCount`), how many of its pull requests the
  * list holds, and where those under an earlier stack sit, so a count of listed pull
  * requests that is more than the rows under it says why: "Stack #286, 4 pull requests, 3 in
- * this list". The lines the stack changes are its Whole stack row's to say
+ * this list". The lines the stack changes are its Stack Overview row's to say
  * (`wholeStackHint`).
  *
  * @param {NativeStack} stack
@@ -493,16 +493,16 @@ export function stackGroupHint(stack, shown, elsewhere = new Map()) {
 }
 
 /**
- * A Whole stack row's accessible name in the Pulls tab: its words and its stack, then the
+ * A Stack Overview row's accessible name in the Pulls tab: its words and its stack, then the
  * brief change line the row shows (stack-lines.js) in words, as the Diff summary's name says
- * its own: "Whole stack, Stack #286: 1,234 lines added, 567 deleted", or "change pending"
+ * its own: "Stack Overview, Stack #286: 1,234 lines added, 567 deleted", or "change pending"
  * while the line is read.
  *
  * @param {number} stack
  * @param {string | null} [change] The change line's words, when the row shows it or waits.
  */
 export function wholeStackHint(stack, change = null) {
-  const name = `${WHOLE_STACK}, ${stackLabel(stack)}`;
+  const name = `${STACK_OVERVIEW}, ${stackLabel(stack)}`;
   return change === null ? name : `${name}: ${change}`;
 }
 

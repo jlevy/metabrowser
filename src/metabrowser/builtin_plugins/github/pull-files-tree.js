@@ -13,7 +13,7 @@
 // list, the folders a reader opens, the row that takes Tab, the keys, and the jump of the diff
 // to a file; `createRowExpansion` says which rows are open and why. Where the list is read
 // and asked for is the tree's `FileListSource`: a pull request's own (`pullFileList`), these
-// routes, or a native stack's combined files under its Whole stack row (stack-files.js),
+// routes, or a native stack's combined files under its Stack Overview row (stack-files.js),
 // which answers in the same envelope, so one controller and one paint draw both. pull-files-view.js is the
 // paint, and tests/dom/github-pull-files-tree-session.js runs the rest from the command line
 // on what the server answered.
@@ -299,7 +299,7 @@ export const LATE_ROWS_MS = 500;
 const FILE_FAILURES = Object.freeze({
   not_found_or_private:
     "The pull request was not found, or the signed-in account cannot read its files.",
-  // A native stack's list, under its Whole stack row (stack-files.js).
+  // A native stack's list, under its Stack Overview row (stack-files.js).
   stack_not_one_comparison: "This stack cannot be shown as one comparison.",
 });
 const LISTING_FAILED = "Could not list the changed files.";
