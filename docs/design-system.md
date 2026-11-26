@@ -6958,8 +6958,26 @@ and small, that is the only question the tooltip exists to answer.
 `mb.tooltip.show(html, anchor)` takes the element, and there is deliberately no
 `move()`. The controller centers the tooltip under its anchor, flips above when there is
 no room below, and clamps to the viewport.
-Calling `show` again with the same anchor is how a surface says “still here”: it cancels
-a pending hide and leaves the tooltip exactly where it is.
+Calling `show` again with the element whose tooltip is up is how a surface says “still
+here”: it cancels a pending hide and leaves the tooltip exactly as and where it is.
+Calling it again for an element whose tooltip still waits out its delay gives that
+tooltip the newer markup and keeps its time, so what a surface learns during the delay,
+such as a link card’s title, appears on schedule with it.
+Only the element whose markup is up is still here: a pointer that moves straight from
+one element onto the next, within the first one’s fade, gets the next one’s tooltip at
+the next one’s place, however often the next is announced again, and never the first
+one’s (`tooltipShown` in `static/app.js`). `tests/dom/tooltip-anchor-session.js` holds
+this on the shell’s own code, for a link card and for `data-tip-text`, and
+`tests/test_link_card_chrome.py` holds it in Chrome on a document’s links.
+
+**A tooltip that is up does not take new markup.** What a surface learns once its
+tooltip is up waits for the tooltip’s next appearance.
+New markup in place would not move the box, but it would change the box’s size: one that
+grows wider from where it was placed is no longer centered on its anchor, and one
+flipped above its anchor grows down over it, while placing it again moves it.
+Either breaks this rule, and the lines the reader is partway through would shift with
+it. A link card’s title that arrives after the card is up is kept for the next rest
+([Tooltips on Links](#tooltips-on-links)).
 
 ### A Surface Puts Away Only Its Own Tooltip
 
@@ -7051,11 +7069,12 @@ tooltip’s own appear delay, `TOOLTIP_APPEAR_DELAY` in `static/app.js`. Once th
 has rested for the tree’s own hover delay (`INTENT_MS` in `static/link-previews.js`,
 equal to app.js’s `FILE_PREFETCH_HOVER_DELAY_MS`), the card’s data is read and what the
 link opens is prefetched, from reads the app already makes for that object, all from its
-caches. A title that arrives while the tooltip still waits is shown with it, and waits
-the delay again from then; one that arrives after the card is up is kept for the next
-rest. At most one read and one prefetch are in flight, and a newer rest waits for them
-rather than aborting them, since an aborted request counts against the page’s
-`fetch_aborts` budget
+caches.
+A title that arrives while the tooltip still waits is shown with it, on the delay
+the rest began; one that arrives after the card is up is kept for the next rest
+([A Tooltip Holds Still](#a-tooltip-holds-still)). At most one read and one prefetch are
+in flight, and a newer rest waits for them rather than aborting them, since an aborted
+request counts against the page’s `fetch_aborts` budget
 ([performance budgets](../explorations/performance-loop/performance-budgets.toml)).
 
 **One renderer draws every card.** A surface registers each in-app link it draws with

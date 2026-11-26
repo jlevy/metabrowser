@@ -623,7 +623,7 @@ async function timing() {
     await page.look(320);
     await page.look(570);
     await page.point(700, page.document);
-    sessions["an answer during the delay: the card waits for it"] = page.log;
+    sessions["an answer during the delay: the card shows it on time"] = page.log;
   }
   {
     const page = createPage();

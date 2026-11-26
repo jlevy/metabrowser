@@ -121,7 +121,7 @@ def test_a_rest_asks_at_the_trees_own_hover_delay() -> None:
     """The summary starts when a tree row's prefetch would: app.js's delay, not a copy."""
 
     delay = _app_constant("const FILE_PREFETCH_HOVER_DELAY_MS")
-    log = _session()["timing"]["an answer during the delay: the card waits for it"]
+    log = _session()["timing"]["an answer during the delay: the card shows it on time"]
     assert log[0]["at"] == 0 and "show" in log[0]
     assert [entry["at"] for entry in log if "summary" in entry or "prefetch" in entry] == [
         delay,
@@ -130,7 +130,12 @@ def test_a_rest_asks_at_the_trees_own_hover_delay() -> None:
 
 
 def test_the_card_appears_only_on_the_tooltips_own_timer() -> None:
-    """A card first seen in a rest was asked for at least the tooltip's delay before."""
+    """A card first seen in a rest was asked for at least the tooltip's delay before.
+
+    And an answer that arrives while the card waits is shown on the time the rest's first
+    show set, not a delay after the answer: the first look past that time already shows it
+    (docs/design-system.md, "A Tooltip Holds Still").
+    """
 
     delay = _app_constant("var TOOLTIP_APPEAR_DELAY")
     timing = _session()["timing"]
@@ -143,8 +148,16 @@ def test_the_card_appears_only_on_the_tooltips_own_timer() -> None:
                 earlier.get("tooltip") for earlier in log[rest_began:index]
             ):
                 continue
-            last_show = max(e["at"] for e in log[rest_began:index] if "show" in e)
-            assert entry["at"] - last_show >= delay, name
+            first_show = min(e["at"] for e in log[rest_began:index] if "show" in e)
+            assert entry["at"] - first_show >= delay, name
+    answered = timing["an answer during the delay: the card shows it on time"]
+    shows = [entry for entry in answered if "show" in entry]
+    assert len(shows) == 2 and shows[1]["at"] < shows[0]["at"] + delay
+    assert "Keep the tail" in shows[1]["card"]
+    first_look = next(
+        entry for entry in answered if "tooltip" in entry and entry["at"] > shows[0]["at"] + delay
+    )
+    assert first_look["tooltip"] is not None and "Keep the tail" in first_look["tooltip"]
     passed = timing["a pass across the link: nothing is read"]
     assert not any("summary" in entry or "prefetch" in entry for entry in passed)
     assert all(entry.get("tooltip") is None for entry in passed if "tooltip" in entry)
