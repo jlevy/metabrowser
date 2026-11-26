@@ -91,13 +91,6 @@ import { PULLS_RUN, stackMemberRow } from "./stack-member-row.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
-// The tab's Refresh, at the top of the navigation: a circular arrow, Lucide v1.17.0 (ISC;
-// https://lucide.dev). Only a GitHub repository's page draws it, so it arrives with this
-// code rather than in static/icons.js, which every folder's startup pays for
-// (docs/design-system-icons.md, "Where Icons Come From").
-const REFRESH_GLYPH =
-  // Lucide `rotate-cw`
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>`;
 const PULL_ROUTE = "/api/plugin/github/pull";
 // The pull route's catalog verdict, which the page reads from its own first read.
 const VERIFIED_HEADER = "x-metabrowser-verified";
@@ -3960,14 +3953,10 @@ export function mountPullsPanel(container, ctx, mb) {
   ]);
   const connectionHelp = h("span", { hidden: "" });
   // The tab's Refresh is the shell's icon button at the top of the navigation, beside the
-  // Metabrowser menu, there and waiting from the first paint (`refresh` in pulls-nav.js):
-  // the list gives it its glyph, says when it waits, and wires its click and number below.
+  // Metabrowser menu, glyph and all, and waiting, from the first paint (`refresh` in
+  // pulls-nav.js; server.py draws it): the list says when it waits, and wires its click and
+  // number below.
   const refreshButton = nav.refresh ?? null;
-  const refreshShape = new DOMParser().parseFromString(REFRESH_GLYPH, "text/html").body
-    .firstElementChild;
-  if (refreshButton !== null && refreshShape !== null) {
-    refreshButton.replaceChildren(document.importNode(refreshShape, true));
-  }
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
@@ -6291,12 +6280,11 @@ export function mountPullsPanel(container, ctx, mb) {
       container.classList.remove("github-pulls");
       container.replaceChildren();
       // What it put in the toolbar slot and the band under it, outside the container, and
-      // the header's Refresh as the shell drew it: empty, and waiting.
+      // the header's Refresh as the shell drew it: waiting.
       filters.remove();
       status.remove();
       connection.remove();
       outsideNote.remove();
-      refreshButton?.replaceChildren();
       refreshButton?.setAttribute("aria-disabled", "true");
     },
   });

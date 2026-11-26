@@ -129,8 +129,8 @@ type MetabrowserPullsNavHost = Readonly<{
    */
   metadata?: HTMLElement | null;
   /**
-   * The tab's Refresh at the top of the navigation, a glyph-only button the shell draws and
-   * shows while the tab is in front, which the list fills with its glyph and wires; or null.
+   * The tab's Refresh at the top of the navigation, a glyph-only button the shell draws,
+   * glyph and all, and shows while the tab is in front, which the list wires; or null.
    */
   refresh?: HTMLElement | null;
   scrollRoot: HTMLElement | null;

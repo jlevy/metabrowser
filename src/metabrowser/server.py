@@ -254,6 +254,7 @@ from metabrowser.settings import (
     blocks_remote_images,
     client_settings_dict,
 )
+from metabrowser.shell_glyphs import REFRESH_SVG
 from metabrowser.source import (
     ContentRef,
     SubjectNotOpenError,
@@ -2050,16 +2051,16 @@ async def index(
         else ""
     )
     # The Pulls tab's Refresh, at the top of the navigation pane just before the Metabrowser
-    # menu, an icon button as the menu's gear is. Its box is here from the first paint and
-    # stays while another tab is in front, hidden but holding its place, as a tab's panel is
-    # hidden behind it (static/main-tabs.js#activateNavPanel), so nothing in the header moves
-    # when Pulls shows. It waits, `aria-disabled`, until the list says what it can refresh:
-    # builtin_plugins/github/pulls-panel.js draws its glyph and wires it.
+    # menu, an icon button as the menu's gear is. It is here, glyph and all, from the first
+    # paint (shell_glyphs.py), and stays while another tab is in front, hidden but holding its
+    # place, as a tab's panel is hidden behind it (static/main-tabs.js#activateNavPanel), so
+    # nothing in the header appears or moves after the first paint. It waits, `aria-disabled`,
+    # until the list says what it can refresh: builtin_plugins/github/pulls-panel.js wires it.
     refresh_behind = "" if pulls_in_front else ' style="visibility: hidden"'
     pulls_refresh = (
         '\n        <button class="icon-btn nav-refresh" id="nav-refresh" type="button"'
         ' aria-label="Refresh" data-tip-text="Refresh" aria-disabled="true"'
-        f"{refresh_behind}></button>"
+        f"{refresh_behind}>{REFRESH_SVG}</button>"
         if pulls_tab
         else ""
     )

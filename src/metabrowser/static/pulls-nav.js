@@ -153,8 +153,8 @@
                 toolbar: deps.toolbar?.() ?? null,
                 // The band under it, which the list's count and connection lines fill.
                 metadata: deps.metadata?.() ?? null,
-                // The tab's Refresh at the top of the navigation, which the list draws and
-                // wires; the shell shows it while the tab is in front.
+                // The tab's Refresh at the top of the navigation, glyph and all, which the
+                // list wires; the shell shows it while the tab is in front.
                 refresh: deps.refresh?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
