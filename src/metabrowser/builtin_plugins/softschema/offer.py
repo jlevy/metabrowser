@@ -11,8 +11,13 @@ from pathlib import Path, PureWindowsPath
 
 from metabrowser.ignore_filter import IgnoreMode, make_ignore_filter
 
+# On Patch the Conference and Universe, the median offer took 0.01 ms at
+# the root and at most 0.22 ms in people/, over 20 reads with a warm filesystem.
+# The entry cap bounds shallow traversal even when the folder holds no records.
 _ENTRY_LIMIT = 40
 _SNIFF_BYTES = 4096
+# Resolving the sampled pointers in people/ took 14–26 ms on the same corpora,
+# after importing the reader. Reuse that inference within the refresh window.
 _POINTER_SAMPLE_LIMIT = 6
 _POINTER_BYTES = 64 * 1024
 _DATA_SUFFIXES = (".md", ".json", ".yaml", ".yml")
