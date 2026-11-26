@@ -109,7 +109,13 @@ import {
   textRouteOpening,
   titleHeading,
 } from "./pull-page.js";
-import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
+import {
+  STACK_OVERVIEW,
+  stackLabel,
+  stackMenuOrder,
+  stackPosition,
+  watchStacks,
+} from "./pull-stacks.js";
 import { listedState, PULL_STATES, STACK_STATE_ORDER } from "./pull-state.js";
 import { stackMemberRow } from "./stack-member-row.js";
 
@@ -1554,7 +1560,7 @@ export function mountStackPage(container, ctx, mb) {
       { class: "github-pull-state-icon github-pull-stack-title-icon", "aria-hidden": "true" },
       [layers === null ? null : document.importNode(layers, true)],
     ),
-    ["Stack"],
+    [STACK_OVERVIEW],
     number,
   );
   // The header's corner, which holds View on GitHub: the SDK's control, which asks the

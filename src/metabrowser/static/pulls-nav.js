@@ -26,7 +26,7 @@
    * the list and its filter.
    *
    * `file` is the changed file a page's address names, or null. `stack` is the stack whose
-   * own page the address is, whose Whole stack row the list marks, or null.
+   * own page the address is, whose Stack Overview row the list marks, or null.
    *
    * @param {MetabrowserPublicPullRouteRuntime} routes
    * @param {string} pathname
@@ -556,7 +556,7 @@
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
           }
-          // A Whole stack row's children are its stack's changed files, as a pull request's
+          // A Stack Overview row's children are its stack's changed files, as a pull request's
           // row's are its own: Space opens or closes them, and Enter opens the stack's page.
           if (target.matches(".github-pulls-whole-row")) {
             return event?.repeat === true || nav.toggleStackFiles(Number(target.dataset.stack));

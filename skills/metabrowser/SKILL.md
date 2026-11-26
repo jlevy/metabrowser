@@ -1032,9 +1032,9 @@ never the pair of the layer that carries it, so moving them to a new top is the 
 
 `--present` cannot name a stack’s page.
 To show the user the guide, present the top layer’s pull-request URL and tell them to
-choose **Whole stack** in its stack menu, or serve the repository’s URL with `--no-open`
-([Serve It](#serve-it)) and give them `<origin>/stack/<s>/guided`, `<origin>` being the
-start of the address on its `Serving <root> at <url>` line.
+choose **Stack Overview** in its stack menu, or serve the repository’s URL with
+`--no-open` ([Serve It](#serve-it)) and give them `<origin>/stack/<s>/guided`,
+`<origin>` being the start of the address on its `Serving <root> at <url>` line.
 `<invocation> <url> --show /stack/<s>` reports `guide=#N tab=guided` when the page opens
 on the guide, `N` being the layer that carries it.
 

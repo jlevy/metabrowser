@@ -74,7 +74,7 @@ import {
   stackMembership,
   stackPullsCount,
   stackRowKey,
-  WHOLE_STACK,
+  STACK_OVERVIEW,
   watchStacks,
   wholeStackHint,
   wholeStackOfKey,
@@ -637,7 +637,7 @@ function catalogMark(envelope) {
 
 /**
  * The row that holds the current-row mark once it moves from *previous* to *next*, from
- * *marked*, the row that held it: a pull request's mark and a Whole stack row's are given and
+ * *marked*, the row that held it: a pull request's mark and a Stack Overview row's are given and
  * taken in turn (`followPull`, `followStack`), so a mark that leaves clears only the row that
  * held it.
  *
@@ -768,15 +768,15 @@ function contentOf(envelope) {
  *
  * Its rows are grouped by stack (`groupByStack` in pull-stacks.js) once the stacks are known
  * for the list's own reader, and are in the list's order until then: a stack's row, "Stack #N",
- * then its Whole stack row and its pull requests, one level in, in `stackEntries`' order,
+ * then its Stack Overview row and its pull requests, one level in, in `stackEntries`' order,
  * then every pull request in no stack. The keys walk the rows as they are drawn. A stack's
  * row is a row of the tree as a folder is: J and K stop on it and open nothing, Enter and
- * Space open or close it, Right opens it or goes to its first row, its Whole stack row, and
- * Left closes it, or from a row in it goes to it. An open stack's Whole stack row opens the
+ * Space open or close it, Right opens it or goes to its first row, its Stack Overview row, and
+ * Left closes it, or from a row in it goes to it. An open stack's Stack Overview row opens the
  * stack's own page as a pull request's row opens its page, on J, K, and Enter, and its
  * children are the stack's changed files, as a pull request's row's are its own, which
  * Space, Right, and Left open and close in the panel (`mountPullsPanel`); here Left on it
- * goes to its stack's row. While the address is the stack's page the Whole stack row takes
+ * goes to its stack's row. While the address is the stack's page the Stack Overview row takes
  * the current-row mark (`setCurrent`'s *stack*). An address that names a pull request in a
  * stack the reader closed opens the stack over it (`showCurrent`).
  *
@@ -792,12 +792,12 @@ export function createPullsController(deps, options = {}) {
     : "open";
   /** @type {number | null} */
   let current = options.current ?? null;
-  /** The native stack whose own page the address names (`/stack/<n>`), whose Whole stack
+  /** The native stack whose own page the address names (`/stack/<n>`), whose Stack Overview
    * row takes the current-row mark; null at any other address.
    * @type {number | null} */
   let currentStack = null;
   /**
-   * Whether *currentStack*'s Whole stack row is still to be revealed: an address of the
+   * Whether *currentStack*'s Stack Overview row is still to be revealed: an address of the
    * stack's page can come before the list draws the row, before the stacks are known or a
    * read brings a member, and the row is revealed when it is drawn, as a pull request's row
    * is once the list holds it (*revealPending*).
@@ -1050,7 +1050,7 @@ export function createPullsController(deps, options = {}) {
     return list.rows[list.keys.get(number) ?? -1] ?? grouping().extra.get(number);
   }
 
-  /** The row of a closed stack that holds pull request *number*, or whose Whole stack row
+  /** The row of a closed stack that holds pull request *number*, or whose Stack Overview row
    * *number* keys, if one does. @param {number} number */
   function closedStackOf(number) {
     const whole = wholeStackOfKey(number);
@@ -1061,7 +1061,7 @@ export function createPullsController(deps, options = {}) {
     );
   }
 
-  /** The row key the current-row mark is on: the current pull request's, or the Whole stack
+  /** The row key the current-row mark is on: the current pull request's, or the Stack Overview
    * row of the stack whose page the address names. */
   function currentKey() {
     return current ?? (currentStack === null ? null : wholeStackRowKey(currentStack));
@@ -1946,7 +1946,7 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Show the Whole stack row of the stack whose page the address names, as a pull request's
+   * Show the Stack Overview row of the stack whose page the address names, as a pull request's
    * row is shown (`showCurrent`): its stack opens if the reader closed it, and the row scrolls
    * into view. A stack none of whose pull requests this list holds has no row to show.
    *
@@ -1962,7 +1962,7 @@ export function createPullsController(deps, options = {}) {
     revealWholeStack();
   }
 
-  /** Reveal the current stack's Whole stack row if it is still to be revealed and is drawn
+  /** Reveal the current stack's Stack Overview row if it is still to be revealed and is drawn
    * now (*wholeRevealPending*). */
   function revealWholeStack() {
     if (!wholeRevealPending || currentStack === null) {
@@ -1979,8 +1979,8 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Open the page of *stack*, as a row's open opens a pull request's (`openRow`): its Whole
-   * stack row takes the current-row mark at once, and the address follows. *replace* is a
+   * Open the page of *stack*, as a row's open opens a pull request's (`openRow`): its Stack
+   * Overview row takes the current-row mark at once, and the address follows. *replace* is a
    * key's, which replaces the history entry, as a skim of pull requests does.
    *
    * @param {number} stack
@@ -3184,8 +3184,8 @@ export function createPullsController(deps, options = {}) {
 
   /**
    * A pull request's row takes the current-row mark from whichever row held it, a stack's
-   * Whole stack row too, as `openStack` takes it the other way, so one row holds it: a walk
-   * from a stack's Whole stack row, which opens the stack's page, on to its pull requests
+   * Stack Overview row too, as `openStack` takes it the other way, so one row holds it: a walk
+   * from a stack's Stack Overview row, which opens the stack's page, on to its pull requests
    * leaves no second mark, and no stale stack page for `settleAnchor`, before the address
    * follows.
    *
@@ -3480,7 +3480,7 @@ export function createPullsController(deps, options = {}) {
     }
     const whole = wholeStackOfKey(key);
     if (whole !== null) {
-      // A Whole stack row opens its page as a pull request's row does: at once for a press,
+      // A Stack Overview row opens its page as a pull request's row does: at once for a press,
       // and for a held key once it stops there.
       clearWalk();
       anchorAt(key);
@@ -3555,8 +3555,8 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * The native stack whose page the address names, or null, for `setCurrent`: its Whole
-   * stack row takes the current-row mark and is shown as a pull request's row is, and shown
+   * The native stack whose page the address names, or null, for `setCurrent`: its Stack
+   * Overview row takes the current-row mark and is shown as a pull request's row is, and shown
    * again only *again*, by an open of the page shown.
    *
    * @param {number | null} stack
@@ -3625,7 +3625,7 @@ export function createPullsController(deps, options = {}) {
      * as another tab of its page or one of its changed files does, unless *again* says the
      * reader opened the pull request shown again: then its stack opens and its row scrolls
      * into view (docs/design-system.md, "Navigation Reveals the Item"). *stack*, with no
-     * pull request, is the native stack whose own page the address names, whose Whole stack
+     * pull request, is the native stack whose own page the address names, whose Stack Overview
      * row is marked and shown the same way.
      *
      * @param {number | null} number
@@ -3688,7 +3688,7 @@ export function createPullsController(deps, options = {}) {
       void openRow(number, 0, false, wasCurrent);
     },
     /**
-     * A reader pressed a stack's Whole stack row: it takes the anchor and opens the stack's
+     * A reader pressed a stack's Stack Overview row: it takes the anchor and opens the stack's
      * page.
      *
      * @param {number} stack
@@ -3706,8 +3706,8 @@ export function createPullsController(deps, options = {}) {
       }
       openStack(stack, false);
     },
-    /** Open the anchor row on Enter; on a stack's row, open or close the stack; on a Whole
-     * stack row, open the stack's page. */
+    /** Open the anchor row on Enter; on a stack's row, open or close the stack; on a Stack
+     * Overview row, open the stack's page. */
     activateAnchor() {
       if (disposed || anchor === null) {
         return false;
@@ -3778,8 +3778,8 @@ export function createPullsController(deps, options = {}) {
       }
     },
     setStackOpen,
-    /** Right on a stack's row: open it, or go to its first row, its Whole stack row, which opens
-     * the stack's page as J does. A Whole stack row's Right is its files' (`mountPullsPanel`). */
+    /** Right on a stack's row: open it, or go to its first row, its Stack Overview row, which opens
+     * the stack's page as J does. A Stack Overview row's Right is its files' (`mountPullsPanel`). */
     enterStack() {
       if (disposed || anchor === null || anchor >= 0 || wholeStackOfKey(anchor) !== null) {
         return false;
@@ -3789,7 +3789,7 @@ export function createPullsController(deps, options = {}) {
       }
       return true;
     },
-    /** Left on a stack's row closes it; on a pull request in a stack, or its Whole stack row, it
+    /** Left on a stack's row closes it; on a pull request in a stack, or its Stack Overview row, it
      * goes to the stack. Nothing opens. */
     leaveToStack() {
       if (disposed || anchor === null) {
@@ -4149,7 +4149,7 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
   /**
-   * A stack's Whole stack row as painted, by its row key (`wholeStackRowKey`): its item and
+   * A stack's Stack Overview row as painted, by its row key (`wholeStackRowKey`): its item and
    * its link, and the key of what it shows. `change` is the toggle of its stack's changed
    * files, its change line and the chevron after it, as a pull request's row's is; `line`
    * holds the stack's brief change line, or the pending placeholder while the stack's read
@@ -4168,7 +4168,7 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {Set<number>} */
   let stacksInView = new Set();
   /** A drawn row's treeitem by its key: a pull request's number, a stack's row key, or a
-   * Whole stack row's. */
+   * Stack Overview row's. */
   const rowElement = (/** @type {number} */ key) =>
     wholeStackOfKey(key) !== null
       ? paintedWholes.get(key)?.row
@@ -4177,7 +4177,7 @@ export function mountPullsPanel(container, ctx, mb) {
         : painted.get(key)?.row;
   /**
    * What a row's item is on screen: a pull request's lines, its zone, which hovers and
-   * takes the ring as one (mb-1z7j), or a stack's or a Whole stack row's one row.
+   * takes the ring as one (mb-1z7j), or a stack's or a Stack Overview row's one row.
    */
   const itemElement = (/** @type {number} */ key) =>
     key < 0 ? rowElement(key) : painted.get(key)?.zone;
@@ -4244,12 +4244,12 @@ export function mountPullsPanel(container, ctx, mb) {
   const tab = nav;
 
   // Which rows show their changed files, and each one's tree, by the row's key: a pull
-  // request's number, or a stack's Whole stack row's key (`wholeStackRowKey`), whose files
+  // request's number, or a stack's Stack Overview row's key (`wholeStackRowKey`), whose files
   // are the stack's combined ones. Open ones, and the last MAX_HELD_TREES closed, so one
   // opened again is as the reader left it.
   const expansion = createRowExpansion();
   /**
-   * The drawn row a tree hangs from, by its key: a pull request's or a Whole stack row's
+   * The drawn row a tree hangs from, by its key: a pull request's or a Stack Overview row's
    * item, its treeitem, and its toggle, the change line and the chevron after it.
    *
    * @param {number} key
@@ -4396,7 +4396,7 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * A row's tree, made the first time its files open: a pull request's own changed files,
-   * or, for a stack's Whole stack row, the stack's combined ones, the files its page's Diff
+   * or, for a stack's Stack Overview row, the stack's combined ones, the files its page's Diff
    * summary lists (stack-files.js), in the one tree both are drawn with. A stack's file
    * opens the stack's Changes at it.
    *
@@ -4834,8 +4834,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * Retain the logical row order and measurements; only the viewport builds DOM rows. The
-   * order is the list's, or, grouped by stack, the model's rows: each stack's row, its Whole
-   * stack row and its pull requests at the second level, then every pull request in no
+   * order is the list's, or, grouped by stack, the model's rows: each stack's row, its Stack
+   * Overview row and its pull requests at the second level, then every pull request in no
    * stack.
    *
    * @param {PullsModel} model
@@ -4857,7 +4857,7 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     } else {
       const byNumber = new Map(model.rows.map((row) => [row.number, row]));
-      /** The stack whose row was placed last, which its Whole stack row follows.
+      /** The stack whose row was placed last, which its Stack Overview row follows.
        * @type {import("./pull-stacks.js").NativeStack | null} */
       let stack = null;
       for (const entry of model.stacks.rows) {
@@ -4889,7 +4889,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * What a stack's Whole stack row shows of its change line now (stack-lines.js).
+   * What a stack's Stack Overview row shows of its change line now (stack-lines.js).
    *
    * @param {import("./pull-stacks.js").NativeStack} stack
    * @returns {import("./stack-lines.js").StackLineState}
@@ -4936,7 +4936,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * which the row's accessible name says first, and the age the newest of its listed pull
    * requests' (`stackUpdatedAt`); both are known when the row is first drawn, the stacks'
    * snapshot and the list's rows being what draws it, so the row has no pending state and
-   * nothing in it arrives later. The lines the stack changes are its Whole stack row's
+   * nothing in it arrives later. The lines the stack changes are its Stack Overview row's
    * (`paintWholeRow`), which carries the stack's Layers glyph too (mb-68uk), so this row
    * draws none. A row of the tree that opens and closes, as a folder is; it opens no page, so
    * it is not a link.
@@ -5023,11 +5023,11 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * Draw a stack's Whole stack row, the first under its open stack, beside its pull
+   * Draw a stack's Stack Overview row, the first under its open stack, beside its pull
    * requests' rows: a link to the stack's own page (`/stack/<n>`, stack-page.js), one line
    * in a member's row grid. The stack's Layers glyph, in the text's ink, is in the state
-   * icon's slot (mb-68uk), and "Whole stack" where the members' titles start; then, after a
-   * muted dot, the lines the stack changes, "Whole stack · +1,234 −567", the shell's brief
+   * icon's slot (mb-68uk), and "Stack Overview" where the members' titles start; then, after a
+   * muted dot, the lines the stack changes, "Stack Overview · +1,234 −567", the shell's brief
    * change line of its line totals alone, with no file statuses, as a pull request's row
    * says its own (`metabrowser.changeLine`; mb-lqkb), whose words the row's accessible name
    * says; then the registry's chevron, after the summary it expands, as a pull request's
@@ -5078,7 +5078,7 @@ export function mountPullsPanel(container, ctx, mb) {
             stackSvg === null ? null : document.importNode(stackSvg, true),
           ]),
           h("span", { class: "github-pulls-whole-line" }, [
-            h("span", { class: "github-pulls-title github-pulls-whole-title" }, [WHOLE_STACK]),
+            h("span", { class: "github-pulls-title github-pulls-whole-title" }, [STACK_OVERVIEW]),
             change,
           ]),
         ],
@@ -5111,7 +5111,7 @@ export function mountPullsPanel(container, ctx, mb) {
         // Its line totals alone, with no file statuses, a total of zero left out, as a pull
         // request's row says its own (mb-lqkb, mb-efum).
         const said = mb.changeLine(stackLineInput(line.change));
-        // "Whole stack · +1,234 −567": the dot is a count summary's separator, which the
+        // "Stack Overview · +1,234 −567": the dot is a count summary's separator, which the
         // name, saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:
         // the Diff summary's muted "(estimated)" follows them, and the name says so (B4 of
@@ -5129,7 +5129,7 @@ export function mountPullsPanel(container, ctx, mb) {
         // The shell's pending placeholder (`.tally-pending`), after the quiet period
         // (`.mb-delayed-loading`), where the line will be. It is hidden from the
         // accessibility tree, and the name says the change is pending, in the filter chips'
-        // words (review of #484, A5): "Whole stack, Stack #286: change pending".
+        // words (review of #484, A5): "Stack Overview, Stack #286: change pending".
         name = wholeStackHint(whole.stack, "change pending");
         entry.pending ??= h(
           "span",
@@ -5460,11 +5460,11 @@ export function mountPullsPanel(container, ctx, mb) {
         list.insertBefore(node, cursor);
       }
     }
-    // The stacks drawn, in the list's order, whose change lines are read, for their Whole
-    // stack rows; a hidden panel reads none. A stack is drawn where its own row or its Whole
-    // stack row is: a closed stack's line is read too, so the row has it when the stack
-    // opens, and so is one whose own row is scrolled out of the window above its Whole
-    // stack row.
+    // The stacks drawn, in the list's order, whose change lines are read, for their Stack
+    // Overview rows; a hidden panel reads none. A stack is drawn where its own row or its Stack
+    // Overview row is: a closed stack's line is read too, so the row has it when the stack
+    // opens, and so is one whose own row is scrolled out of the window above its Stack
+    // Overview row.
     stackLines?.want(
       panelShown
         ? [
@@ -5964,7 +5964,7 @@ export function mountPullsPanel(container, ctx, mb) {
           isVisible: () => document.visibilityState === "visible",
           now: () => Date.now(),
         });
-  // Each stack's brief change line, on its Whole stack row, the stack's combined change
+  // Each stack's brief change line, on its Stack Overview row, the stack's combined change
   // (stack-lines.js):
   // read for the stacks the list draws, when the browser is idle, once for each stack's
   // members and their heads, within the lines' own hourly cap, and drawn through the SDK's one
@@ -6059,7 +6059,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A pull request's row, not a stack's Whole stack row, which is a row link too.
+   * A pull request's row, not a stack's Stack Overview row, which is a row link too.
    * @param {EventTarget | null} target
    */
   const rowOf = (target) => {
@@ -6077,7 +6077,7 @@ export function mountPullsPanel(container, ctx, mb) {
       : null;
 
   /**
-   * Focus *number*'s row, a pull request's or a Whole stack row by its key, the item's one
+   * Focus *number*'s row, a pull request's or a Stack Overview row by its key, the item's one
    * stop, reading nothing and opening nothing: after a press on its toggle, or Left from the
    * top of its files. The pointer is on the item, or the files were under it, so nothing
    * scrolls.
@@ -6203,7 +6203,7 @@ export function mountPullsPanel(container, ctx, mb) {
     { signal },
   );
   // A middle press on a row's toggle opens no tab either: the toggle is the item's link's only
-  // part that is not the link's, a pull request's row's and a Whole stack row's alike.
+  // part that is not the link's, a pull request's row's and a Stack Overview row's alike.
   list.addEventListener(
     "auxclick",
     (event) => {
@@ -6444,7 +6444,7 @@ export function mountPullsPanel(container, ctx, mb) {
     },
     /** Space on a stack's row opens or closes it. @param {number} number */
     toggleStack: (number) => controller.setStackOpen(number),
-    /** Space on a stack's Whole stack row toggles the stack's files in place, as it does a
+    /** Space on a stack's Stack Overview row toggles the stack's files in place, as it does a
      * pull request's on its row. @param {number} stack */
     toggleStackFiles(stack) {
       const key = wholeStackRowKey(stack);
@@ -6455,9 +6455,9 @@ export function mountPullsPanel(container, ctx, mb) {
       return true;
     },
     /**
-     * Right, as on a folder: on a pull request's row, or a stack's Whole stack row, its
+     * Right, as on a folder: on a pull request's row, or a stack's Stack Overview row, its
      * files open, or, open, focus goes to the first. On a stack's row: it opens, or focus
-     * goes to its first row, Whole stack.
+     * goes to its first row, Stack Overview.
      */
     expand() {
       anchorFocusedRow();
@@ -6479,7 +6479,7 @@ export function mountPullsPanel(container, ctx, mb) {
       return true;
     },
     /**
-     * Left, as on a folder: on a pull request's row, or a stack's Whole stack row, its open
+     * Left, as on a folder: on a pull request's row, or a stack's Stack Overview row, its open
      * files close, or, closed, focus goes to the stack's row it is under. On a stack's row:
      * it closes.
      */

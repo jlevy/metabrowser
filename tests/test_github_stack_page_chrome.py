@@ -10,7 +10,7 @@ while the delayed loading block, on this page and on a pull request's, stays whe
 shows; that the running app gives every member its author, merged 8 too, and marks no
 member current, since none is the page; that the Diff summary is closed; that View on
 GitHub opens the whole stack; that the tabs are a pull request's without Files; and that
-the Pulls tab's Whole stack row is current and in view while the page is open and opens it.
+the Pulls tab's Stack Overview row is current and in view while the page is open and opens it.
 A stack still being fetched is not measured: its status line says what is being fetched
 and then goes, which moves the lines under it. A member row is not measured against the
 menu's either: the page draws it with the stack menu's builder (`stackMemberRow`), so it is

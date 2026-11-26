@@ -708,7 +708,7 @@ def test_golden_stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_orig
     )
     assert json.loads(json.dumps(current)) == current
     # The comparison `current` names, as its route gave it: what the Pulls tab reads for the
-    # Whole stack row's files, whose rows tests/dom/github-pulls-stack-files-session.js has
+    # Stack Overview row's files, whose rows tests/dom/github-pulls-stack-files-session.js has
     # the diff view make of it (`summaryRows`).
     check_recording(
         "github-stack-comparison-responses.json",

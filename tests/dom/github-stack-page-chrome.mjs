@@ -294,19 +294,31 @@ try {
     `fetch("/api/plugin/github/stack?number=${number}", {cache: "no-store"}).then((r) => r.json()).then((a) => a.state)`;
   await waitFor(`${stackState(70)}.then((state) => state === "current")`);
   phase("members read");
-  // The reader's way to the stack's page: the stack menu's Whole stack row, on 10's page.
+  // The reader's way to the stack's page: the stack menu's Stack Overview row, on 10's page.
   await waitFor(
     `document.querySelector(".github-pull-stack-trigger:not(.github-pull-stack-strut)") !== null`,
   );
   await click(".github-pull-stack-trigger:not(.github-pull-stack-strut)");
   await waitFor(`document.querySelector(".github-pull-stack-whole") !== null`);
+  check(
+    "the stack menu names the Stack Overview",
+    await evaluate(
+      `document.querySelector(".github-pull-stack-whole .github-pull-stack-member-title")?.textContent === "Stack Overview"`,
+    ),
+  );
   const opened = await record("open-stack", ".github-pull-stack-page", () =>
     click(".github-pull-stack-whole"),
   );
   await waitFor(pageReady);
   await frames();
   phase("stack 70");
-  // Opened from the menu, the stack's Whole stack row in the Pulls tab is the current row
+  check(
+    "the stack page title names Stack Overview and keeps its number",
+    await evaluate(
+      `document.querySelector(".github-pull-stack-page h1")?.textContent === "Stack Overview #70"`,
+    ),
+  );
+  // Opened from the menu, the stack's Stack Overview row in the Pulls tab is the current row
   // and in view. Here the list draws the row only after the address names the page; until
   // its reveal waited for the row (`wholeRevealPending`), it was marked but left 3,745 px
   // above the view (mb-cm31).
@@ -322,7 +334,7 @@ try {
   })()`);
   measured.wholeFromMenu = fromMenu;
   check(
-    "opened from the menu, the Pulls tab's Whole stack row is current and in view",
+    "opened from the menu, the Pulls tab's Stack Overview row is current and in view",
     fromMenu.top >= fromMenu.viewTop - 1 && fromMenu.bottom <= fromMenu.viewBottom + 1,
     JSON.stringify(fromMenu),
   );
@@ -734,13 +746,13 @@ try {
   await frames();
   phase("pulls");
   await shot(`stack-70-with-pulls`);
-  // The Pulls tab's Whole stack row (mb-cm31, mb-odt4): the first of Stack #70's rows, its
+  // The Pulls tab's Stack Overview row (mb-cm31, mb-odt4): the first of Stack #70's rows, its
   // members beside it at one level, the current row while the stack's page is open, and in view.
   const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
   const NAV = `(() => {
     const whole = ${WHOLE};
     if (whole === null) return null;
-    // The stack's rows: the second-level items after its stack's row, its Whole stack row
+    // The stack's rows: the second-level items after its stack's row, its Stack Overview row
     // first, then its members, to the next row a level out.
     const members = [];
     const first = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
@@ -767,9 +779,9 @@ try {
   const nav = await evaluate(NAV);
   measured.nav = { open: nav };
   check(
-    "the Pulls tab's Whole stack row is the first of Stack #70's rows, its members beside it, and links to its page",
+    "the Pulls tab's Stack Overview row is the first of Stack #70's rows, its members beside it, and links to its page",
     nav?.under &&
-      nav.text === "Whole stack" &&
+      nav.text === "Stack Overview" &&
       nav.href === "/stack/70" &&
       nav.members.length > 0 &&
       nav.members.every((number) => [10, 8].includes(number)) &&
@@ -782,7 +794,7 @@ try {
     JSON.stringify(nav),
   );
   const last = nav?.members.at(-1);
-  // A member's row takes the mark; a press on the Whole stack row opens the stack's page
+  // A member's row takes the mark; a press on the Stack Overview row opens the stack's page
   // again and gives it back; and J from the stack's row walks onto it and opens the page.
   await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
   await waitFor(
@@ -820,7 +832,7 @@ try {
     JSON.stringify(measured.nav),
   );
   await shot(`stack-70-whole-row`);
-  // The Whole stack row's change line and the chevron after it open the stack's changed
+  // The Stack Overview row's change line and the chevron after it open the stack's changed
   // files under it (mb-odt4): the files the page's Diff summary lists, the same rows in the
   // same order, and the press opens no page.
   const SUMMARY_ROWS = `[...document.querySelectorAll(".github-pull-stack-page .github-pull-summary .changed-file-row[data-id]")].map((row) => row.dataset.id)`;
@@ -846,7 +858,7 @@ try {
     nav: await evaluate(NAV_ROWS),
     address: await evaluate("location.pathname"),
     expanded: await evaluate(`${WHOLE}.getAttribute("aria-expanded")`),
-    // The files hang under the Whole stack row's item, a level in from it.
+    // The files hang under the Stack Overview row's item, a level in from it.
     levels: await evaluate(
       `[${WHOLE}.getAttribute("aria-level"), document.querySelector('#tab-pulls .github-pulls-whole-item > .github-pull-files .changed-file-row')?.getAttribute("aria-level") ?? null]`,
     ),
@@ -854,7 +866,7 @@ try {
   };
   measured.nav.files = stackFiles;
   check(
-    "a press on the Whole stack row's change line lists the stack's files under it, the Diff summary's own, and opens no page",
+    "a press on the Stack Overview row's change line lists the stack's files under it, the Diff summary's own, and opens no page",
     stackFiles.nav.length > 0 &&
       JSON.stringify(stackFiles.nav) === JSON.stringify(stackFiles.summary) &&
       stackFiles.address === "/stack/70" &&

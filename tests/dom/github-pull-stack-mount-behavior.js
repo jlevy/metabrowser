@@ -305,7 +305,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   disclosure.open = true;
   disclosure.events.get("toggle")();
   const members = warm.querySelector(".github-pull-stack-menu");
-  // The menu's links: Whole stack first (mb-vad1), then the members.
+  // The menu's links: Stack Overview first (mb-vad1), then the members.
   const allLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
   const memberLinks = () =>
     allLinks().filter((item) => item.getAttribute("class")?.includes("github-pull-stack-member"));
@@ -313,7 +313,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     allLinks().map((item) => item.getAttribute("href")),
     ["/stack/286", "/pull/8/files", "/pull/7/files", "/pull/6/files"],
   );
-  assert.equal(allLinks()[0].textContent, "Whole stack");
+  assert.equal(allLinks()[0].textContent, "Stack Overview");
   assert.deepEqual(
     memberLinks().map((item) => item.textContent),
     [
@@ -486,7 +486,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert(following);
   assert.equal(anchors[2].getAttribute("aria-current"), "page");
   // Each member's author follows its number, after a dot (mb-x0z1): the page's own for the pull
-  // request it shows, and the stack's for the others, #6 and #8 here. The Whole stack row has
+  // request it shows, and the stack's for the others, #6 and #8 here. The Stack Overview row has
   // the stack's glyph in the icon's slot (mb-7cn4).
   const byOf = (anchor) =>
     [...anchor.descendants()].find(
@@ -819,12 +819,12 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     wholeLinks.map((link) => link.getAttribute("href")),
     ["/stack/90", "/pull/8", "/pull/7", "/pull/6"],
   );
-  assert.equal(wholeLinks[0].textContent, "Whole stack");
+  assert.equal(wholeLinks[0].textContent, "Stack Overview");
   assert.equal(wholeLinks[0].getAttribute("role"), "menuitem");
   assert.equal(wholeLinks[0].getAttribute("aria-current"), null);
   assert.equal(document.activeElement, wholeLinks[2], "Down opens at the current member");
   wholeKey("Home");
-  assert.equal(document.activeElement, wholeLinks[0], "Home reaches Whole stack");
+  assert.equal(document.activeElement, wholeLinks[0], "Home reaches Stack Overview");
   wholeKey("Escape");
   whole.dispose();
   for (const listener of documentEvents.get("pointerdown")) {

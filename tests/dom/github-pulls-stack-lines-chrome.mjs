@@ -1,6 +1,6 @@
-// Each stack's brief change line in the Pulls tab, on its Whole stack row (mb-tvhs), laid out
+// Each stack's brief change line in the Pulls tab, on its Stack Overview row (mb-tvhs), laid out
 // by headless Chrome: the production panel module and its stylesheets, mounted on recorded
-// answers. "Heading" below is the row's one line, "Whole stack" and then the change line;
+// answers. "Heading" below is the row's one line, "Stack Overview" and then the change line;
 // the stack's own row, its label, its size, and its age, is read beside it (`stack`).
 //
 //   CHROME_BIN=/path/to/chrome KPRESS_STATIC=/dir/with/css/and/fonts \
@@ -242,7 +242,7 @@ const MOUNT = `async (width, theme, fresh = true) => {
   return true;
 }`;
 
-// In the page: each stack's Whole stack row's geometry and what it shows, read from its
+// In the page: each stack's Stack Overview row's geometry and what it shows, read from its
 // row's top, and the geometry and text of the stack's own row (`stack`).
 const READ = `(() => {
   const box = (el) => {
@@ -539,7 +539,7 @@ async function main() {
           );
           check(
             `${at}: the name says the line's totals in words`,
-            now.name === "Whole stack, Stack #286: 5 lines added",
+            now.name === "Stack Overview, Stack #286: 5 lines added",
             now.name,
           );
           for (const [part, ink] of Object.entries(inks.reference)) {
@@ -712,7 +712,7 @@ async function main() {
           now.line.right <= now.change.right + TOLERANCE_PX;
         check(
           `${at}: the heading says "0 lines", and its name "no lines changed"`,
-          now.text === "·0 lines" && now.name === "Whole stack, Stack #286: no lines changed",
+          now.text === "·0 lines" && now.name === "Stack Overview, Stack #286: no lines changed",
           JSON.stringify({ text: now.text, name: now.name }),
         );
         check(

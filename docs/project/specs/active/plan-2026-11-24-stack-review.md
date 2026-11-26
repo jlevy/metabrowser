@@ -275,7 +275,7 @@ GitHub’s own page of a stack.
 - **The front page** `/stack/<n>` is Guided Review when the stack has a guide, and Files
   otherwise. The `stack` answer says which, from the server’s reading of the
   descriptions, so the page needs no hint of its own.
-- **Entry points:** a first row, **Whole stack**, in each member’s stack menu.
+- **Entry points:** a first row, **Stack Overview**, in each member’s stack menu.
   The Pulls tab’s **Stack #N** heading was planned as one too; phase 1 does not build
   it, since that heading is the stack row’s disclosure toggle.
   Opening a GitHub stack link with `metab` or in the app, as a pull request’s link
@@ -296,8 +296,8 @@ the header’s Diff summary lists the files as on a pull request’s page, and
 `/stack/<n>/files` is no route; its front page without a guide is Changes; no file row
 or bar carries layer chips, and the diff view’s `fileMarks` hook that drew them is gone;
 View on GitHub opens GitHub’s `stack/<n>`, the address the counterpart route answers;
-and the Pulls tab lists the page as each open stack’s last row, **Whole stack**, which
-mb-4gcj moved to the stack’s first row, the stack menu’s place for it.
+and the Pulls tab lists the page as each open stack’s last row, **Stack Overview**,
+which mb-4gcj moved to the stack’s first row, the stack menu’s place for it.
 
 **Why a page and not a switch on each pull request.** A pull request’s Changes and Docs
 carry a state machine that follows one comparison’s head (`filesAction`, `followedFrom`,

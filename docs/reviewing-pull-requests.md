@@ -99,7 +99,7 @@ by default, top of the stack first; pull requests in no stack follow, and a stac
 opens and closes like a folder.
 The row shows how many pull requests the stack has and how long ago one of them last
 changed, such as **Stack #286 · 4 pulls** and **2h**. Under it, beside the stack’s pull
-requests, **Whole stack** shows the lines the whole stack changes; press that line or
+requests, **Stack Overview** shows the lines the whole stack changes; press that line or
 the chevron after it to list every file the stack changes, as the stack’s page does, and
 press anywhere else on the row to open that page.
 A member’s row shows its place after its title and before its number, such as **Fix the
@@ -118,19 +118,20 @@ browser’s, use the menu.
 Without the extension, or when GitHub cannot answer, pull requests read as usual and the
 list stays flat, unless stacks are cached.
 
-**Whole stack**, the first row in the menu and under each open stack in the Pulls tab,
-opens the stack’s own page, laid out as a pull request’s page for the whole stack, each
-line saying of all its pull requests what a pull request’s says of one: how many are in
-each state, such as **2 Pulls Open**, and when one was last opened and last updated;
-their authors and commits; the top member’s head branch → the stack’s base; their
-labels; the commits, files, and size of the stack’s combined change; the pull requests
-themselves under **N Pulls**, top first, each as the menu lists it, closed at first as
-the Diff summary is; then the Diff summary of that change, and **Docs** and **Changes**
-of it, with **Guided Review** first when the stack has a guide.
+**Stack Overview**, the first row in the menu and under each open stack in the Pulls
+tab, opens the stack’s own page, laid out as a pull request’s page for the whole stack,
+each line saying of all its pull requests what a pull request’s says of one: how many
+are in each state, such as **2 Pulls Open**, and when one was last opened and last
+updated; their authors and commits; the top member’s head branch → the stack’s base;
+their labels; the commits, files, and size of the stack’s combined change; the pull
+requests themselves under **N Pulls**, top first, each as the menu lists it, closed at
+first as the Diff summary is; then the Diff summary of that change, and **Docs** and
+**Changes** of it, with **Guided Review** first when the stack has a guide.
 **View on GitHub** there opens the stack on github.com.
-While that page is open, the stack’s **Whole stack** row in the Pulls tab is marked as
-the current row, as a pull request’s row is on its page; J and K stop on it and open the
-page, as they open a pull request’s. Metabrowser reads stacks and never changes them.
+While that page is open, the stack’s **Stack Overview** row in the Pulls tab is marked
+as the current row, as a pull request’s row is on its page; J and K stop on it and open
+the page, as they open a pull request’s. Metabrowser reads stacks and never changes
+them.
 
 ## The Pull Request Page
 
@@ -377,8 +378,9 @@ another fence, as in the example above, is not a guide even where the tab appear
 
 A native stack can have a guide of its own: one guided review of the whole stack, read
 against the stack’s comparison, from its bottom layer’s merge base to its top layer’s
-head. The stack’s page, which **Whole stack** in the stack menu opens, then leads with a
-**Guided Review** tab and opens on it; without a guide it opens on Changes.
+head.
+The stack’s page, which **Stack Overview** in the stack menu opens, then leads with
+a **Guided Review** tab and opens on it; without a guide it opens on Changes.
 
 To publish one, add one top-level `stack-review` block, in the format above, to a
 layer’s description, usually the top layer’s, beside that layer’s own `guided-review`

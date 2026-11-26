@@ -69,7 +69,7 @@ import {
   stackMenuOrder,
   stackPosition,
   stackPositionHint,
-  WHOLE_STACK,
+  STACK_OVERVIEW,
   watchStacks,
 } from "./pull-stacks.js";
 import {
@@ -4887,7 +4887,7 @@ export function stackMemberAuthor(stack, at, own) {
  * (docs/design-system.md, "Keys in a Menu"); Escape closes it and gives focus back to the
  * trigger.
  *
- * With `wholeStack`, the menu's first row, **Whole stack**, opens the stack's own page
+ * With `wholeStack`, the menu's first row, **Stack Overview**, opens the stack's own page
  * (`/stack/<n>`, stack-page.js), before the members, in `stackEntries`' order, which an open
  * stack's rows in the Pulls tab take too, and in a member's row grid: the stack's Layers
  * glyph in the icon's slot, and its words where every member's title starts (mb-7cn4).
@@ -4962,13 +4962,13 @@ export function createStackMenu(initial, number, deps) {
     stackLabel(stack.number),
   ]);
   const group = h("div", { class: "menu-group" });
-  /** The Whole stack row, made once, for the stack the menu was made for. It is no member,
+  /** The Stack Overview row, made once, for the stack the menu was made for. It is no member,
    * so it takes none of a member's classes, and the keys move over it as over a member.
    * @type {HTMLElement | null} */
   let whole = null;
   let populated = false;
 
-  // The Whole stack row is in a member's row grid (github/styles.css,
+  // The Stack Overview row is in a member's row grid (github/styles.css,
   // `.github-pull-stack-whole`; mb-7cn4): the stack's Layers glyph in the state icon's slot,
   // as a Pulls stack's row has it, and its words where every member's title starts.
   function wholeRow() {
@@ -4982,7 +4982,7 @@ export function createStackMenu(initial, number, deps) {
           deps.icon === null ? null : document.importNode(deps.icon, true),
         ]),
         h("span", { class: "github-pull-stack-member-copy" }, [
-          h("span", { class: "github-pull-stack-member-title" }, [WHOLE_STACK]),
+          h("span", { class: "github-pull-stack-member-title" }, [STACK_OVERVIEW]),
         ]),
       );
     }
@@ -5032,7 +5032,7 @@ export function createStackMenu(initial, number, deps) {
     }
     links.length = 0;
     // The stack's rows in the one order the Pulls tab's open stack has them too
-    // (`stackEntries`): the Whole stack row, where the menu has one, then the members.
+    // (`stackEntries`): the Stack Overview row, where the menu has one, then the members.
     for (const target of stackEntries(stackMenuOrder(stack))) {
       if (target === null) {
         const entry = wholeRow();
