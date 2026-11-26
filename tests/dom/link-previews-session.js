@@ -576,6 +576,26 @@ function cards(page) {
     checkCard(html, "#12", preview);
     rows.push({ label: name, linkText: "#12", preview, authorTitle, text: lines(html) });
   }
+  // An author's title is the author's, never the app's: set apart in quotation marks, and
+  // never in place of what the link opens, even where the link's text is that identity and
+  // the title says what the app would.
+  for (const [name, subject, linkText, authorTitle] of [
+    ["an author's title in the app's words", file, "docs/guide.md", "Not in the served files"],
+    ["an author's title where the link's text is its identity", pull, "Pull request #12", "Go"],
+  ]) {
+    const html = previews.card(subject, null, { linkText, authorTitle });
+    const said = lines(html).split(" | ");
+    const named = said[0].replace(/^\[[^\]]+\] /, "");
+    assert(
+      named === (subject.kind === "pull" ? "Pull request #12" : subject.path),
+      `an author's title took the place of the link's identity: ${html}`,
+    );
+    assert(
+      said[1] === `\u201c${authorTitle}\u201d`,
+      `an author's title was not set apart as the author's: ${html}`,
+    );
+    rows.push({ label: name, linkText, authorTitle, text: lines(html) });
+  }
   // The link's own text is never said again, in any case and spacing.
   for (const [name, subject, preview, linkText] of [
     [

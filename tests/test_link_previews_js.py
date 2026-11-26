@@ -84,6 +84,9 @@ def test_a_card_never_says_its_links_text_again() -> None:
         said = [_fold(line) for line in _lines(row["html"])] if "html" in row else []
         for line in row.get("text", "").split(" | "):
             said.append(_fold(re.sub(r"^\[[^\]]+\] ", "", line)))
+        if row.get("authorTitle") and f"“{_fold(row['authorTitle'])}”" in said:
+            # A card that quotes its author keeps its identity first, whatever the link says.
+            said = said[1:]
         assert _fold(row["linkText"]) not in said, row["label"]
 
 
@@ -109,6 +112,21 @@ def test_a_card_claims_a_state_only_its_data_gives() -> None:
     assert after["a state the card does not know"].startswith("[pull] ")
     assert after["a draft"].startswith("[draft] ")
     assert session["states"]["beforeTheGlyphsLoad"].startswith("[pull] ")
+
+
+def test_an_authors_title_is_the_authors_and_never_the_identitys() -> None:
+    """An author's title is quoted as the author's, and never stands where the card names
+    what the link opens, even where the link's text is that name."""
+
+    rows = [row for row in _session()["cards"] if row.get("authorTitle")]
+    assert rows
+    for row in rows:
+        said = [re.sub(r"^\[[^\]]+\] ", "", line) for line in row["text"].split(" | ")]
+        quoted = f"“{row['authorTitle']}”"
+        assert row["authorTitle"] not in said, row["label"]
+        if quoted in said:
+            assert said.index(quoted) > 0, row["label"]
+            assert not said[0].startswith("“"), row["label"]
 
 
 def test_a_providers_text_is_never_markup() -> None:

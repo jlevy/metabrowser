@@ -57,6 +57,10 @@
   /** A pull request's tabs, as its page names them (builtin_plugins/github/pull-page.js). */
   const TAB_NAMES = Object.freeze({ files: "Changes", checks: "Checks" });
   const SEPARATOR = " · ";
+  // What sets an author's title apart as the author's words (docs/design-system.md,
+  // "Tooltips on Links").
+  const OPEN_QUOTE = "\u201c";
+  const CLOSE_QUOTE = "\u201d";
 
   // ── Vocabulary ─────────────────────────────────────────────────
 
@@ -293,12 +297,15 @@
    * 1. `.tip-name`: the object's identity, "Pull request #12 · Changes · src/app.py",
    *    "Stack #3", "Commit a1b2c3d", a path, or "Pull requests";
    * 2. the object's title, as every title is drawn (`titleHtml`, static/formatters.js);
-   * 3. the author's title, which the surface took off the link;
+   * 3. the author's title, which the surface took off the link, in quotation marks, since
+   *    it is the author's words and never the app's;
    * 4. `.tip-detail`: the provider's detail;
    * 5. `.tip-detail`: where it opens, or the provider's `missing`, always.
    *
    * The first line the card keeps leads with the object's mark (`.link-card-name`), so a
-   * link whose text is the identity still shows the state its data gives.
+   * link whose text is the identity still shows the state its data gives. A card that says
+   * an author's title keeps the identity even then, so the author's words never stand in
+   * the place of what the app says the link opens.
    *
    * A pull request's mark is its state's glyph only where *preview* gives the state, and
    * the neutral one otherwise: the address alone never establishes a state. Both are the
@@ -331,14 +338,21 @@
     /** @type {Array<[string, string]>} Each line's class and markup. */
     const lines = [];
     const name = identity(target);
-    if (adds(name.text)) {
+    const authored = fold(options.authorTitle);
+    // Whether the card says the author's title: words of its own, not the link's text, its
+    // identity, or the object's title.
+    const speaks =
+      authored !== "" &&
+      ![options.linkText, name.text, answer?.title].some((said) => fold(said) === authored);
+    if (adds(name.text) || speaks) {
       lines.push(["tip-name", name.html]);
     }
     if (answer?.title && adds(answer.title)) {
       lines.push(["link-card-title", titleHtml(answer.title)]);
     }
-    if (options.authorTitle && adds(options.authorTitle)) {
-      lines.push(["link-card-title", escapeHtml(options.authorTitle)]);
+    if (speaks && adds(options.authorTitle)) {
+      const words = String(options.authorTitle).trim();
+      lines.push(["link-card-title", `${OPEN_QUOTE}${escapeHtml(words)}${CLOSE_QUOTE}`]);
     }
     if (answer?.detail && adds(answer.detail)) {
       lines.push(["tip-detail", escapeHtml(answer.detail)]);

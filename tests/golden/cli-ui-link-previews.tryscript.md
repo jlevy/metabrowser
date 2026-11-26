@@ -419,7 +419,7 @@ $ node tests/dom/link-previews-session.js
    "linkText": "#12",
    "preview": null,
    "authorTitle": "Read this first",
-   "text": "[pull] Pull request #12 | Read this first | Opens here in Metabrowser"
+   "text": "[pull] Pull request #12 | “Read this first” | Opens here in Metabrowser"
   },
   {
    "label": "an author's title beside the object's",
@@ -428,7 +428,7 @@ $ node tests/dom/link-previews-session.js
     "title": "fix(parser): keep a heading's trailing text"
    },
    "authorTitle": "Read this first",
-   "text": "[pull] Pull request #12 | fix(parser): keep a heading's trailing text | Read this first | Opens here in Metabrowser"
+   "text": "[pull] Pull request #12 | fix(parser): keep a heading's trailing text | “Read this first” | Opens here in Metabrowser"
   },
   {
    "label": "an author's title that is the object's",
@@ -438,6 +438,18 @@ $ node tests/dom/link-previews-session.js
    },
    "authorTitle": "FIX(PARSER): KEEP A HEADING'S TRAILING TEXT",
    "text": "[pull] Pull request #12 | fix(parser): keep a heading's trailing text | Opens here in Metabrowser"
+  },
+  {
+   "label": "an author's title in the app's words",
+   "linkText": "docs/guide.md",
+   "authorTitle": "Not in the served files",
+   "text": "[md] docs/guide.md | “Not in the served files” | Opens here in Metabrowser"
+  },
+  {
+   "label": "an author's title where the link's text is its identity",
+   "linkText": "Pull request #12",
+   "authorTitle": "Go",
+   "text": "[pull] Pull request #12 | “Go” | Opens here in Metabrowser"
   },
   {
    "label": "the link's text is the title",
