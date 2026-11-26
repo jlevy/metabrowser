@@ -20,7 +20,8 @@ status: 200
   "files": [],
   "guide": null,
   "github_url": null,
-  "probe": null
+  "probe": null,
+  "moved": null
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -215,7 +216,8 @@ status: 200
   "files": [],
   "guide": null,
   "github_url": "https://github.com/octo/demo/pull/10",
-  "probe": null
+  "probe": null,
+  "moved": null
 }
 --- stderr ---
 --- gh ---
@@ -340,7 +342,8 @@ status: 200
     "number": 10,
     "held": "1f5deb5aaaba5bf66d652ec3295bbd460eb6f34d9ffd5aef32e7f077f76294ad",
     "every_s": 5.0
-  }
+  },
+  "moved": null
 }
 --- stderr ---
 --- gh ---

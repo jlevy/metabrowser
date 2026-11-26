@@ -114,6 +114,13 @@ MAX_KEPT_STACK_COMPARISONS: Final = 8
 # one path string, 1.74 MB with a copy each. The largest stack cached that day had 46
 # members, which ask 47 (one a member and one for the base), so the bound holds about 87.
 MAX_KEPT_ANCESTRIES: Final = 4096
+# Counts of the commits a member's new head adds, kept for the process the same way: one per
+# member whose head moved since the comparison a page drew, which every poll of that page
+# asks again, and they never change, since all four ends are commit IDs. Measured
+# 2026-11-25 with tracemalloc on Python 3.14.7 (arm64, macOS, load average 89): 4,096
+# entries keyed by a 66-character store path and four 40-character IDs, each holding its
+# count, held 2.16 MB sharing one path string, 2.43 MB with a copy each.
+MAX_KEPT_COUNTS: Final = 4096
 # Stack snapshots kept parsed, by file stamp: one per served repository, and a page's
 # images and rendered documents each ask for admission, which reads it.
 _MAX_KEPT_SNAPSHOTS: Final = 4
@@ -200,6 +207,29 @@ class StackGuideWire(TypedDict):
     revision: str
 
 
+class MemberMoveWire(TypedDict):
+    """A member whose head moved since the comparison a page drew."""
+
+    number: int
+    # The commits the new head adds that the comparison drawn did not hold, in neither the
+    # earlier head's history nor its top's, and that its merge base does not hold, so a base
+    # branch merged in counts as its one merge commit; 0 when the drawn top already held the
+    # new head and not the earlier one, as it does for a record that lagged and caught up,
+    # whether or not its earlier head is in the new one's history; None when that earlier
+    # head is not (the branch was rewritten), or the store cannot say, so no count says what
+    # is new.
+    commits: int | None
+
+
+class StackMovedWire(TypedDict):
+    """What moved since the comparison ``since`` names, which a page drew earlier: each
+    member, in both, whose head moved, bottom first. Members added or gone, and members
+    merged or closed, are the page's to see in the two answers' ``members``."""
+
+    since: str
+    members: list[MemberMoveWire]
+
+
 class StackEnvelope(TypedDict):
     """What ``GET /api/plugin/github/stack`` answers."""
 
@@ -228,6 +258,11 @@ class StackEnvelope(TypedDict):
     # The top member's automatic ask, which keeps the repository's list probed while the
     # stack's page is all that is open, so the catalog reports every member's head.
     probe: StackProbeWire | None
+    # Asked with ``since``, the digest of a comparison the route gave before: how each
+    # member's head moved from it to this one, which the page's notice of a new comparison
+    # says. None without ``since``, when it is this comparison, when the stack is not
+    # current, or when the route no longer keeps that comparison.
+    moved: StackMovedWire | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,6 +464,67 @@ async def _contains(target: RepositoryStoreTarget, ancestor: str, commit: str) -
     while len(_ANCESTRIES) > MAX_KEPT_ANCESTRIES:
         _ANCESTRIES.popitem(last=False)
     return answer
+
+
+_COUNTS: OrderedDict[tuple[str, str, str, str, str], int] = OrderedDict()
+
+
+async def _added(
+    target: RepositoryStoreTarget, earlier: str, head: str, base: str, drawn: str
+) -> int | None:
+    """The commits *head* adds to *earlier* that neither *drawn*, the top of the comparison
+    drawn, nor *base* holds: 0 when *drawn* holds *head* and not *earlier*, a record that
+    caught up to what the comparison drawn shows, as each member's does after its branch is
+    rebased under a top read first; otherwise a count when *earlier* is in *head*'s
+    history; ``None`` when it is not, a branch rewritten, or when the store cannot say. A
+    count is kept: all four ends are commit IDs."""
+
+    if (
+        await _contains(target, head, drawn) is True
+        and await _contains(target, earlier, drawn) is False
+    ):
+        return 0
+    held = await _contains(target, earlier, head)
+    if held is not True:
+        return None
+    key = (str(target.git_dir), earlier, head, base, drawn)
+    known = _COUNTS.get(key)
+    if known is not None:
+        _COUNTS.move_to_end(key)
+        return known
+    try:
+        raw = await run_git_at(
+            ["rev-list", "--count", head, f"^{earlier}", f"^{drawn}", f"^{base}"],
+            GitLocation.revision(target, head),
+        )
+        count = int(raw.strip())
+    except (GitCommandError, ValueError):
+        return None
+    _COUNTS[key] = count
+    while len(_COUNTS) > MAX_KEPT_COUNTS:
+        _COUNTS.popitem(last=False)
+    return count
+
+
+async def stack_moves(
+    target: RepositoryStoreTarget, since: StackPair, pair: StackPair
+) -> list[MemberMoveWire]:
+    """Each member of *pair* that *since* holds too whose head moved, bottom first, with the
+    commits its new head adds that *since* did not show (:func:`_added`). Runs at most three
+    ancestry checks and one count a member that moved, each kept."""
+
+    earlier = {number: head for number, _base, head in since.members}
+    moves: list[MemberMoveWire] = []
+    for number, base, head in pair.members:
+        before = earlier.get(number)
+        if before is None or before == head:
+            continue
+        moves.append(
+            MemberMoveWire(
+                number=number, commits=await _added(target, before, head, base, since.head)
+            )
+        )
+    return moves
 
 
 def stack_digest(members: tuple[tuple[int, str, str], ...]) -> str:
@@ -745,6 +841,7 @@ def _envelope(
         guide=None,
         github_url=None,
         probe=None,
+        moved=None,
     )
 
 
@@ -754,16 +851,22 @@ async def stack_envelope(
     number: int,
     reader: str | None,
     running: Callable[[int], bool] = _not_fetching,
+    since: str | None = None,
 ) -> StackEnvelope:
     """Stack *number*'s page answer, or why there is none. Runs no ``gh`` and no fetch.
 
     *running* says whether a member's refresh is running; :func:`read_stack` asks it before it
     reads the records, and each pending member's ``fetching`` reports it. A current pair is
     kept admitted for later (:func:`.pull_stack_retained.retain_stack_pair`), so the page can
-    keep drawing it after the stack moves.
+    keep drawing it after the stack moves. *since*, the digest of a pair answered before and
+    still kept, the one the asking page draws, is kept with it, and asks how each member's
+    head moved from it (``moved``).
     """
 
-    from metabrowser.builtin_plugins.github.pull_stack_retained import retain_stack_pair
+    from metabrowser.builtin_plugins.github.pull_stack_retained import (
+        retain_stack_pair,
+        retained_stack_digest,
+    )
     from metabrowser.diff.adapters.base import DiffSourceError
     from metabrowser.git.process import GitError
 
@@ -778,11 +881,21 @@ async def stack_envelope(
         except (DiffSourceError, GitError):
             return absent(number, "commits_unavailable", read)
         top_record = read.members[-1].record
+        moved: StackMovedWire | None = None
         if top_record is not None:
             await run_lock_section(
-                partial(retain_stack_pair, published, read.pair, top_record.reader)
+                partial(retain_stack_pair, published, read.pair, top_record.reader, since)
             )
+            if since is not None and since != read.pair.digest:
+                kept = await asyncio.to_thread(
+                    retained_stack_digest, published, number, top_record.reader, since
+                )
+                if isinstance(kept, StackPair):
+                    target = RepositoryStoreTarget(published.git_dir, published.object_format)
+                    moves = await stack_moves(target, kept, read.pair)
+                    moved = StackMovedWire(since=since, members=moves)
         envelope = _envelope(number, read, "current")
+        envelope["moved"] = moved
         manifest = found.manifest.manifest
         totals = manifest.totals
         envelope["comparison"] = comparison_wire(published, read.pair)
@@ -823,12 +936,15 @@ def envelope_etag(envelope: StackEnvelope) -> str:
 
 __all__ = [
     "MAX_KEPT_ANCESTRIES",
+    "MAX_KEPT_COUNTS",
     "MAX_KEPT_STACK_COMPARISONS",
     "STACK_COMPARISON_ROUTE",
     "STACK_ROUTE",
     "Combined",
+    "MemberMoveWire",
     "StackEnvelope",
     "StackGuideWire",
+    "StackMovedWire",
     "StackPair",
     "StackRead",
     "combined",
@@ -841,5 +957,6 @@ __all__ = [
     "stack_digest",
     "stack_envelope",
     "stack_key",
+    "stack_moves",
     "stack_scope",
 ]
