@@ -5,7 +5,7 @@ title: "Cut the Markdown projection's cost: repeated HTML parses and whole-docum
 kind: task
 status: in_progress
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies:
@@ -14,7 +14,11 @@ dependencies:
 hold: null
 hold_until: null
 created_at: 2026-11-26T10:34:07.565Z
-updated_at: 2026-11-26T17:47:33.768Z
+updated_at: 2026-11-26T17:57:20.195Z
 started_at: 2026-11-26T17:26:42.890Z
 ---
 Measured for mb-1jp0: docs/plugins.md (85 KB a side) projects in 237-317 ms in process at load 337 and 600-950 ms in the child under a cold page's other traffic. Each side is rendered whole; about half the time is html.parser, six parses a side across KPress's sanitizer, inert_html.harden, and markdown_projection._hardened; most of the rest is markdown-it. Profile script: attic/rendered-latency/profile_projection.py in the main checkout.
+
+## Notes
+
+PR #887 (mb-dr3r): stack requests' second stack read removed, admission timed. Remaining: KPress diagnostics-free sanitize (mb-d1gq, ~49 ms of ~135 ms a side on plugins.md); fuse harden with the tree parse (~13 ms a side).
