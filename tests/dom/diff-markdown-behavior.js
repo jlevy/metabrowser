@@ -463,8 +463,8 @@ async function main() {
   );
 
   // An image opens on the comparison's own image route, which the server names, completed
-  // with a path; a link to a file of the head is its `/view/` address, kept only while the
-  // page shows that head.
+  // with a path; a link to a file of the head is its `/view/` address while the page shows
+  // that head, and that file at the head on github.com otherwise.
   const route = `/api/plugin/github/pull-image?${new URLSearchParams({
     number: "346",
     left: "1".repeat(40),
@@ -472,28 +472,38 @@ async function main() {
     store: "3".repeat(16),
   })}`;
   let showsHead = true;
-  const isTarget = markdownTargets(route, () => showsHead);
+  const onGithub = "https://github.com/octo/demo/blob/head/docs/README.md";
+  const isTarget = markdownTargets(
+    route,
+    () => showsHead,
+    (href) => (href.startsWith(link) ? onGithub : null),
+  );
   const image = `${route}&path=g1-ZG9jcw%2Fg1-UkVBRE1FLm1k`;
   const link = "/view/g1-ZG9jcw/g1-UkVBRE1FLm1k";
-  assert.equal(isTarget(image, true), true);
-  assert.equal(isTarget(image, false), false, "an image's address is no link");
-  assert.equal(isTarget(`${image}&mode=image`, true), false);
-  assert.equal(isTarget(`${image}&path=g1-eA`, true), false, "a repeated name");
-  assert.equal(isTarget(`https://example.org${image}`, true), false);
-  assert.equal(isTarget(image.replace("left=1", "left=0"), true), false);
-  assert.equal(isTarget("/raw?path=README.md", true), false);
-  assert.equal(isTarget(image.replace("g1-ZG9jcw", ".."), true), false);
-  assert.equal(isTarget(link, false), true);
-  assert.equal(isTarget(`${link}#user-content-setup`, false), true);
-  assert.equal(isTarget(`${link}#a"b`, false), false, "a fragment the server never spells");
-  assert.equal(isTarget(`${link}?plain=1`, false), false);
-  assert.equal(isTarget(link, true), false, "a link's address is no image");
-  assert.equal(isTarget("/view/README.md", false), false, "not a pin's address");
-  assert.equal(isTarget("/view/g1-ZG9jcw/../g1-UkVBRE1FLm1k", false), false);
+  assert.equal(isTarget(image, true), image);
+  assert.equal(isTarget(image, false), null, "an image's address is no link");
+  assert.equal(isTarget(`${image}&mode=image`, true), null);
+  assert.equal(isTarget(`${image}&path=g1-eA`, true), null, "a repeated name");
+  assert.equal(isTarget(`https://example.org${image}`, true), null);
+  assert.equal(isTarget(image.replace("left=1", "left=0"), true), null);
+  assert.equal(isTarget("/raw?path=README.md", true), null);
+  assert.equal(isTarget(image.replace("g1-ZG9jcw", ".."), true), null);
+  assert.equal(isTarget(link, false), link);
+  assert.equal(isTarget(`${link}#user-content-setup`, false), `${link}#user-content-setup`);
+  assert.equal(isTarget(`${link}#a"b`, false), null, "a fragment the server never spells");
+  assert.equal(isTarget(`${link}?plain=1`, false), null);
+  assert.equal(isTarget(link, true), null, "a link's address is no image");
+  assert.equal(isTarget("/view/README.md", false), null, "not a pin's address");
+  assert.equal(isTarget("/view/g1-ZG9jcw/../g1-UkVBRE1FLm1k", false), null);
   showsHead = false;
-  assert.equal(isTarget(link, false), false, "a page on another commit keeps no link");
-  assert.equal(isTarget(image, true), true, "and keeps its images");
-  assert.equal(markdownTargets(undefined, () => true)(image, true), false, "no route, no image");
+  assert.equal(isTarget(link, false), onGithub, "a page on another commit links the head's file");
+  assert.equal(isTarget(image, true), image, "and keeps its images");
+  assert.equal(
+    markdownTargets(route, () => false)(link, false),
+    null,
+    "with no file on github.com, a page on another commit keeps no link",
+  );
+  assert.equal(markdownTargets(undefined, () => true)(image, true), null, "no route, no image");
 
   // The first screen's Markdown files, asked for ahead of Changes.
   const entry = (id, path, availability = "ready") => ({

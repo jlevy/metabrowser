@@ -49,7 +49,7 @@
     return tokens.join("/");
   }
 
-  /** Canonical unpadded base64url atom to replacement-safe UTF-8, or null.
+  /** Canonical unpadded base64url atom to Git segment bytes, or null.
    * @param {string} atom
    */
   function decodeGitPathAtom(atom) {
@@ -69,23 +69,14 @@
     } catch (_error) {
       return null;
     }
-    if (encoded !== atom) {
+    if (encoded !== atom || binary.includes("\0") || binary.includes("/")) {
       return null;
     }
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) {
       bytes[i] = binary.charCodeAt(i);
     }
-    const text = new TextDecoder("utf-8").decode(bytes);
-    if (!text || text.includes("\0") || text.includes("/")) {
-      return null;
-    }
-    let sanitized = "";
-    for (const ch of text) {
-      const code = ch.charCodeAt(0);
-      sanitized += code < 32 || code === 127 ? "\uFFFD" : ch;
-    }
-    return sanitized;
+    return bytes;
   }
 
   /** Decode a contiguous GitPath wire prefix. Null when this is not a GitPath identity.
@@ -101,12 +92,19 @@
       return null;
     }
     const decoded = [];
+    const decoder = new TextDecoder("utf-8");
     for (let i = 0; i < cut; i += 1) {
-      const segment = decodeGitPathAtom(parts[i].slice(3));
-      if (segment === null) {
+      const bytes = decodeGitPathAtom(parts[i].slice(3));
+      const text = bytes === null ? "" : decoder.decode(bytes);
+      if (!text) {
         return null;
       }
-      decoded.push(segment);
+      let sanitized = "";
+      for (const ch of text) {
+        const code = ch.charCodeAt(0);
+        sanitized += code < 32 || code === 127 ? "\uFFFD" : ch;
+      }
+      decoded.push(sanitized);
     }
     const gitDisplay = decoded.join("/");
     if (cut === parts.length) {
@@ -115,8 +113,31 @@
     return `${gitDisplay}/${parts.slice(cut).join("/").replaceAll("%25", "%")}`;
   }
 
+  /** Decode a complete wire path as UTF-8 for use as a file identity.
+   * Refuse malformed bytes and keep a leading U+FEFF as part of the name.
+   * @param {string} path
+   * @returns {string | null}
+   */
+  function textGitPathWire(path) {
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    const decoded = [];
+    for (const token of path.split("/")) {
+      const bytes = isGitPathToken(token) ? decodeGitPathAtom(token.slice(3)) : null;
+      if (bytes === null) {
+        return null;
+      }
+      try {
+        decoded.push(decoder.decode(bytes));
+      } catch {
+        return null;
+      }
+    }
+    return decoded.join("/");
+  }
+
   window.MetabrowserGitPath = Object.freeze({
     display: displayGitPathWire,
+    text: textGitPathWire,
     wire: gitPathWire,
   });
 })();

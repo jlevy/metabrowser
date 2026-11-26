@@ -576,12 +576,13 @@
    * @param {Pick<Document, "createElement" | "createTextNode">} doc
    * @param {string | null} base A pull request's github.com page, or null for a
    *   document inside the served tree.
+   * @param {boolean} [keepPathRelative] Copy the server-issued PR file-link marker.
    * @returns {Node[]}
    */
-  function sanitizeNodes(nodes, doc, base) {
+  function sanitizeNodes(nodes, doc, base, keepPathRelative = false) {
     /** @type {Heading[]} */
     const headings = [];
-    const out = rebuild(nodes, doc, base, headings, [], false);
+    const out = rebuild(nodes, doc, base, headings, [], false, keepPathRelative);
     const anchor = createAnchors();
     for (const heading of headings) {
       heading.element.setAttribute("id", anchor(heading.text.join(""), heading.arrived));
@@ -598,9 +599,10 @@
    * @param {Heading[]} headings Every heading so far, in document order.
    * @param {Heading[]} open The headings the text written now belongs to.
    * @param {boolean} inLink Whether the nodes are the content of a link.
+   * @param {boolean} keepPathRelative
    * @returns {Node[]}
    */
-  function rebuild(nodes, doc, base, headings, open, inLink) {
+  function rebuild(nodes, doc, base, headings, open, inLink, keepPathRelative) {
     /** @type {Node[]} */
     const out = [];
     /** @param {string} text */
@@ -647,10 +649,20 @@
         continue;
       }
       if (!ALLOWED_TAGS.includes(tag)) {
-        out.push(...rebuild(source.childNodes, doc, base, headings, open, inLink));
+        out.push(
+          ...rebuild(source.childNodes, doc, base, headings, open, inLink, keepPathRelative),
+        );
         continue;
       }
       const clean = element(doc, tag, allowedAttributes(tag, read, base));
+      if (
+        keepPathRelative &&
+        tag === "a" &&
+        read("data-metabrowser-path-relative") === "" &&
+        clean.hasAttribute("href")
+      ) {
+        clean.setAttribute("data-metabrowser-path-relative", "");
+      }
       let inside = open;
       if (base === null && HEADINGS.includes(tag)) {
         /** @type {Heading} */
@@ -659,7 +671,15 @@
         inside = [...open, heading];
       }
       clean.append(
-        ...rebuild(source.childNodes, doc, base, headings, inside, inLink || tag === "a"),
+        ...rebuild(
+          source.childNodes,
+          doc,
+          base,
+          headings,
+          inside,
+          inLink || tag === "a",
+          keepPathRelative,
+        ),
       );
       out.push(clean);
     }
@@ -672,15 +692,16 @@
    *
    * @param {string} html
    * @param {string | null} base
+   * @param {boolean} [keepPathRelative]
    * @returns {Node[]}
    */
-  function sanitizeHtml(html, base) {
+  function sanitizeHtml(html, base, keepPathRelative = false) {
     const template = document.createElement("template");
     template.innerHTML = html;
     // Built in a document of their own: an image there loads nothing until the page
     // adopts it, after its caller has resolved or dropped its address.
     const scratch = document.implementation.createHTMLDocument("");
-    return sanitizeNodes(template.content.childNodes, scratch, base);
+    return sanitizeNodes(template.content.childNodes, scratch, base, keepPathRelative);
   }
 
   /**

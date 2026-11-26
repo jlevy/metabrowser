@@ -529,7 +529,6 @@ assets in static_root:
   - diagram-frame.js
   - diagrams.js
   - dom-traversal.js
-  - github-localizer.js
   - index.js
   - inert-render.js
   - inert-toc.js
@@ -648,7 +647,6 @@ $ metab --plugin markdown --json
       "diagram-frame.js",
       "diagrams.js",
       "dom-traversal.js",
-      "github-localizer.js",
       "index.js",
       "inert-render.js",
       "inert-toc.js",

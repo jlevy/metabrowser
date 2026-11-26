@@ -74,8 +74,9 @@ heading in a later chunk draws every chunk through it before it goes there.
 An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
-every page, and a page that learns another pin is served makes every such link plain
-text. Every other local address is dropped before the shared sanitizer.
+every page. Away from that head, the link opens the file at the head on GitHub once the
+resolver is available.
+Every other local address is dropped before the shared sanitizer.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
 `builtin_plugins/diff/index.js`, and `static/inert-html.js` whole, and plays the
@@ -111,19 +112,20 @@ $ node tests/dom/diff-markdown-session.js
   "links": {
     "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
     "pages": {
-      "pinned at the comparison's head": true,
-      "pinned at the merge base": false,
-      "beside a checkout at the head, which has no pin": false,
-      "pinned at the comparison's head, after another tab changed the pin": false
+      "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+      "pinned at the merge base before the resolver arrives": null,
+      "pinned at the merge base after the resolver arrives": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+      "beside a checkout at the head, which has no pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md",
+      "pinned at the comparison's head, after another tab changed the pin": "https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
     },
     "opens": {
-      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": true,
-      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": true,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
-      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": false,
-      "link /api/tree?path=docs": false
+      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup",
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc",
+      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": null,
+      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": null,
+      "link /api/tree?path=docs": null
     }
   },
   "steps": [
@@ -933,7 +935,7 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
-      "step": "a page that learns another pin is served keeps no link to a file",
+      "step": "a page that learns another pin is served links a file to the head on github.com",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
@@ -946,7 +948,7 @@ $ node tests/dom/diff-markdown-session.js long
             "  context: title = Guide",
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
-            "added: <p>Read the <a>first setup notes</a> first.</p>",
+            "added: <p>Read the <a href=\"https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
             "context: <p>Unchanged paragraph 2.</p>",
@@ -1039,7 +1041,7 @@ $ node tests/dom/diff-markdown-session.js long
             "  context: title = Guide",
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
-            "added: <p>Read the <a>first setup notes</a> first.</p>",
+            "added: <p>Read the <a href=\"https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
             "[5 unchanged blocks]",

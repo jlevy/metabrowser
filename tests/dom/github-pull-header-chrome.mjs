@@ -294,6 +294,9 @@ const MEASURE = `async (name, change, tab, width) => {
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       repository: change.checkoutAtHead ? { revision: body.record?.pull?.head?.sha } : undefined,
+      // A page with a repository's identity asks for the link resolver; the header reads no
+      // text's links, so it answers as the SDK's loader does when the bundle cannot load.
+      loadRepositoryLinks: async () => null,
       icons: { toggle: "" },
     },
   );
