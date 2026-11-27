@@ -7,8 +7,8 @@ env:
 # Golden Test: Source Freshness
 
 A page on a served mirror polls `/api/source/status` while it is visible, asks for one
-background refresh when the mirror is stale, shows when it was last fetched, offers the
-newer commit when a refresh moved the pinned ref, and switches the pin with
+background refresh when the mirror is stale, keeps routine fetch ages in tooltips,
+offers the newer commit when a refresh moved the pinned ref, and switches the pin with
 `POST /api/source/pin`. The Git panel turns a history cursor a refresh invalidated into
 a typed stale state with a reload action, and keeps its rows when a later page is
 refused as `pin_changed`, since the walk would be refused again and the row offers the
@@ -199,9 +199,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 2,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": "Could not follow topic to its new commit."
       }
@@ -215,9 +215,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 0,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": "Could not follow topic to its new commit."
       }
@@ -229,9 +229,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 1,
       "repaints": 0,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": "Could not follow topic to its new commit."
       }
@@ -245,9 +245,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
@@ -259,9 +259,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 1,
       "repaints": 0,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
@@ -276,9 +276,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
@@ -310,9 +310,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": null
       },
@@ -329,9 +329,9 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 0,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
@@ -393,11 +393,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 0,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -420,7 +421,8 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -443,7 +445,8 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 0,
@@ -464,11 +467,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 2,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
-        "error": "The request to follow the branch failed."
+        "error": "The request to follow the branch failed.",
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -486,11 +490,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 2,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
-        "error": "The request to follow the branch failed."
+        "error": "The request to follow the branch failed.",
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -511,11 +516,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 2,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": "The server now serves another revision [Reload page]",
-        "error": "The request to follow the branch failed."
+        "error": "The request to follow the branch failed.",
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -538,7 +544,8 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -559,11 +566,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -656,7 +664,8 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -677,11 +686,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "stale",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #20"
       },
       "commit": {
         "repaints": 1,
@@ -704,7 +714,8 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": "The server did not answer."
+        "error": "The server did not answer.",
+        "pull": "Pull request #7"
       },
       "commit": {
         "repaints": 1,
@@ -810,11 +821,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "stale",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": null,
-        "error": null
+        "error": null,
+        "pull": "Pull request #20"
       }
     },
     {
@@ -826,11 +838,12 @@ $ node tests/dom/source-freshness-session.js
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "stale",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": null,
-        "error": "Other refreshes are running. Try again shortly."
+        "error": "Other refreshes are running. Try again shortly.",
+        "pull": "Pull request #20"
       }
     }
   ],
@@ -1071,13 +1084,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "ask",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "an unchanged branch: the ask is the poll, and nothing repaints",
@@ -1087,13 +1094,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "a hidden page asks nothing",
@@ -1101,13 +1102,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": null,
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "shown again, the page asks at once",
@@ -1118,13 +1113,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the origin moved the branch: the fetch starts at once",
@@ -1167,13 +1156,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the quiet fetch ended, and the row still says nothing new",
@@ -1183,13 +1166,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "a refused ask says nothing, and the page polls instead",
@@ -1200,13 +1177,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "slow",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the poll after a refused ask",
@@ -1216,13 +1187,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "slow",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the server stopped answering the page's asks",
@@ -1233,9 +1198,9 @@ $ node tests/dom/source-freshness-session.js asks
       "reloads": 0,
       "repaints": 1,
       "paint": {
-        "label": "Fetched 5 min ago",
+        "label": "",
         "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "detail": "",
         "offer": null,
         "error": "The server did not answer."
       }
@@ -1248,13 +1213,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "slow",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "a page on a commit polls slowly",
@@ -1264,13 +1223,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "slow",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the server's own fetch says nothing on a page that is open",
@@ -1280,13 +1233,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "slow",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "a missing commit does not wait for the page's first ask",
@@ -1297,13 +1244,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": null,
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      },
+      "paint": null,
       "commit": {
         "repaints": 1,
         "state": "not_found",
@@ -1319,13 +1260,7 @@ $ node tests/dom/source-freshness-session.js asks
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      },
+      "paint": null,
       "commit": {
         "repaints": 0,
         "state": "not_found",
@@ -1367,29 +1302,17 @@ $ node tests/dom/source-freshness-session.js folder
       "timer": "slow",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Origin fetched 6 d ago",
-        "tone": "quiet",
-        "detail": "The origin was last fetched 6 d ago, without changing the checkout.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
-      "step": "the store was fetched; the row says when, and nothing reloads",
+      "step": "the store was fetched without showing the footer or reloading",
       "requests": [
         "GET /api/source/status"
       ],
       "timer": "slow",
       "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Origin fetched 5 d ago",
-        "tone": "quiet",
-        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
-        "offer": null,
-        "error": null
-      }
+      "repaints": 0,
+      "paint": null
     },
     {
       "step": "the reader's own Refresh says so while it runs",
@@ -1424,7 +1347,7 @@ $ node tests/dom/source-freshness-session.js folder
       }
     },
     {
-      "step": "an origin branch's page names the store, not a mirror",
+      "step": "an origin branch's page with no fetch issue has no footer",
       "requests": [
         "GET /api/source/status",
         "POST /api/source/refresh {\"for\":\"page\"}"
@@ -1432,13 +1355,7 @@ $ node tests/dom/source-freshness-session.js folder
       "timer": "ask",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Origin fetched 5 d ago",
-        "tone": "quiet",
-        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the server shows the working tree again: this row offers no reload",
@@ -1447,14 +1364,8 @@ $ node tests/dom/source-freshness-session.js folder
       ],
       "timer": "slow",
       "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Origin fetched 6 d ago",
-        "tone": "quiet",
-        "detail": "The origin was last fetched 6 d ago, without changing the checkout.",
-        "offer": null,
-        "error": null
-      }
+      "repaints": 0,
+      "paint": null
     },
     {
       "step": "an origin branch's page, its store grown old, asks loudly",
@@ -1507,13 +1418,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "timer": "ask",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "Origin fetched 5 d ago",
-        "tone": "quiet",
-        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the branch is where it was: nothing repaints, and it asks again",
@@ -1523,13 +1428,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "Origin fetched 5 d ago",
-        "tone": "quiet",
-        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
-        "offer": null,
-        "error": null
-      }
+      "paint": null
     },
     {
       "step": "the reader committed on the branch; the page follows it",

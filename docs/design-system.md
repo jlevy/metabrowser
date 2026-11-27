@@ -1427,12 +1427,13 @@ the control does, not from where the answer comes from:
   Within each half the fetch comes first, since every other part reads what it brings.
   The button waits while the parts on screen refresh.
   Each part keeps its own busy state while it runs.
-  With Pulls in front, the tooltip gives the time and duration of the last completed
-  list refresh when both are available.
-  `static/refresh-plan.js` holds the one order, and `cli-ui-refresh-plan.tryscript.md`
-  shows it for each screen.
-  A pull request’s page has no Refresh of its own, and a mirror’s freshness row says
-  when it was fetched as text, not as a second Refresh.
+  The tooltip gives the last source fetch age when available.
+  With Pulls in front, the completed list refresh time and duration take precedence when
+  both are known. `static/refresh-plan.js` holds the one order, and
+  `cli-ui-refresh-plan.tryscript.md` shows it for each screen.
+  A pull request’s page has no Refresh of its own.
+  The freshness row below the navigation appears for fetch progress, source issues, and
+  actions tied to a revision.
   The page offers Fetch or Retry only beside a sentence that says what it lacks or what
   failed, so the reader still has a remedy with the navigation pane hidden; the Commits
   tab’s Refresh after its two notices is the same kind of remedy.
