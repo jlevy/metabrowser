@@ -75,6 +75,10 @@ page’s glue between them.
   file on github.com at the head of the comparison drawn; once the read says what the
   comparison changes, the same note’s link to a changed file opens it in the stack’s
   Changes, in place, and a link to an unchanged file stays on github.com.
+  A member’s page opens in place through the page’s own `open` too, and a commit’s page
+  and the list of pull requests through the shell’s, `navigation.openRoute`, which is
+  asked only for what the page declined; a modified click on any of them is the
+  browser’s.
 - `cold_without_labels` and `unknown_stack`: two more stacks’ headers from first paint
   to their answers.
 - `members_readiness`: each member’s line ends with its readiness’s glyph in a cell, as
@@ -419,15 +423,28 @@ $ node tests/dom/github-stack-guide-mount-session.js
   "note_links": {
     "before_the_read": [
       "the draft → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/docs/draft.md",
-      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt"
+      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt",
+      "a commit → /commit/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "the pull requests → /pulls",
+      "a member → /pull/72"
     ],
     "once_read": [
       "the draft → /stack/70/changes/docs/draft.md",
-      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt"
+      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt",
+      "a commit → /commit/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "the pull requests → /pulls",
+      "a member → /pull/72"
     ],
     "clicks": [
       "the draft: {\"number\":70,\"tab\":\"changes\",\"file\":\"docs/draft.md\",\"stack\":true}",
-      "an unchanged file: the browser follows it"
+      "an unchanged file: the browser follows it",
+      "a commit: the shell opens /commit/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "the pull requests: the shell opens /pulls",
+      "a member: {\"number\":72,\"tab\":\"\"}",
+      "Command-click the draft: the browser follows it",
+      "Command-click a commit: the browser follows it",
+      "Command-click the pull requests: the browser follows it",
+      "Command-click a member: the browser follows it"
     ]
   },
   "members_readiness": {

@@ -1479,6 +1479,8 @@
       validateOpenOptions(options ?? {});
       await attachedController.open(target, options);
     },
+    /** @param {string} href */
+    openRoute: (href) => window.MetabrowserMainTabs?.openRoute(href) === true,
   });
 
   window.MetabrowserNavigationRoute = Object.freeze({

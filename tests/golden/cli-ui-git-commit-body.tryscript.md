@@ -22,11 +22,13 @@ panel does not keep, such as a busy renderer, the open asks again and shows its 
 answer. A preparation given up before its detail comes asks for no body.
 A body of only trailers has no article.
 On a page with the served repository’s identity, `static/repository-links.js` decides
-what the body’s links open: a same-repository pull request’s link becomes its in-app
-page, `/pull/<n>`, which the browser follows in this tab, and a file on the served
-branch its `/view/` address, which a plain click opens through the navigation; a
-relative reference stays text, as on github.com, where a commit’s message is not
-Markdown, and another site stays an outside link.
+what the body’s links open: a same-repository pull request’s, commit’s, and pull request
+list’s link becomes its in-app page, `/pull/<n>`, `/commit/<id>`, or `/pulls`, which a
+plain click has the shell open in place (`navigation.openRoute`), and a file on the
+served branch its `/view/` address, which a plain click opens through the navigation; a
+modified click on any of them is the browser’s. A relative reference stays text, as on
+github.com, where a commit’s message is not Markdown, and another site stays an outside
+link.
 
 A body the route will not render shows as written: one too long, with a notice that is
 not asked for again, and one past the renderer’s deadline, with a notice that is.
@@ -483,6 +485,14 @@ $ node tests/dom/git-commit-body-session.js
                         },
                         ", ",
                         {
+                          "a[href=/commit/9999999999999999999999999999999999999999 data-metabrowser-github-localization=commit]": "a commit"
+                        },
+                        ", ",
+                        {
+                          "a[href=/pulls data-metabrowser-github-localization=pulls]": "the pull requests"
+                        },
+                        ", ",
+                        {
                           "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree data-tip-text=Open the corresponding path in the currently served working tree.]": "the guide"
                         },
                         ", ",
@@ -515,9 +525,16 @@ $ node tests/dom/git-commit-body-session.js
       "7777777"
     ],
     "clicks": [
-      "the pull request: the browser follows it",
+      "the pull request: the shell opens /pull/12",
+      "a commit: the shell opens /commit/9999999999999999999999999999999999999999",
+      "the pull requests: the shell opens /pulls",
       "the guide: /view/docs/guide.md",
-      "another site: the browser follows it"
+      "another site: the browser follows it",
+      "Command-click the pull request: the browser follows it",
+      "Command-click a commit: the browser follows it",
+      "Command-click the pull requests: the browser follows it",
+      "Command-click the guide: the browser follows it",
+      "Command-click another site: the browser follows it"
     ]
   },
   "a commit with no body": {
