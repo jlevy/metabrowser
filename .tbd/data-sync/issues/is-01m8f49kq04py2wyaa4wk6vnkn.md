@@ -3,9 +3,9 @@ type: is
 id: is-01m8f49kq04py2wyaa4wk6vnkn
 title: Report live SoftSchema collection discovery progress
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 delegate: codex@spud10.local
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m8amwjx1z7rpzb8emdknjxk1
 hold: null
 hold_until: null
 created_at: 2026-11-27T18:29:15.615Z
-updated_at: 2026-11-27T18:53:41.293Z
+updated_at: 2026-11-27T18:59:49.648Z
 started_at: 2026-11-27T18:29:58.425Z
+closed_at: 2026-11-27T18:59:49.646Z
+close_reason: "Implemented the shared Files scan progress indicator in PR #915. Final head ed624db20 passed 118 focused pure-mode tests and 15 golden commands; the Chrome design-system check verified shared spinner paint and typography. The live Universe preview reports 5,472 checked paths and publishes all 577 People rows."
+resolution: null
+duplicate_of: null
 ---
 Show checked paths in the existing collection spinner and preserve visible results on refresh. Measure Universe cold and warm indexing. Track parsed-record progress separately because the published scanner exposes discovery only.
 
