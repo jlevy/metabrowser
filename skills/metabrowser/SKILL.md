@@ -98,7 +98,12 @@ handoff, the app needs `metab` 0.13.0 or later.
 ## Hand the User a Page
 
 Present the page, which opens it where the user prefers, or serve it yourself and give
-the user an address for a browser:
+the user an address for a browser.
+
+Choose a local checkout path for its live working tree.
+The Files row follows the actual checked-out branch and shows the commit when `HEAD` is
+detached. Choose a repository URL for the cloud mirror and its last fetched branch
+revision. A commit URL keeps that exact revision selected.
 
 - **Presenting** takes a folder, a file, or a GitHub URL: a repository, a pull request
   or one of its tabs, a commit, or a file or folder at a branch, tag, or commit.
@@ -1027,9 +1032,9 @@ never the pair of the layer that carries it, so moving them to a new top is the 
 
 `--present` cannot name a stack’s page.
 To show the user the guide, present the top layer’s pull-request URL and tell them to
-choose **Whole stack** in its stack menu, or serve the repository’s URL with `--no-open`
-([Serve It](#serve-it)) and give them `<origin>/stack/<s>/guided`, `<origin>` being the
-start of the address on its `Serving <root> at <url>` line.
+choose **Stack Overview** in its stack menu, or serve the repository’s URL with
+`--no-open` ([Serve It](#serve-it)) and give them `<origin>/stack/<s>/guided`,
+`<origin>` being the start of the address on its `Serving <root> at <url>` line.
 `<invocation> <url> --show /stack/<s>` reports `guide=#N tab=guided` when the page opens
 on the guide, `N` being the layer that carries it.
 

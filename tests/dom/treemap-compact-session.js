@@ -728,6 +728,37 @@ async function main() {
     ...summary(page),
   });
 
+  const refreshing = mount();
+  refreshing.handle.follow(breakdownAnswer("done", TREE));
+  refreshing.watch.apply({ index_status: "done", node: TREE });
+  const canvas = refreshing.viewport.children[0];
+  refreshing.key("ArrowRight");
+  const focusedPath = (map) => map.cells[map.focused].path;
+  const selected = focusedPath(refreshing.inspect());
+  const oldPaths = refreshing.inspect().cells.map((cell) => cell.path);
+  await refreshing.handle.refresh();
+  refreshing.handle.follow(breakdownAnswer("scanning", TREE, "pending"));
+  refreshing.watch.apply({ index_status: "scanning", node: null });
+  assert.equal(refreshing.viewport.children[0], canvas, "a pending rollup keeps the old canvas");
+  assert.deepEqual(
+    refreshing.inspect().cells.map((cell) => cell.path),
+    oldPaths,
+  );
+  const changed = dir("src", "src", [...TREE.children, file("new.py", "src/new.py", 4000, ".py")]);
+  refreshing.watch.apply({ index_status: "done", node: changed });
+  refreshing.handle.follow(breakdownAnswer("done", changed));
+  assert.equal(refreshing.viewport.children[0], canvas, "the completed rollup reuses the canvas");
+  assert.ok(refreshing.inspect().cells.some((cell) => cell.path === "src/new.py"));
+  assert.equal(focusedPath(refreshing.inspect()), selected, "refresh keeps the chosen cell");
+  steps.push({
+    step: "refresh keeps the old map until the completed rollup arrives",
+    refreshes: refreshing.watch.refreshes,
+    previousTreeKeptWhileScanning: true,
+    sameCanvasPaintsTheChangedTree: true,
+    focusedCellKept: selected,
+  });
+  refreshing.handle.dispose();
+
   const entry = { tag: "legend-entry" };
   page.hover.enter({ population: "all", key: "python", anchor: entry, marks: "family" });
   const onEntry = page.inspect();
@@ -853,10 +884,43 @@ async function main() {
 
   const drawnCells = page.inspect().cells;
   const drawnLayers = [...page.viewport.children];
+  const chosenCell = focusedPath(page.inspect());
+  await page.handle.refresh();
   page.watch.options.onError(new Error("refresh failed"));
   assert.equal(page.inspect().cells, drawnCells, "a failed refresh keeps the map's layout");
   assert.deepEqual(page.viewport.children, drawnLayers, "and its layers");
-  steps.push({ step: "a refresh fails after a complete answer", ...summary(page) });
+  assert.equal(focusedPath(page.inspect()), chosenCell, "a failed refresh keeps the chosen cell");
+  const notice = page.container.find("tm-status");
+  assert.ok(notice?.classList.contains("notice"), "a failed refresh shows a notice");
+  assert.equal(notice.textContent, "Could not refresh the treemap. Showing the previous data.");
+  assert.equal(notice.getAttribute("role"), "status", "the notice can be announced");
+  assert.equal(notice.getAttribute("data-severity"), "warning");
+  steps.push({
+    step: "a refresh fails after a complete answer",
+    notice: notice.textContent,
+    ...summary(page),
+  });
+
+  await page.handle.refresh();
+  page.handle.follow(breakdownAnswer("scanning", TREE, "pending"));
+  page.watch.apply({ index_status: "scanning", node: null });
+  assert.equal(
+    notice.classList.contains("notice"),
+    true,
+    "an intermediate answer keeps the notice",
+  );
+  assert.equal(page.inspect().cells, drawnCells, "and keeps the previous map");
+  page.watch.apply({ index_status: "done", node: changed });
+  page.handle.follow(breakdownAnswer("done", changed));
+  assert.equal(
+    notice.classList.contains("notice"),
+    false,
+    "a successful terminal answer dismisses the notice",
+  );
+  assert.equal(notice.textContent, "");
+  assert.equal(page.viewport.children[0], drawnLayers[0], "the new map uses the same canvas");
+  assert.ok(page.inspect().cells.some((cell) => cell.path === "src/new.py"));
+  assert.equal(focusedPath(page.inspect()), chosenCell, "recovery keeps the chosen cell");
 
   // Disposal with the pointer on a cell: the cell's hover is let go of, and the map's own
   // tooltip, anchored inside the map, is the one put away.

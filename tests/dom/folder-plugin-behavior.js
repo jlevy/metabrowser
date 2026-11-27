@@ -908,22 +908,25 @@ sandbox.MetabrowserNavigationRoute.attachController({
     await new Promise((resolve) => setImmediate(resolve));
   };
 
+  const cellsBeforeScan = drawnMap().cells;
+  const labelsBeforeScan = layerOf(container, "tm-labels");
   envelope.index_status = "scanning";
   await refreshFromInventoryChange();
   check(
-    "in-progress snapshots render one quiet loading block without partial cells",
-    container.viewport.innerHTML.includes("tm-loading mb-delayed-loading") &&
-      drawnMap().cells.length === 0 &&
-      layerOf(container, "tm-labels") === null,
+    "an in-progress refresh keeps the completed map and its label layer",
+    !container.viewport.innerHTML.includes("tm-loading") &&
+      drawnMap().cells === cellsBeforeScan &&
+      layerOf(container, "tm-labels") === labelsBeforeScan,
     container.viewport.innerHTML,
   );
   envelope.index_status = "done";
   await refreshFromInventoryChange();
   check(
-    "completed snapshots replace loading atomically",
+    "a completed refresh reuses the label layer when replacing the layout",
     !container.viewport.innerHTML.includes("tm-loading") &&
+      drawnMap().cells !== cellsBeforeScan &&
       drawnMap().cells.length > 0 &&
-      layerOf(container, "tm-labels") !== null,
+      layerOf(container, "tm-labels") === labelsBeforeScan,
     container.viewport.innerHTML,
   );
 

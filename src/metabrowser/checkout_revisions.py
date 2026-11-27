@@ -524,12 +524,14 @@ class CheckoutRevisions:
             )
         return target, context.head
 
-    async def list_refs(self, kind: RefKind) -> tuple[str | None, tuple[MirrorRef, ...]]:
+    async def list_refs(
+        self, kind: RefKind, *, origin_default_ref: str | None = None
+    ) -> tuple[str | None, tuple[MirrorRef, ...]]:
         """The ref ``HEAD`` is on, and the checkout's refs of *kind* that name a commit.
 
-        Its branches, tags, or remote-tracking branches. Branches list the checked-out one
-        first, marked as ``default`` is on a mirror. ``HEAD``'s ref is ``None`` when it is
-        detached.
+        Its branches, tags, or remote-tracking branches. The checked-out branch is
+        marked independently of listing priority. ``HEAD``'s ref is ``None`` when detached.
+        *origin_default_ref* is the default read from the origin's mirror, when kept.
 
         Once Metabrowser keeps a store of the checkout's origin (:attr:`origin`), the
         origin's refs are read from it and not from the checkout (:func:`_with_origin`).
@@ -543,6 +545,7 @@ class CheckoutRevisions:
             kind,
             default_ref=head["ref"] if kind == "branch" else None,
             namespaces=CHECKOUT_REFS,
+            origin_default_ref=origin_default_ref,
         )
         origin = self.origin
         if origin is not None and kind != "branch":
@@ -850,6 +853,7 @@ def _with_origin(
                 default=entry.default,
                 committed_at=entry.committed_at,
                 checkout=_own_difference(readers.get(entry.ref), entry.commit),
+                notable=entry.notable,
             )
             for entry in theirs
         )

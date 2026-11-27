@@ -1587,9 +1587,9 @@ def _own_paths(item: CollectionItem, own: int | None) -> set[str]:
 
 
 def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
-    return record_freshness(
-        record, *catalog_member(store.home, store.slug, record.number), now=pulls.utc_now()
-    ).head_moved
+    # Whether the head moved is the catalog row's to say; the status decides nothing of it.
+    member = catalog_member(store.home, store.slug, record.number)
+    return record_freshness(record, *member, status=None, now=pulls.utc_now()).head_moved
 
 
 # What a step's answer waits for its notes, measured 2026-11-25 at a load average of 224 to

@@ -11,6 +11,9 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
+from typing import get_args
+
+from metabrowser.builtin_plugins.github.pull_readiness import Tone
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC = REPO_ROOT / "src" / "metabrowser" / "static"
@@ -2515,23 +2518,32 @@ def _contrast(foreground: str, background: str) -> float:
 
 
 def test_pull_state_colors_keep_their_hue_and_read_on_both_grounds() -> None:
-    """Each state is one color seen against two backgrounds, legible on both.
+    """Each of the plugin's colors is one color seen against two backgrounds, legible on both.
 
     `test_themed_colors_keep_their_hue` reads the shell's stylesheet; these tokens are the
-    plugin's, as a domain's tokens are (docs/design-system.md, "Token Layers"). A state's
-    badge sets its name in this color, so it is held to the 4.5:1 of text, on the surface the
-    page's header sits on and on the panel's.
+    plugin's, as a domain's tokens are (docs/design-system.md, "Token Layers"): a pull
+    request's four states, and the attention tone of its readiness. A state's badge sets its
+    name in its color, and a readiness's badge its label, so each is held to the 4.5:1 of
+    text, on the surface the page's header sits on and on the panel's. Every color the
+    plugin's theme rules declare is held, so a new one cannot miss the check.
     """
 
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     light_block, dark_block = _theme_blocks()
-    # The plugin's own theme rules, parsed: a comment or another rule's brace cannot move them.
-    rules = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
-    plugin_light = next(body for selector, body in rules if selector == ":root")
-    plugin_dark = next(body for selector, body in rules if selector == '[data-theme="dark"]')
+    # The plugin's own theme rules, parsed and merged: its states' and its readiness's are
+    # rules of their own, and a comment or another rule's brace cannot move them.
+    plugin_light: dict[str, str] = {}
+    plugin_dark: dict[str, str] = {}
+    for selector, body in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
+        if selector == ":root":
+            plugin_light.update(body)
+        elif selector == '[data-theme="dark"]':
+            plugin_dark.update(body)
+    colors = sorted(token for token, value in plugin_light.items() if value.startswith("oklch("))
+    assert colors == sorted(plugin_dark), "each of the plugin's colors is themed, and only those"
+    assert "--github-pull-attention" in colors, "a readiness's attention is the plugin's color"
     assert "--sidebar-bg" in styles
-    for name in ("open", "draft", "merged", "closed"):
-        token = f"--github-pull-{name}"
+    for token in colors:
         light = plugin_light[token]
         dark = plugin_dark[token]
         assert _oklch_channels(light)[2] == _oklch_channels(dark)[2], f"{token} changes hue"
@@ -2542,6 +2554,104 @@ def test_pull_state_colors_keep_their_hue_and_read_on_both_grounds() -> None:
                     f"{token} on {ground} in the {theme} theme reads at "
                     f"{_contrast(color, surface):.2f}:1"
                 )
+
+
+def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> None:
+    """A readiness's glyph and badge take their tone's ink, never their verdict's.
+
+    The server gives each verdict its tone (`Tone` in pull_readiness.py), and pull-readiness.js
+    writes both on the mark; only the tone may color it, so a verdict cannot read in one color
+    on one surface and another elsewhere (docs/design-system.md, "A Pull Request’s
+    Readiness"). The glyph and the badge of a tone are one ink, each tone is its own, the
+    section's table of each tone's ink is the stylesheet's, and each is held to the 4.5:1 of
+    text in both themes on the page, where the header and the Checks tab draw it, and on the
+    panel, where a Pulls row does. Attention is not the shell's warning ink, which is
+    reserved for a degraded result: its hue is outside the family
+    `test_status_text_inks_keep_their_fills_hue` allows one ink.
+    """
+
+    by_verdict = [
+        f"{_sheet_name(sheet)} {selector}"
+        for sheet in _stylesheets()
+        for selector, _declarations in _rules_of(sheet)
+        if "data-verdict" in selector
+    ]
+    assert by_verdict == [], "a readiness is colored by its tone, never its verdict"
+    rules = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    github = dict(rules)
+    tones = get_args(Tone.__value__)
+    inks: dict[str, str] = {}
+    for tone in tones:
+        icon = github[f'.github-pull-readiness-icon[data-tone="{tone}"]']["color"]
+        badge = github[f'.github-pull-badge.github-pull-readiness[data-tone="{tone}"]']["color"]
+        requirement = github[f'.github-pull-badge.github-pull-requirement[data-tone="{tone}"]'][
+            "color"
+        ]
+        assert icon == badge == requirement, (
+            f"the {tone} glyph, verdict's badge, and requirement's badge are one ink"
+        )
+        inks[tone] = icon
+    assert len(set(inks.values())) == len(tones), "each tone is its own ink"
+    # Waiting is one color across the plugin: a pending check is the attention tone's ink.
+    assert github['.github-pull-badge[data-state="pending"]']["color"] == inks["attention"]
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    section = doc[doc.index("### A Pull Request’s Readiness") :]
+    section = section[: section.index("\n### ")]
+    table = dict(re.findall(r"^\| `(\w+)` \| `(--[\w-]+)`", section, flags=re.MULTILINE))
+    assert {tone: f"var({token})" for tone, token in table.items()} == inks
+    plugin = {
+        theme: {
+            name: value
+            for selector, declarations in rules
+            if selector == scope
+            for name, value in declarations.items()
+        }
+        for theme, scope in (("light", ":root"), ("dark", '[data-theme="dark"]'))
+    }
+    shell = _theme_tokens()
+    themes = {
+        "light": {**shell["light"], **plugin["light"]},
+        "dark": {**shell["dark"], **plugin["light"], **plugin["dark"]},
+    }
+    for theme, tokens in themes.items():
+        colors: dict[str, str] = {}
+        for tone, ink in inks.items():
+            alias = re.fullmatch(r"var\((--[\w-]+)\)", ink)
+            assert alias is not None, f"the {tone} ink is a token: {ink}"
+            colors[tone] = _resolved(tokens, alias[1])
+            ink_luminance = _srgb_luminance(_srgb(colors[tone]))
+            for ground in ("--bg", "--sidebar-bg"):
+                ratio = _ratio(ink_luminance, _srgb_luminance(_ground(tokens, ground)))
+                assert ratio >= _AA_TEXT, (
+                    f"the {tone} ink on {ground} in the {theme} theme reads at {ratio:.2f}:1"
+                )
+            # A Pulls row's glyph, a mark and not text, on the row under the pointer and as
+            # the open one, the highlight's tint over the panel (mb-3n21).
+            for ground in ("--hover-bg", "--highlight-bg"):
+                ratio = _ratio(ink_luminance, _srgb_luminance(_ground(tokens, ground)))
+                assert ratio >= _AA_GRAPHIC, (
+                    f"the {tone} glyph on {ground} in the {theme} theme reads at {ratio:.2f}:1"
+                )
+        # The label after it is text, in an ink no tone sets, and reads at a text's contrast
+        # on every ground a row has.
+        label = next(
+            declarations["color"]
+            for selector, declarations in rules
+            if selector == ".github-pulls-readiness-label" and "color" in declarations
+        )
+        assert label not in inks.values(), "a row's label takes no tone's ink"
+        label_alias = re.fullmatch(r"var\((--[\w-]+)\)", label)
+        assert label_alias is not None, f"the label's ink is a token: {label}"
+        label_luminance = _srgb_luminance(_srgb(_resolved(tokens, label_alias[1])))
+        for ground in ("--sidebar-bg", "--hover-bg", "--highlight-bg"):
+            ratio = _ratio(label_luminance, _srgb_luminance(_ground(tokens, ground)))
+            assert ratio >= _AA_TEXT, (
+                f"a row's label on {ground} in the {theme} theme reads at {ratio:.2f}:1"
+            )
+        warning = _oklch_channels(_resolved(tokens, "--status-warning-text"))[2]
+        assert _hue_gap(_oklch_channels(colors["attention"])[2], warning) > 15, (
+            f"attention is the shell's warning ink in the {theme} theme"
+        )
 
 
 def _declared(block: str, token: str) -> str:
@@ -2710,8 +2820,7 @@ _PULL_NUMBERS = frozenset(
         ".source-ref-selector-pull-number",
     }
 )
-# A class a source gives a count summary's number beside `.summary-number`, as the Pulls
-# count's `.github-pulls-total`.
+# A class a source gives a count summary's number beside `.summary-number`.
 _SUMMARY_NUMBER_CLASSES = re.compile(
     r"""class(?:Name)?\s*[:=]\s*["']([^"']*\bsummary-number\b[^"']*)["']"""
 )
@@ -2764,16 +2873,13 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
         for name in found.group(1).split()
         if name != "summary-number"
     }
-    assert beside == {".github-pulls-total"}, beside
+    assert not beside, beside
     for sheet in _stylesheets():
         for selector, declarations in _rules_of(sheet):
             assert selector == ".summary-number" or "summary-number" not in selector, (
                 sheet,
                 selector,
             )
-            for name in beside:
-                if re.search(re.escape(name) + r"(?![\w-])", selector):
-                    assert "font-weight" not in declarations, (sheet, selector)
             # The Checks summary's numbers are spans in a quiet paragraph; nothing styles a
             # paragraph's descendants' weight there.
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
@@ -2784,7 +2890,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
         "builtin_plugins/diff/diff-view.js": "words.append(...paint(parts));",
-        "builtin_plugins/github/pulls-panel.js": '{ class: "github-pulls-total summary-number" }',
+        "builtin_plugins/github/pulls-panel.js": "mb.countPartsNodes(summary.total)",
         "builtin_plugins/github/pull-page.js": "mb.countPartsNodes(counted)",
     }
     for path, painted in painters.items():
@@ -4553,6 +4659,8 @@ _STATUS_FILL_TOKENS = (
     "--status-info",
 )
 _AA_TEXT = 4.5
+# WCAG 2.2's 1.4.11 Non-text Contrast: a mark that says something, a glyph, against its ground.
+_AA_GRAPHIC = 3.0
 
 
 def test_status_and_badge_inks_read_in_both_themes() -> None:

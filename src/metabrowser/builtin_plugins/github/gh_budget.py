@@ -24,14 +24,17 @@ Four kinds of work go below the floor, and only a hold stops them (the owner's r
   request: the floor is a reserve for the reader, and this is the page the reader is
   looking at; and
 - for the same reason, the probe of a visible list, the scan a change it finds starts,
-  and the cores of the rows on screen (:func:`.pull_cores.request_preparation`), which
-  this process's own ceiling still holds.
+  the scan of the open pull requests' statuses a change or a moved base starts and its
+  re-read of answers GitHub was still computing (:mod:`.pull_status_scan`), and the
+  cores of the rows on screen (:func:`.pull_cores.request_preparation`), which this
+  process's own ceiling still holds.
 
 Everything else automatic stops below it: prefetch, backfill, the cores walk, stacks,
-labels, the timeline, and the periodic scan and files read, which ask :func:`admission`,
-and the reads a visible page's clock alone asks for, a record's
-:data:`~.served_pull.FULL_REFRESH_S` full read and an open one's checks once a window
-(:meth:`.served_pull.ServedPull.below_floor`).
+labels, the timeline, the periodic scans of the catalog and of its statuses, and the
+files read, which ask :func:`admission`, and the reads a visible page's clock alone asks for, a record's
+:data:`~.served_pull.FULL_REFRESH_S` full read (:meth:`.served_pull.ServedPull.below_floor`)
+and an open one's status once a window, which spends GraphQL and so waits below that
+budget's floor alone (:meth:`.served_pull.ServedPull.status_below_floor`).
 
 The observations and the hold are this process's, and belong to the account the last
 account check named (:func:`note_account`, called by :func:`~.gh.gh_account` and
@@ -93,7 +96,9 @@ from typing import Final, Literal, TypedDict
 # points, the pull and five parts of a page each, now that the account checks are
 # conditional (:func:`~.gh.gh_account`), so 1,250 of 5,000 cover 200 such reads, a
 # reader's Refresh or a change a probe found, with room beside them for the point a probe
-# costs when GitHub answers it ``200``.
+# costs when GitHub answers it ``200``. That was measured when a record read its check runs
+# and status; it reads three parts now, 4 points, and its status a GraphQL point, so the
+# same floor covers about 300.
 BACKGROUND_FLOOR: Final = 0.25
 # How long a refusal that named no reset time holds: the refresh coordinator's window, as
 # ``pull_list_refresh`` waits after one.
@@ -135,6 +140,11 @@ _COUNT: Final = re.compile(r"[0-9]{1,9}")
 _EPOCH: Final = re.compile(r"[0-9]{1,12}")
 
 type AdmissionReason = Literal["below_floor", "rate_hold", "self_ceiling"]
+# Which of this process's counts work is charged to (:func:`current_budget`): a reader's
+# own action, which none counts; automatic work, counted toward the ceiling; speculative
+# work, toward its share as well; and the cores walk's, counted as the walk's besides.
+type Budget = Literal["reader", "automatic", "speculative", "walk"]
+BUDGETS: Final[tuple[Budget, ...]] = ("reader", "automatic", "speculative", "walk")
 
 
 def _stamp(moment: datetime) -> str:
@@ -295,6 +305,27 @@ def speculative(*, walk: bool = False) -> Generator[None]:
         _SPECULATIVE.reset(token)
 
 
+def speculating() -> bool:
+    """Whether the work running in this context is speculative (:func:`speculative`)."""
+
+    return _SPECULATIVE.get()
+
+
+def current_budget() -> Budget:
+    """Which count what the work running in this context spends is charged to.
+
+    :func:`spent` counts by it, and every ``gh`` span in the event log records it as
+    ``budget``, so the request report (:mod:`.gh_requests`) groups what was spent as the
+    ceiling and the share counted it.
+    """
+
+    if _READERS_OWN.get():
+        return "reader"
+    if _SPECULATIVE.get():
+        return "walk" if _WALK.get() else "speculative"
+    return "automatic"
+
+
 def _minute(now: datetime) -> int:
     return int(now.timestamp()) // _SPEND_BUCKET_S
 
@@ -313,12 +344,15 @@ def spent(cost: int, *, now: datetime) -> None:
     walk's (:func:`speculative`).
     """
 
-    if cost <= 0 or _READERS_OWN.get():
+    budget = current_budget()
+    if cost <= 0 or budget == "reader":
         return
     minute = _minute(now)
-    counts: tuple[dict[int, int], ...] = (_SPENT,)
-    if _SPECULATIVE.get():
-        counts = (_SPENT, _SPECULATIVE_SPENT, *((_WALK_SPENT,) if _WALK.get() else ()))
+    counts: tuple[dict[int, int], ...] = {
+        "automatic": (_SPENT,),
+        "speculative": (_SPENT, _SPECULATIVE_SPENT),
+        "walk": (_SPENT, _SPECULATIVE_SPENT, _WALK_SPENT),
+    }[budget]
     with _SPENT_LOCK:
         for count in counts:
             for old in [each for each in count if each <= minute - _SPEND_BUCKETS]:
@@ -412,15 +446,18 @@ def forget() -> None:
 __all__ = [
     "AUTOMATIC_CORE_PER_HOUR",
     "BACKGROUND_FLOOR",
+    "BUDGETS",
     "CEILING_FULL_READ_S",
     "SPECULATIVE_CORE_PER_HOUR",
     "UNKNOWN_RESET_HOLD_S",
     "Admission",
     "AdmissionReason",
+    "Budget",
     "ObservationWire",
     "RateObservation",
     "admission",
     "automatic_spent",
+    "current_budget",
     "forget",
     "full_read_interval",
     "held_until",
@@ -431,6 +468,7 @@ __all__ = [
     "over_ceiling",
     "readers_own",
     "speculative",
+    "speculating",
     "speculative_spent",
     "spent",
     "walk_spent",

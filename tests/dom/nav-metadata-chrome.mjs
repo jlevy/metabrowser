@@ -53,7 +53,7 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 // Text positions are fractional; under half a pixel is not a different place.
 const TOLERANCE_PX = 0.5;
 // Wide enough that every state's text, the longest remedy included, is one line; and
-// narrower than the stand-in's count, "102 PRs on octo/demo", which must keep to its line.
+// narrower than the stand-in's count, "102 pull requests · 100 open", which must keep to its line.
 const WIDE_PX = 720;
 const NARROW_PX = 120;
 // Each wait's bound: a paint, or a fake `gh` refresh of the stand-in's catalog, which takes
@@ -484,10 +484,13 @@ try {
   await measureRules("pulls loading");
   fs.rmSync(HOLD);
   await waitFor(
-    `document.querySelector(".github-pulls-item") !== null && (${connection}).startsWith("Updated")`,
+    "document.querySelector('.github-pulls-item') !== null && document.querySelector('.github-pulls-connection') === null",
   );
   await measure("pulls updated");
   await measureRules("pulls updated");
+  await waitFor(
+    "(() => { const button = document.querySelector('#nav-refresh'); button.dispatchEvent(new Event('pointerover')); return button.dataset.tipText.startsWith('Refreshed ') && button.dataset.tipText.includes(' in '); })()",
+  );
   // As pulls-nav.js's showFailure puts it, first in the tab's panel.
   const pullsFailed = await givesWay(
     "nav-metadata-pulls",
@@ -504,28 +507,56 @@ try {
     `${pullsFailed}` === "true,false,true",
     pullsFailed,
   );
-  // In a pane narrower than the count, the count is cut short on its one line.
+  // The longest state word and grouped counts still leave the tally visible at 180px.
+  await paneWidth(180);
+  const minimum = await evaluate(`(() => {
+    const total = document.querySelector(".github-pulls-total-line");
+    const lead = total.querySelector(".github-pulls-total-lead");
+    const scope = total.querySelector(".github-pulls-total-scope");
+    const originalLead = lead.innerHTML;
+    const originalScope = scope.innerHTML;
+    lead.querySelector(".summary-number").textContent = "123,456";
+    scope.querySelector(".summary-number").textContent = "123,453";
+    scope.lastChild.textContent = " closed";
+    const result = {
+      leadClips: lead.scrollWidth > lead.clientWidth,
+      scopeFits: scope.scrollWidth <= scope.clientWidth &&
+        scope.getBoundingClientRect().right <= total.getBoundingClientRect().right + 0.5,
+    };
+    lead.innerHTML = originalLead;
+    scope.innerHTML = originalScope;
+    return result;
+  })()`);
+  check(
+    "pulls minimum: the state tally stays whole when the total clips",
+    minimum.leadClips && minimum.scopeFits,
+    JSON.stringify(minimum),
+  );
+
+  // In a pane narrower than the supported minimum, the heading still uses one line.
   await paneWidth(NARROW_PX);
   narrowCount = await evaluate(`(() => {
     const line = document.querySelector(".github-pulls-status");
-    const total = line.querySelector(".github-pulls-total-line");
+    const lead = line.querySelector(".github-pulls-total-lead");
     const cs = getComputedStyle(line);
     return {
       lines: Math.round(parseFloat(cs.height) / parseFloat(cs.lineHeight)),
-      cut: total.scrollWidth > total.clientWidth,
+      cut: lead.scrollWidth > lead.clientWidth,
     };
   })()`);
   await paneWidth(null);
   // A refresh that cannot reach GitHub, then one gh refuses until it is signed in, then no
   // gh at all: the rows stay, and the connection line says why and what to do.
   // The list's part of Refresh asks only while no refresh of the list runs, as when the
-  // catalog's pages still arrive, which its connection line says by being busy; and Refresh
-  // takes a press only while it does not wait.
+  // catalog's pages still arrive. The connection line or count says when it is busy.
   const reloadReady = `!document.querySelector("#nav-refresh")?.hasAttribute("aria-disabled") &&
-    document.querySelector(".github-pulls-connection-text")?.getAttribute("aria-busy") !== "true"`;
+    document.querySelector(".github-pulls-connection-text, .github-pulls-status[aria-busy]")?.getAttribute("aria-busy") !== "true"`;
   scenario({ stderr: "error connecting to api.github.com\n", exit: 1 });
   await waitFor(reloadReady);
-  await click("#nav-refresh");
+  const spins = await evaluate(
+    "(() => { const button = document.querySelector('#nav-refresh'); button.click(); return getComputedStyle(button.querySelector('.nav-refresh-spinner')).display !== 'none'; })()",
+  );
+  check("Refresh shows a spinner on the button", spins === true);
   await waitFor(`(${connection}).includes("Could not reach GitHub")`);
   await measure("pulls unreachable");
   scenario({ stderr: "To get started with GitHub CLI, please run:  gh auth login\n", exit: 4 });
@@ -638,12 +669,15 @@ for (const [width, measured] of [
     remark?.innerText === remark?.text && remark?.text === "Filtered to 2 files.",
     JSON.stringify(remark?.innerText),
   );
-  // The Pulls count's number is bold, as every count summary's, and its words regular.
   const count = measured["pulls updated"]?.lines[0];
   check(
-    `pulls updated (${width}): the count's one number is bold`,
-    count?.numbers.length === 1 && count.numbers[0].weight === "700",
-    JSON.stringify(count?.numbers),
+    `pulls updated (${width}): both numbers are bold in one line`,
+    count?.numbers.length === 2 &&
+      count.numbers.every((number) => number.weight === "700") &&
+      count.lines === 1 &&
+      count.text.replace(" · ,", " · ") ===
+        `${count.numbers[0].text} pull requests · ${count.numbers[1].text} open`,
+    JSON.stringify(count),
   );
 }
 // The pending tallies of Files and Commits sit alike in their lines.
@@ -655,8 +689,8 @@ check(
       TOLERANCE_PX,
   `${shimmerOf("files pending")} / ${shimmerOf("commits pending")}`,
 );
-// Where every state's text fits, one height on each tab whatever the state: one line on
-// Files and Commits, two on Pulls.
+// Where each state's text fits, Files, Commits, and a settled Pulls list use one line.
+// Pulls gets a second line when it has a connection status to show.
 for (const name of [
   "files pending",
   "files counting",
@@ -667,7 +701,9 @@ for (const name of [
   check(`${name}: one line's height`, near(wide[name]?.height, wide.files?.height));
 }
 check("commits: the line fills the toolbar slot", bands.commits?.inToolbar === true);
-for (const name of ["pulls updated", "pulls unreachable", "pulls signed out", "pulls without gh"]) {
+check("settled pulls: one line", wide["pulls updated"]?.lines.length === 1);
+check("settled pulls: one line’s height", near(wide["pulls updated"]?.height, wide.files?.height));
+for (const name of ["pulls unreachable", "pulls signed out", "pulls without gh"]) {
   check(
     `${name}: the loading band's height`,
     near(wide[name]?.height, wide["pulls loading"]?.height),

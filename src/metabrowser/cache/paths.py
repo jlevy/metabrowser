@@ -92,6 +92,31 @@ def source_pull_refresh(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".refresh.json"
 
 
+def source_pull_checks(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/<n>.checks.json``: its head's checks, as last read."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".checks.json"
+
+
+def source_pull_status_refresh(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/<n>.status.refresh.json``: how its status read ended."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".status.refresh.json"
+
+
+def source_pull_status_scan(slug: str) -> str:
+    """Return ``sources/<slug>/pulls/statuses.scan.json``: how the last scan of every open
+    pull request's status ended, and what the next one needs of it."""
+
+    return f"{source_pulls_directory(slug)}/statuses.scan.json"
+
+
+def source_pull_check_probes(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/<n>.checks.probe.json``: what its checks' probes last saw."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".checks.probe.json"
+
+
 def source_pull_snapshots(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.snapshots.json``: its retained revision pairs."""
 
@@ -113,6 +138,12 @@ def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     if name not in PULL_LIST_NAMES:
         raise ValueError("invalid pull-request list")
     return f"{source_pulls_directory(slug)}/list-{name}.refresh.json"
+
+
+def source_pull_list_timing(slug: str) -> str:
+    """Return the last completed GitHub catalog refresh’s timing record."""
+
+    return f"{source_pulls_directory(slug)}/catalog.refresh-timing.json"
 
 
 def source_pull_timeline(slug: str, number: int) -> str:
@@ -175,6 +206,8 @@ __all__ = [
     "STAGING",
     "STAGING_LOCKS",
     "source_directory",
+    "source_pull_check_probes",
+    "source_pull_checks",
     "source_pull_core",
     "source_pull_cores_refresh",
     "source_pull_files",
@@ -183,6 +216,8 @@ __all__ = [
     "source_pull_record",
     "source_pull_refresh",
     "source_pull_snapshots",
+    "source_pull_status_refresh",
+    "source_pull_status_scan",
     "source_pull_timeline",
     "source_pulls_directory",
     "source_record",

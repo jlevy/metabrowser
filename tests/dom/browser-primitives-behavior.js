@@ -202,6 +202,75 @@ for (const name of [
   await new Promise((resolve) => setImmediate(resolve));
   watch.dispose();
 
+  // An explicit reread during a background fetch waits for the next cycle it requested.
+  const requestedReads = [];
+  const updates = [];
+  const errors = [];
+  const requestedWatch = sandbox.MetabrowserInventoryScope.createInventoryWatch(
+    "src",
+    {
+      fetch: (signal) =>
+        new Promise((resolve, reject) => requestedReads.push({ resolve, reject, signal })),
+      onError: (error) => errors.push(error.message),
+    },
+    (value) => updates.push(value.revision),
+  );
+  let explicitSettled = false;
+  const requested = requestedWatch.refresh();
+  const sameRequest = requestedWatch.refresh() === requested;
+  void requested.then(() => {
+    explicitSettled = true;
+  });
+  dispatch("metabrowser:inventory-change", { paths: ["src/a.py"] });
+  const automatic = timers;
+  timers = [];
+  for (const callback of automatic) {
+    callback();
+  }
+  requestedReads[0].resolve({ revision: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "explicit rereads share the queued cycle and wait for its result",
+    sameRequest && !explicitSettled && requestedReads.length === 2,
+  );
+  requestedReads[1]?.resolve({ revision: 2 });
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "the queued result settles the request and covers prior automatic changes",
+    explicitSettled && updates.join(",") === "1,2" && requestedReads.length === 2,
+  );
+
+  let failureSettled = false;
+  void requestedWatch.refresh().then(() => {
+    failureSettled = true;
+  });
+  requestedReads[2]?.reject(new Error("inventory read failed"));
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "a failed explicit cycle reports its error and settles",
+    failureSettled && errors.join(",") === "inventory read failed",
+  );
+
+  let disposalSettled = 0;
+  void requestedWatch.refresh().then(() => {
+    disposalSettled += 1;
+  });
+  void requestedWatch.refresh().then(() => {
+    disposalSettled += 1;
+  });
+  requestedWatch.dispose();
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "disposal settles running and queued explicit reads without waiting for fetch",
+    disposalSettled === 2 && requestedReads[3]?.signal.aborted === true,
+  );
+  requestedReads[3]?.resolve({ revision: 3 });
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "a disposed watcher neither publishes its late result nor starts the queued read",
+    updates.join(",") === "1,2" && requestedReads.length === 4,
+  );
+
   // A crawl emits inventory changes continuously. A debounce that restarted
   // on every one would never fire until the stream paused, freezing a
   // folder's numbers for the whole scan; the wait is bounded by one window

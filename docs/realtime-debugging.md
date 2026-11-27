@@ -285,6 +285,29 @@ server’s records name, so the cause leads.
 When the addresses vary between failures, DNS is answering a GitHub name with addresses
 the network reaches only some of the time.
 
+## GitHub Requests
+
+To see what browsing asked of GitHub, and what it cost:
+
+```shell
+metab . --api '/api/plugin/github/gh-requests'
+metab . --api '/api/plugin/github/gh-requests?since=2026-11-26T10:00:00Z&until=2026-11-26T10:05:00Z&pid=4242'
+```
+
+The report adds up the `gh` calls that ended since `since` (an hour ago by default), for
+every call, for each budget a call was charged to (a reader’s own action, automatic
+work, speculative work, and the walk that prepares rows’ cores), and for each job the
+calls ran in: the calls by command, the statuses GitHub answered, the `core` calls and
+GraphQL points they spent, the share answered `304`, how long `gh` took at the median
+and the 95th percentile, the calls that repeated an identical one, and how long their
+jobs waited for a network slot.
+`in_flight` says how many calls ran at once, cut into `buckets` equal parts of the time
+they ran, and `pid` keeps one server’s calls when several share the log.
+`unrecorded` names what the log does not hold, such as when a page first showed GitHub’s
+answer.
+[The Request Report](project/architecture/arch-github-pull-requests.md#the-request-report)
+says what each call records.
+
 ## Debug Endpoints
 
 ```shell

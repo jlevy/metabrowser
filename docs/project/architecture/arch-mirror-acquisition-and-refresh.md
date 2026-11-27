@@ -304,8 +304,14 @@ store a repository folder keeps of its checkout’s origin
   key, a store key or a store key and a pull-request number, so concurrent requests join
   the running one; `MAX_CONCURRENT_REFRESHES` bounds the network jobs across every key.
   A job outlives the request that started it, and its failures are typed outcomes.
-  Graceful shutdown cancels the jobs, which kills their Git; Ctrl-C kills the process
-  groups and exits at once.
+  Why each pull request’s job was started or joined (`RefreshAsk`) is kept with it for
+  as long as it runs, and through a restart (`RefreshCoordinator.asks`), and the job’s
+  `CompanionRefresh.refresh` reads what those asks need
+  ([What a job reads](arch-github-pull-requests.md#serving-pull-requests)). Graceful
+  shutdown cancels the jobs, which kills their Git; Ctrl-C kills the process groups and
+  exits at once. A one-shot command drains the coordinator before it shuts down, until no
+  job is left, so a job that a job started finishes too, with every round under one
+  deadline (`RefreshCoordinator.drain`).
 - **Turns at the store:** within one server, jobs that fetch into the store take turns
   (`StoreTurn`) before its fetch lock, so none finds another holding it.
   The mirror’s fetch and the attended pull request’s go first, since a page of code
@@ -466,11 +472,13 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
 - **`GET /api/source/refs`** lists every one of the mirror’s branches or tags for the
   ref selector from one `for-each-ref`, filtered by name (`REFS_MAX_QUERY_CHARS`), each
   with its commit and that commit’s committer date, from which the selector shows its
-  age. The default branch lists first, then the rest newest first by that date, then by
-  name (`_newest_first` in `cache/resolve.py`); nothing pages the list, and the measured
-  cost of listing every ref is beside the constants in `source_routes.py`. An answer the
-  Git routes’ memo can keep is kept under the store’s ref state and the recorded default
-  branch (`_refs_answer_key`), so asking again while no ref moved runs no Git.
+  age. The default branch, `main`, and `master` appear before other branches.
+  Each group sorts newest first by that date, then by name (`cache/resolve.py`). Tags
+  omit the branch grouping.
+  The list has no pages, and the measured cost of listing every ref is beside the
+  constants in `source_routes.py`. An answer the Git routes’ memo can keep is kept under
+  the store’s ref state and the recorded default branch (`_refs_answer_key`), so asking
+  again while no ref moved runs no Git.
   The memo keeps no body over its `MAX_ENTRY_BYTES`, about 9,000 branches, or about
   5,200 where each is a pull request’s head (`REF_PULLS_PER_ROW` in `source_routes.py`),
   and has no key for a repository with more loose refs than `MAX_REF_ENTRIES`; a listing

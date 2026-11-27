@@ -65,6 +65,7 @@ from metabrowser.plugin_api import (
     FieldRef,
     FieldType,
     RecordNotFoundError,
+    RefFilter,
     SourceUnreadableError,
     TableCard,
     TableField,
@@ -343,9 +344,7 @@ class SqliteSource:
                 "needle": query.q,
             }
         if query.ref is not None:
-            spec["ref"] = self._ref_filter(
-                description, schema, query.ref.table, query.ref.key, deadline
-            )
+            spec["ref"] = self._ref_filter(schema, query.ref, deadline)
         filtered = bool(spec["filters"] or query.q is not None or query.ref is not None)
         if filtered:
             spec["scan_rows"] = reader.FILTER_SCAN_ROWS
@@ -488,12 +487,16 @@ class SqliteSource:
             )
             for ref, counted in zip(schema.referenced_by, found.get("backrefs") or [], strict=False)
         )
+        label = cells.get(_label_field(schema))
         return TableRecord(
             key=key,
             cells=cells,
             generation=self.generation(),
             positional=key.startswith("@"),
             referenced_by=referenced_by,
+            label=label[:TABLE_CELL_PREVIEW_CHARS]
+            if isinstance(label, str) and label.strip()
+            else None,
         )
 
     def card(self, table: str, key: str, budget: Budget) -> TableCard:
@@ -569,25 +572,23 @@ class SqliteSource:
 
     def _ref_filter(
         self,
-        description: dict[str, Any],
         schema: TableSchema,
-        target_table: str,
-        key: str,
+        relationship: RefFilter,
         deadline: float,
     ) -> list[dict[str, Any]]:
-        """`ref=<table>:<key>`: for each foreign key to that table, the values its
-        fields hold for that record."""
+        """Resolve the target values for each foreign key selected by the filter."""
         options: list[dict[str, Any]] = []
+        target_table = relationship.table
         target = self._describe(target_table, deadline)
         target_schema = _schema(target, target_table)
         for ref in schema.references:
-            if ref.table != target_table:
+            if not relationship.matches(ref):
                 continue
             found = self._read_record(
                 target,
                 target_schema,
                 target_table,
-                key,
+                relationship.key,
                 list(ref.to),
                 deadline,
                 inline=VALUE_MAX_BYTES,
@@ -828,11 +829,17 @@ def _schema(description: dict[str, Any], table: str) -> TableSchema:
 
 
 def _label_field(schema: TableSchema) -> str:
-    """The field a card leads with: the first text field that is not the key, else the
-    first column."""
-    for item in schema.fields:
-        if item.type == "text" and not item.key and not item.hidden:
-            return item.name
+    """Prefer a descriptive column for a record and its card."""
+    visible_text = {
+        item.name.casefold(): item.name
+        for item in schema.fields
+        if item.type == "text" and not item.key and not item.hidden
+    }
+    for preferred in ("name", "title", "label"):
+        if preferred in visible_text:
+            return visible_text[preferred]
+    if visible_text:
+        return next(iter(visible_text.values()))
     return schema.default_columns[0] if schema.default_columns else schema.fields[0].name
 
 

@@ -145,8 +145,10 @@ keys, and status codes, rather than only the library beneath a route; the parity
 - **Bodies.** `--data` sends a POST body from a file or from standard input (`-`),
   bounded by `MAX_REQUEST_BODY_BYTES` in `server.py`, the largest body a route reads.
 - **Background work.** Leaving the client shuts the application down, which cancels
-  background work. Before leaving, `--api` drains a mirror refresh its own request
-  started, and follows a `202` answer to the status route it names.
+  background work. Before leaving, `--api` drains the jobs its own request started and
+  every job those start in turn, such as the status scan a list’s look at the mirror
+  starts, under one deadline for all of them (`_REFRESH_DRAIN_S`,
+  `RefreshCoordinator.drain`), and follows a `202` answer to the status route it names.
 - **Output.** With no `--format`, the output is the transcript every golden pins: the
   route, the status, and the envelope.
   An explicit format prints the document alone, for a tool to parse.

@@ -370,20 +370,20 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   `working_tree` is null for a mirror and otherwise says whether the working tree is
   served, which branch `HEAD` is on and which commit it is at, and the folder’s `name`
   and `location`, as the page names the folder, and a row’s `checked_out` marks that
-  branch, which lists first.
-  `HEAD` is read from the checkout’s own files as each listing is made
+  branch. `HEAD` is read from the checkout’s own files as each listing is made
   (`checked_out_head`), not from the repository identity `repo_info` keeps for a few
   seconds, and a kept identity those files contradict is dropped, so a listing asked for
   the moment a page hears `HEAD` moved names the branch just checked out.
   `kind=working_tree` answers `working_tree` alone and runs no Git: it is what the
   chooser’s Working tree tab shows and what a page asks each time its watch on
   `HEAD_WATCH_PATH` says `HEAD` moved
-  ([File Watches](arch-live-delivery.md#file-watches)). Every ref is listed, the rest
-  newest first by the committer date each row shows, then by name, as a mirror’s are,
-  and the answer is kept, within the same limits, under the checkout’s ref state and the
-  branch `HEAD` is on, as a mirror’s is under its store’s. Each row has its commit and
-  `committed_at`, the committer date a row’s age is read from: a tag’s is its commit’s,
-  by `for-each-ref`’s `*committerdate`, in the same one process.
+  ([File Watches](arch-live-delivery.md#file-watches)). The listing groups primary and
+  known default branches first and sorts each group by committer date, newest first,
+  then by name. Tags use the same date and name ordering.
+  The memo keys the answer on the checkout’s ref state and the branch `HEAD` is on, as a
+  mirror’s is on its store’s. Each row has its commit and `committed_at`, the committer
+  date a row’s age is read from: a tag’s is its commit’s, by `for-each-ref`’s
+  `*committerdate`, in the same one process.
   The page shortens the commit as every line names one (`shortCommit` in
   `static/formatters.js`), and keeps the folder’s `name` whole at the end of its
   `location`.

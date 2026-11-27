@@ -28,6 +28,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,10 @@ class _Session:
 
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: self.now)
+        elapsed = count(step=300_000_000)
+        monkeypatch.setattr(
+            "metabrowser.builtin_plugins.github.pull_list_refresh.monotonic_ns", elapsed.__next__
+        )
         self.blocks: list[str] = []
         self.labels = Labels()
         self.epochs: set[str] = set()
@@ -274,10 +279,10 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 
     # Windows stay small even though the catalog has more than the first displayed 500.
     newest = session.get("?limit=2")
-    assert _numbers(newest) == [606, 605]
-    assert newest.payload()["next_after"] == 605
+    assert _numbers(newest) == [10, 7]
+    assert newest.payload()["next_after"] == 7
     assert _numbers(session.get("?limit=2&after=605")) == [604, 603]
-    assert _numbers(session.get("?limit=2&after=10")) == [7]
+    assert _numbers(session.get("?limit=2&after=10")) == [7, 606]
     generation = newest.payload()["generation"]
     no_network = session.post({"target": 1000})
     assert no_network.exit_code == 0
@@ -338,8 +343,11 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     assert (after["total"], after["repository_total"], after["catalog_fetched"]) == (599, 601, 601)
     assert "catalog state=updated" in session.blocks[-1]
     assert "catalog state=all" not in session.blocks[-1]
-    assert _numbers(session.get("?limit=2")) == [607, 606]
-    assert session.get("?after=11&limit=1").payload()["rows"][0]["title"] == changed["title"]
+    assert _numbers(session.get("?limit=2")) == [607, 10]
+    assert _numbers(session.get("?after=10&limit=2")) == [7, 606]
+    sought = session.get("?state=all&at=10&limit=2").payload()
+    assert sought["position"] == 1
+    assert sought["rows"][0]["title"] == changed["title"]
 
     # A failed account switch preserves the old catalog and its reader label.
     session.answer(
@@ -707,8 +715,10 @@ def test_golden_pull_list_failures(
     assert refused_catalog["last_refresh"]["outcome"] == "network_error"
     assert refused_catalog["fetched"] == baseline["fetched"]
     # The account check cannot reach GitHub, and gh auth status cannot name the token's
-    # login without it.
-    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+    # login without it. The scan of the open pull requests' statuses the Refresh starts
+    # beside it reads as the catalog's reader, with no account check of its own.
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    assert [call for call in calls if not call.startswith("gh api graphql statuses")] == [
         "gh api user",
         "gh auth status",
     ]
@@ -820,7 +830,8 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
     )
     resumed = session.post({"state": "closed", "target": 400, "retry": True}, summarize=True)
     assert resumed.exit_code == 0, resumed.stderr
-    calls = _graphql(session)
+    # The scan of the open pull requests' statuses the Refresh starts beside it is its own.
+    calls = [call for call in _graphql(session) if "graphql catalog" in call]
     assert calls[0] == "gh api graphql catalog state=updated cursor=start"
     assert calls[1:] == [
         f"gh api graphql catalog state=all cursor={'start' if not n else f'all-{n}'}"
@@ -868,14 +879,18 @@ def test_golden_pull_list_probe_answers_an_automatic_ask(
     session.say(
         "An automatic ask finds nothing due and probes: one conditional read of the issue or "
         "pull request updated last, with no account check. The catalog holds that row, so "
-        "nothing starts, and `checked_at` says when GitHub confirmed the list."
+        "the list starts nothing, and `checked_at` says when GitHub confirmed the list. The "
+        "first scan of the open pull requests' statuses starts beside it."
     )
     unchanged = session.post({"background": True})
     assert unchanged.exit_code == 0, unchanged.stderr
     answer = json.loads(unchanged.stdout.split("status: 200\n")[1])
     assert (answer["refresh"], answer["pulls"]["state"]) == ("not_due", "current")
     assert answer["pulls"]["checked_at"] == f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
-    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [f"gh api {PROBE}"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        f"gh api {PROBE}",
+        "gh api graphql statuses cursor=start",
+    ]
 
     session.advance(10)
     session.say(

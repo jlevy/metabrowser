@@ -1,4 +1,4 @@
-// A native stack's combined changed files, for the tree under its Whole stack row in the
+// A native stack's combined changed files, for the tree under its Stack Overview row in the
 // Pulls tab (mb-odt4): the files the stack's own page lists in its Diff summary, from the
 // same two reads, so the two cannot differ.
 //
@@ -12,7 +12,7 @@
 // of the comparison it read (`summaryRows` in builtin_plugins/diff/index.js), and the shared
 // changed-files tree orders them, as it orders the Diff summary's.
 //
-// When it is read, and what it costs: nothing until a reader opens the Whole stack row's
+// When it is read, and what it costs: nothing until a reader opens the Stack Overview row's
 // files, as a pull request's list is read when its row opens. Then one `GET stack`, which
 // runs no GitHub call and no fetch (pull_stack.py), and, once for each comparison, the
 // comparison itself, at the address the stack's page asks, so the browser's cache and the

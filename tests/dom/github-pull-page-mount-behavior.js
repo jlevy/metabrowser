@@ -9,11 +9,47 @@ const root = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(root, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
 );
+// A status whose checks were listed when it was observed is recorded without the time they
+// were listed, which is its own `observed_at`, and one whose checks were never seen
+// otherwise without `moved_at`, which is none; any other value is as recorded.
+function listedWhenObserved(field, value) {
+  if (field !== "status" || value === null || typeof value !== "object" || !value.checks) {
+    return value;
+  }
+  if (value.same_as !== undefined) {
+    return value;
+  }
+  const checks = { ...value.checks };
+  if (!("listed_at" in checks)) {
+    checks.listed_at = value.observed_at;
+  }
+  if (!("moved_at" in checks)) {
+    checks.moved_at = null;
+  }
+  return { ...value, checks };
+}
 for (const answer of Object.values(recorded)) {
   for (const envelope of [answer.body, answer.body?.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = recorded[holder].body.record;
+    for (const field of ["record", "status", "readiness", "checks"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        // Anything kept beside the name, a status's own time, is this answer's; a dotted
+        // name is a part of a part, as the time its checks were listed. Checks the held
+        // status listed when it was observed are listed when this one was, unless it says.
+        const { same_as: _held, ...own } = envelope[field];
+        const held = listedWhenObserved(field, recorded[holder].body[field]);
+        const value = { ...held };
+        if (held.checks?.listed_at !== undefined && held.checks.listed_at === held.observed_at) {
+          value.checks = { ...held.checks, listed_at: own.observed_at ?? held.observed_at };
+        }
+        for (const [name, part] of Object.entries(own)) {
+          const [outer, inner] = name.split(".");
+          value[outer] = inner === undefined ? part : { ...value[outer], [inner]: part };
+        }
+        envelope[field] = value;
+      } else if (envelope?.[field] !== undefined) {
+        envelope[field] = listedWhenObserved(field, envelope[field]);
+      }
     }
   }
 }
@@ -2234,54 +2270,37 @@ async function tabKeys(page) {
 // may not follow. Only an Actions link stands in for the "GitHub Actions" app.
 async function checkRows(page) {
   const body = structuredClone(recorded.current.body);
-  body.record.check_runs.push(
+  const passed = { kind: "run", bucket: "pass", status: "COMPLETED", conclusion: "SUCCESS" };
+  body.checks.items.push(
     {
-      id: 1,
+      ...passed,
       name: "coverage",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com/octo/demo/runs/123",
       app: "Codecov",
     },
+    { ...passed, name: "lint", details_url: "https://ci.example/runs/2", app: "GitHub Actions" },
+    { ...passed, name: "gist", details_url: "https://gist.github.com/octo/abc", app: "Gist bot" },
     {
-      id: 2,
-      name: "lint",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://ci.example/runs/2",
-      app: "GitHub Actions",
-    },
-    {
-      id: 3,
-      name: "gist",
-      status: "completed",
-      conclusion: "success",
-      details_url: "https://gist.github.com/octo/abc",
-      app: "Gist bot",
-    },
-    {
-      id: 4,
+      ...passed,
       name: "proxied",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://github.com:8443/octo/demo/actions/runs/9",
       app: "Proxy",
     },
     {
-      id: 5,
+      ...passed,
       name: "credentialed",
-      status: "completed",
-      conclusion: "success",
       details_url: "https://bot@github.com/octo/demo/runs/5",
       app: "Bot",
     },
+    {
+      kind: "status",
+      bucket: "pass",
+      conclusion: "SUCCESS",
+      name: "legacy-ci",
+      description: "Passed",
+      details_url: "ftp://ci.example/7",
+    },
   );
-  body.record.status.statuses.push({
-    context: "legacy-ci",
-    state: "success",
-    description: "Passed",
-    target_url: "ftp://ci.example/7",
-  });
   const { container, handle } = await mountOn(page, body, "checks", () => "now");
   const list = container.querySelector(".github-pull-checks");
   assert.ok(list, "the Checks tab lists its checks");
@@ -2293,7 +2312,16 @@ async function checkRows(page) {
     assert.equal(name.getAttribute("class"), null, "the name is plain text, not a link");
     const link = rest.find((node) => node.tag === "a") ?? null;
     const detail = rest.find((node) => node.classes.has("github-pull-quiet")) ?? null;
-    assert.equal(rest.length, Number(link !== null) + Number(detail !== null));
+    // A check a rule requires carries the compact Required tag right after its name.
+    const required = rest.find((node) => node.classes.has("github-pull-required")) ?? null;
+    assert.equal(
+      rest.length,
+      Number(link !== null) + Number(detail !== null) + Number(required !== null),
+    );
+    if (required !== null) {
+      assert.equal(rest.indexOf(required), 0, "the tag follows the name it qualifies");
+      assert.equal(required.textContent, "Required");
+    }
     if (link !== null && detail !== null) {
       assert.equal(rest.indexOf(link), 0, "the action comes before the description");
     }
@@ -2302,6 +2330,7 @@ async function checkRows(page) {
     );
     return {
       name: name.textContent,
+      required: required !== null,
       action:
         link === null
           ? null
@@ -2327,17 +2356,12 @@ async function checkRows(page) {
     mark: kind === "external" ? null : "github before",
   });
   const job = "https://github.com/octo/demo/actions/runs/18062895276/job/";
+  // `gh pr checks`'s order: the pending docs build first, then the rest as the server kept
+  // them, its runs and then its commit status, then the ones added here.
   assert.deepEqual(rows, [
     {
-      name: "tests (3.13)",
-      action: {
-        ...actions("actions", `${job}51401654787`),
-        accessibleName: "View action on GitHub: tests (3.13)",
-      },
-      detail: null,
-    },
-    {
       name: "docs",
+      required: true,
       action: {
         ...actions("actions", `${job}51401654788`),
         accessibleName: "View action on GitHub: docs",
@@ -2345,7 +2369,26 @@ async function checkRows(page) {
       detail: null,
     },
     {
+      name: "tests (3.13)",
+      required: true,
+      action: {
+        ...actions("actions", `${job}51401654787`),
+        accessibleName: "View action on GitHub: tests (3.13)",
+      },
+      detail: null,
+    },
+    {
+      name: "docs/readthedocs.org:demo",
+      required: false,
+      action: {
+        ...actions("external", "https://demo--7.org.readthedocs.build/en/7/"),
+        accessibleName: "View details: docs/readthedocs.org:demo",
+      },
+      detail: "Read the Docs build succeeded!",
+    },
+    {
       name: "coverage",
+      required: false,
       action: {
         ...actions("github", "https://github.com/octo/demo/runs/123"),
         accessibleName: "View on GitHub: coverage",
@@ -2354,6 +2397,7 @@ async function checkRows(page) {
     },
     {
       name: "lint",
+      required: false,
       action: {
         ...actions("external", "https://ci.example/runs/2"),
         accessibleName: "View details: lint",
@@ -2362,6 +2406,7 @@ async function checkRows(page) {
     },
     {
       name: "gist",
+      required: false,
       action: {
         ...actions("github", "https://gist.github.com/octo/abc"),
         accessibleName: "View on GitHub: gist",
@@ -2370,6 +2415,7 @@ async function checkRows(page) {
     },
     {
       name: "proxied",
+      required: false,
       action: {
         ...actions("external", "https://github.com:8443/octo/demo/actions/runs/9"),
         accessibleName: "View details: proxied",
@@ -2378,25 +2424,245 @@ async function checkRows(page) {
     },
     {
       name: "credentialed",
+      required: false,
       action: {
         ...actions("external", "https://bot@github.com/octo/demo/runs/5"),
         accessibleName: "View details: credentialed",
       },
       detail: "Bot",
     },
-    {
-      name: "docs/readthedocs.org:demo",
-      action: {
-        ...actions("external", "https://demo--7.org.readthedocs.build/en/7/"),
-        accessibleName: "View details: docs/readthedocs.org:demo",
-      },
-      detail: "Read the Docs build succeeded!",
-    },
-    { name: "legacy-ci", action: null, detail: "Passed" },
+    { name: "legacy-ci", required: false, action: null, detail: "Passed" },
   ]);
   const names = rows.flatMap((row) => (row.action === null ? [] : [row.action.accessibleName]));
   assert.equal(new Set(names).size, names.length, "every action has its own accessible name");
   handle.dispose();
+}
+
+// The Merge status section opens the Checks tab (mb-io36): the verdict's badge and the
+// requirement that heads it, then a row for each requirement, its status's badge in the tone
+// its status gives a verdict, the server's sentence, and its link, then auto-merge's. The
+// Checks row's link brings the first running check into view and focuses it, and only while
+// the page is mounted; a merged pull request, which has no readiness, has no section. The
+// section is built only when the tab shows, and kept while what it says is the same.
+async function mergeStatusSection(page) {
+  const body = structuredClone(recorded.current.body);
+  const { container, handle } = await mountOn(page, body, "", () => "now");
+  assert.equal(
+    container.querySelector(".github-pull-merge-status"),
+    null,
+    "Conversation builds no Merge status",
+  );
+  handle.dispose();
+  const checks = await mountOn(page, body, "checks", () => "now");
+  const pane = checks.container.querySelector(".github-pull-body");
+  const section = pane.children[0];
+  assert.ok(section.classes.has("github-pull-merge-status"), "Merge status opens the tab");
+  assert.equal(section.children[0].textContent, "Merge status");
+  const verdict = section.querySelector(".github-pull-verdict");
+  const [badge, sentence] = verdict.children;
+  const readiness = body.readiness;
+  assert.deepEqual(
+    [badge.dataset.verdict, badge.dataset.tone, badge.textContent],
+    [readiness.verdict, readiness.tone, readiness.label],
+  );
+  // The worst status among the requirements, and the first requirement at it.
+  const order = ["unmet", "waiting", "unknown", "met"];
+  const worst = order.find((status) =>
+    readiness.requirements.some((requirement) => requirement.status === status),
+  );
+  assert.equal(
+    sentence.textContent,
+    readiness.requirements.find((requirement) => requirement.status === worst).summary,
+  );
+  const rows = section.querySelector(".github-pull-requirements").children;
+  assert.equal(rows.length, readiness.requirements.length + 1, "and auto-merge's row");
+  readiness.requirements.forEach((requirement, at) => {
+    const [status, said] = rows[at].children;
+    assert.equal(rows[at].getAttribute("data-kind"), requirement.kind);
+    assert.equal(status.dataset.status, requirement.status);
+    assert.equal(status.dataset.tone, requirement.status === "met" ? "success" : readiness.tone);
+    assert.ok(said.classes.has("github-pull-requirement-said"));
+    assert.equal(said.children[0].textContent, requirement.summary);
+  });
+  assert.equal(rows.at(-1).textContent, readiness.auto_merge_summary);
+  const checksRow = rows.find((row) => row.getAttribute("data-kind") === "checks");
+  const toCheck = checksRow.children[1].children.find((node) => node.tag === "a");
+  assert.equal(toCheck.getAttribute("aria-label"), "View check: docs");
+  const listed = pane.querySelector(".github-pull-checks").children;
+  const running = listed.find((row) => row.children[2].textContent === "docs");
+  assert.equal(running.getAttribute("tabindex"), "-1", "the row the link names takes focus");
+  const moves = [];
+  running.scrollIntoView = (options) => moves.push(`scrolled ${options.block}`);
+  running.focus = (options) => moves.push(`focused, preventScroll ${options.preventScroll}`);
+  let prevented = 0;
+  // A plain click, as isPlainClick reads one in a browser.
+  globalThis.MouseEvent = class MouseEvent {};
+  const click = { button: 0, preventDefault: () => (prevented += 1) };
+  toCheck.events.get("click")(click);
+  assert.deepEqual(moves, ["scrolled nearest", "focused, preventScroll true"]);
+  assert.equal(prevented, 1);
+  // Landing on the tab again with the same readiness keeps the section it built.
+  checks.handle.land({ tab: "checks" });
+  assert.equal(pane.children[0], section, "the same readiness keeps its section");
+  checks.handle.dispose();
+  toCheck.events.get("click")(click);
+  assert.equal(prevented, 1, "a link of a page that is gone does nothing");
+  assert.equal(moves.length, 2);
+  delete globalThis.MouseEvent;
+  const merged = await mountOn(page, structuredClone(recorded.merged.body), "checks", () => "now");
+  assert.equal(merged.container.querySelector(".github-pull-merge-status"), null);
+  assert.equal(merged.container.querySelector(".github-pull-readiness-slot"), null);
+  merged.handle.dispose();
+  await checkLinkByPlace(page);
+  await listedStateReadiness(page);
+  await pageReadReachesRows(page);
+}
+
+// The page's own read of its pull request's status reaches every row in the document that
+// draws its readiness (row-readiness.js, `heard`; mb-3n21): a Pulls row that read #7 before
+// the page's read observed it reads it again, once, when the page shows a newer status, so it
+// says what the header says without waiting for the next scan; and the page's polls of the
+// same status read nothing more.
+async function pageReadReachesRows(page) {
+  const rows = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/row-readiness.js")).href
+  );
+  const body = structuredClone(recorded.current.body);
+  const older = new Date(Date.parse(body.status.observed_at) - 60_000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  const idle = [];
+  const reads = [];
+  const lane = rows.createRowReadiness({
+    keep: { quiet: async () => {} },
+    async read(numbers) {
+      reads.push(numbers.join(","));
+      return {
+        status: 200,
+        body: {
+          source: body.source,
+          scanning: false,
+          scan: null,
+          rows: numbers.map((number) => ({
+            number,
+            state: "status",
+            reason: null,
+            lifecycle: "open",
+            head: body.record.pull.head.sha,
+            status: { ...body.status, observed_at: older },
+            readiness: { verdict: "checks_pending", tone: "attention", label: "Checks pending" },
+          })),
+        },
+      };
+    },
+    schedule(callback) {
+      idle.push(callback);
+      return callback;
+    },
+    cancel() {},
+    isVisible: () => true,
+    now: () => Date.now(),
+    changed() {},
+  });
+  const runIdle = async () => {
+    while (idle.length > 0) {
+      idle.shift()();
+      await settle();
+    }
+  };
+  const row = { number: 7, head: body.record.pull.head.sha, state: "open" };
+  lane.want([row], body.source);
+  await runIdle();
+  assert.deepEqual(reads, ["7"], "the Pulls row reads #7 once");
+  const { handle } = await mountOn(page, body, "", () => "now");
+  lane.want([row], body.source);
+  await runIdle();
+  assert.deepEqual(reads, ["7", "7"], "the page's newer status reads #7 again, once");
+  handle.land({ tab: "checks" });
+  await settle();
+  lane.want([row], body.source);
+  await runIdle();
+  assert.deepEqual(reads, ["7", "7"], "the page's same status again reads nothing");
+  handle.dispose();
+  lane.dispose();
+  rows.documentReadiness.clear();
+}
+
+// A requirement's link to a check focuses the row of the check it names, whatever the others
+// are called: two checks can share a name, as a failing "docs" of another app's does the
+// running "docs" the verdict waits for, which `gh pr checks`'s order lists after it.
+async function checkLinkByPlace(page) {
+  const body = structuredClone(recorded.current.body);
+  const running = body.checks.items.find((item) => item.name === "docs");
+  body.checks.items.unshift({
+    ...running,
+    kind: "status",
+    bucket: "fail",
+    status: null,
+    conclusion: "FAILURE",
+    required: false,
+    details_url: "https://ci.example.com/octo/demo/docs/1",
+    app: null,
+    description: "Another app's docs build failed",
+  });
+  const { container, handle } = await mountOn(page, body, "checks", () => "now");
+  const listed = container.querySelector(".github-pull-checks").children;
+  const named = listed.filter((row) => row.children[2].textContent === "docs");
+  assert.equal(named.length, 2, "two checks named docs, the failing one first");
+  const [failing, waitedFor] = named;
+  assert.ok(listed.indexOf(failing) < listed.indexOf(waitedFor));
+  const link = container
+    .querySelector(".github-pull-requirements")
+    .children.find((row) => row.getAttribute("data-kind") === "checks")
+    .children[1].children.find((node) => node.tag === "a");
+  const focused = [];
+  for (const row of named) {
+    row.scrollIntoView = () => {};
+    row.focus = () => focused.push(row);
+  }
+  globalThis.MouseEvent = class MouseEvent {};
+  link.events.get("click")({ button: 0, preventDefault() {} });
+  delete globalThis.MouseEvent;
+  assert.deepEqual(focused, [waitedFor], "the link focuses the running check it names");
+  assert.equal(waitedFor.getAttribute("tabindex"), "-1");
+  assert.equal(failing.getAttribute("tabindex"), null, "and leaves the failing one alone");
+  handle.dispose();
+}
+
+// The server judged the verdict with the pull request in its record's state. A page that shows
+// the list's state instead, fresher than the record (`withListedState`), shows no verdict for
+// it: once the list says the pull request merged or is a draft, the header has no readiness
+// slot and the Checks tab no Merge status section, until a read judges the state shown.
+async function listedStateReadiness(page) {
+  const states = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  const later = new Date(Date.parse(recorded.current.body.record.pull.updated_at) + 1000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  // A repository of its own, so what the list says here is said of no other story's, and its
+  // row taken back at the end, so no later story finds two repositories' rows for #7.
+  const source = "https://github.com/octo/listed-state";
+  for (const state of ["merged", "draft", "open"]) {
+    const body = structuredClone(recorded.current.body);
+    body.source = source;
+    states.noteListed(source, "all", [{ number: 7, state, updatedAt: later }]);
+    const { container, handle } = await mountOn(page, body, "checks", () => "now");
+    const shown = container.querySelector(".github-pull-state-slot").children[0].textContent;
+    const drawn = {
+      slot: container.querySelector(".github-pull-readiness-slot") !== null,
+      section: container.querySelector(".github-pull-merge-status") !== null,
+    };
+    assert.equal(shown, states.PULL_STATES[state].label, `the header shows the list's ${state}`);
+    assert.deepEqual(
+      drawn,
+      state === "open" ? { slot: true, section: true } : { slot: false, section: false },
+      `the list says ${state}`,
+    );
+    handle.dispose();
+  }
+  states.noteListed(source, "open", []);
+  assert.equal(states.listedState(source, 7), null);
 }
 
 // The header leaves out an updated age that reads the same as the merged or closed age
@@ -4194,12 +4460,56 @@ async function run() {
     // The state's badge leads the first metadata row, and the stack's slot ends it (mb-646g):
     // the slot holds a strut while no stack is known, so a late chip lands in the row's empty
     // end. Nothing follows it: the page has no Refresh of its own (mb-ablv).
-    const [stateBadgeSlot, ages, stackSlot] = opened.children;
+    // The readiness's slot follows the state's (mb-io36): a link to the Checks tab, its badge
+    // the server's label in the server's tone, named with auto-merge's sentence while it is
+    // on, its tooltip the requirements not met, then a sizer of every label the slot is as
+    // wide as, hidden from assistive technology.
+    const [stateBadgeSlot, readinessSlot, ages, stackSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
+    assert.ok(readinessSlot.classes.has("github-pull-readiness-slot"));
+    const [readinessLink, ...readinessSizers] = readinessSlot.children;
+    const shownReadiness = recorded.current.body.readiness;
+    assert.equal(readinessLink.tag, "a");
+    assert.equal(readinessLink.getAttribute("href"), "/pull/7/checks");
+    assert.equal(
+      readinessLink.getAttribute("aria-label"),
+      `${shownReadiness.label}. ${shownReadiness.auto_merge_summary}`,
+    );
+    const notMet = shownReadiness.requirements
+      .filter((requirement) => requirement.status !== "met")
+      .map((requirement) => requirement.summary)
+      .join(" ");
+    assert.equal(readinessLink.dataset.tipText, notMet);
+    assert.equal(readinessLink.getAttribute("aria-description"), notMet);
+    // The badge, and the verdict's glyph a narrow row draws in its place (github/styles.css,
+    // `@container github-pull-opened`), hidden from assistive technology: the link's own name
+    // says the label in either form.
+    const [verdictBadge, verdictGlyph] = readinessLink.children;
+    assert.equal(readinessLink.children.length, 2);
+    assert.deepEqual(
+      [verdictBadge.dataset.verdict, verdictBadge.dataset.tone, verdictBadge.textContent],
+      [shownReadiness.verdict, shownReadiness.tone, shownReadiness.label],
+    );
+    assert.ok(verdictGlyph.classes.has("github-pull-readiness-icon"));
+    assert.deepEqual(
+      [verdictGlyph.dataset.verdict, verdictGlyph.dataset.tone],
+      [shownReadiness.verdict, shownReadiness.tone],
+    );
+    assert.equal(verdictGlyph.getAttribute("aria-hidden"), "true");
+    assert.equal(verdictGlyph.getAttribute("aria-label"), null);
+    assert.ok(readinessSizers.length > 0);
+    assert.ok(
+      readinessSizers.every(
+        (sizer) =>
+          sizer.classes.has("github-pull-badge-sizer") &&
+          sizer.getAttribute("aria-hidden") === "true",
+      ),
+    );
+    assert.ok(readinessSizers.some((sizer) => sizer.textContent === shownReadiness.label));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
-    assert.equal(opened.children.length, 3);
+    assert.equal(opened.children.length, 4);
     const stateBadge = stateBadgeSlot.children[0];
     assert.equal(opened.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
@@ -4714,6 +5024,7 @@ async function run() {
   );
   await markdownOwnership();
   await checkRows(page);
+  await mergeStatusSection(page);
   await headerAges(page);
   await headerShape(page);
   // The freshness note's slot is as wide as its widest age: each age the page says is put at
@@ -4772,6 +5083,7 @@ async function run() {
     hiddenReadiness: true,
     markdownOwnership: true,
     checkRows: true,
+    mergeStatus: true,
     headerAges: true,
     headerShape: true,
     widestNotes,

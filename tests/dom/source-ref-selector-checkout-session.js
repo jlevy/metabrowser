@@ -59,7 +59,12 @@ async function runCheckout() {
   const onReadme = { view: recording.views.readme };
   // The page names the branch its working tree is on, as server.py writes it on the row
   // (`data-working-branch`): the fixture checkout's HEAD is on topic.
-  const options = (shown) => ({ shown, checkout: true, workingBranch: "topic" });
+  const options = (shown) => ({
+    shown,
+    checkout: true,
+    workingBranch: "topic",
+    workingCommit: recording.working_tree.body.working_tree.head_commit,
+  });
 
   // The folder opens on its working tree, showing README.md: the row says so in words,
   // then names the branch the files on disk are on.
@@ -77,7 +82,7 @@ async function runCheckout() {
   const branchesListed = selector.setKind("branch");
   await page.answer(recording.branches);
   await branchesListed;
-  steps.push(page.observe("the checkout's branches, the checked-out one first and marked"));
+  steps.push(page.observe("the checkout's branches, with the checked-out branch marked"));
 
   const remotes = selector.setKind("remote");
   await page.answer(recording.remotes);
@@ -196,7 +201,11 @@ async function runCheckout() {
   // watch on the checkout's HEAD says so (`headChanged`), and the row names the branch it
   // is on now, in place: nothing is navigated, and the list stays as it was, closed or open.
   page = createPage(onReadme);
-  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const headObservations = [];
+  selector = selectorRuntime.createSelector(
+    { ...page.deps, workingTreeObserved: (moved) => headObservations.push(moved) },
+    options(null),
+  );
   const withTip = (step) => {
     const model = selectorRuntime.describe(selector.snapshot());
     return { ...page.observe(step), tip: model.viewTip, renders: page.renders() };
@@ -206,6 +215,7 @@ async function runCheckout() {
   steps.push(withTip("a HEAD that moved asks where it is, and for no refs, with the list closed"));
   await page.answer(recording.working_tree_moved);
   await moved;
+  assert(headObservations.length === 1 && headObservations[0] === true);
   steps.push(withTip("the row names the branch HEAD is on now, in place"));
   // An open list asks for itself again, and its entry follows.
   const openedMoved = selector.open();
@@ -215,10 +225,12 @@ async function runCheckout() {
   const same = selector.headChanged();
   await page.answer(recording.working_tree_moved);
   await same;
+  assert(headObservations.at(-1) === false);
   steps.push(withTip("an answer that says the same draws nothing"));
   const detached = selector.headChanged();
   await page.answer(recording.working_tree_detached);
   await detached;
+  assert(headObservations.at(-1) === true);
   steps.push(withTip("a HEAD detached since names its commit, in the row and the entry"));
   // The Branches list marks the branch checked out, so it follows as well.
   const listedDetached = selector.setKind("branch");

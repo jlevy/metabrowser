@@ -1297,8 +1297,11 @@ def _backrefs(
     for incoming in spec.get("referenced_by") or []:
         to = [str(name) for name in incoming["to"]]
         values = [cells[name][2] if name in cells else None for name in to]
-        if any(value is None or _previewed(value) for value in values):
+        if any(value is None for value in values):
             out.append({"count": 0, "complete": True})
+            continue
+        if any(_previewed(value) for value in values):
+            out.append({"count": 0, "complete": False})
             continue
         fields = [str(name) for name in incoming["fields"]]
         match, params = _references(str(spec["table"]), to, fields, values)

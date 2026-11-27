@@ -9,14 +9,15 @@
 // `namedStackPositionNodes` draws after the Layers glyph; `stackPositionHint` is the tip
 // that names both, which `stackPlaceHint` writes from a stack's number and length, as the
 // guide's row has them; `stackMenuOrder` is the one member order, top of the stack first;
-// and `stackEntries` is the one order of a stack's rows, its Whole stack row first, then its
+// and `stackEntries` is the one order of a stack's rows, its Stack Overview row first, then its
 // members, in the stack menu and under an open stack in the Pulls tab alike. `groupByStack`
 // is the Pulls tab's grouping of its rows, `stackPullsCount` the count its stack's heading
-// shows, `stackUpdatedAt` the time its age tells, and `wholeStackHint` its Whole stack row's
+// shows, `stackUpdatedAt` the time its age tells, and `wholeStackHint` its Stack Overview row's
 // accessible name.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[]}} NativeStack */
+/** @typedef {{number: number, updated_at: string} & Record<string, unknown>} StackLeader */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[], authors: (string | null)[], avatars: (string | null)[], labels: (string[] | null)[], updated_at?: string | null, leaders?: Partial<Record<"open" | "closed" | "all", StackLeader>>}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -35,7 +36,7 @@
 /** @typedef {{
  * known: boolean, reason: string | null,
  * source: string | null, reader: string | null,
- * byPull: Map<number, NativeStack[]>, labels: Map<number, StackCaption>,
+ * stacks: NativeStack[], byPull: Map<number, NativeStack[]>, labels: Map<number, StackCaption>,
  * }} StackIndex */
 
 /**
@@ -57,7 +58,7 @@ export function stackLabel(number) {
 /** The words of the row that opens a stack's own page, the first of a stack's rows in the
  * stack menu and under an open stack in the Pulls tab (`stackEntries`; docs/design-system.md,
  * "Stacks"). */
-export const WHOLE_STACK = "Whole stack";
+export const STACK_OVERVIEW = "Stack Overview";
 
 /** A member's place in its stack, as GitHub numbers it from the base: "2/4".
  * @param {number} at The member's index in `pulls`, base first.
@@ -120,9 +121,9 @@ export function stackMenuOrder(stack) {
   return stack.pulls.slice().reverse();
 }
 
-/** A stack's rows in the one order every surface that lists them draws: its Whole stack row,
+/** A stack's rows in the one order every surface that lists them draws: its Stack Overview row,
  * null here, which opens the stack's own page, then *members*. The stack menu and an open
- * stack's rows in the Pulls tab both take their order from it, so the Whole stack row has one
+ * stack's rows in the Pulls tab both take their order from it, so the Stack Overview row has one
  * place in both, first, above the members, and the stack's set counts it
  * (docs/design-system.md, "Stacks").
  * @param {number[]} members The members to list, in `stackMenuOrder`.
@@ -187,6 +188,7 @@ export function createStackIndex(envelope) {
     reason: envelope?.reason ?? null,
     source: envelope?.source ?? null,
     reader: envelope?.reader ?? null,
+    stacks: envelope?.stacks ?? [],
     byPull,
     labels,
   };
@@ -209,6 +211,28 @@ function sameIdentity(index, identity) {
  */
 export function stackMembership(index, identity, number) {
   return sameIdentity(index, identity) ? (index.byPull.get(number) ?? []) : [];
+}
+
+/** The PRs representing stacks ranked within a partial list window.
+ * @param {StackIndex} index @param {StackIdentity | null} identity
+ * @param {string} filter @param {string} through
+ * @param {(number: number) => string | null} updatedAt
+ * @returns {StackLeader[]}
+ */
+export function stackLeaders(index, identity, filter, through, updatedAt) {
+  if (
+    !sameIdentity(index, identity) ||
+    (filter !== "open" && filter !== "closed" && filter !== "all")
+  ) {
+    return [];
+  }
+  return index.stacks.flatMap((stack) => {
+    if ((stackUpdatedAt(stack, updatedAt) ?? "") < through) {
+      return [];
+    }
+    const lead = stack.leaders?.[filter];
+    return lead === undefined ? [] : [lead];
+  });
 }
 
 /** A row's caption, precomputed for every row but one grouped under a stack other than its
@@ -235,7 +259,7 @@ export function stackRowKey(number) {
   return -number;
 }
 
-/** The row key of a stack's Whole stack row in the Pulls list: half a step past its stack's
+/** The row key of a stack's Stack Overview row in the Pulls list: half a step past its stack's
  * row's key, so it collides with no stack's row and no pull request's, and it is negative,
  * as every row that is not a pull request's is (docs/design-system.md, "Stack Groups in the
  * Pulls Tab").
@@ -245,7 +269,7 @@ export function wholeStackRowKey(number) {
   return -number - 0.5;
 }
 
-/** The stack whose Whole stack row *key* is, or null for any other row's key.
+/** The stack whose Stack Overview row *key* is, or null for any other row's key.
  * @param {number} key
  */
 export function wholeStackOfKey(key) {
@@ -265,7 +289,7 @@ export function wholeStackOfKey(key) {
  * }} PullGroupRow
  * @typedef {{
  *   kind: "whole", key: number, stack: number, level: 2, posinset: number, setsize: number,
- * }} WholeStackRow A stack's Whole stack row, the first under its open stack, which opens the
+ * }} WholeStackRow A stack's Stack Overview row, the first under its open stack, which opens the
  *   stack's own page; its children are the stack's changed files, as a pull request's row's
  *   are its own.
  * @typedef {StackGroupRow | PullGroupRow | WholeStackRow} GroupedRow
@@ -276,24 +300,22 @@ export function wholeStackOfKey(key) {
  *
  * *numbers* are the list's pull requests in its own order. Each stack with a pull request
  * among them has a row, "Stack #N", open unless *collapsed* names it, and under it its
- * pull requests in the list, in `stackMenuOrder`. The stacks come in the order of their
- * first pull request in the list, so the list's own order still decides which comes
- * first; a tie, two stacks first listed at one shared member, keeps the envelope's order.
- * A pull request in more than one stack sits once, under the first of them in that order;
- * a stack whose listed pull requests all sit under earlier stacks has no row; their
- * places name it. Pull requests in no stack follow the stacks, in the list's order.
+ * pull requests in the list, in `stackMenuOrder`. Stacks and standalone pull requests
+ * share one newest-first order. Each stack's time is the latest update across its known
+ * members, including members outside the current filter. A shared pull request sits
+ * under its highest-ranked stack in the snapshot. A stack whose listed members all sit under earlier stacks
+ * has no row; their places name it.
  *
- * An open stack's rows under it, at one level, are its Whole stack row and its pull requests,
- * in `stackEntries`' order, the stack menu's: the Whole stack row, which opens the stack's own
+ * An open stack's rows under it, at one level, are its Stack Overview row and its pull requests,
+ * in `stackEntries`' order, the stack menu's: the Stack Overview row, which opens the stack's own
  * page (`/stack/<n>`, stack-page.js), is one of the stack's rows, so they count it in their
  * set, "1/4" under a stack of three (docs/design-system.md, "Stack Groups in the Pulls
- * Tab"). No pull request is ever under the Whole stack row.
+ * Tab"). No pull request is ever under the Stack Overview row.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
- * less the pull requests placed under stacks. *updatedAt* is when the list says a pull
- * request it holds was last updated, which a stack's heading tells the newest of
- * (`stackUpdatedAt`).
+ * less the pull requests placed under stacks. *updatedAt* supplies a listed PR's
+ * update time so an arriving list update can inform a stack before the next stack poll.
  *
  * @param {number[]} numbers
  * @param {StackIndex} index
@@ -307,23 +329,25 @@ export function wholeStackOfKey(key) {
 export function groupByStack(numbers, index, identity, options = {}) {
   const collapsed = options.collapsed ?? new Set();
   const listed = new Set(numbers);
-  /** @type {Map<number, NativeStack>} */
-  const order = new Map();
+  /** @type {Map<number, number>} */
+  const firstListed = new Map();
   for (const number of numbers) {
     for (const stack of stackMembership(index, identity, number)) {
-      if (!order.has(stack.number)) {
-        order.set(stack.number, stack);
+      if (!firstListed.has(stack.number)) {
+        firstListed.set(stack.number, number);
       }
     }
   }
   /** The stack each placed pull request sits under. @type {Map<number, number>} */
   const placed = new Map();
-  /** @type {{stack: NativeStack, members: number[], listed: number, elsewhere: Map<number, number>}[]} */
-  const groups = [];
-  /** Each drawn stack's pull requests the list holds, under it or an earlier stack.
-   * @type {Map<number, number[]>} */
-  const listedOf = new Map();
-  for (const stack of order.values()) {
+  /** @type {Array<{row: StackGroupRow | PullGroupRow, number: number, updated_at: string | null}>} */
+  const top = [];
+  // The server claims representatives in snapshot order for equal activity. New list
+  // timestamps can move the headings while their shared rows keep that assignment.
+  const ranked = index.stacks
+    .filter((stack) => firstListed.has(stack.number))
+    .sort((left, right) => (right.updated_at ?? "").localeCompare(left.updated_at ?? ""));
+  for (const stack of ranked) {
     const listedMembers = stackMenuOrder(stack).filter((number) => listed.has(number));
     const members = listedMembers.filter((number) => !placed.has(number));
     if (members.length === 0) {
@@ -341,33 +365,57 @@ export function groupByStack(numbers, index, identity, options = {}) {
     for (const number of members) {
       placed.set(number, stack.number);
     }
-    groups.push({ stack, members, listed: listedMembers.length, elsewhere });
-    listedOf.set(stack.number, listedMembers);
+    const updated_at = stackUpdatedAt(stack, options.updatedAt);
+    top.push({
+      number: updated_at === null ? (firstListed.get(stack.number) ?? stack.number) : stack.number,
+      updated_at,
+      row: {
+        kind: "stack",
+        key: stackRowKey(stack.number),
+        stack,
+        label: stackLabel(stack.number),
+        hint: stackGroupHint(stack, listedMembers.length, elsewhere),
+        members,
+        expanded: !collapsed.has(stack.number),
+        level: 1,
+        posinset: 0,
+        setsize: 0,
+        shown: listedMembers.length,
+        elsewhere,
+        updatedAt: updated_at,
+      },
+    });
   }
-  const rest = numbers.filter((number) => !placed.has(number));
-  const firstLevel =
-    groups.length + Math.max(rest.length, (options.setSize ?? numbers.length) - placed.size);
+  const stackCount = top.length;
+  for (const number of numbers) {
+    if (!placed.has(number)) {
+      top.push({
+        number,
+        updated_at: options.updatedAt?.(number) ?? null,
+        row: {
+          kind: "pull",
+          key: number,
+          number,
+          level: 1,
+          stack: null,
+          posinset: 0,
+          setsize: 0,
+        },
+      });
+    }
+  }
+  const firstLevel = Math.max(
+    top.length,
+    (options.setSize ?? numbers.length) - placed.size + stackCount,
+  );
   /** @type {GroupedRow[]} */
   const rows = [];
-  for (const [at, { stack, members, listed: shown, elsewhere }] of groups.entries()) {
-    const expanded = !collapsed.has(stack.number);
-    rows.push({
-      kind: "stack",
-      key: stackRowKey(stack.number),
-      stack,
-      label: stackLabel(stack.number),
-      hint: stackGroupHint(stack, shown, elsewhere),
-      members,
-      expanded,
-      level: 1,
-      posinset: at + 1,
-      setsize: firstLevel,
-      // What its accessible name counts.
-      shown,
-      elsewhere,
-      updatedAt: stackUpdatedAt(listedOf.get(stack.number) ?? [], options.updatedAt),
-    });
-    if (expanded) {
+  for (const [at, { row }] of top.sort(newerFirst).entries()) {
+    row.posinset = at + 1;
+    row.setsize = firstLevel;
+    rows.push(row);
+    if (row.kind === "stack" && row.expanded) {
+      const { stack, members } = row;
       const entries = stackEntries(members);
       for (const [place, number] of entries.entries()) {
         rows.push(
@@ -393,18 +441,7 @@ export function groupByStack(numbers, index, identity, options = {}) {
       }
     }
   }
-  for (const [at, number] of rest.entries()) {
-    rows.push({
-      kind: "pull",
-      key: number,
-      number,
-      level: 1,
-      stack: null,
-      posinset: groups.length + at + 1,
-      setsize: firstLevel,
-    });
-  }
-  return { stacks: groups.length, placed: placed.size, rows };
+  return { stacks: stackCount, placed: placed.size, rows };
 }
 
 /** How many pull requests a stack has: the count its Pulls heading shows, "Stack #286 · 4
@@ -416,30 +453,27 @@ export function stackPullsCount(stack) {
   return stack.pulls.length;
 }
 
-/**
- * The time a stack's heading tells the age of: the newest `updated_at` of its pull requests
- * the list holds, or null where it has none. GitHub moves a pull request's `updated_at` on a
- * push, a review, a comment, and a change of state, base, or title, so the newest of them is
- * the stack's most recent change of any kind, and it is the time each row under the heading
- * tells its own age from: the heading's age is the freshest of its rows', never older than
- * one of them. The stack snapshot holds no times, and the list's rows are read already, so
- * the heading waits on nothing. A member the list does not hold, a merged one in the Open
- * list, has no time here, as it has no row.
- *
- * @param {number[]} listed The stack's pull requests the list holds.
+/** By GitHub's UTC update timestamps, then descending stack or pull request number for ties.
+ * @param {{updated_at: string | null, number: number}} left
+ * @param {{updated_at: string | null, number: number}} right
+ */
+function newerFirst(left, right) {
+  const a = left.updated_at ?? "";
+  const b = right.updated_at ?? "";
+  return a === b ? right.number - left.number : a > b ? -1 : 1;
+}
+
+/** The freshest update the stack snapshot or the current list knows for any member.
+ * @param {NativeStack} stack
  * @param {((number: number) => string | null) | undefined} updatedAt
  * @returns {string | null}
  */
-export function stackUpdatedAt(listed, updatedAt) {
-  /** @type {string | null} */
-  let newest = null;
-  let newestAt = Number.NEGATIVE_INFINITY;
-  for (const number of listed) {
-    const said = updatedAt?.(number) ?? null;
-    const at = said === null ? Number.NaN : Date.parse(said);
-    if (at > newestAt) {
+function stackUpdatedAt(stack, updatedAt) {
+  let newest = stack.updated_at ?? null;
+  for (const number of stack.pulls) {
+    const said = updatedAt?.(number) ?? "";
+    if (said > (newest ?? "")) {
       newest = said;
-      newestAt = at;
     }
   }
   return newest;
@@ -450,7 +484,7 @@ export function stackUpdatedAt(listed, updatedAt) {
  * size, the count its heading shows (`stackPullsCount`), how many of its pull requests the
  * list holds, and where those under an earlier stack sit, so a count of listed pull
  * requests that is more than the rows under it says why: "Stack #286, 4 pull requests, 3 in
- * this list". The lines the stack changes are its Whole stack row's to say
+ * this list". The lines the stack changes are its Stack Overview row's to say
  * (`wholeStackHint`).
  *
  * @param {NativeStack} stack
@@ -470,16 +504,16 @@ export function stackGroupHint(stack, shown, elsewhere = new Map()) {
 }
 
 /**
- * A Whole stack row's accessible name in the Pulls tab: its words and its stack, then the
+ * A Stack Overview row's accessible name in the Pulls tab: its words and its stack, then the
  * brief change line the row shows (stack-lines.js) in words, as the Diff summary's name says
- * its own: "Whole stack, Stack #286: 1,234 lines added, 567 deleted", or "change pending"
+ * its own: "Stack Overview, Stack #286: 1,234 lines added, 567 deleted", or "change pending"
  * while the line is read.
  *
  * @param {number} stack
  * @param {string | null} [change] The change line's words, when the row shows it or waits.
  */
 export function wholeStackHint(stack, change = null) {
-  const name = `${WHOLE_STACK}, ${stackLabel(stack)}`;
+  const name = `${STACK_OVERVIEW}, ${stackLabel(stack)}`;
   return change === null ? name : `${name}: ${change}`;
 }
 

@@ -127,10 +127,10 @@ try {
   await waitFor(
     "document.querySelector('.github-pull-header .page-header-line') !== null && document.querySelector('#tab-pulls .github-pulls-row') !== null",
   );
-  // The list's refresh and the page's, so the connection line and the status line say what
-  // they settle on: "Updated just now" and "Fetched just now via GitHub CLI".
+  // The list's count is visible without a redundant freshness line. The page still
+  // identifies how the opened PR record was fetched.
   await waitFor(
-    "/Updated/.test(document.querySelector('.github-pulls-connection')?.textContent ?? '') && /Fetched/.test(document.querySelector('.github-pull-freshness')?.textContent ?? '')",
+    "document.querySelector('.github-pulls-status .github-pulls-total-line .summary-number') !== null && /Fetched/.test(document.querySelector('.github-pull-freshness')?.textContent ?? '')",
   );
   phase("pull request");
   const pulls = "the Pulls panel";
@@ -138,13 +138,13 @@ try {
   await role(pulls, "list text", "#tab-pulls .github-pulls-number");
   await role(pulls, "list text", "#tab-pulls .github-pulls-author");
   await role(pulls, "list text", "#tab-pulls .github-pulls-age");
-  await role(pulls, "list text", ".github-pulls-connection-text");
+  await role(pulls, "list text", ".github-pulls-status");
   await role(pulls, "control", ".github-pulls-filters .chip");
   await role(pulls, "label", ".nav-tab-bar .tab-btn");
   await role(pulls, "hint strip", ".nav-shortcut-label");
   await accompanies(pulls, "#tab-pulls .github-pulls-author", "#tab-pulls .github-pulls-number");
   await accompanies(pulls, "#tab-pulls .github-pulls-age", "#tab-pulls .github-pulls-title");
-  await accompanies(pulls, ".github-pulls-connection-text", "#tab-pulls .github-pulls-title");
+  await accompanies(pulls, ".github-pulls-status", "#tab-pulls .github-pulls-title");
   // The age's column is 5ch of the row's type, at the end of its last line (mb-lqkb, mb-rb3n),
   // and the longest compact age is four characters, "12mo": written into a row's age, it is
   // whole inside the column.

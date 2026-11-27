@@ -37,12 +37,24 @@ import os
 import re
 import subprocess
 import sys
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from tests.github_pull_fixture import Origin, clone_checkout, files_scenario, install_fake_gh, ok
+from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+from metabrowser.builtin_plugins.github.pull_list import parse_stamp
+from tests.github_pull_fixture import (
+    Origin,
+    catalog_entries,
+    clone_checkout,
+    files_scenario,
+    generated_item,
+    install_fake_gh,
+    list_page,
+    ok,
+)
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, GroupRun, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 from tests.test_nav_metadata_chrome import (
@@ -106,6 +118,21 @@ def stacks_scenario(origin: Origin, *, long_author: bool = False) -> dict[str, A
     #8's author's login is GitHub's longest."""
 
     answers = files_scenario(origin)
+    # Keep both stacks in the first viewport, with a newer standalone PR above them.
+    items = [
+        *answers["api"][list_page("all")]["body"],
+        *answers["api"][list_page("all", 2)]["body"],
+    ]
+    newest = parse_stamp(generated_item(106)["updated_at"])
+    updates = {
+        8: utc_stamp(newest - timedelta(seconds=15)),
+        5: utc_stamp(newest - timedelta(seconds=30)),
+        105: utc_stamp(newest - timedelta(seconds=5)),
+    }
+    items = [
+        item | {"updated_at": updates.get(item["number"], item["updated_at"])} for item in items
+    ]
+    answers["api"].update(catalog_entries(items))
     if long_author:
         answers = {**answers, "api": _long_author(answers["api"])}
     stacks = [

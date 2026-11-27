@@ -197,6 +197,16 @@ export function treemapAvailability(snapshot, failed) {
   return "loading";
 }
 
+/** Keep a complete map visible while a new snapshot is still being assembled.
+ * @param {Record<string, any> | null} previous
+ * @param {Record<string, any> | null} next
+ */
+export function retainTreemap(previous, next) {
+  return (
+    treemapAvailability(previous, false) === "map" && treemapAvailability(next, false) === "loading"
+  );
+}
+
 /**
  * The folder as a map's one top-level cell: an outer box, labelled with the
  * folder's name, around everything in it. The Treemap view and the Overview's

@@ -1,7 +1,7 @@
 """``GET /api/source/refs`` and the pin route's ``view``: what the ref selector reads and posts.
 
 The listing is read from a real mirror of a ``file://`` origin: every branch and tag, the
-default branch first and then newest first by the commit each names, a case-insensitive
+notable branches first and newest first within each group, a case-insensitive
 name filter, the served ref marked, and an answer kept until a ref moves. A switch that names the page's ``/view/`` address
 answers where that page goes on the new pin: the same entry when the revision has it,
 else the root. ``tests/golden/cli-api-source.tryscript.md`` pins the envelopes.
@@ -220,8 +220,13 @@ def _dated_origin(root: Path, branches: int) -> _Origin:
     late = commit("late", "2024-01-01T00:00:00Z")
     _git(work, "switch", "-q", "--detach", root_commit)
     main = commit("main", "2021-01-01T00:00:00Z")
-    lines = [f"update refs/heads/main {main}", f"create refs/heads/alpha {alpha}"]
-    lines += [f"create refs/heads/{name} {late}" for name in ("beta", "zeta")]
+    lines = [
+        f"update refs/heads/main {root_commit}",
+        f"create refs/heads/primary {main}",
+        f"create refs/heads/master {alpha}",
+        f"create refs/heads/alpha {alpha}",
+    ]
+    lines += [f"create refs/heads/{name} {late}" for name in ("beta", "feature/main", "zeta")]
     lines += [f"create refs/heads/bulk-{at:03d} {late}" for at in range(branches)]
     lines.append(f"create refs/tags/v2 {late}")
     subprocess.run(
@@ -232,7 +237,7 @@ def _dated_origin(root: Path, branches: int) -> _Origin:
         text=True,
         env=_git_env(work),
     )
-    _git(work, "switch", "-q", "main")
+    _git(work, "switch", "-q", "primary")
     tagger = _git_env(work) | {"GIT_COMMITTER_DATE": "2022-06-01T00:00:00Z"}
     subprocess.run(
         ["git", "-C", str(work), "tag", "-a", "v1", "-m", "v1", alpha],
@@ -254,13 +259,15 @@ def test_every_list_reads_newest_first_by_the_commit_each_ref_names(
     result = _serve(dated.url)
     assert result.exit_code == 0, result.output
     with TestClient(server.app) as client:
-        branches = [row["name"] for row in _refs(client)["refs"]]
+        branch_rows = _refs(client)["refs"]
+        branches = [row["name"] for row in branch_rows]
+        assert [row["name"] for row in branch_rows if row["default"]] == ["primary"]
         tags = [row["name"] for row in _refs(client, kind="tag")["refs"]]
         filtered = [row["name"] for row in _refs(client, q="ETA")["refs"]]
     bulk = [f"bulk-{at:03d}" for at in range(150)]
-    # The default branch first though it is older; then 2024's commit, whose branches
-    # read by name; then 2022's. Every one of 154 branches, more than a page held.
-    assert branches == ["main", "beta", *bulk, "zeta", "alpha"]
+    # Notable branches sort by date, even the default. Newer topic refs come after
+    # them, with name for ties, and an ordinary branch ending in /main stays ordinary.
+    assert branches == ["master", "primary", "main", "beta", *bulk, "feature/main", "zeta", "alpha"]
     # v2 names 2024's commit, v1 2022's, and retro, tagged after every commit, the root
     # of 2020: a tag lists by the commit its row dates, not by when it was made.
     assert tags == ["v2", "v1", "retro"]
@@ -584,10 +591,14 @@ def test_a_switch_without_a_view_answers_no_href(served: TestClient) -> None:
 
 def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient) -> None:
     shell = served.get("/view/").text
-    # First paint reserves a branch chip and a separate chooser above the usual filters.
+    synced_at = served.get("/api/source/status").json()["last_fetch_at"]
+    assert synced_at is not None
+    # First paint reserves a branch chip and chooser and gives the last sync without
+    # publishing the local mirror's origin path in the selector.
     assert (
         '<div class="nav-source-ref" id="nav-source-ref">'
-        '<div class="source-ref-selector" id="source-ref-selector">'
+        '<div class="source-ref-selector" id="source-ref-selector"'
+        f' data-source-mode="local-mirror" data-source-synced-at="{synced_at}">'
         '<span class="source-ref-selector-button">'
         '<span class="source-ref-selector-label"><span class="git-ref git-ref-remote">'
         '<span class="git-ref-label">topic</span></span></span>'

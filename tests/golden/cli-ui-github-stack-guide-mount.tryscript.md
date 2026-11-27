@@ -84,6 +84,19 @@ page’s glue between them.
   github.com has the card that says where it goes.
   The next step’s note takes the first note’s place and its links’ cards with it, and
   the page’s end puts the note’s cards away.
+- `cold_without_labels` and `unknown_stack`: two more stacks’ headers from first paint
+  to their answers.
+- `members_readiness`: each member’s line ends with its readiness’s glyph in a cell, as
+  in the stack menu (mb-3n21). The page reads the server’s verdict on its open members
+  when the browser is idle, from the statuses
+  `tests/test_github_pulls_readiness_session.py` records: #10, a draft, says “Merge
+  conflicts” after its state and draws the glyph in the danger tone, though its record’s
+  head lags the head the statuses judged; #8 is merged, so it is not asked and its cell
+  stays empty. `beside_a_pulls_tab` is a Pulls tab in the same document that draws #10 by
+  the catalog’s head while the page polls, turn after turn: the document holds one
+  answer of #10 for both, so neither reads it again.
+  `record_moved` is a poll whose answer moves #10’s record to a new head: #10 is read
+  again once, and both draw it.
 
 ```console
 $ node tests/dom/github-stack-guide-mount-session.js
@@ -447,6 +460,66 @@ $ node tests/dom/github-stack-guide-mount-session.js
     ],
     "cards_left_once_the_step_changes": 0,
     "cards_left_once_the_page_ends": 0
+  },
+  "members_readiness": {
+    "before_idle": [
+      {
+        "state": "draft",
+        "words": "",
+        "glyph": null,
+        "cell_last": true
+      },
+      {
+        "state": "merged",
+        "words": "",
+        "glyph": null,
+        "cell_last": true
+      }
+    ],
+    "asked": [
+      "/api/plugin/github/pull-statuses?numbers=10"
+    ],
+    "after_idle": [
+      {
+        "state": "draft",
+        "words": "Merge conflicts",
+        "glyph": "conflicts (danger)",
+        "cell_last": true
+      },
+      {
+        "state": "merged",
+        "words": "",
+        "glyph": null,
+        "cell_last": true
+      }
+    ],
+    "beside_a_pulls_tab": [
+      {
+        "turn": 1,
+        "asked": [],
+        "pulls_tab": "Merge conflicts",
+        "page": "conflicts (danger)"
+      },
+      {
+        "turn": 2,
+        "asked": [],
+        "pulls_tab": "Merge conflicts",
+        "page": "conflicts (danger)"
+      },
+      {
+        "turn": 3,
+        "asked": [],
+        "pulls_tab": "Merge conflicts",
+        "page": "conflicts (danger)"
+      }
+    ],
+    "record_moved": {
+      "asked": [
+        "/api/plugin/github/pull-statuses?numbers=10"
+      ],
+      "pulls_tab": "Merge conflicts",
+      "page": "conflicts (danger)"
+    }
   }
 }
 ? 0

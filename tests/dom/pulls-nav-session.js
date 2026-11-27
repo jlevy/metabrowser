@@ -265,12 +265,12 @@ async function run() {
   page.shell.address = new URL("/pull/8", "http://x");
   host.routeChanged();
   log.push({ "another pull request: the row follows": page.take() });
-  // A native stack's page names no one pull request: the list marks its Whole stack row.
+  // A native stack's page names no one pull request: the list marks its Stack Overview row.
   page.shell.address = new URL("/stack/70/changes", "http://x");
   host.routeChanged();
-  log.push({ "a stack's page: its Whole stack row is the current row": page.take() });
+  log.push({ "a stack's page: its Stack Overview row is the current row": page.take() });
   void page.shell.host.open({ number: 70, tab: "", stack: true });
-  log.push({ "the Whole stack row's open is the shell's": page.take() });
+  log.push({ "the Stack Overview row's open is the shell's": page.take() });
   page.shell.address = new URL("/pulls?state=open", "http://x");
   host.routeChanged();
   log.push({ "the list's address: its filter": page.take() });
@@ -1078,7 +1078,7 @@ function twoTreesPage() {
     "data-tree-id": "Stack #286",
   });
   const stackItem = make("li", { role: "none" }, [stackRow]);
-  // Its Whole stack row, the first under it: a row link to the stack's own page, whose
+  // Its Stack Overview row, the first under it: a row link to the stack's own page, whose
   // children are the stack's changed files.
   const wholeRow = make("a", {
     class: "github-pulls-row github-pulls-whole-row",
@@ -1088,7 +1088,7 @@ function twoTreesPage() {
     tabindex: "-1",
     href: "/stack/286",
     "data-stack": "286",
-    "data-tree-id": "Whole stack of #286",
+    "data-tree-id": "Stack Overview of #286",
   });
   const wholeItem = make("li", { role: "none" }, [wholeRow]);
   document.body.append(
@@ -1213,7 +1213,7 @@ function twoTreesPage() {
               const row = container
                 .querySelectorAll(".github-pulls-whole-row")
                 .find((item) => Number(item.dataset.stack) === number);
-              assert.ok(row, "Space identifies the focused Whole stack row");
+              assert.ok(row, "Space identifies the focused Stack Overview row");
               const open = row.getAttribute("aria-expanded") !== "true";
               row.setAttribute("aria-expanded", String(open));
               log.push(`${open ? "opened" : "closed"} Stack #${number}'s files`);
@@ -1335,7 +1335,7 @@ function twoTreesPage() {
     copyRef,
     stackRow,
     wholeRow,
-    /** Put a stack's row and its Whole stack row in the list, or take them out. @param {boolean} shown */
+    /** Put a stack's row and its Stack Overview row in the list, or take them out. @param {boolean} shown */
     showStack(shown) {
       for (const item of [stackItem, wholeItem]) {
         if (shown) {
@@ -1458,15 +1458,15 @@ async function twoTreesStory() {
     ],
     "Space on a stack's row is the stack's, not a pull request's",
   );
-  // Space on its Whole stack row opens and closes the stack's changed files in place, as it
+  // Space on its Stack Overview row opens and closes the stack's changed files in place, as it
   // does a pull request's on its row, and opens no page: Enter opens the stack's page.
   page.wholeRow.focus();
-  story["Space on a stack's Whole stack row opens the stack's changed files"] = page.press(" ");
+  story["Space on a stack's Stack Overview row opens the stack's changed files"] = page.press(" ");
   story["holding Space on it leaves them open"] = page.press(" ", { repeat: true });
   story["Space again closes them"] = page.press(" ");
   assert.deepEqual(
     [
-      story["Space on a stack's Whole stack row opens the stack's changed files"],
+      story["Space on a stack's Stack Overview row opens the stack's changed files"],
       story["holding Space on it leaves them open"],
       story["Space again closes them"],
     ].map((action) => [action.handled, action.did.join()]),
@@ -1475,7 +1475,7 @@ async function twoTreesStory() {
       [true, ""],
       [true, "closed Stack #286's files"],
     ],
-    "Space on a Whole stack row is its stack's files', and opens no page",
+    "Space on a Stack Overview row is its stack's files', and opens no page",
   );
   page.showStack(false);
   firstPull.focus();

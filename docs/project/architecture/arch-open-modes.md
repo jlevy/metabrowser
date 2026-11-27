@@ -177,13 +177,11 @@ for that check, and not a second account.
 - **A folder and a mirror of one repository are two roots.** A reader picks one by what
   they open: the path shows their checkout, and the URL shows the mirror, even while the
   checkout’s window is open.
-- **A mirror has no working tree.** Its store is bare, so there is nothing checked out
-  that could hold a change, and every view of it is a revision.
-- **A mirror is browsed as github.com is,** as of the data last fetched: a branch or tag
-  shown follows its ref when a fetch moves it
-  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), and
-  a repository folder is the same layer of revisions with the live working tree beside
-  it.
+- **A cloud mirror serves revisions from a bare store.** A branch or tag view follows
+  the remote ref as fetches move it.
+  A view opened by commit ID stays pinned to that revision.
+  [Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)
+  describes which views follow and how the page updates.
 - **A repository folder is a mirror and more.** It views every branch and tag the way a
   mirror does, as a revision, the checked-out branch included, and it also has the true
   working tree, where the folder-only features live.
@@ -237,19 +235,19 @@ are deferred.
   nothing is fetched into the checkout.
 - **The checked-out branch, chosen as a ref, is a revision.** It shows the branch’s last
   commit. The working tree is a separate choice, and it is what a folder opens on.
-- **The page says which view it shows.** The row the chooser opens from reads “Working
-  tree” and the branch or commit `HEAD` is on, or “Revision” and the chosen ref with a
-  button back to the working tree
-  ([The Ref Selector](../../design-system.md#the-ref-selector)), and a revision’s name
-  carries `@<ref>`, as a mirror’s does.
-  The server writes `HEAD` on the row (`data-working-branch` or `data-working-commit`),
-  and each `/api/source/refs` listing’s `working_tree.head_name` replaces the branch, so
-  a switch made in a terminal shows once the list is opened.
-- **The view is the Files tab’s.** The chooser leads the Files tab’s toolbar, and the
-  other tabs do not follow it: Pulls never depended on it, and Commits is the checkout’s
-  history whichever view Files shows, read from the folder
-  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
-  A commit’s page and its diffs are read as the view’s are.
+- **The Files row names its source.** “Working tree” names the checkout’s live files and
+  the branch its `HEAD` is on.
+  A detached `HEAD` shows the short commit ID. When Git changes `HEAD` outside the app,
+  the page’s file watch prompts a fresh read of the checkout and updates the label in
+  place. A revision row names the chosen ref.
+  The [ref selector’s source tooltip](../../design-system.md#the-ref-selector) reports
+  the resolved working-tree directory and the age of the last `HEAD` observation.
+  A cloud-backed view reports the remote repository and the last successful sync.
+- **Files and Commits share the served view.** The chooser heads both tabs.
+  Files shows the served files, and Commits reads their Git history.
+  Pulls keeps its repository scope.
+  [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)
+  describes which history each view reads.
 - **A tab names its view.** A page left on one view is refused, not answered from the
   other, once the server shows another
   ([the pin guard](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
@@ -368,8 +366,8 @@ cost alone
   `metab PATH --ref origin/topic` reads the store once the cache has it and the checkout
   until then. The status of such a pin has the store’s freshness, `refreshable` and
   `follows`, and is still a folder’s, named and placed as the folder is.
-- **The origin’s default branch** lists first in Remotes and is marked `default`, as a
-  mirror’s is, from the store’s record of it.
+- **The origin’s default branch** appears among the primary branches in Remotes and is
+  marked `default`, as a mirror’s is, from the store’s record of it.
 - **The freshness row** is on every page of a folder that keeps a store, its working
   tree’s too: the status of the working tree, and of one of the checkout’s own
   revisions, has the store’s last fetch and is `refreshable`, with nothing of the

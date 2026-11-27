@@ -133,7 +133,7 @@ export function rowLineInput(change, breakdown) {
 
 /**
  * The change line's accessible name, which describes its row: what it is, and the line in
- * words once it is shown, as a stack's Whole stack row says its line after its words
+ * words once it is shown, as a stack's Stack Overview row says its line after its words
  * (`wholeStackHint`).
  *
  * @param {string | null} words The line's `label`, or null while there is none.

@@ -836,7 +836,13 @@ def _outcome_of(item: Item) -> str:
     return item.outcome or "none"
 
 
-def _statistics(times: list[float]) -> dict[str, Any]:
+def time_statistics(times: list[float]) -> dict[str, Any]:
+    """The median, 95th percentile (nearest rank), longest, and total of *times*, in ms.
+
+    By kind uses it, and so does the GitHub plugin's request report, so a median means one
+    thing in both.
+    """
+
     ordered = sorted(times)
     return {
         "p50_ms": _percentile(ordered, 50),
@@ -878,7 +884,7 @@ def by_kind(table: Table, query: Query) -> dict[str, Any]:
                     "failed": sum(
                         1 for item in named if item.unfinished or item.outcome in FAILURE_OUTCOMES
                     ),
-                    **_statistics(named_times),
+                    **time_statistics(named_times),
                 }
             )
         names.sort(key=lambda row: (-row["total_ms"], -row["count"], row["name"]))
@@ -888,7 +894,7 @@ def by_kind(table: Table, query: Query) -> dict[str, Any]:
                 "count": len(members),
                 "timed": len(times),
                 "outcomes": dict(sorted(outcomes.items(), key=lambda pair: (-pair[1], pair[0]))),
-                **_statistics(times),
+                **time_statistics(times),
                 "histogram": _histogram(times),
                 "names": names[:NAMES_SHOWN],
                 "names_more": max(0, len(names) - NAMES_SHOWN),
@@ -1006,5 +1012,6 @@ __all__ = [
     "remember",
     "remembered",
     "slowest",
+    "time_statistics",
     "timeline",
 ]

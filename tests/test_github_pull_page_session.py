@@ -26,11 +26,19 @@ the server's are scoped to the build; which answers share one is kept. The Markd
 cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
 contract, pinned by its own render goldens, and would tie this recording to its version,
 and its stylesheets' manifest is left out for the same reason.
-Every pull envelope carries the whole record, and the story reads one record many
-times, so the recording holds each distinct record once: an answer whose record an
-earlier answer carried names that answer, ``{"same_as": "current"}``, and the session
-reads it back as that record. ``make golden-update`` rewrites the recording and then
-the transcript.
+Every pull envelope carries the whole record, and its operational status, verdict, and
+checks beside it, and the story reads each many times, so the recording holds each
+distinct one once: an answer whose record, or status, verdict, or checks, an earlier
+answer carried names that answer, ``{"same_as": "current"}``, and the session reads it
+back as that answer's. A status, verdict, or checks that differs from an earlier one only
+in what it describes and when, its number, head, and time, and the times its checks were
+listed and last seen otherwise, names that answer and keeps those beside the name,
+``{"same_as": "current", "observed_at": "...", "checks.listed_at": "..."}``, a dotted
+name for a part of a part. A read lists its checks as it observes them, so a status whose
+checks were listed when it was observed has no ``listed_at`` written, in full or beside a
+name, and reads back with its own ``observed_at`` there; a status written in full whose
+checks were never seen otherwise has no ``moved_at`` written, and reads back with none.
+``make golden-update`` rewrites the recording and then the transcript.
 """
 
 from __future__ import annotations
@@ -43,10 +51,11 @@ import re
 import subprocess
 import threading
 import time
+from collections.abc import Set as AbstractSet
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from starlette.testclient import TestClient
@@ -60,7 +69,7 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, RefreshAsk, mirror_session, serve_mirror
 from metabrowser.server import app
 from metabrowser.source import reset_source_session, serve_subject_opener
 from tests.github_pull_fixture import (
@@ -70,6 +79,7 @@ from tests.github_pull_fixture import (
     HOSTILE_COMMENT,
     Origin,
     allowlist_violations,
+    graph_status_entry,
     html_tree,
     install_fake_gh,
     ok,
@@ -170,29 +180,122 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
-def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
-    """*recorded* with each distinct record written once; see the module docstring.
+# What a pull envelope carries that the recording holds once: its record, and beside it
+# its operational status, its verdict, and its checks (``pull_route.PullEnvelope``).
+STORED_ONCE: Final = ("record", "status", "readiness", "checks")
+# What says which pull request, head, and moment an operational value describes, kept
+# beside the name of the answer that holds the rest of it; a dotted name is a part's part.
+_IDENTITY: Final = ("number", "head", "observed_at", "checks.listed_at", "checks.moved_at")
 
-    A record is held in full by the first pull-route answer that carried it. So a
-    one-field change to a pull request's record is one changed line of the recording.
+
+def _part(value: dict[str, Any], name: str) -> tuple[bool, Any]:
+    """Whether *value* holds the part *name* names, dotted for a part's part, and its value."""
+
+    outer, _, inner = name.partition(".")
+    held = value.get(outer, _MISSING)
+    if not inner:
+        return held is not _MISSING, held
+    if not isinstance(held, dict) or inner not in held:
+        return False, None
+    return True, held[inner]  # pyright: ignore[reportUnknownVariableType]
+
+
+def _without_identity(value: dict[str, Any], own: tuple[str, ...]) -> dict[str, Any]:
+    """*value* without its identity parts, in the order the server wrote the rest."""
+
+    rest: dict[str, Any] = {}
+    for key, item in value.items():
+        if key in own:
+            continue
+        inner = {name.partition(".")[2] for name in own if name.startswith(f"{key}.")}
+        if inner and isinstance(item, dict):
+            item = {part: each for part, each in item.items() if part not in inner}  # pyright: ignore[reportUnknownVariableType]
+        rest[key] = item
+    return rest
+
+
+_MISSING: Final = object()
+_LISTED: Final = "checks.listed_at"
+
+
+def _listed_when_observed(parts: dict[str, Any]) -> bool:
+    """Whether a status's checks were listed when it was observed, as a read lists them.
+
+    *parts* is its identity, each part's value or a ``(present, value)`` pair.
     """
 
-    holder: dict[str, str] = {}
+    def value(name: str) -> Any:
+        found = parts.get(name, _MISSING)
+        if isinstance(found, tuple):
+            present, held = found  # pyright: ignore[reportUnknownVariableType]
+            return held if present else _MISSING
+        return found
+
+    listed = value(_LISTED)
+    return listed is not _MISSING and listed == value("observed_at")
+
+
+def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
+    """*recorded* with each distinct record, status, verdict, and checks written once.
+
+    Each is held in full by the first pull-route answer that carried it, and a status,
+    verdict, or checks that differs from it only in what it describes and when
+    (``_IDENTITY``) keeps those beside the name; see the module docstring. So a one-field
+    change to a pull request's record or status is one changed line of the recording.
+    """
+
+    holder: dict[tuple[str, str], tuple[str, dict[str, Any]]] = {}
     for name, answer in recorded.items():
         body = answer["body"]
         if not isinstance(body, dict):
             continue
         # A pull-route answer is the envelope; a refresh answers one under ``pull``.
         for envelope in (body, body.get("pull")):
-            if not isinstance(envelope, dict) or not isinstance(envelope.get("record"), dict):
+            if not isinstance(envelope, dict) or "labels_pending" not in envelope:
                 continue
-            # As text, in the order the server wrote it: reordered keys are a change.
-            key = json.dumps(envelope["record"])
-            if key in holder:
-                envelope["record"] = {"same_as": holder[key]}
-            elif envelope is body:
-                holder[key] = name
+            for field in STORED_ONCE:
+                value = envelope.get(field)
+                if not isinstance(value, dict):
+                    continue
+                own = () if field == "record" else _IDENTITY
+                # As text, in the order the server wrote it: reordered keys are a change.
+                same = _without_identity(value, own)
+                key = (field, json.dumps(same))
+                parts = {part: _part(value, part) for part in own}
+                if key in holder:
+                    held, identity = holder[key]
+                    kept = {
+                        part: found
+                        for part, (present, found) in parts.items()
+                        if present and identity.get(part, _MISSING) != found
+                    }
+                    if _listed_when_observed(identity) and _listed_when_observed(dict(parts)):
+                        kept.pop(_LISTED, None)
+                    envelope[field] = {"same_as": held} | kept
+                elif envelope is body:
+                    holder[key] = (
+                        name,
+                        {part: found for part, (present, found) in parts.items() if present},
+                    )
+                if field == "status" and "same_as" not in envelope[field]:
+                    envelope[field] = _unlisted_when_observed(value)
     return recorded
+
+
+def _unlisted_when_observed(status: dict[str, Any]) -> dict[str, Any]:
+    """*status* without its checks' ``listed_at`` when that is its own ``observed_at``, and
+    without a ``moved_at`` its checks never had."""
+
+    checks = status.get("checks")
+    if not isinstance(checks, dict):
+        return status
+    implied: set[str] = set()
+    if checks.get("listed_at") == status.get("observed_at"):
+        implied.add("listed_at")
+    if "moved_at" in checks and checks["moved_at"] is None:
+        implied.add("moved_at")
+    kept = {key: value for key, value in checks.items() if key not in implied}  # pyright: ignore[reportUnknownVariableType]
+    return {**status, "checks": kept}
 
 
 def _until_refreshed(client: TestClient, number: int) -> None:
@@ -271,10 +374,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             original = served.refresh
             release = threading.Event()
 
-            async def held() -> None:
+            async def held(asks: AbstractSet[RefreshAsk]) -> None:
                 # The test thread sets it; the job is held on the loop until then.
                 await held_until(release, 30)
-                await original()
+                await original(asks)
 
             monkeypatch.setattr(served, "refresh", held)
             recorded["absent"] = _answer(client.get(_PULL, params=read_7))
@@ -352,12 +455,19 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
 
-            # Ten seconds on, the page's own ask for the current record is a probe: GitHub
-            # answers its conditional read 304, so nothing is refreshed, and the record is
-            # vouched for by the probe. The ask names the record the page shows, so the
-            # answer leaves it out.
-            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
+            # Five seconds on, the page's own ask is its first probe of the head's settling
+            # checks, which seeds what later probes compare with: a paid read of each page,
+            # counted as a change, so the status is read once, alone.
             held_7 = {**read_7, "held": recorded["refreshed"]["body"]["record_revision"]}
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=5)
+            seeded = client.post(_REFRESH, json=held_7, headers=JSON_BODY).json()
+            assert seeded["refresh"] == "started"
+            _until_refreshed(client, 7)
+            # Five seconds more, the page's ask is a probe again: GitHub answers its
+            # conditional read 304, so nothing is refreshed, and the record is vouched for
+            # by the probe. The ask names the record the page shows, so the answer leaves
+            # it out.
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
             recorded["probed"] = _answer(client.post(_REFRESH, json=held_7, headers=JSON_BODY))
             assert recorded["probed"]["body"]["refresh"] == "not_due"
             probed = recorded["probed"]["body"]["pull"]
@@ -399,15 +509,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             def _answering_7(head: str) -> None:
                 path = "repos/octo/demo/pulls/7"
                 body = answers["api"][path]["body"]
-                moved = _api(
-                    answers, path, ok(path, {**body, "head": {**body["head"], "sha": head}})
-                )
-                for part, empty in (
-                    ("check-runs", {"total_count": 0, "check_runs": []}),
-                    ("status", {"state": "pending", "statuses": []}),
-                ):
-                    listed = page(f"repos/octo/demo/commits/{head}/{part}")
-                    moved = _api(moved, listed, ok(listed, empty))
+                pull = {**body, "head": {**body["head"], "sha": head}}
+                moved = _api(answers, path, ok(path, pull))
+                if head != body["head"]["sha"]:
+                    # Another head has no checks yet, in REST's pages and GitHub's status.
+                    none_yet: dict[str, Any] = {"pull": pull}
+                    for part, empty in (
+                        ("check-runs", {"total_count": 0, "check_runs": []}),
+                        ("status", {"state": "pending", "statuses": []}),
+                    ):
+                        listed = page(f"repos/octo/demo/commits/{head}/{part}")
+                        moved = _api(moved, listed, ok(listed, empty))
+                        none_yet[part.replace("-", "_")] = empty
+                    status = "graphql:status:7:start"
+                    moved = _api(moved, status, graph_status_entry(none_yet))
                 subprocess.run(
                     ["git", "--git-dir", str(origin.path), "update-ref", "refs/pull/7/head", head],
                     check=True,
@@ -427,7 +542,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
             gate = threading.Event()
 
-            async def waiting(_served: ServedPull) -> None:
+            async def waiting(_served: ServedPull, _asks: object) -> None:
                 await held_until(gate, 30)
 
             monkeypatch.setattr(ServedPull, "refresh", waiting)
@@ -522,8 +637,10 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert allowlist_violations(recorded["markdown added"]["body"]["html"], pr_text=True) == []
     merged = recorded["merged"]["body"]["record"]["pull"]
     assert (merged["merged"], merged["merged_by"], merged["commits"]) == (True, "octo", 1)
-    conclusions = [run["conclusion"] for run in recorded["merged"]["body"]["record"]["check_runs"]]
-    assert conclusions == ["success", "skipped"]
+    # Its checks are its status's, beside the record, in GitHub's buckets: one skipped.
+    buckets = [item["bucket"] for item in recorded["merged"]["body"]["checks"]["items"]]
+    assert buckets == ["pass", "skipping", "pass"]
+    assert "check_runs" not in recorded["merged"]["body"]["record"]
     closed = recorded["closed"]["body"]["record"]["pull"]
     assert (closed["state"], closed["merged"], closed["commits"]) == ("closed", False, 1)
     unattributed = recorded["merged_unattributed"]["body"]["record"]["pull"]
@@ -664,6 +781,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "hiddenReadiness": True,
         "markdownOwnership": True,
         "checkRows": True,
+        "mergeStatus": True,
         "headerAges": True,
         "headerShape": True,
         # The freshness note's slot is as wide as its widest age, "59 min ago"; an age wider

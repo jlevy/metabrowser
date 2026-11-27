@@ -1871,6 +1871,18 @@ body {
 .app-header > .nav-refresh {
   margin-left: auto;
 }
+.nav-refresh:not([data-refreshing]) > .nav-refresh-spinner,
+.nav-refresh[data-refreshing] > svg {
+  display: none;
+}
+.app-header > .nav-refresh[data-refreshing] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-refresh-spinner {
+    animation: none;
+  }
+}
 /* A pin with no mirror's heading: it has no name and no ref selector, so its ref
    stands in the name's place at the heading's weight, then its short commit, muted,
    in the commit-ID face (.git-commit-sha). A served mirror's heading and a checkout's

@@ -6,7 +6,7 @@ env:
 ---
 # Golden Test: A Stack’s Combined Changed Files in the Pulls Tab
 
-A stack’s Whole stack row in the Pulls tab ends with the stack’s change line and a
+A stack’s Stack Overview row in the Pulls tab ends with the stack’s change line and a
 chevron, and a press on them, or Space or Right on the row, lists the whole stack’s
 changed files under it, in the tree a pull request’s row lists its own with (mb-odt4).
 They are the files the stack’s own page lists in its Diff summary, from the same two

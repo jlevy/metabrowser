@@ -87,7 +87,9 @@
     "next_after": null,
     "rows": []
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": null
   }
  },
  "pending": {
@@ -182,7 +184,7 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": [
     "{\"number\": 106, \"title\": \"Work item 106\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T09:46:00Z\", \"updated_at\": \"2026-09-17T09:46:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-106\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 105, \"title\": \"Work item 105\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T09:45:00Z\", \"updated_at\": \"2026-09-17T09:45:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-105\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
@@ -280,11 +282,15 @@
     "{\"number\": 13, \"title\": \"Work item 13\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:13:00Z\", \"updated_at\": \"2026-09-17T08:13:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-13\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 12, \"title\": \"Work item 12\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:12:00Z\", \"updated_at\": \"2026-09-17T08:12:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-12\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 11, \"title\": \"Work item 11\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:11:00Z\", \"updated_at\": \"2026-09-17T08:11:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-11\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
+    "{\"number\": 6, \"title\": \"Work item 6\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:06:00Z\", \"updated_at\": \"2026-09-17T08:06:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-6\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
+    "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 10, \"title\": \"WIP: draft the next page\", \"state\": \"open\", \"draft\": true, \"merged_at\": null, \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"wip\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"7a7d6596e515735d244dc1d942463c95851e139c\", \"merged\": false}",
-    "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}",
-    "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}",
-    "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}"
-   ]
+    "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}"
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "more_done": {
@@ -321,9 +327,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
    }
   }
  },
@@ -363,9 +373,13 @@
    "limit": 100,
    "next_after": null,
    "rows": [
-    "{\"number\": 6, \"title\": \"Work item 6\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:06:00Z\", \"updated_at\": \"2026-09-17T08:06:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-6\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
-    "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}"
-   ]
+    "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}",
+    "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}"
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "open_current": {
@@ -500,11 +514,15 @@
     "{\"number\": 13, \"title\": \"Work item 13\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:13:00Z\", \"updated_at\": \"2026-09-17T08:13:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-13\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 12, \"title\": \"Work item 12\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:12:00Z\", \"updated_at\": \"2026-09-17T08:12:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-12\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 11, \"title\": \"Work item 11\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:11:00Z\", \"updated_at\": \"2026-09-17T08:11:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-11\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
-    "{\"number\": 10, \"title\": \"WIP: draft the next page\", \"state\": \"open\", \"draft\": true, \"merged_at\": null, \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"wip\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"7a7d6596e515735d244dc1d942463c95851e139c\", \"merged\": false}",
-    "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}",
     "{\"number\": 6, \"title\": \"Work item 6\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:06:00Z\", \"updated_at\": \"2026-09-17T08:06:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-6\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
-    "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}"
-   ]
+    "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
+    "{\"number\": 10, \"title\": \"WIP: draft the next page\", \"state\": \"open\", \"draft\": true, \"merged_at\": null, \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"wip\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"7a7d6596e515735d244dc1d942463c95851e139c\", \"merged\": false}",
+    "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}"
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "closed_current": {
@@ -545,7 +563,11 @@
    "rows": [
     "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}",
     "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}"
-   ]
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "not_due": {
@@ -585,9 +607,15 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:00:00Z",
+     "duration_ms": 300
+    }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "started",
+   "status_scan_at": null
   }
  },
  "pin_changed": {
@@ -633,9 +661,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
    }
   }
  },
@@ -676,9 +708,15 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:00:00Z",
+     "duration_ms": 300
+    }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "stale_refreshing": {
@@ -715,9 +753,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
    }
   }
  },
@@ -755,9 +797,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
    }
   }
  },
@@ -798,9 +844,15 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:01:01Z",
+     "duration_ms": 300
+    }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "probe_changed": {
@@ -840,9 +892,15 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:01:01Z",
+     "duration_ms": 300
+    }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "not_due",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "probe_scanned": {
@@ -879,7 +937,7 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": [
     "{\"number\": 106, \"title\": \"Retitled between scans\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T09:46:00Z\", \"updated_at\": \"2026-09-17T12:01:21Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-106\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 105, \"title\": \"Work item 105\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T09:45:00Z\", \"updated_at\": \"2026-09-17T09:45:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-105\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
@@ -977,11 +1035,15 @@
     "{\"number\": 13, \"title\": \"Work item 13\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:13:00Z\", \"updated_at\": \"2026-09-17T08:13:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-13\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 12, \"title\": \"Work item 12\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:12:00Z\", \"updated_at\": \"2026-09-17T08:12:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-12\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 11, \"title\": \"Work item 11\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:11:00Z\", \"updated_at\": \"2026-09-17T08:11:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-11\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
+    "{\"number\": 6, \"title\": \"Work item 6\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:06:00Z\", \"updated_at\": \"2026-09-17T08:06:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-6\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
+    "{\"number\": 5, \"title\": \"Work item 5\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"contributor\", \"author_avatar_url\": null, \"created_at\": \"2026-09-17T08:05:00Z\", \"updated_at\": \"2026-09-17T08:05:00Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"work-5\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"0000000000000000000000000000000000000000\", \"merged\": false}",
     "{\"number\": 10, \"title\": \"WIP: draft the next page\", \"state\": \"open\", \"draft\": true, \"merged_at\": null, \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"wip\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"7a7d6596e515735d244dc1d942463c95851e139c\", \"merged\": false}",
-    "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}",
-    "{\"number\": 8, \"title\": \"Say more in the guide\", \"state\": \"closed\", \"draft\": false, \"merged_at\": \"2026-09-16T18:00:00Z\", \"author\": \"maintainer\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T18:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"guide-more\", \"head_repository\": \"octo/demo\", \"labels\": [], \"head_oid\": \"8ae27617c9c475851b67ee69433d008836d112ba\", \"merged\": true}",
-    "{\"number\": 7, \"title\": \"Count to two in the app\", \"state\": \"open\", \"draft\": false, \"merged_at\": null, \"author\": \"forker\", \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": null, \"base_ref\": \"topic\", \"head_ref\": \"count-to-two\", \"head_repository\": \"forker/demo\", \"labels\": [\"enhancement\"], \"head_oid\": \"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\", \"merged\": false}"
-   ]
+    "{\"number\": 9, \"title\": \"spam\", \"state\": \"closed\", \"draft\": false, \"merged_at\": null, \"author\": null, \"author_avatar_url\": null, \"created_at\": \"2026-09-16T10:57:23Z\", \"updated_at\": \"2026-09-16T17:39:01Z\", \"closed_at\": \"2026-09-16T19:00:00Z\", \"base_ref\": \"topic\", \"head_ref\": \"spam\", \"head_repository\": null, \"labels\": [\"invalid\"], \"head_oid\": \"0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd\", \"merged\": false}"
+   ],
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
+   }
   }
  },
  "probe_scanned_more": {
@@ -1021,6 +1083,10 @@
    "next_after": null,
    "rows": {
     "same_as": "more_window"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1126,9 +1192,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1166,9 +1236,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1206,9 +1280,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1246,9 +1324,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1286,9 +1368,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1326,9 +1412,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1366,9 +1456,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1406,9 +1500,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1446,9 +1544,13 @@
    "complete": true,
    "truncated": false,
    "limit": 100,
-   "next_after": 7,
+   "next_after": 9,
    "rows": {
     "same_as": "current"
+   },
+   "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:21Z",
+    "duration_ms": 300
    }
   }
  },
@@ -1489,9 +1591,15 @@
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+     "finished_at": "2026-09-17T12:01:21Z",
+     "duration_ms": 300
+    }
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "started",
+   "status_scan_at": "2026-09-17T12:00:00Z"
   }
  },
  "another_reader": {
@@ -1649,7 +1757,9 @@
     "next_after": null,
     "rows": []
    },
-   "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+   "status_route": "/api/plugin/github/pulls?state=all&limit=0",
+   "status_scan": "started",
+   "status_scan_at": "2026-10-01T12:00:00Z"
   }
  },
  "landing_empty_refreshing": {
@@ -1725,7 +1835,11 @@
    "truncated": false,
    "limit": 0,
    "next_after": null,
-   "rows": []
+   "rows": [],
+   "refresh_timing": {
+    "finished_at": "2026-10-01T12:00:00Z",
+    "duration_ms": 300
+   }
   }
  },
  "not_github": {
@@ -1777,7 +1891,11 @@
    "gh api graphql catalog state=all cursor=all-100"
   ],
   "cached windows, filters, scrolling and reopen": [
-   "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+   "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1",
+   "gh api graphql statuses cursor=start",
+   "gh api graphql statuses cursor=statuses-25",
+   "gh api graphql statuses cursor=statuses-50",
+   "gh api graphql statuses cursor=statuses-75"
   ],
   "due metadata refresh": [
    "gh api user (If-None-Match)",

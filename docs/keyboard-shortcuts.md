@@ -116,11 +116,11 @@ In the Pulls list, Up and Down or `K` and `J` move a row, a pull request’s thr
 being one, Enter opens the pull request, and Space shows or hides its changed files;
 Right shows them or moves into them, and Left hides them.
 Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
-opens it or goes to its first row, and Left closes it, or returns to it from its Whole
-stack row or from a pull request inside it, once that row’s files are closed.
-An open stack’s first row, Whole stack, above its pull requests, opens the stack’s page:
-a move onto it opens it, as a move onto a pull request opens that, so `J` or Right from
-the stack’s row opens it, and so does Enter.
+opens it or goes to its first row, and Left closes it, or returns to it from its Stack
+Overview row or from a pull request inside it, once that row’s files are closed.
+An open stack’s first row, Stack Overview, above its pull requests, opens the stack’s
+page: a move onto it opens it, as a move onto a pull request opens that, so `J` or Right
+from the stack’s row opens it, and so does Enter.
 Its other keys are a pull request’s row’s, for the whole stack’s changed files: Space
 shows or hides them, Right shows them or moves into them, and Left hides them.
 

@@ -66,7 +66,9 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due",
+  "status_scan_at": null
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -102,7 +104,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -156,45 +162,51 @@ status: 200
   "complete": true,
   "truncated": false,
   "limit": 2,
-  "next_after": 605,
+  "next_after": 7,
   "rows": [
     {
-      "number": 606,
-      "title": "Work item 606",
+      "number": 10,
+      "title": "WIP: draft the next page",
       "state": "open",
-      "draft": false,
+      "draft": true,
       "merged_at": null,
-      "author": "contributor",
+      "author": "maintainer",
       "author_avatar_url": null,
-      "created_at": "2026-09-16T12:10:06Z",
-      "updated_at": "2026-09-16T12:10:06Z",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
       "closed_at": null,
       "base_ref": "topic",
-      "head_ref": "work-606",
+      "head_ref": "wip",
       "head_repository": "octo/demo",
       "labels": [],
-      "head_oid": "0000000000000000000000000000000000000000",
+      "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     },
     {
-      "number": 605,
-      "title": "Work item 605",
+      "number": 7,
+      "title": "Count to two in the app",
       "state": "open",
       "draft": false,
       "merged_at": null,
-      "author": "contributor",
+      "author": "forker",
       "author_avatar_url": null,
-      "created_at": "2026-09-16T12:10:05Z",
-      "updated_at": "2026-09-16T12:10:05Z",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
       "closed_at": null,
       "base_ref": "topic",
-      "head_ref": "work-605",
-      "head_repository": "octo/demo",
-      "labels": [],
-      "head_oid": "0000000000000000000000000000000000000000",
+      "head_ref": "count-to-two",
+      "head_repository": "forker/demo",
+      "labels": [
+        "enhancement"
+      ],
+      "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -272,7 +284,11 @@ status: 200
       "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -312,7 +328,7 @@ status: 200
   "complete": true,
   "truncated": false,
   "limit": 2,
-  "next_after": null,
+  "next_after": 606,
   "rows": [
     {
       "number": 7,
@@ -333,8 +349,30 @@ status: 200
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
+    },
+    {
+      "number": 606,
+      "title": "Work item 606",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:06Z",
+      "updated_at": "2026-09-16T12:10:06Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-606",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
+      "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -377,15 +415,25 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started",
+  "status_scan_at": null
 }
 --- stderr ---
 --- body ---
 {"target": 1000}
 --- gh ---
 gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api graphql statuses cursor=start
+gh api graphql statuses cursor=statuses-25
+gh api graphql statuses cursor=statuses-50
+gh api graphql statuses cursor=statuses-75
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
 --- stdout ---
@@ -423,7 +471,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -503,7 +555,11 @@ status: 200
       "head_oid": "8ae27617c9c475851b67ee69433d008836d112ba",
       "merged": true
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -538,13 +594,17 @@ status: 200
   },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
-  "generation": "<CATALOG_EPOCH_1>:0",
+  "generation": "<CATALOG_EPOCH_1>:1",
   "fetched": 600,
   "complete": true,
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -719,9 +779,15 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due",
+  "status_scan_at": "2026-09-17T12:00:00Z"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -757,7 +823,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -801,7 +871,7 @@ status: 200
   "complete": true,
   "truncated": false,
   "limit": 2,
-  "next_after": 606,
+  "next_after": 10,
   "rows": [
     {
       "number": 607,
@@ -822,31 +892,35 @@ status: 200
       "merged": false
     },
     {
-      "number": 606,
-      "title": "Work item 606",
+      "number": 10,
+      "title": "Retitled after catalog backfill",
       "state": "open",
-      "draft": false,
+      "draft": true,
       "merged_at": null,
-      "author": "contributor",
+      "author": "maintainer",
       "author_avatar_url": null,
-      "created_at": "2026-09-16T12:10:06Z",
-      "updated_at": "2026-09-16T12:10:06Z",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-17T12:01:01Z",
       "closed_at": null,
       "base_ref": "topic",
-      "head_ref": "work-606",
+      "head_ref": "wip",
       "head_repository": "octo/demo",
       "labels": [],
-      "head_oid": "0000000000000000000000000000000000000000",
+      "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
-# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?after=11&limit=1'
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?after=10&limit=2'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pulls?after=11&limit=1
+api: /api/plugin/github/pulls?after=10&limit=2
 status: 200
 {
   "state": "current",
@@ -878,8 +952,92 @@ status: 200
   "fetched": 599,
   "complete": true,
   "truncated": false,
-  "limit": 1,
-  "next_after": 10,
+  "limit": 2,
+  "next_after": 606,
+  "rows": [
+    {
+      "number": 7,
+      "title": "Count to two in the app",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "count-to-two",
+      "head_repository": "forker/demo",
+      "labels": [
+        "enhancement"
+      ],
+      "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "merged": false
+    },
+    {
+      "number": 606,
+      "title": "Work item 606",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:06Z",
+      "updated_at": "2026-09-16T12:10:06Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-606",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
+      "merged": false
+    }
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=all&at=10&limit=2'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=all&at=10&limit=2
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "all",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 601,
+  "repository_total": 601,
+  "filter_totals": {
+    "all": 601,
+    "open": 599,
+    "closed": 2
+  },
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 601,
+  "generation": "<CATALOG_EPOCH_1>:2",
+  "fetched": 601,
+  "complete": true,
+  "truncated": false,
+  "limit": 2,
+  "next_after": null,
   "rows": [
     {
       "number": 10,
@@ -899,7 +1057,12 @@ status: 200
       "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     }
-  ]
+  ],
+  "position": 1,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -942,9 +1105,15 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:01:01Z",
+      "duration_ms": 300
+    }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started",
+  "status_scan_at": "2026-09-17T12:00:00Z"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -980,7 +1149,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 Error: the refresh ended with network_error
@@ -990,6 +1163,7 @@ Error: the refresh ended with network_error
 gh api user
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api graphql statuses cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
 --- stdout ---
@@ -1027,7 +1201,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -1070,9 +1248,15 @@ status: 202
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:01:01Z",
+      "duration_ms": 300
+    }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started",
+  "status_scan_at": "2026-09-17T12:01:01Z"
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1108,7 +1292,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:01:01Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---
@@ -1117,6 +1305,7 @@ status: 200
 gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
+gh api graphql statuses cursor=start
 ## A visible pull request prepares its description from one GraphQL batch.
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
 exit: 0
@@ -1167,7 +1356,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
-      "mergeable": "mergeable",
       "labels": [
         {
           "name": "enhancement",
@@ -1195,10 +1383,76 @@ status: 200
     },
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
-    "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
+    "revision": "dc404e32b2e1850bc1c65c44e3dd726c14fcb14d4d55da65b0b54fa289eea071"
   },
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": {
+    "number": 7,
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "base_ref": "topic",
+    "base": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "scan",
+    "conflicts": "mergeable",
+    "merge_state": "blocked",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": null,
+      "required_pending": null,
+      "listed_at": null,
+      "moved_at": null
+    },
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "queue": null
+  },
+  "readiness": {
+    "verdict": "checks_pending",
+    "tone": "attention",
+    "label": "Checks pending",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "requirements": [
+      {
+        "kind": "conflicts",
+        "status": "met",
+        "summary": "No merge conflicts with topic.",
+        "github_url": null
+      },
+      {
+        "kind": "checks",
+        "status": "waiting",
+        "summary": "Some checks are still pending: 2 successful, and 1 pending.",
+        "github_url": "https://github.com/octo/demo/pull/7/checks"
+      },
+      {
+        "kind": "reviews",
+        "status": "waiting",
+        "summary": "Review required.",
+        "github_url": "https://github.com/octo/demo/pull/7"
+      }
+    ],
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "auto_merge_summary": "Auto-merge enabled (squash)."
+  },
+  "checks": null,
+  "status_unavailable": null
 }
 --- stderr ---
 --- body ---
@@ -1250,7 +1504,6 @@ status: 200
       "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
-      "mergeable": "mergeable",
       "labels": [
         {
           "name": "enhancement",
@@ -1278,10 +1531,76 @@ status: 200
     },
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
-    "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
+    "revision": "dc404e32b2e1850bc1c65c44e3dd726c14fcb14d4d55da65b0b54fa289eea071"
   },
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "status": {
+    "number": 7,
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "base_ref": "topic",
+    "base": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "observed_by": "scan",
+    "conflicts": "mergeable",
+    "merge_state": "blocked",
+    "review_decision": "review_required",
+    "checks": {
+      "state": "pending",
+      "counts": {
+        "pass": 2,
+        "fail": 0,
+        "pending": 1,
+        "skipping": 0,
+        "cancel": 0
+      },
+      "required_failing": null,
+      "required_pending": null,
+      "listed_at": null,
+      "moved_at": null
+    },
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "queue": null
+  },
+  "readiness": {
+    "verdict": "checks_pending",
+    "tone": "attention",
+    "label": "Checks pending",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "observed_at": "2026-09-17T12:00:00Z",
+    "requirements": [
+      {
+        "kind": "conflicts",
+        "status": "met",
+        "summary": "No merge conflicts with topic.",
+        "github_url": null
+      },
+      {
+        "kind": "checks",
+        "status": "waiting",
+        "summary": "Some checks are still pending: 2 successful, and 1 pending.",
+        "github_url": "https://github.com/octo/demo/pull/7/checks"
+      },
+      {
+        "kind": "reviews",
+        "status": "waiting",
+        "summary": "Review required.",
+        "github_url": "https://github.com/octo/demo/pull/7"
+      }
+    ],
+    "auto_merge": {
+      "method": "squash",
+      "enabled_by": "maintainer",
+      "enabled_at": "2026-09-16T17:40:00Z"
+    },
+    "auto_merge_summary": "Auto-merge enabled (squash)."
+  },
+  "checks": null,
+  "status_unavailable": null
 }
 --- stderr ---
 --- gh ---
@@ -1295,7 +1614,7 @@ status: 200
   "number": 7,
   "fetched_at": null,
   "record_revision": null,
-  "core_revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4",
+  "core_revision": "dc404e32b2e1850bc1c65c44e3dd726c14fcb14d4d55da65b0b54fa289eea071",
   "part": "body",
   "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
 }
@@ -1455,7 +1774,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 5,
+  "cleared": 7,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1526,7 +1845,9 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due",
+  "status_scan_at": null
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1562,7 +1883,11 @@ status: 200
   "truncated": false,
   "limit": 0,
   "next_after": null,
-  "rows": []
+  "rows": [],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:02:02Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- body ---

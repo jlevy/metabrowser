@@ -6572,7 +6572,7 @@ function beginViewCompositionLoad() {
 }
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function selectFile(path, preferredViewId) {
+async function selectFile(path, preferredViewId, refreshMounted = false) {
   // Folder routes carry a trailing slash and the served root is the empty
   // path, so the route says whether this selection is a folder before its
   // envelope arrives. The placeholder names what is loading.
@@ -6625,6 +6625,7 @@ async function selectFile(path, preferredViewId) {
         // settled-result wrapper now because an HTTP failure may mean this
         // selection never reaches renderFile.
         const viewComposition = beginViewCompositionLoad();
+        const renderOptions = { viewComposition, refreshMounted };
 
         // Three-way cache state:
         //   - hot: in fileCache and not flagged → serve from cache.
@@ -6637,7 +6638,7 @@ async function selectFile(path, preferredViewId) {
         if (cached && !needsRevalidate && !activeFiles.has(path)) {
           try {
             navigationController.canonicalizePath(path, cached.kind === "folder");
-            if (!(await renderFile(cached, preferredViewId, previewClaim, { viewComposition }))) {
+            if (!(await renderFile(cached, preferredViewId, previewClaim, renderOptions))) {
               return { status: "cancelled" };
             }
             maybeOpenLiveStream(path, cached);
@@ -6700,7 +6701,7 @@ async function selectFile(path, preferredViewId) {
                 loadingIndicatorTimer = null;
               }
               navigationController.canonicalizePath(path, cached.kind === "folder");
-              if (!(await renderFile(cached, preferredViewId, previewClaim, { viewComposition }))) {
+              if (!(await renderFile(cached, preferredViewId, previewClaim, renderOptions))) {
                 return { status: "cancelled" };
               }
               maybeOpenLiveStream(path, cached);
@@ -6754,7 +6755,7 @@ async function selectFile(path, preferredViewId) {
             loadingIndicatorTimer = null;
           }
           navigationController.canonicalizePath(path, data.kind === "folder");
-          if (!(await renderFile(data, preferredViewId, previewClaim, { viewComposition }))) {
+          if (!(await renderFile(data, preferredViewId, previewClaim, renderOptions))) {
             return { status: "cancelled" };
           }
           maybeOpenLiveStream(path, data);
@@ -6842,36 +6843,6 @@ function startFolderHeaderSubscription(path) {
       summaryEl.innerHTML = dir ? viewHeaderBuilders().folderHeaderSummaryHtml(dir) : "";
     }
   });
-}
-
-function boolData(value) {
-  return value === true || value === "true" || value === "1";
-}
-
-function viewIsPrintable(view) {
-  return boolData(view?.printable);
-}
-
-function viewPrintProfile(view) {
-  return view?.print_profile || "plain";
-}
-
-function viewRenderRuntime(view) {
-  return view?.render_runtime || "";
-}
-
-function viewMetaAttrs(view) {
-  var printable = viewIsPrintable(view) ? "true" : "false";
-  var profile = viewPrintProfile(view);
-  var runtime = viewRenderRuntime(view);
-  var attrs = ` data-printable="${printable}" data-print-profile="${esc(profile)}"`;
-  if (runtime) {
-    attrs += ` data-render-runtime="${esc(runtime)}"`;
-  }
-  if (runtime === "kpress") {
-    attrs += ' data-kpress-enabled="true"';
-  }
-  return attrs;
 }
 
 // The partial-content notice's Load more runs the shell's text loader by name.
@@ -6969,6 +6940,7 @@ function createFilePreviewStage(preview) {
  * @param {{
  *   isCurrent?: () => boolean,
  *   onCommit?: () => void,
+ *   refreshMounted?: boolean,
  *   viewComposition?: ReturnType<typeof beginViewCompositionLoad>,
  * }} [options]
  * @returns {Promise<boolean>}
@@ -7003,6 +6975,20 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         return false;
       }
       const compositionKind = data.kind || data.type || "unknown";
+      const preview = document.getElementById("preview-pane");
+      if (!preview) {
+        return false;
+      }
+      const ctx = {
+        path: data.path,
+        kind: compositionKind,
+        ext: data.ext,
+        size: data.size,
+        frontmatter: data.frontmatter || {},
+        body: typeof data.content === "string" ? data.content : data.body || "",
+        raw: data,
+        fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
+      };
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
@@ -7024,10 +7010,31 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       if (composition.status === "cancelled") {
         return false;
       }
-      const preview = document.getElementById("preview-pane");
-      if (!preview) {
-        return false;
+      const refreshingFolder =
+        options.refreshMounted &&
+        compositionKind === "folder" &&
+        preview.dataset.renderedPath === data.path;
+      if (refreshingFolder) {
+        const refreshed = await viewComposition.composition.refresh(
+          preview,
+          composition.views,
+          ctx,
+          renderIsCurrent,
+        );
+        if (!renderIsCurrent()) {
+          return false;
+        }
+        if (refreshed) {
+          window.metabrowser.folderContext.seed(
+            data.path,
+            /** @type {Parameters<Window["metabrowser"]["folderContext"]["seed"]>[1]} */ (data),
+          );
+          options.onCommit?.();
+          return true;
+        }
       }
+      /** @type {{current: MetabrowserPublicRenderContext}} */
+      const viewContext = { current: ctx };
       const stage = createFilePreviewStage(preview);
       const stagedPluginLifecycle = viewComposition.lifecycle.begin();
       const stagedPluginDisposers = stagedPluginLifecycle.disposers;
@@ -7057,92 +7064,17 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           );
         }
 
-        // Plugins own every (kind, viewId). The shell mounts empty hosts before
-        // calling render(container, ctx); an unclaimed view gets an unavailable
-        // message, never a shell-renderer fallback.
-        var preparedViews = composition.views;
-        var views = preparedViews.map((prepared) => prepared.view);
-        // Plugin navigation can preserve a working mode across resources. An
-        // unavailable preference falls through to the server default.
-        var initialActiveView = composition.initialView;
-        var pluginRenders = [];
-        if (views && views.length > 0) {
-          // One view gets the bar too, so content starts at one height in every file.
-          // A tablist, as the navigation and pull request tab bars are. A view's
-          // declared letter rides its button for the shell keymap, which reads it
-          // only once the bar is committed to the pane, and only a bar of two or more
-          // views carries one: a lone tab has no other view to switch to.
-          var keyedBar = views.length > 1;
-          html += '<div class="tab-bar" role="tablist">';
-          for (let i = 0; i < views.length; i++) {
-            const view = views[i];
-            var isActive = view.id === initialActiveView?.id;
-            var viewKey =
-              typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : "";
-            html +=
-              '<button class="tab-btn' +
-              (isActive ? " active" : "") +
-              '" type="button" role="tab" aria-selected="' +
-              (isActive ? "true" : "false") +
-              '" data-tab="' +
-              esc(view.id) +
-              '"' +
-              (keyedBar ? viewKey : "") +
-              viewMetaAttrs(view) +
-              ">" +
-              esc(view.label) +
-              "</button>";
-          }
-          html += "</div>";
-          for (let i = 0; i < views.length; i++) {
-            const view = views[i];
-            var pluginView = preparedViews[i].renderer;
-            // container_class can be set per-view in the plugin manifest as
-            // [[view]].container_class; defaults to "content-body".
-            var containerClass = view.container_class || "content-body";
-            var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
-            var blockPadding = view.id === "raw" || view.id === "source" ? "padding-block:0;" : "";
-            if (blockPadding && !hidden) {
-              hidden = ` style="${blockPadding}"`;
-            } else if (blockPadding && hidden) {
-              hidden = ` style="display:none;${blockPadding}"`;
-            }
-
-            if (pluginView) {
-              // Empty container; plugin renders into it after innerHTML lands.
-              html +=
-                '<div class="' +
-                containerClass +
-                '" data-tab-content="' +
-                view.id +
-                '" data-plugin-view="' +
-                esc(view.id) +
-                '"' +
-                viewMetaAttrs(view) +
-                ' data-active-view="false"' +
-                hidden +
-                "></div>";
-              pluginRenders.push({ tabId: view.id, view: pluginView });
-            } else {
-              // No plugin registered for this (kind, viewId). Defensive
-              // empty-state — should not fire in practice because every
-              // kind+view declared in any loaded plugin's manifest is
-              // expected to have a matching registerView call.
-              html +=
-                '<div class="' +
-                containerClass +
-                '" data-tab-content="' +
-                view.id +
-                '"' +
-                viewMetaAttrs(view) +
-                ' data-active-view="false"' +
-                hidden +
-                '><div class="preview-empty" role="alert">This view is unavailable. Reload the page to try again.</div></div>';
-            }
-          }
-        } else {
-          html +=
-            '<div class="tab-bar" aria-hidden="true"><span class="tab-btn tab-slot">&nbsp;</span></div>';
+        // Keep a surviving active tab when rereading a mounted folder.
+        const initialActiveView =
+          (refreshingFolder
+            ? composition.views.find(({ view }) => view.id === preview.dataset.activeView)?.view
+            : undefined) ?? composition.initialView;
+        html += viewComposition.composition.renderTabs(
+          composition.views,
+          initialActiveView?.id,
+          esc,
+        );
+        if (composition.views.length === 0) {
           if (data.type === "binary") {
             html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
           } else if (data.type === "error") {
@@ -7173,39 +7105,30 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         // the shell transfers the stage's children into the preview.
         /** @type {(() => Promise<unknown>) | null} */
         let mountInitialView = null;
-        if (pluginRenders?.length) {
-          var ctx = {
-            path: data.path,
-            kind: compositionKind,
-            ext: data.ext,
-            size: data.size,
-            frontmatter: data.frontmatter || {},
-            body: typeof data.content === "string" ? data.content : data.body || "",
-            raw: data,
-            fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
-          };
-          for (var pi = 0; pi < pluginRenders.length; pi++) {
-            var pr = pluginRenders[pi];
-            var container = stage.querySelector(`[data-plugin-view="${pr.tabId}"]`);
-            if (!(container instanceof HTMLElement)) {
-              continue;
-            }
-            const mount = (
-              (target, pluginView) => () =>
-                viewComposition.composition.mount(target, pluginView, ctx, stagedPluginDisposers, {
-                  afterMount: scheduleHighlightCode,
-                  onError(error) {
-                    console.error("plugin render error:", error);
-                  },
-                })
-            )(container, pr.view);
-            if (initialActiveView && pr.tabId === initialActiveView.id) {
-              mountInitialView = mount;
-            } else {
-              container._metabrowserMount = () => {
-                void mount();
-              };
-            }
+        for (const { renderer, view } of composition.views) {
+          const container = stage.querySelector(`[data-plugin-view="${view.id}"]`);
+          if (!renderer || !(container instanceof HTMLElement)) {
+            continue;
+          }
+          const mount = () =>
+            viewComposition.composition.mount(
+              container,
+              renderer,
+              viewContext.current,
+              stagedPluginDisposers,
+              {
+                afterMount: scheduleHighlightCode,
+                onError(error) {
+                  console.error("plugin render error:", error);
+                },
+              },
+            );
+          if (view.id === initialActiveView?.id) {
+            mountInitialView = mount;
+          } else {
+            container._metabrowserMount = () => {
+              void mount();
+            };
           }
         }
 
@@ -7257,6 +7180,11 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         preview.dataset.renderedPath = data.path || "";
         viewComposition.composition.setActiveView(preview, frontViewId);
         if (data.kind === "folder") {
+          viewComposition.composition.retain(
+            preview,
+            { views: composition.views, context: viewContext },
+            stagedPluginDisposers,
+          );
           startFolderHeaderSubscription(data.path);
         }
         scheduleHighlightCode(preview);
@@ -7629,7 +7557,7 @@ function rereadFiles() {
   var shownView = document.getElementById("preview-pane")?.dataset.activeView || undefined;
   return Promise.all([
     tree,
-    held.owner === "file" && held.path !== null && selectFile(held.path, shownView),
+    held.owner === "file" && held.path !== null && selectFile(held.path, shownView, true),
   ]);
 }
 window.addEventListener("metabrowser:file-ages-landed", rereadFiles);

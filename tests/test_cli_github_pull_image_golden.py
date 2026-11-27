@@ -27,6 +27,7 @@ from tests.golden_harness import (
     check_golden,
     label_home,
     normalize_pull_comparison_scopes,
+    operational_once,
     run_metab,
 )
 from tests.test_cli_github_pull_golden import PULL, ROUTE, _body, _Session
@@ -129,4 +130,4 @@ def test_golden_images_open_only_from_an_admitted_pair(
     )
     assert str(tmp_path) not in rendered
     assert json.loads(snapshots.read_text())[0]["reader"] == "gh:octo-reader"
-    check_golden("cli-github-pull-image.txt", rendered)
+    check_golden("cli-github-pull-image.txt", operational_once(rendered))
