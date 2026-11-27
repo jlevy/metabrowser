@@ -4709,6 +4709,88 @@ def test_status_and_badge_inks_read_in_both_themes() -> None:
             )
 
 
+def test_a_clickable_chips_hover_keeps_its_inks_contrast() -> None:
+    """Under the pointer a clickable chip's ink still reads at 4.5:1, in both themes.
+
+    The hover ground is one layer, `--chip-hover-overlay`, over the whole chip, its fill and
+    its ink alike (docs/design-system.md, "Clickable and Static Chips"), so every ink a chip
+    that can be clickable takes is held on its fill with the layer over both: a ref chip's
+    three kinds on `--git-ref-bg`, and its trunk form, which swaps the two; a readiness
+    badge's three tones on the page, the outlined badge having no fill of its own; and an
+    image's chip, in the link ink, on its surface. A table's reference lays the layer under
+    its text ink, over the row's own hover ground. Where each is drawn, and its pixels, are
+    tests/dom/chip-affordance-chrome.mjs's.
+    """
+
+    plugin: dict[str, dict[str, str]] = {"light": {}, "dark": {}}
+    for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
+        if selector == ":root":
+            plugin["light"].update(declarations)
+        elif selector == '[data-theme="dark"]':
+            plugin["dark"].update(declarations)
+    shell = _theme_tokens()
+    over_both = [
+        *((f"--git-ref-{kind}", "--git-ref-bg") for kind in ("remote", "local", "tag")),
+        *(("--git-ref-bg", f"--git-ref-{kind}") for kind in ("remote", "local", "tag")),
+        *((ink, "--bg") for ink in ("--status-success-text", "--github-pull-attention")),
+        ("--status-error-text", "--bg"),
+        ("--link", "--viz-surface"),
+    ]
+    for theme in ("light", "dark"):
+        tokens = {**shell[theme], **plugin["light"], **plugin[theme]}
+        layer, alpha = _translucent_token(tokens, "--chip-hover-overlay")
+        assert _oklch_channels(layer)[1] == 0, "the hover layer is a neutral, over any fill"
+        top = _srgb(layer)
+        for ink_token, fill_token in over_both:
+            ink = _over(top, _srgb(_resolved(tokens, ink_token)), alpha)
+            fill = _over(top, _srgb(_resolved(tokens, fill_token)), alpha)
+            ratio = _ratio(_srgb_luminance(ink), _srgb_luminance(fill))
+            assert ratio >= _AA_TEXT, (
+                f"{ink_token} on {fill_token} under the hover layer in the {theme} theme "
+                f"reads at {ratio:.2f}:1"
+            )
+        row = _over(top, _ground(tokens, "--hover-bg"), alpha)
+        ratio = _ratio(_srgb_luminance(_srgb(_resolved(tokens, "--text"))), _srgb_luminance(row))
+        assert ratio >= _AA_TEXT, f"a table's reference reads at {ratio:.2f}:1 in the {theme} theme"
+
+
+def test_the_clickable_chip_rules_name_one_list_of_atoms() -> None:
+    """Every rule that says how a chip shows it is clickable names the same chip atoms.
+
+    The shell's "Clickable and static chips" block (docs/design-system.md, "Clickable and
+    Static Chips") repeats its list of chip atoms in each rule, since a stylesheet cannot
+    name a list once; an atom added to one rule and not the others would underline, or take
+    no ground, or no ring. So each list in a rule that holds the hover layer, lays it, takes
+    the underline away, or rings a chip is the same set, and no other stylesheet lays the
+    layer except the table plugin's reference, which the document names.
+    """
+
+    atoms = re.compile(r":is\((\.[\w-]+(?:, \.[\w-]+)*)\)")
+    lists: set[frozenset[str]] = set()
+    layered: list[str] = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            if "var(--chip-hover-overlay)" in " ".join(declarations.values()):
+                layered.append(f"{_sheet_name(sheet)} {selector}")
+            if sheet == STATIC / "styles.css" and (
+                (
+                    "::after" in selector
+                    and "chip-hover-overlay" in declarations.get("background", "")
+                )
+                or ("button:enabled" in selector and declarations.get("position") == "relative")
+                or declarations.get("text-decoration-line", "").startswith("none !important")
+                or (":focus-visible >" in selector and "outline" in declarations)
+                or (":has(> :is(" in selector and declarations.get("outline") == "none")
+            ):
+                found = atoms.findall(selector)
+                assert found, f"{selector} names no chip atoms"
+                lists.update(frozenset(each.split(", ")) for each in found)
+    assert len(lists) == 1, f"the clickable chip rules name different atoms: {lists}"
+    assert {".file-header-badge", ".git-ref", ".mb-image-fallback"} <= next(iter(lists))
+    elsewhere = [rule for rule in layered if not rule.startswith("styles.css ")]
+    assert elsewhere == ["table/styles.css .table-ref:hover"], elsewhere
+
+
 def test_status_text_inks_keep_their_fills_hue() -> None:
     """A text ink is its fill's color seen as text, so the two share a hue family."""
 

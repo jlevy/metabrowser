@@ -124,13 +124,12 @@ revision. A commit URL keeps that exact revision selected.
   without a terminal. So present what the user should see, and serve what only you need
   to look at
 
-### Present with the CLI
+### Present It in the App
 
 ```shell
-<invocation> --present <target> --open-in browser --format json
-<invocation> --present <root> --path <relative-path> --open-in browser --format json
-<invocation> --present <target> --open-in app --format json
 <invocation> --present <target> --format json
+<invocation> --present <root> --path <relative-path> --format json
+<invocation> --present <target> --open-in browser --format json
 ```
 
 - Use the CLI’s delivery report for routine handoffs.
@@ -147,7 +146,8 @@ revision. A commit URL keeps that exact revision selected.
   environment or serve the preview build directly.
 
 - A delivery to a browser starts a server.
-  For sandbox requirements, see [When a Sandbox Blocks It](#when-a-sandbox-blocks-it).
+  Run it inside the sandbox.
+  See [When a Sandbox Blocks It](#when-a-sandbox-blocks-it).
 
 - A file named alone as `<target>` opens in the most specific folder the app already has
   open that holds it, and otherwise in its own folder.
