@@ -1288,15 +1288,14 @@
    compact form, and the slot is the glyph's width: the link, its name, and its tooltip are
    the chip's, so it says the same. The bound is where the full chip leaves the ages what they
    had before it, at the row's 420 px limit: there the ages had 150.28 px beside one stack's
-   chip, and the full chip leaves them that much from a row of 506.48 px (a 564.48 px pane),
-   36.18em at the row's 14 px type; the bound is 36.2em, 506.8 px, where it leaves them
-   150.6 px. Below it the glyph costs the ages 22 px, its 14 px and the row's gap, so at 420 px
+   chip. The longer readiness labels leave the ages that much at a row of about 518 px
+   in Chrome at 14 px. Round up to 37.05em (518.7 px). Below it the glyph costs the ages 22 px, its 14 px and the row's gap, so at 420 px
    they keep 128.28 px. Measured in headless Chrome for Testing 158, 2026-11-26, by setting a
    pane's width a pixel at a time; tests/dom/github-pull-header-chrome.mjs ("readiness" part)
    holds each form to its side of the bound. Two stacks' named chips take 101.56 px more of
    the row, which the bound does not answer: Browse code stays whole beside them from
    560 px. */
-@container github-pull-opened (width < 36.2em) {
+@container github-pull-opened (width < 37.05em) {
   .github-pull-readiness-link > .github-pull-badge,
   .github-pull-readiness-slot > .github-pull-badge-sizer {
     display: none;

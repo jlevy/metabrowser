@@ -2692,7 +2692,7 @@ async function main() {
         for (let each = 400; each <= 760; each += 8) {
           sweepWidths.push(each);
         }
-        for (let each = 557; each <= 573; each += 1) {
+        for (let each = 568; each <= 587; each += 1) {
           sweepWidths.push(each);
         }
         const shape = await browser.evaluate(
