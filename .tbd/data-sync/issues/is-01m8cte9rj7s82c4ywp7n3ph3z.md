@@ -5,7 +5,7 @@ title: "Link preview tooltips: a card for every in-app link, prefetch on rest, o
 kind: epic
 status: in_progress
 priority: 2
-version: 8
+version: 14
 spec_path: docs/project/specs/active/plan-2026-11-26-link-preview-tooltips.md
 delegate: claude-code@vm
 labels: []
@@ -17,10 +17,16 @@ child_order_hints:
   - is-01m8ctebd9enyvb73vfstjcw1q
   - is-01m8ctebyy6n7852g2g343y5e3
   - is-01m8d1c6bsa5d1z0zndhwk1fsw
+  - is-01m8dcjw01kgaar26c6w44tznv
+  - is-01m8dcjxt74rkhqksbks7cdkwn
+  - is-01m8dcjyx2dnjapmvy9r715c98
+  - is-01m8dck01zqd6etac23wb74sm4
+  - is-01m8dck184gg57ym4r6jg331mr
+  - is-01m8ddwca5g9aw8w54j0c04mf8
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:58:34.642Z
-updated_at: 2026-11-27T01:49:49.643Z
+updated_at: 2026-11-27T02:38:18.948Z
 started_at: 2026-11-26T20:58:38.036Z
 ---
 Owner request 2026-11-26, stacked on https://github.com/jlevy/metabrowser/pull/891.
