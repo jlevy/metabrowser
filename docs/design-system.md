@@ -1495,6 +1495,8 @@ every image from the web with that box ticked, is its alt text in a small chip:
 image would have loaded in its tooltip (`data-tip-text`, as every tooltip is).
 The chip is the content of the link the image was in, so a badge keeps its destination,
 and an image that was in no link is in a link to the image, in the same chip.
+So it is always a [clickable chip](#clickable-and-static-chips), in the link’s ink,
+which a document’s lighter hover ink does not reach.
 It is a badge’s height, so a row of chips lies on one line as a row of badges does, and
 it never wraps its text: one wider than its line is cut with an ellipsis, and the
 tooltip has the rest.
@@ -1560,7 +1562,9 @@ A context that wants the link’s full treatment says so itself, as the
 [Link row](#chrome) of a pull request’s page does: `--link` and no underline at rest, an
 underline on hover, and the [focus ring](#focus-ring) with its outset offset, since a
 bare inline link’s box is its text.
-A link that sets its own ink, a Pulls row’s title, sets it on the link itself.
+A link whose content is a chip is never underlined, whatever its context says
+([Clickable and Static Chips](#clickable-and-static-chips)). A link that sets its own
+ink, a Pulls row’s title, sets it on the link itself.
 A new context does not add a rule of its own that only colors its anchors `--link`: the
 base already does. `test_a_link_no_rule_colors_is_the_link_color` holds the base and
 holds the three patches it replaced gone (older GitHub plugin rules that also set other
@@ -1633,6 +1637,69 @@ A status or file-type badge takes its fill and ink from a `--badge-<tone>-bg` an
 `test_status_and_badge_inks_read_in_both_themes`; a failure and a front-matter error are
 one tone, `--badge-failed-*`. Ref chooser tags use the outlined form in the row’s muted
 ink, at the shared [compact chip size](#chip-sizes).
+A badge is static, except where it is a link’s content, as a pull request’s readiness is
+([Clickable and Static Chips](#clickable-and-static-chips)).
+
+### Clickable and Static Chips
+
+**A chip says whether it is clickable, and the pointer’s answer is a ground, never an
+underline.** GitHub’s Primer draws it the same way: an interactive token changes its
+ground under the pointer, and a label or a state label shows nothing.
+
+- **A clickable chip** is a control itself, a link or button whose whole visible content
+  is the chip, or a chip a control is laid over.
+  It shows the pointer, paints a ground of its own under the pointer, draws the
+  [one focus ring](#focus-ring), and is never underlined, at rest, under the pointer, or
+  focused.
+- **A static chip** shows nothing under the pointer: the same ground, no pointer, and no
+  underline. A tooltip that explains it is fine, and the cursor stays the page’s.
+- **A selected chip** keeps its selected look under the pointer, and **a disabled chip**
+  (`aria-disabled`) is static.
+- **A chip that is a part of a larger control**, a badge in a log’s row or a ref chip in
+  the revision chooser’s row, is the row’s: the row answers the pointer, and nothing
+  underlines the chip.
+
+The rule is one block of `static/styles.css`, “Clickable and static chips”, which names
+the shell’s chip atoms once, in the list its rules share, and applies them by markup: a
+chip that is a link or a button, or the child of one, is clickable, and every other chip
+is static by having no rule.
+
+- **The hover ground is one layer over the whole chip**, `--chip-hover-overlay`, which
+  darkens a chip’s fill and its ink together in the light theme and lightens both in the
+  dark. So it works over any fill, a status tint, a label’s color, a trunk ref’s solid
+  ground, or none, with no token for each, and the ink keeps its contrast: laid under
+  the ink, the lowest clickable ink fell under 4.5:1 in the light theme.
+  Its alpha takes `--hover-bg`’s step over `--bg`, and the figures are beside the token.
+- **No context’s link rule reaches a chip.** A link or button that holds a chip is never
+  underlined, by an important rule for that one property: the readiness badge’s link
+  took the pull request header’s underline on hover, and an image’s chip a document’s.
+- **The ring is the chip’s** where a control’s content is a chip, since an inline link’s
+  own box is its line’s, not the chip’s.
+
+| Family | Class | Clickable | Static |
+| --- | --- | --- | --- |
+| Filter chip | `.chip`, in `.chip-group`, `.chip-toggle`, and `.chip-menu-trigger` ([Filter Controls](#filter-controls)) | Always: its family answers the pointer with `--hover-bg` ([Choosing Among Values](#choosing-among-values)) | Its count, `.chip-badge`, is a part of it |
+| Ref chip | `.git-ref`, from `mb.refChip` ([Branch Chips](#branch-chips)) | As the button that opens its menu (`.git-ref-action`), or under the menu button a history row lays over it (`.git-ref-menu-hit`), which lays the ground | In a commit’s tooltip; in the revision chooser’s row, a part of the row |
+| Badge | `.file-header-badge` and its tones ([Badges](#badges)) | As a link’s content: a pull request’s readiness in its header, a link to the Checks tab | A state, a review, a check, a requirement, the Merge status verdict, a stack’s tally, a file header’s, and a session’s |
+| Image chip | `.mb-image-fallback` ([Images the Page Does Not Load](#images-the-page-does-not-load)) | Always: it is a link’s content, in a link’s ink that the document’s hover does not change | Never |
+| Label | `.github-pull-label` ([Label Colors](#label-colors)) | Never | Its description is its tooltip |
+| Compact tag | `.source-ref-selector-badge`, `.github-pull-required` | Never | “checked out”, “default”, “Required” |
+| Table reference | `.table-ref`, a link to the referenced row | Always: the table plugin’s rule lays the same token, under its text ink | Never |
+| Table filter | `.table-chip` | Its remove control, `.table-chip-remove`, is a control of its own | The chip |
+| Key hint | `.kbd-badge` ([Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal)) | Never | It takes no pointer |
+
+`tests/test_chip_affordance_chrome.py` holds the rule in Chrome, in both themes, on the
+surfaces that draw chips: a pull request’s header, Checks, and Changes, the Pulls tab, a
+stack’s page, the Files tab, the revision chooser, the Commits tab, a commit’s page, a
+table, a filtered table, a document’s image chips, and a compressed file’s header.
+It finds every chip by its shape, not its class, and what control it is by what the
+pointer reaches at its middle, so a new chip is held without being named; it reads each
+ground from the page’s pixels, and each ink’s contrast on the ground under the pointer.
+`test_a_clickable_chips_hover_keeps_its_inks_contrast` in
+`tests/test_design_vocabulary.py` holds the inks of every chip that can be clickable to
+4.5:1 under the token in both themes, and
+`test_the_clickable_chip_rules_name_one_list_of_atoms` that every rule of the block
+names the same atoms.
 
 ### Status Text Inks
 
@@ -2442,7 +2509,8 @@ Click a branch or tag chip to open its menu.
 Click the same chip again to close it; it closes as
 [every menu closes](#every-menu-closes-alike).
 A down chevron fades in over a translucent backdrop at the trailing edge on hover,
-keyboard focus, and while the menu is open.
+keyboard focus, and while the menu is open, and under the pointer the chip takes the
+[clickable chip’s](#clickable-and-static-chips) hover ground.
 The transition uses `--transition-fast` and is skipped under reduced motion.
 Long names use the entire chip at rest.
 The chevron uses the same neutral ink as other menu triggers.
@@ -3395,13 +3463,13 @@ Its measurements in Chrome and the app’s WebKit are in
 | Element | Primitive | Why |
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)), and a conventional-commit prefix that starts it regular ([Titles](#titles)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
-| State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
+| State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one: a badge is static, and the readiness’s, a link to the Checks tab, is a clickable chip ([Clickable and Static Chips](#clickable-and-static-chips)). Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | The shell’s [actor identity](#actor-identity): an avatar’s box, then `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor, and the person glyph stands in its box where there is none, as on a commit’s page |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), each the chip’s [one size](#one-size), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
-| Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
+| Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places. It is a [static chip](#clickable-and-static-chips): nothing under the pointer |
 | Opened, updated, commented | `metabrowser.ageLabel` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
-| Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
+| Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it. A link whose content is a chip, the readiness badge’s, is a [clickable chip](#clickable-and-static-chips) instead and is never underlined |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
 | GitHub action: a check’s action on GitHub | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
 | Conversation commit hash | `.git-commit-sha` at the row’s size, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray and the size of the sans beside it wherever it appears, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
@@ -3870,7 +3938,9 @@ judges the state it shows.
 - **The header’s badge** follows the state’s badge in the row of ages: “[Open]
   [Merge conflicts] Opened 3 days ago”.
   It is the verdict’s badge, a link to the Checks tab, which the Merge status section
-  opens. Its accessible name adds auto-merge’s sentence while auto-merge is on, “Checks
+  opens, and so a [clickable chip](#clickable-and-static-chips): the pointer, the chip’s
+  hover ground, and no underline.
+  Its accessible name adds auto-merge’s sentence while auto-merge is on, “Checks
   pending. Auto-merge enabled (squash).”, and its tooltip, also its accessible
   description, lists the requirements that are not met, which the badge abbreviates.
   Its slot is a grid as wide as the widest label the server gives a verdict, by a hidden

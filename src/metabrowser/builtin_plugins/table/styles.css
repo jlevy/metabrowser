@@ -292,9 +292,17 @@
   vertical-align: middle;
   white-space: nowrap;
 }
+/* A reference is a clickable chip (docs/design-system.md, "Clickable and Static Chips"): under
+   the pointer it lays the shell's chip hover ground over whatever is under it. As
+   `--hover-bg` it vanished, since the row under the pointer takes that ground too. Its ink
+   is the text's, so the layer goes under it. */
 .table-ref:hover {
   border-color: var(--muted);
-  background: var(--hover-bg);
+  background-image: linear-gradient(var(--chip-hover-overlay) 0 0);
+}
+.table-ref:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The first column stays in place while columns the reader chose scroll sideways. */
 .table-pinned thead tr > :first-child,
