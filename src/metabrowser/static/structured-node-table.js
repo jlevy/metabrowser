@@ -29,9 +29,10 @@ function describe(node) {
 /** @param {unknown} error */
 function errorMessage(error) {
   if (error instanceof Error && "status" in error && error.status === 409) {
-    return "This file changed. Reopen Table to read the current version.";
+    return "This file changed. Reload the page to read the current version.";
   }
-  return error instanceof Error ? error.message : String(error);
+  console.error("Could not load Table", error);
+  return "Could not load Table. Reload the page to try again.";
 }
 
 /**
@@ -149,9 +150,21 @@ export function mountNodeTable(host, readPage, options = {}) {
         const controls = doc.createElement("tr");
         const cell = doc.createElement("td");
         cell.colSpan = copyRow ? 3 : 2;
-        if (loading || failure) {
-          cell.setAttribute("role", failure ? "alert" : "status");
-          cell.textContent = failure || "Loading…";
+        if (failure) {
+          cell.setAttribute("role", "alert");
+          cell.textContent = failure;
+        } else if (loading) {
+          cell.setAttribute("role", "status");
+          const delayed = doc.createElement("div");
+          delayed.className = "mb-delayed-loading";
+          const spinner = doc.createElement("div");
+          spinner.className = "spinner spinner-sm";
+          spinner.setAttribute("aria-hidden", "true");
+          const label = doc.createElement("span");
+          label.className = "sr-only";
+          label.textContent = "Loading rows";
+          delayed.append(spinner);
+          cell.append(delayed, label);
         }
         if (!loading && offset) {
           cell.append(button("First page", () => void load(0, true)));
@@ -178,7 +191,9 @@ export function mountNodeTable(host, readPage, options = {}) {
         try {
           const page = await readPage({ ...address, offset: target }, signal, 1);
           if (page.status !== "ready" || !page.node) {
-            throw Error(page.diagnostic || `Structured data unavailable (${page.status}).`);
+            console.error("Could not read table rows", page.status, page.diagnostic);
+            failure = "Could not read these rows. Open the file in Source.";
+            return;
           }
           visible = page.children ?? [];
           offset = target;
@@ -231,7 +246,8 @@ export function mountNodeTable(host, readPage, options = {}) {
       if (page.status !== "ready" || !page.node) {
         content.className = "notice";
         content.setAttribute("role", "status");
-        content.textContent = page.diagnostic || `Structured data unavailable (${page.status}).`;
+        console.error("Could not read Table", page.status, page.diagnostic);
+        content.textContent = "Could not read this table. Open the file in Source.";
         return;
       }
       if ((page.document_count ?? 0) > 1) {

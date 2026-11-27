@@ -53,7 +53,9 @@ export function attachStructuredDisclosure(details, mb, options, lifetime, fallb
           content.className = "notice";
           content.dataset.severity = "warning";
           content.setAttribute("role", "status");
-          content.textContent = error instanceof Error ? error.message : String(error);
+          console.error("Could not open structured views", error);
+          content.textContent =
+            "Could not open these views. Close and reopen this section to try again.";
         }
       });
   }
