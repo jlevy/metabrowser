@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from metabrowser.gz_io import ArtifactCompressionError
+from metabrowser.inert_html import ANCHOR_PREFIX
 from metabrowser.markdown_limits import MARKDOWN_DIFF_MAX_BYTES
 from metabrowser.source import ContentReadError, read_content_window, resolve_content
 
@@ -89,7 +90,7 @@ def mark_fences(source: str, origin: bytes, revision: str) -> MarkedMarkdown:
         original_payload = origin[authored.start_byte : authored.end_byte]
         if _EOL.sub(b"\n", payload) != _EOL.sub(b"\n", original_payload):
             continue
-        marker = f"user-content-mb-fence-{namespace}-{fence.opening_line}"
+        marker = f"{ANCHOR_PREFIX}mb-fence-{namespace}-{fence.opening_line}"
         # Extend the info string without changing its language, payload or line map.
         end = fence.start_byte - (
             2 if rendered[fence.start_byte - 2 : fence.start_byte] == b"\r\n" else 1
