@@ -1021,8 +1021,10 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   `{ kind: "view", target, localization: "revision" }` by its navigation target, a
   rendered diff’s link to a file of its head, `{ kind: "view-head", href }` by its
   `/view/` address in the GitPath wire, or a link to another site,
-  `{ kind: "external", url }` by its `http` or `https` address, whose card says the host
-  it goes to and whether it opens a new tab.
+  `{ kind: "external", url }` by its address as the link spells it, whose card says the
+  host it goes to, read against the page’s address as the browser follows the link, and
+  whether it opens a new tab; an address the browser reads as one on the page’s own
+  origin, or one with another scheme than `http` or `https`, has no card.
   *root* is the element whose links the view puts away together.
   When `previewLink` answers `true`, the link has a card, and the view takes off the
   link any `title` its author wrote, passed as `authorTitle`, so the reader sees one

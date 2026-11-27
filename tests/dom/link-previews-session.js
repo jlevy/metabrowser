@@ -1,9 +1,10 @@
 // Browserless session for the link card (static/link-previews.js).
 //
 // The exact production module runs whole, beside the scripts its bundle and page give it:
-// the shell's formatters (static/formatters.js, a startup script), and the GitPath codec
-// and the resolver (static/git-path.js, static/repository-links.js) that the
-// `repository-links` bundle loads ahead of it. The page's one tooltip is app.js's own,
+// the shell's formatters (static/formatters.js, a startup script), the GitPath codec and
+// the resolver (static/git-path.js, static/repository-links.js), and the SDK's view
+// helpers (static/plugin-sdk-views.js), which load it and whose reading of where an
+// outside link goes it uses (`outsideAddress`). The page's one tooltip is app.js's own,
 // lifted verbatim from its section comment through the block that publishes it, as
 // tests/dom/tooltip-anchor-session.js lifts it, so `show` and `hide` behave as they do on
 // the page. Timers run on this file's clock, so each step says how much time has passed.
@@ -41,6 +42,8 @@ const SERVED = "a".repeat(40);
 const PINNED = "c".repeat(40);
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const STATE_MARK = /data-state="/;
+const PAGE_ORIGIN = "http://127.0.0.1:8000";
+const PAGE_ADDRESS = `${PAGE_ORIGIN}/view/README.md`;
 
 // ── The stand-in DOM ───────────────────────────────────────────────
 
@@ -225,6 +228,8 @@ function createPage(options = {}) {
   const document = new FakeElement("body");
   document.isDocument = true;
   document.createElement = (tag) => new FakeElement(tag);
+  // The address the browser reads a link's against, from the loopback server `metab` starts.
+  document.baseURI = PAGE_ADDRESS;
 
   // The page's one tooltip: app.js's own code.
   const classes = new Set();
@@ -321,10 +326,27 @@ function createPage(options = {}) {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  for (const name of ["formatters.js", "git-path.js", "repository-links.js", "link-previews.js"]) {
+  // The SDK's view helpers, which read where a link to another site goes for the card as
+  // for the SDK (`outsideAddress`), with what they read of the SDK as they load; they put
+  // their own link decorator in place of the stand-in above, which is put back.
+  const standIns = { decorateExternalLink: mb.decorateExternalLink };
+  Object.assign(mb, {
+    registerView() {},
+    delegateOwnerAttribute: () => "",
+    ownDelegate: (element) => element,
+    escapeHtml: String,
+  });
+  for (const name of [
+    "formatters.js",
+    "git-path.js",
+    "repository-links.js",
+    "plugin-sdk-views.js",
+    "link-previews.js",
+  ]) {
     const file = path.join(staticRoot, name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
+  Object.assign(mb, standIns);
   const previews = sandbox.MetabrowserLinkPreviews;
   // app.js's own focus listener, lifted with the tooltip, on the same document: focus moving
   // puts the pointer's tooltip away. It listens in the bubbling phase, after the module's.
@@ -512,6 +534,15 @@ function subjects() {
   });
   read("a mail link", { kind: "external", url: "mailto:someone@example.com" });
   read("a link with no scheme of its own", { kind: "external", url: "//example.com/docs" });
+  read("a link that names the page's scheme and no host", {
+    kind: "external",
+    url: "http:example.com",
+  });
+  read("a link that names another scheme and no slashes", {
+    kind: "external",
+    url: "https:example.com",
+  });
+  read("a link to the page's own origin", { kind: "external", url: `${PAGE_ORIGIN}/view/a.md` });
   read("an address that does not parse", { kind: "external", url: "https://" });
   read("a pull request numbered 0", pullRoute(0));
   read("a commit by a short ID", {

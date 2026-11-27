@@ -8,8 +8,9 @@ These hold, from that transcript, what the split of the card from the resolver's
 must keep: nothing is loaded without a pointer's rest on a registered link; the first rest
 shows its own link's card once the bundle has run; a rest the pointer left, or the reader
 ended, shows none; a link forgotten or disposed before the load has none; a load that fails
-leaves every link with its author's title and asks once; and a link to a file, a folder,
-or another site has its card on a page with no GitHub identity.
+leaves every link with its author's title and asks once; a link to a file, a folder, or
+another site has its card on a page with no GitHub identity; the SDK's answer for an
+outside link is the card's; and the SDK keeps no document its surface let go of.
 """
 
 from __future__ import annotations
@@ -132,6 +133,53 @@ def test_a_failed_load_leaves_links_as_they_were_and_asks_once() -> None:
     failed = next(entry["at"] for entry in log if entry.get("failed"))
     later = [entry for entry in log if "registered" in entry and entry["at"] > failed]
     assert later and all(entry["card"] is False for entry in later), later
+
+
+def test_the_sdks_answer_for_an_outside_link_is_the_cards() -> None:
+    """Whether the SDK says an outside link has a card before the card's code loads is what
+    the card says once it has: the hand-over gives no link back the title its surface took
+    off it, and each address registered again answers the same. An address is read where
+    the browser follows it, against the page's own, and only so far."""
+
+    log = _session()["outside addresses"]
+    loaded = next(index for index, entry in enumerate(log) if "loaded" in entry)
+    before = {entry["registered"]: entry["card"] for entry in log[:loaded] if "registered" in entry}
+    after = {entry["registered"]: entry["card"] for entry in log[loaded:] if "registered" in entry}
+    assert before == after
+    handed = next(entry["titles"] for entry in log if "titles" in entry)
+    assert {name: title is None for name, title in handed.items()} == before
+    assert before["the page's scheme and no host"] is False
+    assert before["the page's own origin"] is False
+    assert before["an address at the bound"] is True
+    assert before["an address past the bound"] is False
+    cards = {entry["on"]: entry["sees"] for entry in _seen(log)}
+    for name in ("a scheme-relative address", "another scheme and no slashes"):
+        assert cards[name].startswith("Opens example.com"), cards
+
+
+def test_the_sdk_keeps_no_document_its_surface_let_go_of() -> None:
+    """A document replaced without `disposePreviews` before the card's code loads is the
+    collector's, and the next document's first rest still loads the card."""
+
+    log = _session()["a document no surface disposed"]
+    assert [entry["collected"] for entry in log if "collected" in entry] == [True]
+    assert [entry["on"] for entry in _seen(log)] == ["the docs folder"]
+
+
+def test_links_registered_during_and_after_the_load_have_cards() -> None:
+    """A link registered while the bundle loads is handed over with the rest, one registered
+    after goes to the registry, and a document keeps one pair of pointer listeners through
+    the hand-over."""
+
+    log = _session()["registered during and after the load"]
+    load = next(entry["at"] for entry in log if "load" in entry)
+    loaded = next(entry["at"] for entry in log if "loaded" in entry)
+    registered = [entry for entry in log if "registered" in entry]
+    assert any(load < entry["at"] < loaded for entry in registered), registered
+    assert any(entry["at"] > loaded for entry in registered), registered
+    assert all(entry["card"] for entry in registered)
+    assert {entry["on"] for entry in _seen(log)} == {entry["registered"] for entry in registered}
+    assert len({entry["listeners"] for entry in log if "listeners" in entry}) == 1
 
 
 def test_the_card_loads_apart_from_the_resolver_and_is_no_startup_script() -> None:

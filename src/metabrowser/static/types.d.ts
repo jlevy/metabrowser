@@ -5471,6 +5471,12 @@ declare global {
     MetabrowserRepositoryLinks?: MetabrowserRepositoryLinksRuntime;
     /** static/link-previews.js, the link card, in the `repository-links` on-demand bundle. */
     MetabrowserLinkPreviews?: MetabrowserLinkPreviewsRuntime;
+    /**
+     * Where a link to another site goes, as the browser follows it, or null for one a card
+     * names no site for (`outsideAddress` in static/plugin-sdk-views.js): the one reading
+     * the SDK answers `previewLink` with before the card loads and the card reads after.
+     */
+    MetabrowserOutsideLinks?: Readonly<{ address(url: unknown): URL | null }>;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{

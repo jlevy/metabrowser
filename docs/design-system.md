@@ -7265,9 +7265,11 @@ makes such a link open here.
 An outside link has a card because its words do not say where it goes, and nothing else
 there does: the macOS app’s web view has no status bar to show its address, and the
 [External GitHub Links](#external-github-links) mark is only a GitHub address’s. The
-card names the host the address goes to, as the URL parser reads it, so a link whose
-words or user name name another site still says which one it opens, and an in-app card’s
-“Opens here in Metabrowser” reads against it.
+card names the host the address goes to, as the browser follows it from the page, so a
+link whose words or user name name another site still says which one it opens, and an
+in-app card’s “Opens here in Metabrowser” reads against it.
+An address the browser reads as one of the page’s own, such as `http:example.com` on an
+`http` page, leaves for no other site and has no such card.
 
 The card is the app’s one tooltip
 ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)), so it keeps every rule

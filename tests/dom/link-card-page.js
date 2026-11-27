@@ -312,6 +312,8 @@ const GITHUB_REPOSITORY = Object.freeze({
   served_prefix: "",
 });
 const READ_MS = 40;
+/** The page's own address, which `document.baseURI` gives. */
+const PAGE_ADDRESS = "http://127.0.0.1:8000/view/README.md";
 
 /**
  * What the served folder holds, each a file a link can open (`/api/file` serves every one),
@@ -370,6 +372,9 @@ function createPage(options = {}) {
   const log = [];
   const document = new FakeElement("html", "the page");
   document.isDocument = true;
+  // The address the browser reads a link's against: a served README's, from the loopback
+  // server `metab` starts.
+  document.baseURI = PAGE_ADDRESS;
   const body = new FakeElement("body", "the body");
   document.append(body);
   document.body = body;
@@ -695,6 +700,7 @@ module.exports = {
   FakeElement,
   GITHUB_REPOSITORY,
   LINK_PREVIEWS_BUNDLE,
+  PAGE_ADDRESS,
   SERVED_FILES,
   assert,
   catalogLists,

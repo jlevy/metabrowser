@@ -4,6 +4,11 @@
   The card’s code loads when the pointer first rests on a link, so a page no longer
   waits for it to show its links, and that first card still comes up on time.
 
+- **An outside link’s card names where the browser goes.** Its address is read against
+  the page’s own, as the browser follows the link, so an address that opens a file
+  beside the document, as `http:example.com` does on the local server, has no card and
+  keeps its author’s title, as does an address too long to read.
+
 - **For plugin authors:**
   `metabrowser.previewLink(root, anchor, target, { authorTitle })` gives a link in
   authored text its link card on any page, and `forgetPreview` and `disposePreviews`

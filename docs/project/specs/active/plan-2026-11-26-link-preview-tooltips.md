@@ -246,8 +246,9 @@ with a link the bundle, so a page loads it at the rest.
   `metabrowser.forgetPreview(anchor)`, and `metabrowser.disposePreviews(root)`, which
   keep each registration until the bundle loads
   ([docs/plugins.md](../../../plugins.md)). Before then `previewLink` answers whether
-  the target is one a card is about, an in-app answer or an `http` or `https` address
-  with a host, and the registry decides once it loads.
+  the target is one a card is about, an in-app answer or an address on another site, and
+  the registry decides once it loads; for an address on another site the two read it
+  with one function, so they agree.
 - `MetabrowserGitPanel.commitSummary(revision)`: the subject, author, time, and whether
   the repository has it, from the panel’s own cache, and
   `MetabrowserGitPanel.keptCommitSummary(revision)`: the same from what the panel holds
@@ -350,11 +351,29 @@ recorded:
   Keeping both would have been two ways to one registry, and the delegates were
   unreleased.
 - **The SDK’s answer before the bundle loads is a reading, not the registry’s.**
-  `namesLinkCard` accepts an in-app answer and an `http` or `https` address with a host,
-  so a mail link keeps its title; the registry’s `subject` decides at the hand-over, and
-  a link it turns down gets back the title the surface took.
+  `namesLinkCard` accepts an in-app answer and an address on another site, so a mail
+  link keeps its title; the registry’s `subject` decides at the hand-over, and a link it
+  turns down gets back the title the surface took.
   Moving `subject` into the SDK would have made the answer exact at about 2 KB more on
   every view’s critical path, for links no surface draws.
+- **Where an outside link goes is read once, by the SDK** (review of `mb-ezai`).
+  `outsideAddress` in `static/plugin-sdk-views.js` reads the address against the page’s
+  own, as the browser follows it, so on an `http` page `http:example.com` is a file
+  beside the page; it accepts an `http` or `https` address off the page’s origin, no
+  longer than `MAX_OUTSIDE_URL_LENGTH`. The card’s `outsideSubject` calls the same
+  function (`MetabrowserOutsideLinks`), which the SDK defines before it ever loads the
+  card, so for an outside link the SDK’s answer is the card’s by construction, and no
+  title is taken off a link and given back at the hand-over.
+  Measured 2026-11-27 at `delivery.GZIP_LEVEL`, with the weak registrations below: the
+  `sdk-views` bundle sends 439 bytes more (37,621) and the `link-previews` bundle 220
+  fewer (12,849); the startup scripts are unchanged.
+- **Registrations before the load are held weakly.** The SDK keeps a root’s links in a
+  `WeakMap` and the roots to hand over as `WeakRef`s, which a `FinalizationRegistry`
+  drops, so a root its surface never disposes goes when the page lets it go, on a page
+  read by touch or keyboard, whose bundle never loads.
+  A failed load is not retried: a retry begins at a rest on a link whose title the
+  failure gave back, so that rest would show the browser’s tooltip and then the card,
+  and every link’s title would have to come off again.
 - **The first rest keeps its time but not its appear delay.** The registry’s `rest` asks
   for the summary when a rest that began on a loaded page would, and the tooltip waits
   its whole appear delay from the hand-over, since `showTooltip` in `static/app.js`, a

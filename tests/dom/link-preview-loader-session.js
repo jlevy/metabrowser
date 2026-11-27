@@ -9,17 +9,40 @@
 // SDK asks for it, after the time the session gives the load, or refused. Most pages are a
 // plain folder's, with no GitHub identity, whose Markdown document links a file, a folder,
 // another site, and a mail address, registered as the Markdown enhancer registers them; one
-// is a GitHub checkout's, whose pull request's text the resolver reads.
+// is a GitHub checkout's, whose pull request's text the resolver reads. Others link other
+// sites by addresses the browser reads against the page's own, register links while the
+// bundle loads and after, and let a document go without disposing it, which the collector
+// then takes (`collected`).
 //
 // It prints, for each session, what the reader would see and what the page asked for:
 // each registration and whether the SDK answered that the link has a card (`registered`,
 // `card`), the pointer (`pointer`), a press (`press`), the bundle asked for (`load`) and
-// run (`loaded`), each read (`read`), each warning (`warned`), and what the tooltip shows
-// (`sees`) and on what (`on`). tests/test_link_preview_loader_session.py holds its
+// run (`loaded`), each read (`read`), each warning (`warned`), what the tooltip shows
+// (`sees`) and on what (`on`), each link's title (`titles`), and how many pointer listeners
+// a document has (`listeners`). tests/test_link_preview_loader_session.py holds its
 // invariants, and this file exits 1 on a failed one, naming each session that failed.
 // Name sessions on the command line to run only those.
 
-const { assert, createPage } = require("./link-card-page.js");
+const fs = require("node:fs");
+const path = require("node:path");
+const v8 = require("node:v8");
+const vm = require("node:vm");
+const { FakeElement, PAGE_ADDRESS, assert, createPage } = require("./link-card-page.js");
+
+// The collector, so a session can show what the SDK lets go of.
+v8.setFlagsFromString("--expose-gc");
+const collectGarbage = vm.runInNewContext("gc");
+
+/** The longest outside address the SDK reads, as static/plugin-sdk-views.js bounds it. */
+const OUTSIDE_BOUND = (() => {
+  const views = fs.readFileSync(
+    path.join(__dirname, "../../src/metabrowser/static/plugin-sdk-views.js"),
+    "utf8",
+  );
+  const found = views.match(/\n {2}const MAX_OUTSIDE_URL_LENGTH = (\d+) \* (\d+);\n/);
+  assert(found, "static/plugin-sdk-views.js bounds no outside address");
+  return Number(found[1]) * Number(found[2]);
+})();
 
 const GUIDE = Object.freeze({
   name: "the guide",
@@ -243,6 +266,140 @@ async function aTouch() {
   return page.log;
 }
 
+/** A Markdown link to another site, its address as its author wrote it, with a title. */
+function outside(name, url) {
+  return { name, href: url, title: `About ${name}`, target: { kind: "external", url } };
+}
+
+/** Each link's title now, by its name. */
+function titles(anchors) {
+  return Object.fromEntries(
+    Object.entries(anchors).map(([name, anchor]) => [name, anchor.getAttribute("title")]),
+  );
+}
+
+/**
+ * Outside links, read where the browser follows them, against the page's address: whether
+ * the SDK says each has a card before the bundle loads is what the card says once it has,
+ * so the hand-over gives no link back its title, and each answers the same registered
+ * again. On this `http` page `http:example.com` is a file beside the page and the page's
+ * own origin is no other site, so neither has a card; an address longer than the SDK reads
+ * has none, and one at that length has its card.
+ */
+async function outsideAddresses() {
+  const page = folderPage();
+  const longest = "https://example.com/?q=";
+  const links = [
+    outside("elsewhere", ELSEWHERE.href),
+    outside("a scheme-relative address", "//example.com/docs"),
+    outside("another scheme and no slashes", "https:example.com"),
+    outside("the page's scheme and no host", "http:example.com"),
+    outside("the page's own origin", `${new URL(PAGE_ADDRESS).origin}/view/docs/guide.md`),
+    outside("an address at the bound", longest.padEnd(OUTSIDE_BOUND, "q")),
+    outside("an address past the bound", longest.padEnd(OUTSIDE_BOUND + 1, "q")),
+  ];
+  const { prose, anchors } = page.markdown("the README", ...links);
+  const registered = titles(anchors);
+  await page.point(0, anchors.elsewhere);
+  await page.look(LOAD_MS + page.appearDelay + 20);
+  const handed = titles(anchors);
+  page.log.push({ at: page.clock.now, titles: handed });
+  assert(
+    JSON.stringify(handed) === JSON.stringify(registered),
+    "the hand-over gave a link back its title: the SDK's answer was not the card's",
+  );
+  for (const link of links) {
+    const card = page.sdk.previewLink(prose, anchors[link.name], link.target, {
+      authorTitle: link.title,
+    });
+    page.log.push({ at: page.clock.now, registered: link.name, card });
+    assert(
+      card === (registered[link.name] === null),
+      `${link.name} was said to have a card before the load and not after, or the reverse`,
+    );
+  }
+  for (const [at, name] of [
+    [1000, "a scheme-relative address"],
+    [2000, "another scheme and no slashes"],
+  ]) {
+    await page.point(at, page.body);
+    await page.point(at + 200, anchors[name]);
+    const card = await page.look(at + 600);
+    assert(card?.startsWith("Opens example.com"), `${name}'s card said ${card}`);
+  }
+  return page.log;
+}
+
+/** A document registered and then let go of by its surface, without `disposePreviews`. */
+function registerAndLetGo(page) {
+  const { host, prose } = page.markdown("the lost document", GUIDE, ELSEWHERE);
+  host.remove();
+  return new WeakRef(prose);
+}
+
+/**
+ * A document its surface replaced without disposing it, before the bundle loads, as on a
+ * page read only by touch or the keyboard, where it never does: the SDK keeps nothing of it,
+ * so the collector takes it, and a later document's first rest still loads the card.
+ */
+async function aDocumentNoSurfaceDisposed() {
+  const page = folderPage();
+  const lost = registerAndLetGo(page);
+  // A new task, past the one that made the reference, which keeps its document until then.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  collectGarbage();
+  const collected = lost.deref() === undefined;
+  page.log.push({ at: page.clock.now, collected });
+  assert(collected, "the SDK kept a document its surface let go of, for its links");
+  const kept = page.markdown("the changelog", DOCS);
+  await page.point(1000, kept.anchors[DOCS.name]);
+  const card = await page.look(1000 + LOAD_MS + page.appearDelay + 20);
+  assert(card?.startsWith("docs/"), `the next document's first rest showed ${card}`);
+  return page.log;
+}
+
+/**
+ * Links registered while the bundle loads, in a document of their own, and after it has
+ * loaded, in the first: the hand-over takes the first, and each has its card. The first
+ * document has one delegated pair of pointer listeners throughout, the SDK's until the
+ * hand-over and the registry's after, however many links it registers.
+ */
+async function registeredDuringAndAfterTheLoad() {
+  const page = folderPage({ loadMs: 50 });
+  const first = page.markdown("the README", GUIDE);
+  const listeners = () =>
+    first.prose.listeners.filter(({ type }) => type === "pointerover" || type === "pointerout")
+      .length;
+  page.log.push({ at: page.clock.now, listeners: listeners() });
+  await page.point(0, first.anchors[GUIDE.name]);
+  await page.clock.to(20);
+  const during = page.markdown("the changelog", DOCS);
+  await page.look(400);
+  page.log.push({ at: page.clock.now, listeners: listeners() });
+  const later = new FakeElement("a", ELSEWHERE.name, { href: ELSEWHERE.href });
+  later.append(ELSEWHERE.name);
+  first.prose.append(later);
+  const card = page.sdk.previewLink(first.prose, later, ELSEWHERE.target, {});
+  page.log.push({ at: page.clock.now, registered: ELSEWHERE.name, card });
+  page.log.push({ at: page.clock.now, listeners: listeners() });
+  await page.point(600, page.body);
+  await page.point(800, during.anchors[DOCS.name]);
+  const docs = await page.look(1200);
+  assert(docs?.startsWith("docs/"), `a link registered during the load showed ${docs}`);
+  await page.point(1400, later);
+  const elsewhere = await page.look(1800);
+  assert(
+    elsewhere?.startsWith("Opens example.com"),
+    `a link registered after the load showed ${elsewhere}`,
+  );
+  const counts = page.log.filter((entry) => "listeners" in entry).map((entry) => entry.listeners);
+  assert(
+    counts.every((count) => count === counts[0]),
+    `the document's listeners went ${counts.join(", ")}`,
+  );
+  return page.log;
+}
+
 const SESSIONS = {
   "registered before the bundle": registeredBeforeTheBundle,
   "the first rest loads it": theFirstRestLoadsIt,
@@ -252,6 +409,9 @@ const SESSIONS = {
   "forgotten and disposed before the load": forgottenAndDisposedBeforeTheLoad,
   "a failed load": aFailedLoad,
   "a touch": aTouch,
+  "outside addresses": outsideAddresses,
+  "a document no surface disposed": aDocumentNoSurfaceDisposed,
+  "registered during and after the load": registeredDuringAndAfterTheLoad,
 };
 
 /** Every session, or those named on the command line, each one's failure said as it ends. */

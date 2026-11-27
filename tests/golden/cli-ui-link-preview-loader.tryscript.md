@@ -44,6 +44,18 @@ ran (`loaded`) or failed, a provider read the server (`read`), the page warned
 - `a failed load`: no card, one warning, no second load, and a link registered after has
   none.
 - `a touch`: a tap loads nothing; the pointer’s rest after it does.
+- `outside addresses`: outside links, each read where the browser follows it against the
+  page’s address (`titles` is each link’s title once the bundle has run): the SDK’s
+  answer before the load is the card’s after it, so the hand-over gives no title back;
+  on this `http` page `http:example.com` and an address on the page’s own origin have no
+  card, nor has an address longer than the SDK reads, and one at that length has its
+  card.
+- `a document no surface disposed`: a document let go of without `disposePreviews` is
+  the collector’s before the bundle loads (`collected`), and the next document’s first
+  rest still loads the card.
+- `registered during and after the load`: a link registered while the bundle loads and
+  one registered after it each have a card, and the first document keeps one pair of
+  pointer listeners through the hand-over (`listeners`).
 
 ```console
 $ node tests/dom/link-preview-loader-session.js
@@ -415,6 +427,239 @@ $ node tests/dom/link-preview-loader-session.js
    "at": 1600,
    "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
    "on": "the guide"
+  }
+ ],
+ "outside addresses": [
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "a scheme-relative address",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "another scheme and no slashes",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the page's scheme and no host",
+   "card": false
+  },
+  {
+   "at": 0,
+   "registered": "the page's own origin",
+   "card": false
+  },
+  {
+   "at": 0,
+   "registered": "an address at the bound",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "an address past the bound",
+   "card": false
+  },
+  {
+   "at": 0,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 30,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 350,
+   "sees": "Opens example.com | “About elsewhere”",
+   "on": "elsewhere"
+  },
+  {
+   "at": 350,
+   "titles": {
+    "elsewhere": null,
+    "a scheme-relative address": null,
+    "another scheme and no slashes": null,
+    "the page's scheme and no host": "About the page's scheme and no host",
+    "the page's own origin": "About the page's own origin",
+    "an address at the bound": null,
+    "an address past the bound": "About an address past the bound"
+   }
+  },
+  {
+   "at": 350,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "a scheme-relative address",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "another scheme and no slashes",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "the page's scheme and no host",
+   "card": false
+  },
+  {
+   "at": 350,
+   "registered": "the page's own origin",
+   "card": false
+  },
+  {
+   "at": 350,
+   "registered": "an address at the bound",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "an address past the bound",
+   "card": false
+  },
+  {
+   "at": 1000,
+   "pointer": "the body"
+  },
+  {
+   "at": 1200,
+   "pointer": "a scheme-relative address"
+  },
+  {
+   "at": 1600,
+   "sees": "Opens example.com | “About a scheme-relative address”",
+   "on": "a scheme-relative address"
+  },
+  {
+   "at": 2000,
+   "pointer": "the body"
+  },
+  {
+   "at": 2200,
+   "pointer": "another scheme and no slashes"
+  },
+  {
+   "at": 2600,
+   "sees": "Opens example.com | “About another scheme and no slashes”",
+   "on": "another scheme and no slashes"
+  }
+ ],
+ "a document no surface disposed": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "collected": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 1000,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 1000,
+   "load": "link-previews"
+  },
+  {
+   "at": 1030,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1350,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs folder"
+  }
+ ],
+ "registered during and after the load": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "listeners": 2
+  },
+  {
+   "at": 0,
+   "pointer": "the guide"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 20,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 50,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 400,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  },
+  {
+   "at": 400,
+   "listeners": 2
+  },
+  {
+   "at": 400,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 400,
+   "listeners": 2
+  },
+  {
+   "at": 600,
+   "pointer": "the body"
+  },
+  {
+   "at": 800,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 1200,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs folder"
+  },
+  {
+   "at": 1400,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 1800,
+   "sees": "Opens example.com",
+   "on": "elsewhere"
   }
  ]
 }

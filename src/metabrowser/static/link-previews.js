@@ -83,11 +83,6 @@
   /** @type {ReadonlySet<string>} */
   const STATES = new Set(["open", "closed", "merged", "draft"]);
   const COMMIT_HREF = /^\/commit\/([0-9a-f]{40})$/;
-  // The schemes of an address on another site whose card says where it goes.
-  /** @type {ReadonlySet<string>} */
-  const OUTSIDE_SCHEMES = new Set(["http:", "https:"]);
-  /** Bounds URL parsing work for one link, as the resolver's `MAX_URL_LENGTH` does. */
-  const MAX_OUTSIDE_URL_LENGTH = 16 * 1024;
   const VIEW_PREFIX = "/view/";
   // What an image the page does not load becomes, its address in its tooltip
   // (`IMAGE_FALLBACK_CLASS` in inert_html.py and static/inert-html.js).
@@ -250,29 +245,18 @@
   }
 
   /**
-   * A page on another site, by an `http` or `https` address with a host, as the URL parser
-   * reads it: its host is where the address goes, whatever its user name says, and is in
-   * ASCII, so a name that only looks like another site's says which it is. An address with
-   * no scheme of its own (`//example.com/`) takes the page's, as the browser follows it.
+   * A page on another site, by where its address goes as the browser follows it, read
+   * against the page's address by the SDK's one reading, which also answered whether the
+   * link has a card before this module loaded (`outsideAddress` in
+   * static/plugin-sdk-views.js): its host is where it goes, whatever its user name says,
+   * and is in ASCII, so a name that only looks like another site's says which it is.
    *
    * @param {unknown} url
    * @returns {Subject | null}
    */
   function outsideSubject(url) {
-    if (typeof url !== "string" || url.length > MAX_OUTSIDE_URL_LENGTH) {
-      return null;
-    }
-    const scheme = window.location?.protocol === "http:" ? "http:" : "https:";
-    let parsed;
-    try {
-      parsed = new URL(url.startsWith("//") ? `${scheme}${url}` : url);
-    } catch (_error) {
-      return null;
-    }
-    if (!OUTSIDE_SCHEMES.has(parsed.protocol) || parsed.host === "") {
-      return null;
-    }
-    return Object.freeze({ kind: "external", url: parsed.href, host: parsed.host });
+    const address = window.MetabrowserOutsideLinks?.address(url) ?? null;
+    return address && Object.freeze({ kind: "external", url: address.href, host: address.host });
   }
 
   /**

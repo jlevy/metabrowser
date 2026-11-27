@@ -34,6 +34,8 @@ function createSdkSandbox(overrides = {}) {
     dispatchEvent: () => true,
     document: {
       addEventListener() {},
+      // The page's address, at `location`'s origin, which a link's is read against.
+      baseURI: "http://localhost/view/",
       body: { append() {} },
       cookie: "",
       createElement: () => ({ addEventListener() {}, getAttribute: () => null, setAttribute() {} }),

@@ -2873,25 +2873,34 @@
   // providers are the `link-previews` bundle, code that runs only once a pointer rests on a
   // registered link, so the page loads it at the first such rest (server.py has the
   // measurement). Until then a surface's links are kept here by identity, with one
-  // delegated listener per root. The first `pointerover` of one, not from a touch, loads the
-  // bundle, whose registry then takes every link and the rest that load began, as old as the
-  // load took (`rest` in static/link-previews.js), so that rest shows its card; a press or a
-  // focus meanwhile ends it. From then on each call goes straight to the registry. A bundle
-  // that does not load leaves every link as it was, its author's title given back, with one
-  // warning. tests/dom/link-preview-loader-session.js runs this file whole.
+  // delegated listener per root, and only while the page keeps the root, since a page read
+  // by touch or keyboard never loads it. The first `pointerover` of one, not from a touch,
+  // loads the bundle, whose registry then takes every link and the rest that load began, as
+  // old as the load took (`rest` in static/link-previews.js), so that rest shows its card; a
+  // press or a focus meanwhile ends it. From then on each call goes straight to the
+  // registry. A bundle that does not load leaves every link as it was, its author's title
+  // given back, with one warning. tests/dom/link-preview-loader-session.js runs this file
+  // whole.
 
   const LINK_PREVIEWS_BUNDLE = "link-previews";
+  /** Bounds URL parsing work for one link, as the resolver's `MAX_URL_LENGTH` does. */
+  const MAX_OUTSIDE_URL_LENGTH = 16 * 1024;
 
   /**
    * @typedef {{target: MetabrowserLinkPreviewTarget, options: {authorTitle?: string | null}}} PendingLink
-   * @typedef {{links: Map<Element, PendingLink>, over: (event: Event) => void, out: (event: Event) => void}} PendingRoot
+   * @typedef {{links: Map<Element, PendingLink>, over: (event: Event) => void, out: (event: Event) => void, ref: WeakRef<Element>}} PendingRoot
    * @typedef {{root: Element, anchor: Element, since: number, ended: boolean}} PendingRest
    */
 
   /** @type {"waiting" | "loading" | "loaded" | "failed"} */
   let linkCards = "waiting";
-  /** Each root's links, and its listeners, until the bundle loads. @type {Map<Element, PendingRoot>} */
-  const pendingRoots = new Map();
+  /** Each root's links, and its listeners, until the bundle loads. @type {WeakMap<Element, PendingRoot>} */
+  const pendingRoots = new WeakMap();
+  /** Those roots, to hand over. @type {Set<WeakRef<Element>>} */
+  const pendingRootRefs = new Set();
+  const collectedRoots = new FinalizationRegistry((/** @type {WeakRef<Element>} */ ref) =>
+    pendingRootRefs.delete(ref),
+  );
   /** @type {WeakMap<Element, Element>} */
   const pendingRootOf = new WeakMap();
   /** The pointer's rest on a registered link while the bundle loads. @type {PendingRest | null} */
@@ -2972,6 +2981,7 @@
       return;
     }
     pendingRoots.delete(root);
+    pendingRootRefs.delete(state.ref);
     root.removeEventListener("pointerover", state.over);
     root.removeEventListener("pointerout", state.out);
     for (const anchor of state.links.keys()) {
@@ -2984,8 +2994,8 @@
 
   /**
    * Whether a card is about *target*, as far as the registry's reading (`subject` in
-   * static/link-previews.js) can be told without it: an in-app answer, or an `http` or
-   * `https` address with a host, so a mail link has none.
+   * static/link-previews.js) can be told without it: an in-app answer, or an address on
+   * another site (`outsideAddress`), so a mail link has none.
    *
    * @param {unknown} target
    */
@@ -2997,17 +3007,31 @@
     if (kind === "view" || kind === "view-head" || kind === "route") {
       return true;
     }
-    if (kind !== "external" || typeof url !== "string") {
-      return false;
+    return kind === "external" && outsideAddress(url) !== null;
+  }
+
+  /**
+   * Where a link to another site goes, as the browser follows it: *url* read against the
+   * page's address, if that is an `http` or `https` address off the page's origin, so a
+   * mail link, and `http:x.md` on an `http` page, have none. The card reads it too
+   * (`outsideSubject` in static/link-previews.js), so the two cannot disagree.
+   *
+   * @param {unknown} url
+   * @returns {URL | null}
+   */
+  function outsideAddress(url) {
+    if (typeof url !== "string" || url.length > MAX_OUTSIDE_URL_LENGTH) {
+      return null;
     }
     try {
-      const scheme = global.location?.protocol === "http:" ? "http:" : "https:";
-      const parsed = new URL(url.startsWith("//") ? `${scheme}${url}` : url);
-      return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.host !== "";
+      const page = new URL(global.document.baseURI);
+      const address = new URL(url, page);
+      return /^https?:$/.test(address.protocol) && address.origin !== page.origin ? address : null;
     } catch (_error) {
-      return false;
+      return null;
     }
   }
+  global.MetabrowserOutsideLinks = Object.freeze({ address: outsideAddress });
 
   /** @param {Element} root @returns {PendingRoot} */
   function listenBeforeCards(root) {
@@ -3017,8 +3041,11 @@
         links: new Map(),
         over: (event) => pointerOverBeforeCards(root, event),
         out: (event) => pointerOutBeforeCards(root, event),
+        ref: new WeakRef(root),
       };
       pendingRoots.set(root, state);
+      pendingRootRefs.add(state.ref);
+      collectedRoots.register(root, state.ref);
       root.addEventListener("pointerover", state.over);
       root.addEventListener("pointerout", state.out);
     }
@@ -3115,37 +3142,40 @@
         },
         (error) => {
           listened();
-          linkCards = "failed";
-          pendingRest = null;
           console.warn("metabrowser: link cards are unavailable", error);
-          for (const root of Array.from(pendingRoots.keys())) {
-            for (const [anchor, link] of pendingRoots.get(root)?.links ?? []) {
-              giveTitleBack(anchor, link);
-            }
-            disposePreviews(root);
-          }
+          handOverLinkCards(null);
         },
       );
   }
 
-  /** @param {MetabrowserLinkPreviewsRuntime} registry */
+  /**
+   * Hand every link of a root the page still keeps to *registry*, or, with none, since the
+   * bundle did not load, give each its title back.
+   * @param {MetabrowserLinkPreviewsRuntime | null} registry
+   */
   function handOverLinkCards(registry) {
     const rest = pendingRest;
-    const roots = Array.from(pendingRoots);
+    const refs = Array.from(pendingRootRefs);
     pendingRest = null;
-    pendingRoots.clear();
-    linkCards = "loaded";
-    for (const [root, state] of roots) {
+    pendingRootRefs.clear();
+    linkCards = registry ? "loaded" : "failed";
+    for (const ref of refs) {
+      const root = ref.deref();
+      const state = root && pendingRoots.get(root);
+      if (!root || !state) {
+        continue;
+      }
+      pendingRoots.delete(root);
       root.removeEventListener("pointerover", state.over);
       root.removeEventListener("pointerout", state.out);
       for (const [anchor, link] of state.links) {
         pendingRootOf.delete(anchor);
-        if (!registry.register(root, anchor, link.target, mb, link.options)) {
+        if (!registry?.register(root, anchor, link.target, mb, link.options)) {
           giveTitleBack(anchor, link);
         }
       }
     }
-    if (rest !== null) {
+    if (registry && rest !== null) {
       registry.rest(rest.anchor, {
         elapsed: global.performance.now() - rest.since,
         ended: rest.ended,

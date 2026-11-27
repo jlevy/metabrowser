@@ -148,6 +148,17 @@ def test_an_outside_link_says_where_it_goes() -> None:
     spoofed = subjects["a link whose user name names one site and whose host another"]
     assert spoofed["host"] == "elsewhere.example"
     assert subjects["a mail link"] is None
+    # Where the browser follows it, read against the page's address: on an `http` page,
+    # `http:example.com` is a file beside the page, and the page's own origin is no other
+    # site; `https:example.com` and `//example.com/docs` leave for example.com.
+    assert subjects["a link that names the page's scheme and no host"] is None
+    assert subjects["a link to the page's own origin"] is None
+    assert subjects["a link that names another scheme and no slashes"] == {
+        "kind": "external",
+        "url": "https://example.com/",
+        "host": "example.com",
+    }
+    assert subjects["a link with no scheme of its own"]["host"] == "example.com"
     rest = session["outside"]
     assert [entry["tooltip"] for entry in rest if entry.get("tooltip")] == [
         "Opens example.com in a new tab"

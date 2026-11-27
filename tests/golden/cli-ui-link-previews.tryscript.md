@@ -13,9 +13,12 @@ module, `static/link-previews.js`, holds the registry of such links by identity,
 delegated pointer listener per root, the intent timer, the providers’ reads and
 prefetches, and the one renderer, `card`.
 
-This session runs the exact module whole, beside `static/formatters.js` and the
-`repository-links` bundle’s `static/git-path.js` and `static/repository-links.js`. The
-page’s tooltip is app.js’s own code, lifted verbatim, on this file’s clock.
+This session runs the exact module whole, beside `static/formatters.js`, the
+`repository-links` bundle’s `static/git-path.js` and `static/repository-links.js`, and
+the SDK’s view helpers, `static/plugin-sdk-views.js`, whose one reading of where an
+outside link goes the card uses.
+The page is a loopback server’s `http` page, and its tooltip is app.js’s own code,
+lifted verbatim, on this file’s clock.
 The SDK’s glyph owners are stand-ins whose glyphs name themselves, so a card’s compact
 form leads with the glyph it asked for in brackets: `[pull]` for the neutral pull
 request mark that `decorateExternalLink` draws, `[merged]` and the other states for the
@@ -31,12 +34,14 @@ the session read the `tooltip` the reader would see.
   and the root. A pin’s GitPath wire decodes to the same path, by the page’s source kind,
   and so does a rendered diff’s head link.
   A page on another site is its `http` or `https` address and the host it goes to,
-  whatever a user name in the address says, and an address with no scheme takes the
-  page’s. A name that is not text, an anchor that does not decode, a mail link, and a
-  malformed route name nothing.
-  A file’s or folder’s subject keeps the navigation target as the address spelled it,
-  the resolver’s own or a head link’s wire path with its fragment decoded, for a
-  provider to look up and open.
+  whatever a user name in the address says, read where the browser follows it against
+  the page’s address: an address with no scheme takes the page’s, `https:example.com`
+  goes to example.com, and `http:example.com`, a file beside this `http` page, and an
+  address on the page’s own origin name no other site.
+  A name that is not text, an anchor that does not decode, a mail link, and a malformed
+  route name nothing. A file’s or folder’s subject keeps the navigation target as the
+  address spelled it, the resolver’s own or a head link’s wire path with its fragment
+  decoded, for a provider to look up and open.
 - `cards` is what `card` draws for each kind with and without a provider’s data.
   A line that is the link’s own text, in any case and spacing, or a line above is left
   out, and the first line kept leads with the mark.
@@ -318,9 +323,25 @@ $ node tests/dom/link-previews-session.js
    "label": "a link with no scheme of its own",
    "subject": {
     "kind": "external",
-    "url": "https://example.com/docs",
+    "url": "http://example.com/docs",
     "host": "example.com"
    }
+  },
+  {
+   "label": "a link that names the page's scheme and no host",
+   "subject": null
+  },
+  {
+   "label": "a link that names another scheme and no slashes",
+   "subject": {
+    "kind": "external",
+    "url": "https://example.com/",
+    "host": "example.com"
+   }
+  },
+  {
+   "label": "a link to the page's own origin",
+   "subject": null
   },
   {
    "label": "an address that does not parse",
