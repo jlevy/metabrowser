@@ -1612,58 +1612,6 @@
       "status_route": "/api/plugin/github/pull?number=8"
     }
   },
-  "followed_head": {
-    "status": 200,
-    "etag": "\"pull-14\"",
-    "body": {
-      "state": "current",
-      "reason": null,
-      "source": "https://github.com/octo/demo",
-      "number": 7,
-      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-      "pin_ref": "refs/pull/7/head",
-      "fetched_at": "2026-09-17T12:41:00Z",
-      "verified_at": "2026-09-17T12:41:00Z",
-      "verified_by": "fetch",
-      "head_moved": false,
-      "checks_pending": true,
-      "record_revision": "d415e0662857f8412fe6c1fb46a6134711a2acf91a68be14be86901e6130510f",
-      "fresh_for_s": 60.0,
-      "probe_every_s": 5.0,
-      "refreshing": false,
-      "last_refresh": {
-        "outcome": "succeeded",
-        "message": null,
-        "reset_at": null,
-        "at": "2026-09-17T12:41:00Z"
-      },
-      "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-      "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
-      "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
-      "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
-      "record": {
-        "same_as": "refreshed",
-        "fetched_at": "2026-09-17T12:41:00Z"
-      },
-      "core_preview": null,
-      "repository_labels": [],
-      "labels_pending": false,
-      "status": {
-        "same_as": "current",
-        "observed_at": "2026-09-17T12:41:00Z",
-        "checks.moved_at": "2026-09-17T12:40:00Z"
-      },
-      "readiness": {
-        "same_as": "current",
-        "observed_at": "2026-09-17T12:41:00Z"
-      },
-      "checks": {
-        "same_as": "current",
-        "observed_at": "2026-09-17T12:41:00Z"
-      },
-      "status_unavailable": null
-    }
-  },
   "absent_14": {
     "status": 200,
     "etag": "\"pull-15\"",
