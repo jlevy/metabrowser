@@ -360,6 +360,12 @@ def comparison_preparing(
     )
 
 
+def prefetch_waits_for_acquisition(repository: CheckoutRepository, number: int) -> bool:
+    """Whether this background pull job waits for the checkout's first store."""
+    state = _checkout_state(repository)
+    return state.turn.acquiring and checkout_job_key(repository, number) in state.background
+
+
 @overload
 def start_pull_refresh(
     coordinator: RefreshCoordinator,
@@ -1043,6 +1049,7 @@ __all__ = [
     "checkout_job_key",
     "claim_source",
     "comparison_preparing",
+    "prefetch_waits_for_acquisition",
     "ensure_resolved",
     "resolve_served_checkout",
     "served_checkout",

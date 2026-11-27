@@ -1163,6 +1163,10 @@ def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_
                         )
                         await asyncio.sleep(0)
                         assert turn._waiting  # pyright: ignore[reportPrivateUsage]
+                        pending = await client.get("/api/plugin/github/pull?number=7")
+                        assert pending.status_code == 200
+                        assert pending.json()["state"] == "pending"
+                        assert pending.json()["promotable_prefetch"] is True
                     selected = await client.post(
                         "/api/plugin/github/pull-refresh",
                         body=b'{"number":7,"retry":true,"wait_core":true}',
@@ -1176,6 +1180,7 @@ def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_
                     assert preview["reader"] == f"gh:{READER}"
                     assert preview["pull"]["body"] == expected["body"]
                     assert selected.json()["pull"]["record"] is None
+                    assert "promotable_prefetch" not in selected.json()["pull"]
 
                     changes = await client.post(
                         "/api/plugin/github/pull-refresh",

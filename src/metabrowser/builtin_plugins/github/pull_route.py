@@ -61,6 +61,7 @@ from metabrowser.builtin_plugins.github.checkout import (
     checkout_pulls,
     checkout_store_turn,
     comparison_preparing,
+    prefetch_waits_for_acquisition,
     served_checkout,
     start_pull_refresh,
 )
@@ -155,6 +156,7 @@ class PullEnvelope(TypedDict):
     probe_every_s: float | None
     refreshing: bool
     preparing_comparison: NotRequired[Literal[True]]
+    promotable_prefetch: NotRequired[Literal[True]]
     # The server has no Git store to compare in, as a checkout has none until a reader's
     # Changes asks for one, so no read brings a comparison until then: the page holds no
     # placeholder for one (mb-30dz).
@@ -430,6 +432,7 @@ class PullHost:
     # On a mirror: told the head a record read from disk names, so a pin on that pull
     # request's head follows one another process fetched (:func:`follow_adopted_head`).
     observe_head: Callable[[int, str], None] | None = None
+    prefetch_waiting: Callable[[int], bool] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -459,6 +462,7 @@ def pull_host(app: Any) -> PullHost | None:
             partial(start_pull_refresh, coordinator, checkout, ask="due", background=True),
             partial(checkout_job_key, checkout),
             partial(checkout_store_turn, checkout),
+            prefetch_waiting=partial(prefetch_waits_for_acquisition, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -494,6 +498,7 @@ class PullView:
     core_window: CoreWindow | None = None
     core_admission: CoreAdmission | None = None
     preparing_comparison: bool = False
+    prefetch_waiting: bool = False
     catalog_scanning: bool = False
     # When a list probe last found the catalog unchanged (:mod:`.pull_list_probe`).
     catalog_checked_at: str | None = None
@@ -542,6 +547,10 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         preparing_comparison=host is not None
         and host.preparing is not None
         and host.preparing(number),
+        prefetch_waiting=refreshing
+        and host is not None
+        and host.prefetch_waiting is not None
+        and host.prefetch_waiting(number),
         catalog_scanning=catalog_scanning(host),
         catalog_checked_at=catalog_checked_at(host),
         labels_running=host is not None
@@ -694,6 +703,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         envelope["preparing_comparison"] = True
     if not has_store:
         envelope["no_store"] = True
+        if state == "pending" and view.prefetch_waiting:
+            envelope["promotable_prefetch"] = True
     return envelope, freshness
 
 
