@@ -1819,9 +1819,11 @@ the clone’s authority; a provider the branch adds asks first.
 
 **An agent works in a trusted clone.** In a linked worktree, nothing it edits runs.
 In the primary checkout, an approved plugin it edits runs at the next worker start with
-the clone’s authority: under `confined`, it can read what the agent could already read
-and reach no network; its JavaScript runs in the page.
-Under `full`, it runs as the user, which is why `full` is never the default.
+the clone’s authority.
+With the default `confined` grants, its Python can read the clone, its environment, and
+the served folders. Network access requires an additional grant.
+Its JavaScript runs in the page.
+Under `full`, its Python runs as the user, which is why `full` is never the default.
 
 **A library releases a new plugin version.** Nothing changes for a consumer until its
 lock moves: a pull request upgrades the library or advances the submodule, CI validates
