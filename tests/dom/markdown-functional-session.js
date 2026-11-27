@@ -371,7 +371,16 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
             return load();
           },
         },
-        repository: null,
+        // A page on a GitHub repository, the only one `loadRepositoryLinks` answers a
+        // runtime on (plugin-sdk-views.js), whose links the stand-in reads none of.
+        repository: {
+          host: "github.com",
+          owner: "octo",
+          name: "papers",
+          branch: "main",
+          revision: "a".repeat(40),
+          served_prefix: "",
+        },
         loadRepositoryLinks: async () => repositoryLinks,
       },
     );

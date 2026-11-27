@@ -78,6 +78,7 @@ the session read the `tooltip` the reader would see.
 ```console
 $ node tests/dom/link-previews-session.js
 {
+ "intentMs": 250,
  "opens": {
   "here": "Opens here in Metabrowser",
   "working-tree": "Opens in the served working tree",
@@ -765,6 +766,7 @@ $ node tests/dom/link-previews-session.js
   ]
  },
  "requests": {
+  "readMs": 400,
   "log": [
    {
     "at": 0,

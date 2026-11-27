@@ -811,9 +811,10 @@ async function timing() {
 /** One read and one prefetch in flight, a newer rest waiting for them, none aborted. */
 async function requests() {
   const page = createPage();
+  const readMs = 400;
   const slow = stub(page, (subject) => ({ title: `Title ${subject.number}` }), {
-    summary: 400,
-    prefetch: 400,
+    summary: readMs,
+    prefetch: readMs,
   });
   page.previews.provide("pull", slow.provider);
   const { anchors } = page.text(
@@ -832,11 +833,12 @@ async function requests() {
   assert(counts.maxReads === 1 && counts.maxPrefetches === 1, "two requests were in flight");
   assert(counts.signals === 0, "a read was given something that could abort it");
   assert(!page.log.some((entry) => entry.summary === "pull 3"), "a pass read a link");
+  // The second rest's intent delay ended at 550, during the first read, which it waited for.
   assert(
-    page.log.find((entry) => entry.summary === "pull 2")?.at === 650,
+    page.log.find((entry) => entry.summary === "pull 2")?.at === page.previews.INTENT_MS + readMs,
     "a newer rest did not wait for the read in flight",
   );
-  return { log: page.log, counts };
+  return { readMs, log: page.log, counts };
 }
 
 /**
@@ -1051,7 +1053,8 @@ async function main() {
   await glyphsPage.point(0, anchors.twelve);
   await glyphsPage.look(600);
   const transcript = {
-    // The words a card says for where its link opens, by its subject's `opens`.
+    // The module's own intent delay, and its words for where a link opens, by `opens`.
+    intentMs: glyphsPage.previews.INTENT_MS,
     opens: glyphsPage.previews.OPENS,
     subjects: subjects(),
     cards: cards(glyphsPage),

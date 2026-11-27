@@ -177,6 +177,7 @@ def test_a_rest_asks_at_the_trees_own_hover_delay() -> None:
     """The summary starts when a tree row's prefetch would: app.js's delay, not a copy."""
 
     delay = _app_constant("const FILE_PREFETCH_HOVER_DELAY_MS")
+    assert _session()["intentMs"] == delay, "the card's intent delay is not the tree's"
     log = _session()["timing"]["an answer during the delay: the card shows it on time"]
     assert log[0]["at"] == 0 and "show" in log[0]
     assert [entry["at"] for entry in log if "summary" in entry or "prefetch" in entry] == [
@@ -242,7 +243,8 @@ def test_one_read_and_one_prefetch_in_flight_and_none_aborted() -> None:
     }
     asked = [(entry["at"], entry.get("summary")) for entry in requests["log"] if "summary" in entry]
     # The second link's rest began during the first's read and waited for it to settle.
-    assert asked == [(250, "pull 1"), (650, "pull 2")]
+    intent = _session()["intentMs"]
+    assert asked == [(intent, "pull 1"), (intent + requests["readMs"], "pull 2")]
 
 
 def test_focus_and_touch_show_no_card() -> None:
