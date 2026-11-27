@@ -971,7 +971,7 @@ async function run() {
     report.members_readiness.after_idle.every((row) => row.cell_last),
     "every member's line ends with its readiness's cell",
   );
-  assert.equal(report.members_readiness.after_idle[0].glyph, "conflicts (danger)");
+  assert.equal(report.members_readiness.after_idle[0].glyph, "conflicts (severe)");
 
   // A Pulls tab in the same document draws #10 by the catalog's head, the one the server
   // judged, beside the page that knows #10 by its record's lagging head: the document holds one

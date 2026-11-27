@@ -452,7 +452,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
       {
         "state": "draft",
         "words": "Merge conflicts",
-        "glyph": "conflicts (danger)",
+        "glyph": "conflicts (severe)",
         "cell_last": true
       },
       {
@@ -467,19 +467,19 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "turn": 1,
         "asked": [],
         "pulls_tab": "Merge conflicts",
-        "page": "conflicts (danger)"
+        "page": "conflicts (severe)"
       },
       {
         "turn": 2,
         "asked": [],
         "pulls_tab": "Merge conflicts",
-        "page": "conflicts (danger)"
+        "page": "conflicts (severe)"
       },
       {
         "turn": 3,
         "asked": [],
         "pulls_tab": "Merge conflicts",
-        "page": "conflicts (danger)"
+        "page": "conflicts (severe)"
       }
     ],
     "record_moved": {
@@ -487,7 +487,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "/api/plugin/github/pull-statuses?numbers=10"
       ],
       "pulls_tab": "Merge conflicts",
-      "page": "conflicts (danger)"
+      "page": "conflicts (severe)"
     }
   }
 }

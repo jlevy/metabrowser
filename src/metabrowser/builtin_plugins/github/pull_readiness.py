@@ -15,13 +15,16 @@ row github.com's merge box would show, each with a status:
 - ``unmet``: the author must change something;
 - ``unknown``: GitHub has not answered yet.
 
-The verdict's tone is the worst status among them, and its headline the first
-requirement at that status in :data:`REQUIREMENT_ORDER`, so a red verdict always names
-something the author must change. Each status takes the color GitHub's CLI gives it:
-``unmet`` red, ``waiting`` and ``unknown`` yellow (``gh pr status`` prints an unknown
-mergeability in yellow), ``met`` green. The labels and sentences are ``gh``'s words where
-``gh`` has them (``pkg/cmd/pr/status/status.go`` and ``pkg/cmd/pr/checks/output.go`` in
-``gh`` 2.97.0).
+The verdict's headline is the first requirement at the worst status in
+:data:`REQUIREMENT_ORDER`, and its tone is that requirement's, so the verdict's mark is one
+meaning in one color, and a red verdict always names something the author must change.
+A requirement's tone is its status's, the role GitHub gives it (:data:`STATUS_TONES`):
+``unmet`` danger, ``waiting`` and ``unknown`` attention (``gh pr status`` prints an unknown
+mergeability in yellow), ``met`` success; but merge conflicts are severe, Primer's role for
+a high-priority warning above attention, so a pull request that conflicts never reads as one
+whose checks fail (:func:`requirement_tone`; docs/design-system.md, "Pull Request Status
+Vocabulary"). The labels and sentences are ``gh``'s words where ``gh`` has them
+(``pkg/cmd/pr/status/status.go`` and ``pkg/cmd/pr/checks/output.go`` in ``gh`` 2.97.0).
 
 A Rules row says GitHub blocks the merge for a reason no other row gives. A row explains a
 block only when it could be the reason: a check no rule requires never blocks a merge, so
@@ -40,7 +43,7 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from metabrowser.builtin_plugins.github.pull_record import Sha, Short, Timestamp, Url
 from metabrowser.builtin_plugins.github.pull_status import (
@@ -74,7 +77,8 @@ type RequirementKind = Literal["queue", "conflicts", "checks", "reviews", "up_to
 
 type RequirementStatus = Literal["met", "waiting", "unmet", "unknown"]
 
-type Tone = Literal["success", "attention", "danger"]
+type Tone = Literal["success", "attention", "severe", "danger"]
+"""The functional color role of a requirement or a verdict, Primer's name for it."""
 
 type Verdict = Literal[
     "ready",
@@ -110,8 +114,24 @@ STATUS_TONES: Final[dict[RequirementStatus, Tone]] = {
     "unknown": "attention",
     "met": "success",
 }
+"""The role each status takes, as GitHub colors it, unless :data:`SEVERE_KINDS` says otherwise."""
 
-_HEADLINES: Final[dict[tuple[RequirementKind, RequirementStatus], Verdict]] = {
+SEVERE_KINDS: Final[frozenset[RequirementKind]] = frozenset(("conflicts",))
+"""The requirements whose ``unmet`` is severe rather than danger: Primer's high-priority
+warning, orange, between attention and danger. Merge conflicts stop a merge as failing checks
+do, but they are the base and the head disagreeing, not something failing, and the owner
+asked that they never read as failing checks (2026-11-26). GitHub draws them neutral, in its
+merge box's gray triangle; the color is the one departure, and the glyph says which."""
+
+
+def requirement_tone(kind: RequirementKind, status: RequirementStatus) -> Tone:
+    """The tone a requirement of *kind* takes at *status*: its status's, or severe for an
+    unmet requirement of :data:`SEVERE_KINDS`."""
+
+    return "severe" if status == "unmet" and kind in SEVERE_KINDS else STATUS_TONES[status]
+
+
+HEADLINES: Final[dict[tuple[RequirementKind, RequirementStatus], Verdict]] = {
     ("queue", "unmet"): "queue_failing",
     ("queue", "waiting"): "queued",
     ("conflicts", "unmet"): "conflicts",
@@ -167,7 +187,8 @@ class Requirement(_Model):
     """One row of the merge box: what it needs, whether it has it, and where to act.
 
     ``summary`` is one sentence. ``github_url`` is the page on GitHub where the reader
-    can act on it, when the pull request's address is known.
+    can act on it, when the pull request's address is known. ``tone`` is derived, never
+    given, so a row cannot carry a color its kind and status do not have.
     """
 
     kind: RequirementKind
@@ -175,9 +196,19 @@ class Requirement(_Model):
     summary: Short
     github_url: Url | None = None
 
+    @computed_field
+    @property
+    def tone(self) -> Tone:
+        """:func:`requirement_tone` of this row's kind and status."""
+
+        return requirement_tone(self.kind, self.status)
+
 
 class Readiness(_Model):
     """A pull request's verdict, its tone, and the requirements behind it.
+
+    ``tone`` is the tone of the requirement that heads the verdict (:func:`headline`), and
+    success when none stands in the way, so a verdict always comes with one tone.
 
     ``head`` is the commit it judged. A ``checking`` verdict with no requirements and no
     ``observed_at`` says no status describes that head yet.
@@ -454,15 +485,14 @@ def readiness(
     if not describes(status, head=head, base_ref=base_ref):
         return Readiness(verdict="checking", tone="attention", label=LABELS["checking"], head=head)
     rows = requirements(status, listed=listed, html_url=html_url)
-    worst_status = worst(rows)
     first = headline(rows)
     if first is None:
         verdict: Verdict = "ready_for_review" if state == "draft" else "ready"
     else:
-        verdict = _HEADLINES.get((first.kind, first.status), "checking")
+        verdict = HEADLINES.get((first.kind, first.status), "checking")
     return Readiness(
         verdict=verdict,
-        tone=STATUS_TONES[worst_status],
+        tone="success" if first is None else first.tone,
         label=LABELS[verdict],
         head=head,
         observed_at=status.observed_at,
@@ -473,8 +503,10 @@ def readiness(
 
 
 __all__ = [
+    "HEADLINES",
     "LABELS",
     "REQUIREMENT_ORDER",
+    "SEVERE_KINDS",
     "STATUS_ORDER",
     "STATUS_TONES",
     "DisplayState",
@@ -489,6 +521,7 @@ __all__ = [
     "headline",
     "lifecycle",
     "readiness",
+    "requirement_tone",
     "requirements",
     "worst",
 ]

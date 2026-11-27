@@ -37,7 +37,10 @@ listed and last seen otherwise, names that answer and keeps those beside the nam
 name for a part of a part. A read lists its checks as it observes them, so a status whose
 checks were listed when it was observed has no ``listed_at`` written, in full or beside a
 name, and reads back with its own ``observed_at`` there; a status written in full whose
-checks were never seen otherwise has no ``moved_at`` written, and reads back with none.
+checks were never seen otherwise has no ``moved_at`` written, and reads back with none. A
+record that differs from one written in full in at most ``NEAR_RECORD_PARTS`` parts, a
+part's part at most, as a refresh that found nothing new differs in its fetch time, names
+that answer and keeps those parts beside the name, as a status keeps its time.
 ``make golden-update`` rewrites the recording and then the transcript.
 """
 
@@ -183,6 +186,11 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
 # What a pull envelope carries that the recording holds once: its record, and beside it
 # its operational status, its verdict, and its checks (``pull_route.PullEnvelope``).
 STORED_ONCE: Final = ("record", "status", "readiness", "checks")
+# The most parts a record keeps beside the name of the one it is near: a refresh that found
+# nothing new differs only in its fetch time, and a merge no one is credited with in its
+# merger and that read's validator. Kept the recording inside its review budget once each
+# Merge status requirement carried its tone (2026-11-26).
+NEAR_RECORD_PARTS: Final = 2
 # What says which pull request, head, and moment an operational value describes, kept
 # beside the name of the answer that holds the rest of it; a dotted name is a part's part.
 _IDENTITY: Final = ("number", "head", "observed_at", "checks.listed_at", "checks.moved_at")
@@ -240,11 +248,13 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
 
     Each is held in full by the first pull-route answer that carried it, and a status,
     verdict, or checks that differs from it only in what it describes and when
-    (``_IDENTITY``) keeps those beside the name; see the module docstring. So a one-field
+    (``_IDENTITY``) keeps those beside the name, as a record near one held in full keeps
+    the few parts it differs in (``_near_record``); see the module docstring. So a one-field
     change to a pull request's record or status is one changed line of the recording.
     """
 
     holder: dict[tuple[str, str], tuple[str, dict[str, Any]]] = {}
+    records: list[tuple[str, dict[str, Any]]] = []
     for name, answer in recorded.items():
         body = answer["body"]
         if not isinstance(body, dict):
@@ -272,14 +282,61 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
                     if _listed_when_observed(identity) and _listed_when_observed(dict(parts)):
                         kept.pop(_LISTED, None)
                     envelope[field] = {"same_as": held} | kept
+                elif field == "record" and (near := _near_record(value, records)) is not None:
+                    envelope[field] = {"same_as": near[0]} | near[1]
                 elif envelope is body:
                     holder[key] = (
                         name,
                         {part: found for part, (present, found) in parts.items() if present},
                     )
+                    if field == "record":
+                        records.append((name, value))
                 if field == "status" and "same_as" not in envelope[field]:
                     envelope[field] = _unlisted_when_observed(value)
     return recorded
+
+
+def _near_record(
+    record: dict[str, Any], held: list[tuple[str, dict[str, Any]]]
+) -> tuple[str, dict[str, Any]] | None:
+    """The answer holding the record nearest *record*, and the parts *record* differs in,
+    when it differs in at most ``NEAR_RECORD_PARTS``, each a part or a part's part whose name
+    has no dot of its own, so that the dotted name the session reads back is unambiguous;
+    otherwise None. A part *record* lacks is not one a name can keep."""
+
+    nearest: tuple[str, dict[str, Any]] | None = None
+    for name, full in held:
+        parts = _differing_parts(full, record)
+        if parts is not None and (nearest is None or len(parts) < len(nearest[1])):
+            nearest = (name, parts)
+    if nearest is None or not 0 < len(nearest[1]) <= NEAR_RECORD_PARTS:
+        return None
+    return nearest
+
+
+def _differing_parts(full: dict[str, Any], record: dict[str, Any]) -> dict[str, Any] | None:
+    """*record*'s parts that differ from *full*'s, a part's part at most, or None where a
+    difference is not one a dotted name can say."""
+
+    parts: dict[str, Any] = {}
+    for key in {**full, **record}:
+        before, after = full.get(key, _MISSING), record.get(key, _MISSING)
+        if before == after:
+            continue
+        if after is _MISSING or "." in key:
+            return None
+        if isinstance(before, dict) and isinstance(after, dict):
+            for inner in {**before, **after}:  # pyright: ignore[reportUnknownVariableType]
+                was = before.get(inner, _MISSING)  # pyright: ignore[reportUnknownMemberType]
+                now = after.get(inner, _MISSING)  # pyright: ignore[reportUnknownMemberType]
+                if was == now:
+                    continue
+                if now is _MISSING or "." in inner:
+                    return None
+                parts[f"{key}.{inner}"] = now
+        else:
+            parts[key] = after
+    return parts
 
 
 def _unlisted_when_observed(status: dict[str, Any]) -> dict[str, Any]:

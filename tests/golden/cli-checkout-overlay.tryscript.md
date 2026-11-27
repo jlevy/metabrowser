@@ -539,19 +539,22 @@ status: 200
         "kind": "conflicts",
         "status": "met",
         "summary": "No merge conflicts with trunk.",
-        "github_url": null
+        "github_url": null,
+        "tone": "success"
       },
       {
         "kind": "checks",
         "status": "waiting",
         "summary": "Some checks are still pending: 2 successful, and 1 pending.",
-        "github_url": "https://github.com/octo/demo/pull/1/checks"
+        "github_url": "https://github.com/octo/demo/pull/1/checks",
+        "tone": "attention"
       },
       {
         "kind": "reviews",
         "status": "waiting",
         "summary": "Review required.",
-        "github_url": "https://github.com/octo/demo/pull/1"
+        "github_url": "https://github.com/octo/demo/pull/1",
+        "tone": "attention"
       }
     ],
     "auto_merge": {

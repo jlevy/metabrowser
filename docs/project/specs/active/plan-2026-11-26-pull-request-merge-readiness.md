@@ -877,6 +877,20 @@ running, since it means an issue.
 No color is the only signal: each verdict has its own glyph and its label, in the
 accessible name in the list and as text on the page.
 
+**Addendum, 2026-11-26 (mb-omc0).** The owner asked that merge conflicts read in a color
+of their own, orange rather than failing checks’ red, and that the page’s chips and the
+compact glyphs be one vocabulary.
+The design system’s
+[Pull Request Status Vocabulary](../../../design-system.md#pull-request-status-vocabulary)
+now holds it, with GitHub’s marks beside it, and supersedes the table above where they
+differ: a fourth tone, severe, Primer’s high-priority warning, for a merge conflict, in
+the shell’s warning ink; each requirement’s tone decided by the server from its kind and
+status (`requirement_tone`) and sent with it; a verdict’s tone that of the requirement
+heading it; a glyph in every chip, the compact glyph’s own; the checks’ marks all
+circles, each check’s chip among them; and new glyphs for ready (`check-check`),
+conflicts (`git-merge-conflict`), a rule’s block (`shield-ban`), and leaving the queue
+(`list-x`).
+
 ### Alignment With the Object Data Model
 
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md#summary-and-facets)

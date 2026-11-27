@@ -455,15 +455,16 @@
   text-align: center;
 }
 /* An open pull request's readiness follows the state's badge (mb-io36): a link to the Checks
-   tab's Merge status section, as wide as the widest label the server gives a verdict, by the
-   state slot's sizers (`SLOT_LABELS` in pull-readiness.js), so a verdict that changes as
-   checks finish moves nothing in the row. A closed or merged pull request has no slot.
-   Measured in headless Chrome for Testing 158, 2026-11-26: the slot is 118.48 px, the badge
-   of the widest label, "Changes requested", at every verdict and width, and the row keeps
+   tab's Merge status section, as wide as the widest chip, its glyph and the widest label the
+   server gives a verdict, by the state slot's sizers (`SLOT_LABELS` in pull-readiness.js), so
+   a verdict that changes as checks finish moves nothing in the row. A closed or merged pull
+   request has no slot. Measured in headless Chrome for Testing 158, 2026-11-26: the slot is
+   136.48 px, the chip of the widest label, "Changes requested", 118.48 px before the chip
+   gained its glyph and the glyph's gap, at every verdict and width, and the row keeps
    Browse code whole at its limits, 420 px beside one stack's chip and 560 px beside two
    stacks' named chips. So no label is shortened. But the ages give way first, and beside
-   one chip at 420 px the full badge left them 23.8 px of their 195, where they had 150.28
-   before the badge came; so a narrow row draws the verdict's glyph alone
+   one chip at 420 px the full chip left them 5.8 px of their 195, where they had 150.28
+   before the chip came; so a narrow row draws the verdict's glyph alone
    (`@container github-pull-opened`, after the glyph's rules below). */
 .github-pull-readiness-slot {
   display: inline-grid;
@@ -483,23 +484,15 @@
   overflow: hidden;
   visibility: hidden;
 }
-/* A check's badge is in the ink of its bucket, the server's (`state_bucket` in
-   pull_status.py), as `gh pr checks` colors its marks: pass green, fail red, pending yellow,
-   skipping and cancel muted. Pending is the readiness's attention, so waiting is one color
-   across the plugin, and the shell's warning ink stays a degraded result's. */
-.github-pull-badge[data-state="pass"],
+/* A review's badge, in the Conversation, is in its status ink: approved green, changes
+   requested red, and an outdated comment or a dismissed review muted. A check's badge takes
+   its tone from its bucket, as every status mark does (`.github-pull-tone`, below). */
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success-text);
 }
-.github-pull-badge[data-state="fail"],
 .github-pull-badge[data-state="CHANGES_REQUESTED"] {
   color: var(--status-error-text);
 }
-.github-pull-badge[data-state="pending"] {
-  color: var(--github-pull-attention);
-}
-.github-pull-badge[data-state="skipping"],
-.github-pull-badge[data-state="cancel"],
 .github-pull-badge[data-state="outdated"],
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
@@ -1208,42 +1201,74 @@
   height: 1em;
 }
 
-/* ── A pull request's readiness ──────────────────────────────────
-   One vocabulary for the page's header, its Checks tab, and a Pulls row: docs/design-system.md,
-   "A Pull Request’s Readiness". The server gives each verdict its tone (pull_readiness.py), and
-   the tone alone sets the color, never the verdict (pull-readiness.js). Success and danger are
-   the shell's status inks, which carry GitHub's green and red. Attention has a token of its
-   own: the shell's warning ink is orange and reserved for a degraded result, and GitHub's
-   pending and queued are yellow. It is Primer's `fgColor-attention`: its light value
-   exactly, and in dark the lightness and chroma of Primer's dark value, which sits at hue
-   80, held at the light hue, 75. It reads at 7.06:1 on the dark `--bg` and 6.18:1 on the
-   dark `--sidebar-bg`, and Primer's light value at 4.87:1 and 4.66:1 on the light ones
-   (2026-11-26). test_pull_state_colors_keep_their_hue_and_read_on_both_grounds holds the
-   hue and the contrast, and
-   test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn that the tone
-   alone colors a mark. */
+/* ── A pull request's status ─────────────────────────────────────
+   One vocabulary for every mark of a pull request's readiness and checks, the page's header,
+   its Checks tab, a Pulls row, and a stack's member: docs/design-system.md, "Pull Request
+   Status Vocabulary". The server gives each verdict and each requirement its tone
+   (pull_readiness.py), pull-readiness.js gives each check its bucket's, and the tone alone
+   sets a mark's color, by this one rule for each, never its verdict, kind, or bucket. The
+   tones are Primer's functional roles:
+
+   - Success and danger are the shell's status inks, which carry GitHub's green and red.
+   - Attention has a token of its own, GitHub's yellow for what waits. It is Primer's
+     `fgColor-attention`: its light value exactly, and in dark the lightness and chroma of
+     Primer's dark value, which sits at hue 80, held at the light hue, 75. It reads at
+     7.06:1 on the dark `--bg` and 6.18:1 on the dark `--sidebar-bg`, and Primer's light value
+     at 4.87:1 and 4.66:1 on the light ones (2026-11-26).
+   - Severe, a merge conflict's, is the shell's warning ink, `--status-warning-text`.
+     Primer's `fgColor-severe` is oklch(55.7% 0.160 44.7) in light, 0.025 from the warning
+     ink's light value in OKLab, too close to be told apart, so a token of its own would have
+     been a second token for one orange; the warning ink is Primer's severe, a high-priority
+     warning, in light and the same hue in dark. Measured 2026-11-26 with
+     test_design_vocabulary.py's resolution of both stylesheets: it reads at 5.38:1 on the
+     light `--bg`, 5.14:1 on `--sidebar-bg`, 4.70:1 on `--hover-bg`, and 4.51:1 on a row's
+     highlight, and at 8.43, 7.37, 5.82, and 6.12:1 on the dark ones; it is 0.079 in OKLab from
+     danger and 0.082 from attention in light, and 0.093 and 0.087 in dark, where Primer's own
+     severe is 0.078 from its danger and 0.084 from its attention in light.
+   - Neutral, a skipped or cancelled check's, is `--muted`, as `gh pr checks` mutes them.
+
+   test_pull_state_colors_keep_their_hue_and_read_on_both_grounds holds attention's hue and
+   contrast, and test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn that
+   the tone alone colors a mark, each tone's ink, its contrast where it is drawn, and how far
+   apart the tones are. */
 :root {
   --github-pull-attention: oklch(55.4% 0.117 75);
 }
 [data-theme="dark"] {
   --github-pull-attention: oklch(72% 0.14 75);
 }
-.github-pull-badge.github-pull-readiness[data-tone="success"],
-.github-pull-badge.github-pull-requirement[data-tone="success"],
-.github-pull-readiness-icon[data-tone="success"] {
+.github-pull-tone[data-tone="success"] {
   color: var(--status-success-text);
 }
-.github-pull-badge.github-pull-readiness[data-tone="attention"],
-.github-pull-badge.github-pull-requirement[data-tone="attention"],
-.github-pull-readiness-icon[data-tone="attention"] {
+.github-pull-tone[data-tone="attention"] {
   color: var(--github-pull-attention);
 }
-.github-pull-badge.github-pull-readiness[data-tone="danger"],
-.github-pull-badge.github-pull-requirement[data-tone="danger"],
-.github-pull-readiness-icon[data-tone="danger"] {
+.github-pull-tone[data-tone="severe"] {
+  color: var(--status-warning-text);
+}
+.github-pull-tone[data-tone="danger"] {
   color: var(--status-error-text);
 }
-/* The glyph at the app's one size. Where it sits is its surface's. */
+.github-pull-tone[data-tone="neutral"] {
+  color: var(--muted);
+}
+/* A chip's glyph, before its label (pull-readiness.js, `chip`): the app's one glyph size, the
+   compact form's own, centered on the label's capitals, the band the badge centers in its box
+   (`.file-header-badge`'s `text-box`), so the glyph neither moves the label nor grows the box. A
+   sizer's is the same box, empty. */
+.github-pull-badge-glyph {
+  display: inline-block;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-inline-end: 4px;
+  vertical-align: calc((1cap - var(--icon-glyph)) / 2);
+}
+.github-pull-badge-glyph > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* The compact glyph at the app's one size. Where it sits is its surface's. */
 .github-pull-readiness-icon {
   display: inline-flex;
   flex: none;
@@ -1259,18 +1284,19 @@
 .github-pull-readiness-link > .github-pull-readiness-icon {
   display: none;
 }
-/* A narrow row of ages draws the verdict's glyph in its tone in the badge's place, and the
-   slot is the glyph's width: the link, its name, and its tooltip are the badge's, so it says
-   the same. The bound is where the full badge leaves the ages what they had before it, at
-   the row's 420 px limit: there the ages had 150.28 px beside one stack's chip, and the full
-   badge leaves them that much from a row of 488.48 px (a 546.48 px pane), 34.89em at the
-   row's 14 px type; the bound is 35em, 490 px, where it leaves them 151.8 px. Below it the
-   glyph costs the ages 22 px, its 14 px and the row's gap, so at 420 px they keep 128.28 px.
-   Measured in headless Chrome for Testing 158, 2026-11-26, by setting a pane's width a pixel
-   at a time; tests/dom/github-pull-header-chrome.mjs ("readiness" part) holds each form to
-   its side of the bound. Two stacks' named chips take 101.56 px more of the row, which the
-   bound does not answer: Browse code stays whole beside them from 560 px. */
-@container github-pull-opened (width < 35em) {
+/* A narrow row of ages draws the verdict's glyph in its tone in the chip's place, its
+   compact form, and the slot is the glyph's width: the link, its name, and its tooltip are
+   the chip's, so it says the same. The bound is where the full chip leaves the ages what they
+   had before it, at the row's 420 px limit: there the ages had 150.28 px beside one stack's
+   chip, and the full chip leaves them that much from a row of 506.48 px (a 564.48 px pane),
+   36.18em at the row's 14 px type; the bound is 36.2em, 506.8 px, where it leaves them
+   150.6 px. Below it the glyph costs the ages 22 px, its 14 px and the row's gap, so at 420 px
+   they keep 128.28 px. Measured in headless Chrome for Testing 158, 2026-11-26, by setting a
+   pane's width a pixel at a time; tests/dom/github-pull-header-chrome.mjs ("readiness" part)
+   holds each form to its side of the bound. Two stacks' named chips take 101.56 px more of
+   the row, which the bound does not answer: Browse code stays whole beside them from
+   560 px. */
+@container github-pull-opened (width < 36.2em) {
   .github-pull-readiness-link > .github-pull-badge,
   .github-pull-readiness-slot > .github-pull-badge-sizer {
     display: none;

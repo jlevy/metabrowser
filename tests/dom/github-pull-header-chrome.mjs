@@ -206,9 +206,20 @@ const MEASURE = `async (name, change, tab, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const body = structuredClone(recorded[name].body);
   for (const envelope of [body, body.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = structuredClone(recorded[holder].body.record);
+    // The recording keeps a record or a readiness another answer holds by that answer's name,
+    // with any part it differs in beside the name, a dotted name for a part's part, as
+    // github-pull-page-session.js reads it back.
+    for (const field of ["record", "readiness"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        const { same_as: _held, ...own } = envelope[field];
+        const value = structuredClone(recorded[holder].body[field]);
+        for (const [part, kept] of Object.entries(own)) {
+          const [outer, inner] = part.split(".");
+          value[outer] = inner === undefined ? kept : { ...value[outer], [inner]: kept };
+        }
+        envelope[field] = value;
+      }
     }
   }
   // A checkout, which has no pin, at the pull request's head draws the offer to browse it.
@@ -690,23 +701,25 @@ const MEASURE = `async (name, change, tab, width) => {
         agesNatural: r2(agesText.scrollWidth),
         text: agesText.textContent,
       };
-  // The readiness slot (mb-io36): as wide as the widest label the server gives a verdict, so
-  // each label in its badge leaves the slot's width and the ages' place as they were. Each
-  // label is set in the badge in turn, measured, and the server's put back.
+  // The readiness slot (mb-io36): as wide as the widest chip, its glyph and the widest label
+  // the server gives a verdict, so each label in its chip leaves the slot's width and the ages'
+  // place as they were. Each label is set in the chip in turn, beside its glyph, measured, and
+  // the server's put back.
   const readinessSlot = header.querySelector(".github-pull-opened .github-pull-readiness-slot");
+  const labelOf = (chip) => [...chip.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
   const readiness = (() => {
     if (readinessSlot === null) return null;
     const shownBadge = readinessSlot.querySelector(".github-pull-readiness-link .github-pull-badge");
     const ages = header.querySelector(".github-pull-opened .github-pull-quiet");
-    const said = shownBadge.textContent;
+    const said = labelOf(shownBadge).data;
     const at = () => ({ slot: r2(box(readinessSlot).width), ages: r2(box(ages).left) });
     const before = at();
     const labels = [...readinessSlot.querySelectorAll(".github-pull-badge-sizer")].map(
       (sizer) => sizer.textContent,
     );
     const natural = (label) => {
-      const probe = shownBadge.cloneNode(false);
-      probe.textContent = label;
+      const probe = shownBadge.cloneNode(true);
+      labelOf(probe).data = label;
       probe.style.cssText = "position:absolute;visibility:hidden;width:max-content";
       document.body.append(probe);
       const measuredWidth = probe.getBoundingClientRect().width;
@@ -719,13 +732,13 @@ const MEASURE = `async (name, change, tab, width) => {
     );
     const moved = [];
     for (const label of labels) {
-      shownBadge.textContent = label;
+      labelOf(shownBadge).data = label;
       const now = at();
       if (Math.abs(now.slot - before.slot) > 0.5 || Math.abs(now.ages - before.ages) > 0.5) {
         moved.push({ label, ...now });
       }
     }
-    shownBadge.textContent = said;
+    labelOf(shownBadge).data = said;
     // A narrow row draws the glyph alone (mb-io36): the slot is then the glyph's width.
     const glyph = readinessSlot.querySelector(".github-pull-readiness-link .github-pull-readiness-icon");
     const compact = getComputedStyle(glyph).display !== "none" && getComputedStyle(shownBadge).display === "none";
@@ -2821,7 +2834,7 @@ async function main() {
         for (let each = 400; each <= 760; each += 8) {
           sweepWidths.push(each);
         }
-        for (let each = 540; each <= 556; each += 1) {
+        for (let each = 557; each <= 573; each += 1) {
           sweepWidths.push(each);
         }
         const shape = await browser.evaluate(

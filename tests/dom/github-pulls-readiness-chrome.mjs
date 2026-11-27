@@ -12,7 +12,8 @@
 // the stacks, and the statuses the server answered once the scan of every open pull request's
 // status had ended (tests/fixtures/github-pulls-readiness-responses.json and
 // github-stacks-responses.json): #7 and #8 are a stack's members, a level in, and the rows
-// hold an open pull request of each tone, a merged one, and a closed one. Each row's lines are
+// hold open pull requests in success, attention, and severe, a merged one, and a closed one,
+// whose glyphs are each held to their tone's ink. Each row's lines are
 // the recorded summary of #106's list (github-pull-files-summary-responses.json), "+1,093
 // −493". The statuses' answer is held until the session lets it go, so each row is laid out
 // before its readiness and again after. In the light theme and the dark, at every pane width
@@ -78,8 +79,8 @@ const ANSWERS = {
   },
   lines: { source: summed.source, row: summed.rows.find((row) => row.number === 106) },
 };
-// The rows the checks read: an open pull request of each tone, ready, waiting, and a draft
-// with conflicts, a merged and a closed one, and the stack's members, a level in.
+// The rows the checks read: open pull requests ready, waiting, and a draft with conflicts, in
+// success, attention, and severe, a merged and a closed one, and the stack's members, a level in.
 const ROWS = [106, 105, 10, 9, 8, 7];
 const INDENTED = 7;
 const WIDTHS = [180, 220, 260, 299, 340, 380, 420, 480, 560, 600];
@@ -288,6 +289,7 @@ const LABELS = `((labels) => {
 const TONE_TOKENS = {
   success: "--status-success-text",
   attention: "--github-pull-attention",
+  severe: "--status-warning-text",
   danger: "--status-error-text",
 };
 

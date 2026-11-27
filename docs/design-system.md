@@ -1724,9 +1724,11 @@ An empty list, `.recent-empty` or `.git-panel-empty`, is one look in every tab: 
 column’s inset, left-aligned, muted.
 A load that failed is not empty: it adds `.nav-error`, in the error text ink, as the
 lazy-folder, history, and ref-selector failures are.
-Amber (`--status-warning-text`) is for a degraded or partial result only.
-A failure says what could not be done in a sentence with a period; the HTTP status is
-for the console or a tooltip, never the visible text.
+The warning ink (`--status-warning-text`) is for a degraded or partial result, and for a
+merge conflict, Primer’s severe warning
+([Pull Request Status Vocabulary](#pull-request-status-vocabulary)). A failure says what
+could not be done in a sentence with a period; the HTTP status is for the console or a
+tooltip, never the visible text.
 
 ## Rows and Disclosures
 
@@ -3278,13 +3280,14 @@ suffix while the record is stale, since a stale page is refreshing.
 It names a problem only when no refresh can run: `Offline`,
 `GitHub rate limit reached. Next attempt after` a time, or the last failure with Retry.
 The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every GitHub
-surface uses. The Checks tab uses the same heading and status badges for check runs and
-status contexts. A check row is its status badge, its plain name, its action, and its
-description. The badge says the check’s own state, as GitHub names it, in the ink of the
-bucket the server sorts it into as `gh pr checks` does: pass `--status-success-text`,
-fail `--status-error-text`, pending `--github-pull-attention`, the readiness’s
-attention, so waiting is one color across the plugin, and skipping and cancel `--muted`;
-the page sorts no check into a bucket of its own.
+surface uses. The Checks tab uses the same heading and status chips for check runs and
+status contexts. A check row is its chip, its plain name, its action, and its
+description.
+The chip (`checkBadge` in `builtin_plugins/github/pull-readiness.js`) is the
+glyph and the tone of the bucket the server sorts the check into as `gh pr checks` does,
+then the check’s own state, as GitHub names it: the checks’ circles of the
+[status vocabulary](#pull-request-status-vocabulary), so a failing check and a verdict
+of checks failing are one mark; the page sorts no check into a bucket of its own.
 A check a rule on the base branch requires carries a compact outlined **Required** tag
 after its name, in the row’s muted ink, as the ref chooser’s tags are
 ([Chip Sizes](#chip-sizes)). The rows are in `gh`’s order, failing first, then pending,
@@ -3818,6 +3821,158 @@ Its cost is beside the constants.
 `tests/dom/github-pulls-files-prefetch-behavior.js` holds which pull requests the tab
 names, and `tests/dom/github-pull-prefetch-session.js` what the warmer reads.
 
+### Pull Request Status Vocabulary
+
+Every mark that says something about a pull request’s status speaks one vocabulary: its
+state, its readiness verdict, each row of its Merge status, and each of its checks.
+A reader learns it once, in the Pulls tab or on the page, and reads it the same
+everywhere.
+
+- **One glyph for each meaning.** Two meanings never share a glyph, and one meaning is
+  never drawn two ways.
+- **The full-size chip is the glyph and its label; the compact form is the glyph
+  alone.** The compact form is an abbreviation of the chip, never another code: a Pulls
+  row’s column, a stack member’s cell, and the header’s narrow form draw the same glyph
+  the chip leads with, through the same function (`shape` in
+  `builtin_plugins/github/pull-readiness.js`).
+- **Checks are circles.** A check’s mark is a circle with a mark inside, as GitHub draws
+  a check run’s, and a verdict about the checks takes the same circle.
+  Every other requirement has a shape of its own, so a circle with a mark inside always
+  means the checks; the empty, dashed circle is an answer GitHub has not given yet, as
+  its empty circle is a run that has not started.
+- **A mark’s color is its tone alone**, Primer’s functional role for the meaning, which
+  the server gives each verdict and each requirement and the module each check.
+
+#### GitHub’s Vocabulary
+
+GitHub is the reference, and the vocabulary departs from it only where the rules above
+require. What GitHub draws, read on 2026-11-26:
+
+- **Color roles.** Primer gives each meaning a functional role
+  ([color roles](https://primer.style/foundations/color/overview)): success, attention
+  for warnings and what waits (“queued PRs and tests in progress”), danger for errors,
+  done for merged, neutral, and severe, “high-priority warnings, more urgent than
+  attention”
+  ([Primer’s semantic key](https://unpkg.com/@primer/primitives@11.10.0/DESIGN_TOKENS_SPEC.md),
+  [its theme values](https://unpkg.com/@primer/primitives@11.10.0/dist/css/functional/themes/light.css)).
+- **State labels.** Primer React’s
+  [`StateLabel`](https://primer.style/product/components/state-label) draws open with
+  `git-pull-request` in open (success), draft with `git-pull-request-draft` in neutral,
+  merged with `git-merge` in done, closed with `git-pull-request-closed` in closed
+  (danger), and queued with `git-merge-queue` in attention.
+- **Checks.** A check run is a circle with a mark: `check-circle-fill` in success when
+  it passed, `x-circle-fill` in danger when it failed, a ringed dot in attention while
+  it runs, and an empty circle while it waits
+  ([the workflow graph](https://docs.github.com/en/actions/how-tos/monitor-workflows/use-the-visualization-graph));
+  a skipped run is `skip`, a slashed circle, and a cancelled one `stop`, both neutral
+  ([Octicons](https://primer.style/octicons/)), and a stale one `issue-reopened`
+  ([checks](https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks)).
+  The commit list and the pull request list draw a head’s rollup as a bare `check` in
+  success, `x` in danger, or `dot-fill` in attention
+  ([status checks](https://docs.github.com/en/pull-requests/reference/status-checks)).
+- **The merge box.** Each row leads with a filled circle: all checks passed, a check in
+  success, and review required, an `x` in danger
+  ([auto-merge](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/automatically-merging-a-pull-request));
+  conflicts
+  ([resolving a conflict](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/resolving-a-merge-conflict-on-github))
+  and an out-of-date branch
+  ([keeping a branch in sync](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/keeping-your-pull-request-in-sync-with-the-base-branch))
+  both an `alert` triangle in neutral gray; and queued, `git-merge-queue` in attention
+  with an attention ring
+  ([the merge queue](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/merging-a-pull-request-with-a-merge-queue)).
+  The merge button is success green when the pull request can merge.
+- **Reviews.** A reviewer who requested changes is a `file-diff` in danger
+  ([requesting a review](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/requesting-a-pull-request-review)),
+  and an approval a `check` in success.
+- **The command line.** `gh pr checks` marks a check passing, failing, pending, or
+  skipped and cancelled with a green `✓`, a red `X`, a yellow `*`, or a muted `-`, and
+  `gh pr status` prints review required, not up to date, and an unknown mergeability in
+  yellow
+  ([the readiness plan](project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md#how-github-classifies-each-state)).
+
+The drawings are Lucide’s, the app’s icon source
+([Icon Catalog](design-system-icons.md)), so where GitHub’s mark is an Octicon the
+vocabulary takes Lucide’s drawing of the same shape: `circle-check`, `circle-x`,
+`circle-slash`, `file-diff`, and the state glyphs.
+Lucide has no `git-merge-queue`, no filled circles, and no ringed dot that is not
+already the app’s mark for an issue (`circle-dot`); the rows below say what stands in
+for each.
+
+#### The Vocabulary
+
+`VERDICT_GLYPHS`, `MET_GLYPHS`, `REQUIREMENT_VERDICTS`, and `CHECK_GLYPHS` in
+`pull-readiness.js` hold the glyphs, `requirement_tone` in `pull_readiness.py` the
+tones, and `pullStateIcon` in `pull-state.js` the states’ glyphs.
+A requirement’s row draws the glyph of the verdict it heads at its status, and a check
+that passed, failed, or is pending draws the checks requirement’s glyph at met, unmet,
+or waiting, so each pair below is one meaning by construction.
+The full form is a chip unless the row says otherwise: the header’s chip, the Merge
+status section’s chip for its verdict, a requirement’s row, or a check’s row.
+The compact form is the glyph alone: a Pulls row’s readiness column, a stack member’s
+cell, and the header’s narrow form.
+The state’s badge is the one chip without its glyph, because the state’s glyph leads the
+title on the line above it, at the title’s size: the header draws the state’s glyph
+once, as GitHub’s header does in its state label, and a second copy in the badge would
+take another glyph and its gap from the ages in the row’s narrowest case, the 18 px the
+readiness chip’s glyph measured in Chrome ([Layout](#layout)).
+
+| Meaning | Verdict, requirement, or bucket | Label | Glyph | Tone | Full form | Compact form | GitHub | Departure |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Open | the `open` state | Open | Lucide `git-pull-request` | `--github-pull-open` | The state’s badge, after the title’s glyph | A Pulls row’s and a member’s state icon, the title’s glyph | `StateLabel` open | None |
+| Draft | the `draft` state | Draft | Lucide `git-pull-request-draft` | `--github-pull-draft` | As open | As open | `StateLabel` draft | None |
+| Merged | the `merged` state | Merged | Lucide `git-merge` | `--github-pull-merged` | As open | As open | `StateLabel` merged | None |
+| Closed | the `closed` state | Closed | Lucide `git-pull-request-closed` | `--github-pull-closed` | As open | As open | `StateLabel` closed | None |
+| Nothing blocks the merge | `ready`, `ready_for_review` | Ready to merge, Ready for review | Lucide `check-check` | success | Header and verdict chips | Yes | The merge button and badge, `git-merge` in success | Glyph: a circled check is a check’s, and `git-merge` is the merged state’s; every requirement checked off |
+| Merge conflicts | `conflicts`; conflicts unmet | Merge conflicts; Unmet | Lucide `git-merge-conflict` | severe | Header and verdict chips, its row | Yes | `alert` in neutral | Glyph: GitHub draws an out-of-date branch with the same triangle, and a triangle reads as a warning about checks. Color: severe, so a conflict never reads as failing checks |
+| No merge conflicts | conflicts met | Met | Lucide `merge` | success | Its row | No | A check in success | Glyph: a check is the checks’; the merge’s arrow, never the merged state’s glyph |
+| Checks failing | `checks_failing`; checks unmet; bucket `fail` | Checks failing; Unmet; the check’s own word | Lucide `circle-x` | danger | Header and verdict chips, its row, a check’s row | Yes | `x-circle-fill` in danger | None |
+| Checks pending | `checks_pending`; checks waiting; bucket `pending` | Checks pending; Waiting; the check’s own word | Lucide `clock` | attention | Header and verdict chips, its row, a check’s row | Yes | A ringed dot or `dot-fill` in attention | Glyph: Lucide’s ringed dot is an issue’s, and the clock keeps the circle |
+| Checks passed | checks met; bucket `pass` | Met; the check’s own word | Lucide `circle-check` | success | Its row, a check’s row | No | `check-circle-fill` in success | None |
+| Check skipped | bucket `skipping` | The check’s own word | Lucide `circle-slash` | neutral | A check’s row | No | `skip` in neutral | None |
+| Check cancelled | bucket `cancel` | The check’s own word | Lucide `circle-stop` | neutral | A check’s row | No | `stop`, an octagon, in neutral | Glyph: a circle, as every check’s mark is |
+| Changes requested | `changes_requested`; reviews unmet | Changes requested; Unmet | Lucide `file-diff` | danger | Header and verdict chips, its row | Yes | `file-diff` in danger | None |
+| Review required | `review_required`; reviews waiting | Review required; Waiting | Lucide `eye` | attention | Header and verdict chips, its row | Yes | The merge box’s `x` in danger; `gh`’s yellow | Glyph: a circled x is a failing check’s. Tone: `gh`’s and Primer’s attention, as nothing has failed |
+| Approved | reviews met | Met | Lucide `file-check` | success | Its row | No | A `check` in success | Glyph: a check is the checks’; the reviewed file, as changes requested is |
+| Merging blocked by a rule | `blocked`; rules unmet | Blocked; Unmet | Lucide `shield-ban` | danger | Header and verdict chips, its row | Yes | The merge box’s “Merging is blocked” | Glyph: a protection rule’s shield, since the slashed circle is a skipped check’s |
+| Queued | `queued`; queue waiting | Queued; Waiting | Lucide `list-ordered` | attention | Header and verdict chips, its row | Yes | `git-merge-queue` in attention | Glyph: Lucide has no merge queue; a numbered list |
+| Leaving the queue | `queue_failing`; queue unmet | Leaving queue; Unmet | Lucide `list-x` | danger | Header and verdict chips, its row | Yes | Removed from the queue | Glyph: its own, as leaving the queue is not waiting in it |
+| Not up to date | `behind`; up to date waiting | Not up to date; Waiting | Lucide `arrow-up-to-line` | attention | Header and verdict chips, its row | Yes | `alert` in neutral; `gh`’s yellow | Glyph: GitHub’s triangle is its conflicts’ too |
+| Not known yet | `checking`; any requirement unknown | Checking; Unknown | Lucide `circle-dashed` | attention | Header and verdict chips, its row | Yes | “Checking for ability to merge”; `gh`’s yellow | Glyph: an empty circle, not yet decided |
+
+Each tone is one ink, the same for a glyph and a chip:
+
+| Tone | Ink | Primer role | Its meanings |
+| --- | --- | --- | --- |
+| `success` | `--status-success-text` | success | Nothing blocks; a requirement met; a check passed |
+| `attention` | `--github-pull-attention` | attention | What waits: checks pending, a review, the queue, an update, an answer |
+| `severe` | `--status-warning-text` | severe | Merge conflicts |
+| `danger` | `--status-error-text` | danger | Checks failing, changes requested, a rule’s block, leaving the queue |
+| `neutral` | `--muted` | neutral | A check skipped or cancelled |
+
+- **Success and danger** are the shell’s status inks, which carry GitHub’s green and
+  red. The lifecycle’s `--github-pull-open` and `--github-pull-closed` stay the
+  lifecycle’s, since a color has one meaning.
+- **Attention** is a token of the plugin’s, Primer’s `fgColor-attention` in light with
+  its hue held in dark; GitHub shows what waits, and every unknown, in yellow.
+- **Severe is the shell’s warning ink.** Primer’s severe and the warning ink’s light
+  value are too close to be told apart, so a token of its own would be a second token
+  for one orange; a merge conflict is a high-priority warning, and a degraded result
+  ([Empty and Failed Loads](#empty-and-failed-loads-in-the-navigation-column)) a
+  warning. The comment beside the tone rules in the plugin’s `styles.css` has the
+  measurements: its contrast on each ground and its distance from danger and attention.
+- **Neutral** is the muted ink, as `gh pr checks` mutes a skipped or cancelled check.
+
+`tests/test_github_pull_readiness_js.py` runs the module over every verdict,
+requirement, status, tone, and bucket the server names, and holds that a chip’s glyph is
+its compact glyph, that no glyph means two things, and that its copies of the server’s
+vocabulary are the server’s.
+`test_a_requirements_tone_is_its_statuss_but_a_conflict_is_severe` and
+`test_a_verdict_always_comes_in_one_tone` in `tests/test_github_pull_readiness.py` hold
+the tones, and `test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn`
+that one rule for each tone colors every mark, that this table is the stylesheet’s, that
+each ink reads where it is drawn in both themes, and that the four readiness tones are
+`MIN_TONE_DISTANCE` apart.
+
 ### A Pull Request’s State
 
 Four states, each with the shape GitHub gives it and a color token in GitHub’s hue:
@@ -3849,79 +4004,33 @@ it and `metab` say the same.
 A closed or merged pull request has no readiness, since its state is the answer, and
 draws no mark.
 
-The browser draws it with one vocabulary, `VERDICT_GLYPHS` in
-`builtin_plugins/github/pull-readiness.js`, a glyph for each verdict and nothing more:
+The server decides each requirement’s tone too, its status’s, but severe for a merge
+conflict (`requirement_tone`), and a verdict’s tone is the tone of the requirement that
+heads it: the first, in `REQUIREMENT_ORDER`, at the worst status, success when none
+stands in the way. So a verdict always comes in one tone, and its mark draws one meaning
+in one color. The browser draws them in the
+[status vocabulary](#pull-request-status-vocabulary), a glyph for each verdict and each
+requirement, and holds no label and no tone of its own.
 
-| Verdict | Glyph |
-| --- | --- |
-| `ready` | Lucide `circle-check` |
-| `ready_for_review` | Lucide `circle-check` |
-| `conflicts` | Lucide `triangle-alert` |
-| `checks_failing` | Lucide `circle-x` |
-| `changes_requested` | Lucide `file-diff` |
-| `blocked` | Lucide `ban` |
-| `queue_failing` | Lucide `list-ordered` |
-| `queued` | Lucide `list-ordered` |
-| `checks_pending` | Lucide `clock` |
-| `review_required` | Lucide `eye` |
-| `behind` | Lucide `arrow-up-to-line` |
-| `checking` | Lucide `circle-dashed` |
+The module draws a readiness in two forms:
 
-Two verdicts share a glyph only where they mean one thing, and the label says which:
-`circle-check` that nothing blocks the pull request, Ready to merge or, on a draft,
-Ready for review, and `list-ordered` that it is in the merge queue
-([Icon Catalog](design-system-icons.md#git-and-github-objects)). The label and the tone
-come with each readiness, so the browser holds no label of its own and never infers a
-color from a verdict.
-`tests/test_github_pull_readiness_js.py` holds the vocabulary’s verdicts to the server’s
-`Verdict`, and `test_a_plugins_readiness_verdicts_draw_the_plugins_glyphs` holds this
-table to the vocabulary.
-
-The module draws it in two forms:
-
-- **The glyph**, `readinessIcon`, at the app’s one glyph size.
+- **The glyph**, `readinessIcon`, the compact form, at the app’s one glyph size.
   It is named by default, by the label, as a state icon is; beside text that says the
   label it is hidden (`named: false`), as it is on a row, whose words say the label
   after the state ([In the Pulls Tab and on Stacks](#in-the-pulls-tab-and-on-stacks)).
-- **The badge**, `readinessBadge`: the label in the outlined form of the state’s badge,
-  `file-header-badge github-pull-badge`, so a state and a readiness side by side read as
-  one vocabulary.
+- **The chip**, `readinessBadge`: the same glyph, then the label, in the outlined form
+  of the state’s badge, `file-header-badge github-pull-badge`, so a state and a
+  readiness side by side read as one vocabulary.
+  The glyph is hidden from assistive technology, and the chip is named by its label.
+  It is the app’s one glyph size, centered on the label’s capitals, the band the badge
+  centers in its box (`.github-pull-badge-glyph` in the plugin’s `styles.css`).
 
 Each carries `data-verdict`, for what reads the page, and `data-tone`, which alone sets
-its color.
-
-The tone is the worst status among the readiness’s requirements (`STATUS_TONES` in
-`pull_readiness.py`), and each tone takes one ink, the same for the glyph and the badge:
-
-| Tone | Ink |
-| --- | --- |
-| `success` | `--status-success-text`, the shell’s |
-| `attention` | `--github-pull-attention`, the plugin’s |
-| `danger` | `--status-error-text`, the shell’s |
-
-- **Success and danger** are the shell’s status inks, which carry GitHub’s green and
-  red, so a readiness and a check read in one color.
-  The lifecycle’s `--github-pull-open` and `--github-pull-closed` stay the lifecycle’s,
-  since a color has one meaning.
-- **Attention** has a token of its own.
-  The shell’s only warning ink, `--status-warning-text`, is orange and reserved for a
-  degraded or partial result
-  ([Empty and Failed Loads](#empty-and-failed-loads-in-the-navigation-column)), and
-  GitHub shows what waits, a pending check or a queued pull request, in yellow.
-  `--github-pull-attention` is Primer’s `fgColor-attention` in light, with its hue held
-  in dark; its comment in the plugin’s `styles.css` says where each value comes from.
-- **No verdict is neutral**: GitHub shows every unknown in yellow, so `checking` is
-  attention.
-
-`test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn` holds that no
-rule colors a readiness by its verdict, that the stylesheet’s inks are this table’s,
-that attention’s hue is outside the warning ink’s family, and that each ink reads at
-4.5:1 on `--bg` and `--sidebar-bg` in both themes.
-`test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the attention
-token’s hue across the themes.
+its color, through the one rule for each tone that colors every status mark
+(`.github-pull-tone`).
 
 Color is never the only signal: the glyph says what stands in the way, and the label,
-the badge’s text or the glyph’s accessible name, says the verdict.
+the chip’s text or the glyph’s accessible name, says the verdict.
 
 #### On the Pull Request Page
 
@@ -3935,41 +4044,43 @@ requests’ state instead, fresher than its record’s, as once the list has lea
 merge or a draft first, it draws no badge and no Merge status section until a read
 judges the state it shows.
 
-- **The header’s badge** follows the state’s badge in the row of ages: “[Open]
-  [Merge conflicts] Opened 3 days ago”.
-  It is the verdict’s badge, a link to the Checks tab, which the Merge status section
+- **The header’s chip** follows the state’s badge in the row of ages: “[Open]
+  [Merge conflicts] Opened 3 days ago”, the chip leading with the conflict’s glyph.
+  It is the verdict’s chip, a link to the Checks tab, which the Merge status section
   opens, and so a [clickable chip](#clickable-and-static-chips): the pointer, the chip’s
   hover ground, and no underline.
   Its accessible name adds auto-merge’s sentence while auto-merge is on, “Checks
   pending. Auto-merge enabled (squash).”, and its tooltip, also its accessible
   description, lists the requirements that are not met, which the badge abbreviates.
-  Its slot is a grid as wide as the widest label the server gives a verdict, by a hidden
-  sizer of each (`SLOT_LABELS` and `readinessSizers` in `pull-readiness.js`), as the
-  state’s slot is the widest state’s, so a verdict that changes as checks finish moves
-  nothing in the row. The sizers are the module’s one copy of the server’s labels, and
+  Its slot is a grid as wide as the widest chip, a glyph’s box and the widest label the
+  server gives a verdict, by a hidden sizer of each (`SLOT_LABELS` and `readinessSizers`
+  in `pull-readiness.js`), as the state’s slot is the widest state’s, so a verdict that
+  changes as checks finish moves nothing in the row.
+  The sizers are the module’s one copy of the server’s labels, and
   `tests/test_github_pull_readiness_js.py` holds it to `LABELS` in `pull_readiness.py`;
   the badge always says the label its readiness came with.
   Its comment in the plugin’s `styles.css` records what the slot measured in Chrome and
   that Browse code stays whole at the row’s limits.
-- **In a narrow row** the badge gives way to the verdict’s glyph alone (`readinessIcon`,
-  in the tone’s ink), and the slot is the glyph’s width.
-  The link, its accessible name, and its tooltip are the badge’s, and the glyph is
-  hidden from assistive technology, so the two forms say the same.
+- **In a narrow row** the chip gives way to its glyph alone, the compact form
+  (`readinessIcon`, in the tone’s ink), and the slot is the glyph’s width.
+  The link, its accessible name, and its tooltip are the chip’s, and the glyph is hidden
+  from assistive technology, so the two forms say the same.
   A container query on the row of ages (`@container github-pull-opened` in the plugin’s
-  `styles.css`) draws the full badge only where it leaves the ages what they had at the
-  row’s 420 px limit before the badge came; the comment beside the rule records the
-  bound and its measurement.
+  `styles.css`) draws the full chip only where it leaves the ages what they had at the
+  row’s 420 px limit before the chip came; the comment beside the rule records the bound
+  and its measurement.
   `tests/dom/github-pull-header-chrome.mjs` (its `readiness` part) holds each form to
   its side of the bound, the ages at 420 px to what they had less the glyph and its gap,
   and every verdict’s glyph and label in either form to a row that does not move.
-- **The Merge status section** opens the Checks tab: the verdict’s badge and the
-  sentence of the requirement that heads it, the first at the worst status, then a row
-  for each requirement and one for auto-merge while it is on.
-  A row is its status’s badge, the server’s word for the status with a capital, in the
-  outlined form of a check’s, in the ink of the tone its status gives a verdict
-  (`STATUS_TONES` in `pull-readiness.js`, held to the server’s), then the server’s
-  sentence and its link.
-  The badges sit in a column as wide as the widest, so the sentences line up.
+- **The Merge status section** opens the Checks tab: the verdict’s chip and the sentence
+  of the requirement that heads it, the first at the worst status, then a row for each
+  requirement and one for auto-merge while it is on.
+  A row is its requirement’s chip (`requirementBadge` in `pull-readiness.js`): the glyph
+  of the verdict it heads at its status, or its met glyph, then the server’s word for
+  the status with a capital, in the outlined form of a check’s, in the tone the server
+  gave the requirement; then the server’s sentence and its link.
+  So the requirement that heads the verdict draws the header chip’s glyph, in its tone.
+  The chips sit in a column as wide as the widest, so the sentences line up.
   A met requirement links nowhere.
   Checks links to the first failing or running check in the list below, by its place in
   the list, since two checks can share a name, which it brings into view and focuses;

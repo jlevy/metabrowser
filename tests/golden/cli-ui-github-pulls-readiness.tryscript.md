@@ -150,7 +150,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "ready (success): Ready to merge",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -172,7 +172,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "ready (success): Ready to merge",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -189,7 +189,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "ready (success): Ready to merge",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -206,7 +206,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -229,7 +229,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -251,7 +251,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -273,7 +273,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -290,7 +290,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -369,7 +369,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -391,7 +391,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -408,7 +408,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -431,7 +431,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -448,7 +448,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "none",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -471,7 +471,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready_for_review (success): Ready for review",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -813,7 +813,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "name": "Open Ready to merge Work item 105 #105 · contributor · 1m"
         },
         "#10": {
-          "glyph": "conflicts (danger)",
+          "glyph": "conflicts (severe)",
           "label": "Merge conflicts",
           "hidden": true,
           "words": "Merge conflicts",
@@ -894,7 +894,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "name": "Open Work item 105 #105 · contributor · 1m"
         },
         "#10": {
-          "glyph": "conflicts (danger)",
+          "glyph": "conflicts (severe)",
           "label": "Merge conflicts",
           "hidden": true,
           "words": "Merge conflicts",
@@ -980,7 +980,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "name": "Open Work item 105 #105 · contributor · 1m"
         },
         "#10": {
-          "glyph": "conflicts (danger)",
+          "glyph": "conflicts (severe)",
           "label": "Merge conflicts",
           "hidden": true,
           "words": "Merge conflicts",
@@ -1267,7 +1267,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
       "9": null,
       "10": {
         "verdict": "conflicts",
-        "tone": "danger",
+        "tone": "severe",
         "label": "Merge conflicts"
       },
       "105": {

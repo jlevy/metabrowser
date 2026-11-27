@@ -27,6 +27,7 @@ from metabrowser.builtin_plugins.github.pull_readiness import (
     STATUS_TONES,
     DisplayState,
     Readiness,
+    Tone,
     Verdict,
     checks_sentence,
     readiness,
@@ -248,9 +249,12 @@ def _holds_githubs_verdict(status: PullStatus, judged: Readiness) -> None:
     if status.merge_state in _MERGES_NOW:
         assert judged.verdict != "blocked" and "rules" not in rows, status
         assert rows["conflicts"] == "met", status
-    # One whose merge commit cannot be made always shows its conflicts, in red.
+    # One whose merge commit cannot be made always shows its conflicts, severe, and its
+    # verdict says so in orange unless leaving the queue, which comes first, says it in red.
     if status.merge_state == "dirty" or status.conflicts == "conflicting":
-        assert rows["conflicts"] == "unmet" and judged.tone == "danger", status
+        conflicts = next(row for row in judged.requirements if row.kind == "conflicts")
+        assert (conflicts.status, conflicts.tone) == ("unmet", "severe"), status
+        assert judged.tone == ("danger" if judged.verdict == "queue_failing" else "severe"), status
     # A block no required check explains is a review's or a rule's, and says which.
     known_clear = (status.checks.required_failing, status.checks.required_pending) == (0, 0)
     if status.merge_state == "blocked" and status.queue is None and known_clear:
@@ -355,22 +359,53 @@ def test_a_status_of_another_head_or_base_or_none_is_never_shown_as_current() ->
         assert (judged.verdict, judged.requirements, judged.observed_at) == ("checking", (), None)
 
 
-def test_the_tone_is_the_worst_requirement_and_the_headline_is_first_at_it() -> None:
+def test_the_headline_is_first_at_the_worst_status_and_the_tone_is_its() -> None:
     for status in STATUSES:
         judged = _judged(status)
         ranks = [STATUS_ORDER.index(row.status) for row in judged.requirements]
         worst = STATUS_ORDER[min(ranks)]
-        assert judged.tone == STATUS_TONES[worst]
         kinds = [row.kind for row in judged.requirements]
         assert kinds == sorted(kinds, key=REQUIREMENT_ORDER.index)
         at_worst = [row for row in judged.requirements if row.status == worst]
         if worst == "met":
             assert judged.verdict in ("ready", "ready_for_review")
+            assert judged.tone == "success"
         elif worst == "unknown":
             assert judged.verdict == "checking"
         else:
             assert judged.verdict != "checking"
             assert at_worst[0].kind == _headline_kind(judged.verdict)
+        if worst != "met":
+            assert judged.tone == at_worst[0].tone, "a verdict is in its headline's tone"
+
+
+def test_a_requirements_tone_is_its_statuss_but_a_conflict_is_severe() -> None:
+    """Each row takes the role GitHub gives its status, and only a merge conflict, unmet, is
+    severe: orange, never the red of a check that fails (docs/design-system.md, "Pull Request
+    Status Vocabulary")."""
+
+    seen: set[tuple[str, str, Tone]] = set()
+    for status in STATUSES:
+        for row in _judged(status).requirements:
+            seen.add((row.kind, row.status, row.tone))
+            severe = (row.kind, row.status) == ("conflicts", "unmet")
+            assert row.tone == ("severe" if severe else STATUS_TONES[row.status]), row
+    assert ("conflicts", "unmet", "severe") in seen and ("checks", "unmet", "danger") in seen
+    assert set(get_args(Tone.__value__)) == {tone for _kind, _status, tone in seen}, (
+        "every tone is one some requirement takes"
+    )
+
+
+def test_a_verdict_always_comes_in_one_tone() -> None:
+    """A verdict names one meaning, and its mark draws that meaning in one color wherever it
+    stands, so a verdict never comes with two tones."""
+
+    tones: dict[Verdict, set[Tone]] = {}
+    for status in STATUSES:
+        for state in ("open", "draft"):
+            judged = _judged(status, state)
+            tones.setdefault(judged.verdict, set()).add(judged.tone)
+    assert {verdict: len(found) for verdict, found in tones.items()} == dict.fromkeys(tones, 1)
 
 
 def _headline_kind(verdict: Verdict) -> str:
@@ -391,10 +426,10 @@ def _headline_kind(verdict: Verdict) -> str:
     raise AssertionError(verdict)
 
 
-def test_a_red_verdict_always_names_something_the_author_must_change() -> None:
+def test_a_red_or_orange_verdict_always_names_something_the_author_must_change() -> None:
     for status in STATUSES:
         judged = _judged(status)
-        if judged.tone == "danger":
+        if judged.tone in ("danger", "severe"):
             assert any(row.status == "unmet" for row in judged.requirements)
 
 

@@ -60,13 +60,15 @@ import {
   guideReads,
 } from "./guide-reads.js";
 import {
+  checkBadge,
   readinessBadge,
   readinessForState,
   readinessIcon,
   readinessSizers,
   requirementBadge,
-  STATUS_TONES,
+  STATUS_ORDER,
   statusWord,
+  TONES,
 } from "./pull-readiness.js";
 import {
   createStackIndex,
@@ -552,7 +554,8 @@ const TRUNCATED = Object.freeze({
  * The server's verdict on a pull request's head and the requirements behind it
  * (`Readiness` in pull_readiness.py).
  *
- * @typedef {{kind: string, status: string, summary: string, github_url?: string | null}} PullRequirement
+ * @typedef {{kind: string, status: string, summary: string, github_url?: string | null,
+ *   tone?: string}} PullRequirement
  * @typedef {{verdict: string, tone: string, label: string, head: string,
  *   observed_at?: string | null, requirements?: PullRequirement[],
  *   auto_merge_summary?: string | null}} PullReadiness
@@ -575,8 +578,8 @@ const TRUNCATED = Object.freeze({
  * sentence, a row for each requirement, and auto-merge's. Everything said is the server's
  * (`Readiness` in pull_readiness.py); the page decides only where each row links.
  *
- * @typedef {{kind: string, status: string, tone: string, word: string, summary: string,
- *   link: RequirementLink | null}} RequirementRow
+ * @typedef {{kind: string, status: string, tone: import("./pull-readiness.js").ReadinessTone,
+ *   word: string, summary: string, link: RequirementLink | null}} RequirementRow
  * @typedef {{verdict: import("./pull-readiness.js").ReadinessVerdict,
  *   tone: import("./pull-readiness.js").ReadinessTone, label: string, name: string,
  *   tip: string | null, sentence: string | null, rows: RequirementRow[],
@@ -636,8 +639,8 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
- * One row of the Checks tab. `bucket` is the server's, and the badge's ink
- * (`data-state`, github/styles.css); `label` is the check's own state in words.
+ * One row of the Checks tab. `bucket` is the server's, and gives the badge its glyph and its
+ * tone (`checkBadge` in pull-readiness.js); `label` is the check's own state in words.
  *
  * @typedef {{name: string, detail: string | null, bucket: string, label: string,
  *   required: boolean, action: CheckAction | null}} CheckItem
@@ -1507,11 +1510,12 @@ function requirementLink(requirement, shownChecks, shownTimeline, base) {
  *   sentence while it is on, and its tooltip (`tip`) the requirements that are not met,
  *   which the badge abbreviates.
  * - The Merge status section's sentence is the requirement that heads the verdict: the first,
- *   in the server's order, at the worst status among them (`STATUS_TONES`' order, the
- *   server's `STATUS_ORDER`), as the server chose the verdict by. A verdict no requirement
- *   stands in the way of has none, and its badge says it all.
- * - Each requirement's row is its status's word in the tone its status gives a verdict, the
- *   server's sentence, and its link (`requirementLink`).
+ *   in the server's order, at the worst status among them (`STATUS_ORDER`, the server's), as
+ *   the server chose the verdict by. A verdict no requirement stands in the way of has none,
+ *   and its badge says it all.
+ * - Each requirement's row is its chip, the glyph of the verdict it heads and its status's
+ *   word in the tone the server gave it, then the server's sentence and its link
+ *   (`requirementLink`). A row with a status or a tone this build does not draw is left out.
  *
  * @param {PullReadiness | null | undefined} readiness
  * @param {PullModel["checks"]} shownChecks
@@ -1527,22 +1531,30 @@ export function readinessModel(readiness, shownChecks, shownTimeline, base) {
   const autoMerge = text(readiness.auto_merge_summary) || null;
   /** @type {RequirementRow[]} */
   const rows = list(readiness.requirements)
-    .filter((requirement) => Object.hasOwn(STATUS_TONES, text(requirement?.status)))
+    .filter(
+      (requirement) =>
+        STATUS_ORDER.includes(
+          /** @type {import("./pull-readiness.js").RequirementStatus} */ (
+            text(requirement?.status)
+          ),
+        ) &&
+        TONES.includes(
+          /** @type {import("./pull-readiness.js").ReadinessTone} */ (text(requirement?.tone)),
+        ),
+    )
     .map((requirement) => {
-      const status = /** @type {keyof typeof STATUS_TONES} */ (text(requirement.status));
+      const status = text(requirement.status);
       return {
         kind: text(requirement.kind),
         status,
-        tone: STATUS_TONES[status],
+        tone: /** @type {import("./pull-readiness.js").ReadinessTone} */ (text(requirement.tone)),
         word: statusWord(status),
         summary: text(requirement.summary),
         link: requirementLink(requirement, shownChecks, shownTimeline, base),
       };
     });
   const unmet = rows.filter((row) => row.status !== "met");
-  const worst = Object.keys(STATUS_TONES).find((status) =>
-    unmet.some((row) => row.status === status),
-  );
+  const worst = STATUS_ORDER.find((status) => unmet.some((row) => row.status === status));
   return {
     // The server's, as it named them: the page draws a verdict and a tone it was given.
     verdict: /** @type {ReadinessModel["verdict"]} */ (text(readiness.verdict)),
@@ -4808,7 +4820,8 @@ export function showNote(meta, text, { sized, after }) {
  * A state's badge, as a pull request's header leads its row of ages with it: *label* in the
  * state's ink and edge (`data-state`, github/styles.css), its first letter a capital. A
  * pull request's says its state, "Merged", and a stack's tally one state's members, "2 Pulls
- * Merged". *kind* is another badge's, a review's or a check's.
+ * Merged". *kind* is another badge's, a review's. A check's is a status chip (`checkBadge` in
+ * pull-readiness.js).
  *
  * @param {string} state
  * @param {string} label
@@ -7935,7 +7948,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       checkRows = summary.items.map((item) =>
         h("li", {}, [
-          stateBadge(item.bucket, item.label, "check"),
+          checkBadge(item),
           " ",
           h("span", {}, [item.name]),
           // A rule on the base branch requires it: the compact outlined tag, muted, after the
@@ -7970,8 +7983,9 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * The Checks tab's Merge status section, which opens it (docs/design-system.md, "On the
-   * Pull Request Page"): the verdict's badge and its sentence, then a row for each requirement, its
-   * status's badge, the server's sentence, and its link, and auto-merge's row while it is on.
+   * Pull Request Page"): the verdict's chip and its sentence, then a row for each requirement, its
+   * chip (`requirementBadge`), the server's sentence, and its link, and auto-merge's row while
+   * it is on.
    *
    * @param {PullModel} model
    * @param {ReadinessModel} readiness
@@ -7983,7 +7997,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const row of readiness.rows) {
       rows.append(
         h("li", { "data-kind": row.kind }, [
-          requirementBadge(row.status),
+          requirementBadge(row),
           // The sentence and its link share the row's second column, the link after the
           // sentence on its line, as a check's action follows its name.
           h("span", { class: "github-pull-requirement-said" }, [
