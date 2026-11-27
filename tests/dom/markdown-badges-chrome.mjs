@@ -29,7 +29,8 @@
 //   is its chip in the same link, the unlinked ones in a link to their image, and the
 //   policy is the narrow one, which the browser enforces: a console probe of an image
 //   from the web is refused, and hovering a chip shows its image's address in the app's
-//   tooltip; unticked again, the images, the diagram's too, are back.
+//   one tooltip, its link's card ("Image from" the address); unticked again, the images,
+//   the diagram's too, are back.
 //
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
 // `markdown badges in Chrome: <n> checks passed`, or the failures and exits 1.
@@ -464,12 +465,16 @@ try {
         y: box.top + box.height / 2,
       });
       await settle(
-        `document.querySelector(".custom-tooltip")?.classList.contains("visible") && document.querySelector(".custom-tooltip").textContent === "${IMAGES[at]}"`,
+        `document.querySelector(".custom-tooltip")?.classList.contains("visible") && document.querySelector(".custom-tooltip").textContent.includes("Image from ${IMAGES[at]}")`,
       ).catch(() => {});
+      // The chip is inside a link, whose card is the one tooltip and names the image's
+      // address (docs/design-system.md, Tooltips on Links).
       check(
         `blocked hovering the chip of ${blocked.badges[at].text} shows its image's address`,
-        (await page.evaluate(`document.querySelector(".custom-tooltip")?.textContent ?? null`)) ===
-          IMAGES[at],
+        (
+          (await page.evaluate(`document.querySelector(".custom-tooltip")?.textContent ?? ""`)) ??
+          ""
+        ).includes(`Image from ${IMAGES[at]}`),
         await page.evaluate(`document.querySelector(".custom-tooltip")?.textContent ?? null`),
       );
     }

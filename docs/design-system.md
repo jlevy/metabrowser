@@ -1492,8 +1492,11 @@ every image from the web with that box ticked, is its alt text in a small chip:
 `--radius-tag` corners, an image mark before the text
 ([Icon Catalog](design-system-icons.md#ui-chrome-and-actions)), and the address the
 image would have loaded in its tooltip (`data-tip-text`, as every tooltip is).
-The chip is the content of the link the image was in, so a badge keeps its destination,
-and an image that was in no link is in a link to the image, in the same chip.
+Inside a link with a card, as every link in rendered text has, that address is in the
+link’s card, “Image from” it, and the chip has no tooltip of its own, so the reader sees
+one ([Tooltips on Links](#tooltips-on-links)). The chip is the content of the link the
+image was in, so a badge keeps its destination, and an image that was in no link is in a
+link to the image, in the same chip.
 It is a badge’s height, so a row of chips lies on one line as a row of badges does, and
 it never wraps its text: one wider than its line is cut with an ellipsis, and the
 tooltip has the rest.
