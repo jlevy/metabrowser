@@ -22,6 +22,16 @@ moving between controls still puts it away.
 A key or press of the reader’s after that removal ends the repair, so the focus it gives
 moves, and a repair still puts away a tooltip whose own anchor the rebuild removed.
 
+A pointer that moved straight from one link’s card to the next, within the card’s fade,
+used to bring the first card back and keep it up while the pointer rested on the second,
+and so did moving from one `data-tip-text` element to the next and onto a child of it.
+Now the next element’s tooltip appears at its own place, with the newest markup it was
+given. A show again while the tooltip still waits takes the newer markup and keeps the
+first show’s time, where it used to start the 300 ms over; a show again once it is up
+changes nothing. Coming back onto the first element before the second’s delay ends keeps
+the first one’s tooltip, which its own surface’s hide still puts away, and leaving
+during a delay and coming back starts the delay again.
+
 ```console
 $ node tests/dom/tooltip-anchor-session.js
 {
@@ -224,6 +234,126 @@ $ node tests/dom/tooltip-anchor-session.js
       "visible": false,
       "left": "",
       "top": ""
+    }
+  },
+  "straight to the next link within the fade shows the next card": {
+    "first": {
+      "html": "<b>#1</b> Title of 1",
+      "display": "block",
+      "visible": true,
+      "left": "70px",
+      "top": "126px"
+    },
+    "waiting": {
+      "html": "<b>#1</b> Title of 1",
+      "display": "block",
+      "visible": false,
+      "left": "70px",
+      "top": "126px"
+    },
+    "second": {
+      "html": "<b>#2</b> Title of 2",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
+    },
+    "resting": {
+      "html": "<b>#2</b> Title of 2",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
+    }
+  },
+  "from X to Y and onto Y's child shows Y's tip": {
+    "atX": {
+      "html": "Tip of X",
+      "display": "block",
+      "visible": true,
+      "left": "70px",
+      "top": "126px"
+    },
+    "atChild": {
+      "html": "Tip of X",
+      "display": "block",
+      "visible": false,
+      "left": "70px",
+      "top": "126px"
+    },
+    "atY": {
+      "html": "Tip of Y",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
+    },
+    "resting": {
+      "html": "Tip of Y",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
+    }
+  },
+  "a show again while waiting keeps the first show's time": {
+    "before": {
+      "html": "",
+      "display": "",
+      "visible": false,
+      "left": "",
+      "top": ""
+    },
+    "onTime": {
+      "html": "<b>#12</b> Keep the tail",
+      "display": "block",
+      "visible": true,
+      "left": "70px",
+      "top": "126px"
+    },
+    "later": {
+      "html": "<b>#12</b> Keep the tail",
+      "display": "block",
+      "visible": true,
+      "left": "70px",
+      "top": "126px"
+    }
+  },
+  "back onto the first within the second's delay keeps the first": {
+    "back": {
+      "html": "<b>#1</b>",
+      "display": "block",
+      "visible": true,
+      "left": "70px",
+      "top": "126px"
+    },
+    "resting": {
+      "html": "<b>#1</b>",
+      "display": "block",
+      "visible": true,
+      "left": "70px",
+      "top": "126px"
+    },
+    "putAway": {
+      "html": "<b>#1</b>",
+      "display": "none",
+      "visible": false,
+      "left": "70px",
+      "top": "126px"
+    },
+    "again": {
+      "html": "<b>#1</b>",
+      "display": "none",
+      "visible": false,
+      "left": "70px",
+      "top": "126px"
+    },
+    "afterDelay": {
+      "html": "<b>#2</b>",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
     }
   }
 }

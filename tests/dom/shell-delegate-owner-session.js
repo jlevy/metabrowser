@@ -49,6 +49,7 @@ const LIFTED = [
   "isOwnedControl",
   "isPageElement",
   "pathBaseName",
+  "servedRootName",
   "tipTextAnchor",
   "onHeaderNavigationClick",
 ];
@@ -62,7 +63,7 @@ function notDrawnHere() {
 var viewHeader = MetabrowserViewHeader.create({
   esc,
   servedRoot,
-  pathBaseName,
+  servedRootName,
   ownedControlAttr,
   mirrorHeading,
   getFileIcon: notDrawnHere,

@@ -189,6 +189,11 @@ const MEASURE = `async (arrangement, width, theme) => {
       whenIdle: mb.whenIdle,
       ensureKindAssets: async () => {},
       decorateExternalLink: mb.decorateExternalLink,
+      // The link card's SDK methods, which the page calls as it draws, replaces, and puts
+      // away its texts (static/plugin-sdk-views.js).
+      previewLink: mb.previewLink,
+      forgetPreview: mb.forgetPreview,
+      disposePreviews: mb.disposePreviews,
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,

@@ -2,7 +2,7 @@
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { createSdkSandbox } = require("./sdk-sandbox.js");
+const { createSdkSandbox, linkCardRegistration } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const markdownRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
@@ -317,6 +317,33 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
+  // The SDK, through which each link the document opens here has its link card
+  // (`metabrowser.previewLink`, static/plugin-sdk-views.js), on a page with no resolver: a
+  // stand-in that records each card, by its link, with its root and target, and the SDK's
+  // own hand-over of a link's titles to its card, given back as the card ends.
+  const linkCards = new Map();
+  const disposedRoots = [];
+  const { takeAuthorTitles, giveAuthorTitlesBack } = linkCardRegistration();
+  const cardRegistration = {
+    previewLink(root, anchor, target) {
+      linkCards.set(anchor, { root, target });
+      return true;
+    },
+    takeAuthorTitles,
+    forgetPreview(anchor) {
+      linkCards.delete(anchor);
+      giveAuthorTitlesBack(anchor);
+    },
+    disposePreviews(root) {
+      disposedRoots.push(root);
+      for (const [anchor, entry] of linkCards) {
+        if (entry.root === root) {
+          linkCards.delete(anchor);
+          giveAuthorTitlesBack(anchor);
+        }
+      }
+    },
+  };
 
   /** Mount the document, with the plugin's load answered by *load*. */
   async function mount(load) {
@@ -347,7 +374,11 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
             return load();
           },
         },
+        // A plain folder's page, with no GitHub identity, which `loadRepositoryLinks`
+        // answers with no resolver (plugin-sdk-views.js): its links have their cards still.
         repository: null,
+        loadRepositoryLinks: async () => null,
+        ...cardRegistration,
       },
     );
     await handle.ready;
@@ -432,10 +463,23 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
   const slots = drawn.container.elements.filter(
     (element) => element.getAttribute("class") === "metabrowser-pdf-embed",
   );
+  // Each link the document opens here has its card, registered with the rendered root: a
+  // link to the PDF by its path, a wiki link, and each slot's link to the PDF's view.
+  const linksDrawn = walk(drawn.container).filter((node) => node.tagName === "A");
+  const cardsShown = linksDrawn.map((link) => {
+    const entry = linkCards.get(link);
+    if (entry === undefined) {
+      return `${reads(link)}: none`;
+    }
+    const { root, target } = entry;
+    const rooted = root === drawn.container ? "" : ", not the rendered root's";
+    return `${reads(link)}: ${target.kind} ${target.localization} ${target.target.path}${rooted}`;
+  });
   drawn.handle.dispose();
   const disposal = {
     cardsLeft: slots.filter((slot) => slot.elements.length > 0).length,
     slots: slots.length,
+    linkCardsLeft: linksDrawn.filter((link) => linkCards.has(link)).length,
   };
 
   // A document replaced before the plugin answers mounts no card, and asks for no preview.
@@ -473,6 +517,7 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
     pluginLoads: { calls: drawn.loads.length, names: [...new Set(drawn.loads)] },
     previewsAsked: previews.slice(0, askedBeforeDispose),
     print: printLoading,
+    linkCards: cardsShown,
     disposal,
     replacedBeforeLoad,
     withoutPlugin,
@@ -483,6 +528,8 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
     viewers.length !== 0 ||
     pdfAddresses.length !== 0 ||
     disposal.cardsLeft !== 0 ||
+    disposal.linkCardsLeft !== 0 ||
+    !disposedRoots.includes(drawn.container) ||
     replacedBeforeLoad.asked !== 0 ||
     !plainClickOpens ||
     modifiedClickOpens
@@ -746,6 +793,7 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
         },
       },
       repository: null,
+      ...linkCardRegistration(),
     },
   );
   await rootMount.ready;

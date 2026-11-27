@@ -200,6 +200,8 @@
    * @property {Promise<unknown> | undefined} comparison
    * @property {AbortController | null} controller
    * @property {boolean} speculative
+   * @property {boolean} settled Its detail, assets, and comparison have each settled, so
+   *   replacing it aborts no request (`prefetchCommit`).
    */
   /** @type {RevisionPreparation | null} */
   let preparationSlot = null;
@@ -1242,6 +1244,84 @@
     }
   }
 
+  // ── A commit as another surface names it ───────────────────
+  //
+  // A link to a commit elsewhere on the page, in a rendered document or a pull request's
+  // text, shows a card of the commit when the pointer rests on it
+  // (static/link-preview-providers.js). The card reads the commit here, from the panel's own
+  // detail cache and missing set, so a rest on the link, a hover on the commit's row, and a
+  // click on either share one request, and a commit the repository lacks is asked for once.
+
+  /** What `commitSummary` answers for a commit the server said the repository lacks. */
+  const MISSING_COMMIT = Object.freeze({
+    subject: null,
+    author: null,
+    committedAt: null,
+    missing: true,
+  });
+
+  /**
+   * A commit's subject, author, and commit time, or that the repository lacks it.
+   *
+   * It answers from the detail cache, from a read already on its way, or with one
+   * `GET /api/git/commit/<id>`, which the panel then keeps for the commit's row and page. A
+   * kept detail from an earlier history session serves too: only its refs can have moved,
+   * and the summary names none. A commit the server answered `commit_not_found` for answers
+   * missing with no request, until the panel's Refresh or a fetch clears that answer. Only a
+   * full commit ID is read, as it names the same commit later; any other revision, a read
+   * that fails, and a root that is not a repository answer null, and a read that fails is
+   * read again the next time. Nothing here fetches from origin: offering that is a commit
+   * page's (`openMissingCommit`), never a card's.
+   *
+   * @param {string} revision
+   * @returns {Promise<MetabrowserGitCommitSummary | null>}
+   */
+  async function commitSummary(revision) {
+    const kept = keptCommitSummary(revision);
+    if (kept !== null || !FULL_COMMIT_ID.test(revision)) {
+      return kept;
+    }
+    const detail = await fetchCommitDetail(revision);
+    if (detail === null) {
+      return missingRevisions.has(revision) ? MISSING_COMMIT : null;
+    }
+    return summaryOf(detail);
+  }
+
+  /**
+   * What `commitSummary` answers for *revision* from what the panel holds now, with no read:
+   * its kept detail, or that the server said the repository lacks it, and null otherwise.
+   * A card shows it as the pointer arrives (static/link-preview-providers.js), so what the
+   * panel keeps, and clears, is what the card says.
+   *
+   * @param {string} revision
+   * @returns {MetabrowserGitCommitSummary | null}
+   */
+  function keptCommitSummary(revision) {
+    if (!FULL_COMMIT_ID.test(revision)) {
+      return null;
+    }
+    if (missingRevisions.has(revision)) {
+      return MISSING_COMMIT;
+    }
+    const detail = detailCache.get(revision);
+    return detail === undefined ? null : summaryOf(detail);
+  }
+
+  /**
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {MetabrowserGitCommitSummary}
+   */
+  function summaryOf(detail) {
+    const { subject, author, committed_at: committedAt } = detail.commit;
+    return {
+      subject,
+      author: author?.name || null,
+      committedAt: Number.isFinite(committedAt) && committedAt > 0 ? committedAt : null,
+      missing: false,
+    };
+  }
+
   // ── Commit bodies as Markdown ──────────────────────────────
 
   /**
@@ -1575,14 +1655,53 @@
   }
 
   /**
+   * The commit bodies whose links have link cards (`linkCommitProse`), until their page goes.
+   *
+   * @type {Set<Element>}
+   */
+  const linkedBodies = new Set();
+
+  /**
+   * Put away the link cards of every commit body but those in *keep*, and the one up on any
+   * of their links, as the page that shows them goes: to another commit's, which is *keep*,
+   * or to another owner of the pane.
+   *
+   * @param {Element | null} [keep]
+   */
+  function unlinkCommitBodies(keep = null) {
+    for (const article of linkedBodies) {
+      if (keep === null || !keep.contains(article)) {
+        sdk()?.disposePreviews(article);
+        linkedBodies.delete(article);
+      }
+    }
+  }
+
+  /**
+   * Make *article*'s links open what *links* says they open, give each its link card,
+   * registered with the article, which its page puts away with it (`unlinkCommitBodies`),
+   * and mark each outside link. Without a resolver, as on a repository with no GitHub
+   * identity, every link is the one the message wrote, and each to another site has the
+   * card that says where it goes; one into the repository on github.com is such a link.
+   *
    * @param {Element} article
    * @param {MetabrowserRepositoryLinksRuntime | null} links
    * @param {boolean} views
    */
   function linkCommitProse(article, links, views) {
     const pluginSdk = sdk();
+    if (pluginSdk && links) {
+      links.enhance(article, pluginSdk, { views });
+    } else if (pluginSdk) {
+      for (const anchor of article.querySelectorAll("a[href]")) {
+        pluginSdk.previewLink(article, anchor, {
+          kind: "external",
+          url: anchor.getAttribute("href") ?? "",
+        });
+      }
+    }
     if (pluginSdk) {
-      links?.enhance(article, pluginSdk, { views });
+      linkedBodies.add(article);
     }
     for (const anchor of article.querySelectorAll("a[href]")) {
       if (anchor instanceof HTMLElement) {
@@ -1776,15 +1895,31 @@
         void fetchCommitBody(revision, speculative);
       }
     });
-    preparationSlot = {
+    /** @type {RevisionPreparation} */
+    const preparation = {
       revision,
       detail,
       assets: diff.assets,
       comparison: diff.comparison,
       controller,
       speculative,
+      settled: false,
     };
-    return preparationSlot;
+    void preparationSettled(preparation).then(() => {
+      preparation.settled = true;
+    });
+    preparationSlot = preparation;
+    return preparation;
+  }
+
+  /**
+   * When each of *preparation*'s reads has settled, whether answered, failed, or aborted.
+   *
+   * @param {RevisionPreparation} preparation
+   * @returns {Promise<void>}
+   */
+  async function preparationSettled(preparation) {
+    await Promise.allSettled([preparation.detail, preparation.assets, preparation.comparison]);
   }
 
   /** @param {RevisionPreparation | null} preparation */
@@ -1806,6 +1941,37 @@
     }
     abortPreparation(preparationSlot);
     preparationSlot = null;
+  }
+
+  /**
+   * Prepare *revision* as a rest on its row does, `prepareRevision(…, true)`: its detail,
+   * the diff plugin's assets, its first-parent comparison, and its body's Markdown when it
+   * has one, so the commit's page shows them at once. For a rest on a link to the commit
+   * elsewhere on the page (static/link-preview-providers.js).
+   *
+   * It reads the detail first, as `commitSummary` does and sharing that read, and prepares
+   * nothing more for a commit the repository lacks: a link to one asks for its detail once
+   * and never for its comparison. It leaves the slot to work still on its way, a selected
+   * commit's or another hover's, so a rest on a link aborts no request; the panel's own hover
+   * and selection replace what it prepared as they replace any speculative preparation.
+   * Settles once the preparation has, or at once when there is nothing to prepare.
+   *
+   * @param {string} revision
+   * @returns {Promise<void>}
+   */
+  async function prefetchCommit(revision) {
+    if (!FULL_COMMIT_ID.test(revision) || missingRevisions.has(revision)) {
+      return;
+    }
+    const detail = await fetchCommitDetail(revision);
+    const slot = preparationSlot;
+    if (detail === null || (slot !== null && slot.revision !== revision && !slot.settled)) {
+      return;
+    }
+    const preparation = prepareRevision(revision, true);
+    if (preparation !== null) {
+      await preparationSettled(preparation);
+    }
   }
 
   // ── Panel rendering ────────────────────────────────────────
@@ -2768,6 +2934,7 @@
     const relinquished = commitDiffHandle;
     commitDiffHandle = null;
     releaseMountedSummary();
+    unlinkCommitBodies();
     relinquished?.cancelPending?.();
     return relinquished ? () => relinquished.dispose?.() : null;
   }
@@ -3238,6 +3405,7 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      unlinkCommitBodies(stage);
       mountCommitCounterpart(stage, commit.id);
       const identity = stage.querySelector(".git-commit-identity");
       // A detail the cache did not hand out is the caller's, which vouches for it.
@@ -3364,6 +3532,7 @@
     commitDiffHandle?.dispose?.();
     commitDiffHandle = null;
     releaseMountedSummary();
+    unlinkCommitBodies();
   }
 
   /**
@@ -4237,6 +4406,9 @@
     cancelPending,
     refresh,
     restoreCommitLanding,
+    commitSummary,
+    keptCommitSummary,
+    prefetchCommit,
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,

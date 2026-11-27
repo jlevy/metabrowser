@@ -266,6 +266,11 @@ const MEASURE = `async (name, change, tab, width) => {
       whenIdle: mb.whenIdle,
       ensureKindAssets: async () => {},
       decorateExternalLink: mb.decorateExternalLink,
+      // The link card's SDK methods, which the page calls as it draws, replaces, and puts
+      // away its texts (static/plugin-sdk-views.js).
+      previewLink: mb.previewLink,
+      forgetPreview: mb.forgetPreview,
+      disposePreviews: mb.disposePreviews,
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
@@ -1093,6 +1098,11 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       loadChangedFilesTree: async () => window.MetabrowserChangedFilesTree,
       getRegisteredView: () => view,
       decorateExternalLink: mb.decorateExternalLink,
+      // The link card's SDK methods, which the page calls as it draws, replaces, and puts
+      // away its texts (static/plugin-sdk-views.js).
+      previewLink: mb.previewLink,
+      forgetPreview: mb.forgetPreview,
+      disposePreviews: mb.disposePreviews,
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
@@ -1273,6 +1283,11 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
     loadChangedFilesTree: async () => {},
     getRegisteredView: () => null,
     decorateExternalLink: mb.decorateExternalLink,
+    // The link card's SDK methods, which the page calls as it draws, replaces, and puts
+    // away its texts (static/plugin-sdk-views.js).
+    previewLink: mb.previewLink,
+    forgetPreview: mb.forgetPreview,
+    disposePreviews: mb.disposePreviews,
     refChip: mb.refChip,
     refChipHtml: mb.refChipHtml,
     mergeRefs: mb.mergeRefs,
@@ -1478,6 +1493,11 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       loadChangedFilesTree: async () => {},
       getRegisteredView: () => null,
       decorateExternalLink: mb.decorateExternalLink,
+      // The link card's SDK methods, which the page calls as it draws, replaces, and puts
+      // away its texts (static/plugin-sdk-views.js).
+      previewLink: mb.previewLink,
+      forgetPreview: mb.forgetPreview,
+      disposePreviews: mb.disposePreviews,
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
@@ -1937,7 +1957,7 @@ const RUN_BADGE = `async (live, width) => {
   const builders = window.MetabrowserViewHeader.create({
     esc,
     servedRoot: notDrawnHere,
-    pathBaseName: notDrawnHere,
+    servedRootName: notDrawnHere,
     ownedControlAttr: notDrawnHere,
     mirrorHeading: notDrawnHere,
     getFileIcon: notDrawnHere,

@@ -24,7 +24,7 @@
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { createSdkSandbox } = require("./sdk-sandbox.js");
+const { createSdkSandbox, linkCardRegistration } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const pluginRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins");
@@ -478,6 +478,7 @@ async function flush() {
   let markdown = null;
   const mb = {
     decorateExternalLink: sdk.metabrowser.decorateExternalLink,
+    ...linkCardRegistration(),
     async ensureAsset(name) {
       check("the inert render loads only its sanitizer", name === "inert-html", name);
     },

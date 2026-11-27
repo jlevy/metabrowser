@@ -11,6 +11,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 const { agesFrom, refHelpers } = require("./sdk-ref-fixture.js");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 
 const pagePath = path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js");
 const GUIDE_ROUTE = "/api/plugin/github/guided-review";
@@ -308,6 +309,8 @@ function host({ allowlist = true } = {}) {
           loadKpressAssets: async () => {},
           ...refHelpers(document),
           ...agesFrom(document, () => ({ label: "now", className: "age" })),
+          // The SDK's own registration of a note's links for their cards.
+          ...linkCardRegistration(),
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
           sourceKind: () => "git_revision",

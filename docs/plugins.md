@@ -1029,6 +1029,39 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   runtime’s `enhance`, which makes a link into the served repository open its page in
   Metabrowser, in place on a plain click; `static/repository-links.js` documents which
   GitHub URLs open which pages.
+  Each link `enhance` reads also has its link card, registered through the SDK it is
+  given (`previewLink`, below) with the element it was given, so pass the text’s own
+  element: the one whose links the view puts away together.
+- `previewLink(root, anchor, target, { authorTitle })` gives one link in authored text
+  its link card, the tooltip that says what it opens
+  ([Tooltips on Links](design-system.md#tooltips-on-links)), on any page, with or
+  without a repository identity or the resolver.
+  A view that opens a link in the app itself, or draws links to other sites, registers
+  each this way, never through a window global.
+  `target` is the resolver’s answer of kind `view` or `route`, a file’s or folder’s
+  `{ kind: "view", target, localization: "revision" }` by its navigation target, a
+  rendered diff’s link to a file of its head, `{ kind: "view-head", href }` by its
+  `/view/` address in the GitPath wire, or a link to another site,
+  `{ kind: "external", url }` by its address as the link spells it, whose card says the
+  host it goes to, read against the page’s address as the browser follows the link, and
+  whether it opens a new tab; an address the browser reads as one on the page’s own
+  origin, or one with another scheme than `http` or `https`, has no card.
+  *root* is the element whose links the view puts away together.
+  When `previewLink` answers `true`, the link has a card, and the view calls
+  `takeAuthorTitles(anchor, authorTitle)`, which takes off the link and what it holds
+  every `title` its author wrote, so the reader sees one tooltip, and keeps
+  `authorTitle` for assistive technology, which read the title there
+  ([Tooltips on Links](design-system.md#tooltips-on-links)); it answers `false` for a
+  target the card says nothing of, such as a mail link’s, which keeps its title.
+  The card’s code loads at the page’s first rest on a link registered this way
+  (`static/plugin-sdk-views.js`); where it cannot load, each link shows no card.
+  `forgetPreview(anchor)` takes a card from a link that no longer has one, and
+  `disposePreviews(root)` forgets every card of *root*’s links, and puts away the one it
+  shows, when the view replaces that text or is disposed.
+  However a link’s card ends, by either of those, by a later `previewLink` that gives it
+  none, or by a card that cannot load, the SDK gives the link back what
+  `takeAuthorTitles` took and takes off what it added (`giveAuthorTitlesBack(anchor)`),
+  so a view never does.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
   event log what the page waits for
