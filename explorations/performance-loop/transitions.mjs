@@ -27,6 +27,7 @@ import {
   provenanceChanges,
   serverFacts,
   versionIdentity,
+  waitForOriginStore,
 } from "./provenance.mjs";
 import { JOURNEYS, runJourney, SUBJECTS } from "./transitions-journeys.mjs";
 import { driver, launchBrowser, REGIONS, Refusal, sleep } from "./transitions-recorder.mjs";
@@ -142,6 +143,7 @@ function killGroup(child, signal) {
 }
 
 const INVENTORY_DEADLINE_MS = 180000;
+const ORIGIN_READY_DEADLINE_MS = 120000;
 
 async function startServer({ metab, corpus, home, logPath }) {
   const cache = path.join(home, "cache");
@@ -362,8 +364,16 @@ async function pass({
 
 async function oneRun(options) {
   const { exp, series, condition, runIndex, pairIndex, corpus, journeys, headed, warmup } = options;
-  const { keepGoing, subset, memoryAfter, firstVisit, expectedNewest, pullSubjects, changesHunks } =
-    options;
+  const {
+    keepGoing,
+    subset,
+    memoryAfter,
+    firstVisit,
+    expectedNewest,
+    pullSubjects,
+    changesHunks,
+    waitOriginReady,
+  } = options;
   const expDir = path.join(BENCH, exp);
   fs.mkdirSync(expDir, { recursive: true, mode: 0o700 });
   const stateRoot = path.join(expDir, "state", condition.label);
@@ -412,6 +422,7 @@ async function oneRun(options) {
         : {}),
       ...(pullSubjects ? { pull_subjects: pullSubjects } : {}),
       ...(changesHunks ? { changes_hunks: true } : {}),
+      ...(waitOriginReady ? { wait_origin_ready: true } : {}),
       journey_subset: subset,
       keep_going: keepGoing,
       memory_after: memoryAfter,
@@ -419,8 +430,9 @@ async function oneRun(options) {
     regime: firstVisit
       ? {
           ...REGIME,
-          server:
-            "fresh process and fresh application cache/config per run; no warm-up journey or pre-input Git and Pulls HTTP probes",
+          server: waitOriginReady
+            ? "fresh process and application state; wait for checkout origin acquisition before creating the Chrome profile"
+            : "fresh process and fresh application cache/config per run; no warm-up journey or pre-input Git and Pulls HTTP probes",
           github:
             "application starts from an empty cache; ordinary startup and live GitHub can supply data before the first measured click",
         }
@@ -458,6 +470,15 @@ async function oneRun(options) {
     }
     if (!server.servingLine?.includes(`${corpus} at http://127.0.0.1:${server.port}/`)) {
       row.refusals.push(["build_identity", "the server's serving line names another tree or port"]);
+    }
+    if (waitOriginReady) {
+      row.server.origin_warmup = await waitForOriginStore(server.base, ORIGIN_READY_DEADLINE_MS);
+      if (!row.server.origin_warmup.ready) {
+        throw new Refusal(
+          "origin_warmup",
+          "the checkout origin store did not become ready in 120 s",
+        );
+      }
     }
     if (!firstVisit) {
       row.facts = await serverFacts(server.base);
@@ -536,7 +557,11 @@ async function oneRun(options) {
       }
     }
   } catch (error) {
-    row.refusals.push(["run_error", String(error.stack || error).slice(0, 2000)]);
+    row.refusals.push(
+      error instanceof Refusal
+        ? [error.guard, error.detail]
+        : ["run_error", String(error.stack || error).slice(0, 2000)],
+    );
   } finally {
     await stopServer(server);
   }
@@ -575,6 +600,7 @@ async function cmdRun(argv) {
       "expect-newest": { type: "string" },
       "pull-subjects": { type: "string" },
       "changes-hunks": { type: "boolean", default: false },
+      "wait-origin-ready": { type: "boolean", default: false },
       "keep-going": { type: "boolean", default: false },
       "memory-after": { type: "string" },
       order: { type: "string", default: "alternate" },
@@ -630,6 +656,10 @@ async function cmdRun(argv) {
   if (firstVisit && journeys.length !== 1) {
     throw new CompareRefusal("--first-visit requires one --journeys name per process");
   }
+  const waitOriginReady = values["wait-origin-ready"];
+  if (waitOriginReady && !firstVisit) {
+    throw new CompareRefusal("--wait-origin-ready requires --first-visit");
+  }
   if (firstVisit && values["no-warmup"]) {
     throw new CompareRefusal("--first-visit already skips the warm-up pass");
   }
@@ -676,7 +706,7 @@ async function cmdRun(argv) {
   );
   if (!standard) {
     console.log(
-      `NOT THE STANDARD REGIME: ${[firstVisit && "fresh-state first visit", pullSubjects && "alternate pull subjects", changesHunks && "visible Changes hunks", subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
+      `NOT THE STANDARD REGIME: ${[firstVisit && "fresh-state first visit", waitOriginReady && "wait for the origin checkout store", pullSubjects && "alternate pull subjects", changesHunks && "visible Changes hunks", subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
     );
   }
   let refused = 0;
@@ -708,6 +738,7 @@ async function cmdRun(argv) {
         expectedNewest,
         pullSubjects,
         changesHunks,
+        waitOriginReady,
         keepGoing: values["keep-going"],
         subset,
         memoryAfter,
@@ -813,7 +844,7 @@ const USAGE = `usage:
                       [--condition LABEL=PATH/TO/metab] [--runs 5] [--journeys a,b]
                       [--headed] [--no-warmup | --first-visit [--expect-newest OID]]
                       [--keep-going] [--order alternate|fixed]
-                      [--pull-subjects PR,PR,PR,PR] [--changes-hunks] [--memory-after TRANSITION,...] [--out FILE]
+                      [--pull-subjects PR,PR,PR,PR] [--changes-hunks] [--wait-origin-ready] [--memory-after TRANSITION,...] [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                       [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]

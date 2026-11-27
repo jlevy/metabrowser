@@ -731,7 +731,7 @@ export function compareRuns(
     memoryAfter.length
   ) {
     notes.push(
-      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.first_visit ? "fresh-state first visit" : flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", flags.pull_subjects && "alternate pull subjects", flags.changes_hunks && "visible Changes hunks", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
+      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.first_visit ? "fresh-state first visit" : flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", flags.pull_subjects && "alternate pull subjects", flags.changes_hunks && "visible Changes hunks", flags.wait_origin_ready && "wait for the origin checkout store", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
     );
   }
   const harnesses = new Set(

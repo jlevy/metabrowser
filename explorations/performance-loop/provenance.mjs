@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 
@@ -171,6 +172,46 @@ export async function getJson(url, timeoutMs = 30000) {
     throw new Error(`${url}: HTTP ${response.status}`);
   }
   return response.json();
+}
+
+// This endpoint observes an existing store. The harness does not request a fetch.
+export async function waitForOriginStore(base, timeoutMs) {
+  const started = performance.now();
+  for (
+    let remaining = timeoutMs;
+    remaining > 0;
+    remaining = timeoutMs - (performance.now() - started)
+  ) {
+    let status;
+    try {
+      status = await getJson(
+        `${base}/api/source/status`,
+        Math.max(1, Math.min(5000, Math.ceil(remaining))),
+      );
+    } catch (error) {
+      if (error.name === "TimeoutError" && performance.now() - started >= timeoutMs) {
+        break;
+      }
+      throw error;
+    }
+    if (
+      status.refreshable === true &&
+      status.refreshing === false &&
+      status.stale === false &&
+      Number.isFinite(Date.parse(status.last_fetch_at))
+    ) {
+      return {
+        ready: true,
+        wait_ms: Math.round(performance.now() - started),
+        last_fetch_at: status.last_fetch_at,
+      };
+    }
+    const left = timeoutMs - (performance.now() - started);
+    if (left > 0) {
+      await delay(Math.min(left, 250));
+    }
+  }
+  return { ready: false, wait_ms: Math.round(performance.now() - started), last_fetch_at: null };
 }
 
 /** Facts about the moving parts of the corpus, read from the server before measuring. */

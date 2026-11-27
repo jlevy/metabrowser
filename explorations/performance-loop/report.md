@@ -138,6 +138,8 @@ against one that did.
 | exp-115 | [Verify the GitHub Request Report Through the Live Server](experiments/exp-115-live-provider-report.md) | H128 | `provider request report on an exact selected Conversation` | diagnostic |
 | exp-116 | [Vary Process Fan-Out for the Same Conversation Reads](experiments/exp-116-conversation-process-fanout.md) | H134 | `wall time for three checked REST responses` | diagnostic |
 | exp-117 | [Distinguish an Optional Pulls Tally From List Readiness](experiments/exp-117-pulls-readiness-diagnostic.md) | H135 | `usable Pulls rows during optional tally` | diagnostic |
+| exp-118 | [Replay Pulls With Separate List and Optional-Tally Readiness](experiments/exp-118-integrated-pulls-replay.md) | H127, H128, H135 | `usable first Pulls list and visible Changes` | diagnostic |
+| exp-119 | [Wait for the Checkout Origin Before Timing First Visits](experiments/exp-119-origin-warmup-gate.md) | H136 | `origin startup wait after inventory ready` | diagnostic |
 
 ## Absolute numbers, per condition
 

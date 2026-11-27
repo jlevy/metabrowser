@@ -1002,6 +1002,14 @@ This is a declared start of browsing, with any remaining preparation reported.
 Later clicks retain state created by earlier clicks.
 Report startup and after-startup click timings separately.
 
+Add `--wait-origin-ready` when you want the first Chrome visit after the checkout origin
+has warmed. This observes `/api/source/status` before starting Chrome.
+It requires a fresh completed origin fetch and refuses the run if the store stays
+unready for two minutes.
+The poll only observes product startup.
+Its duration and the last fetch timestamp are under `server.origin_warmup`, separate
+from the browser’s startup and click clocks.
+
 On a Pulls first visit, a usable list can still have an optional changed-lines tally
 loading beside a row.
 The readiness check admits the visible list and prompt during that tally.
