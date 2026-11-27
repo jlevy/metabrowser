@@ -40,7 +40,10 @@
 //
 // The answers are in-app addresses, spelled in one place each (In-app addresses, below),
 // or a github.com address, spelled by `fileUrl`. `enhance` applies them to every link of
-// an inert text, already reduced to the allowlist (static/inert-html.js).
+// an inert text, already reduced to the allowlist (static/inert-html.js). `isPlainClick` is
+// what a click must be for a link it made in-app to open in place, and a rendered diff's
+// links to files of its head read it too (builtin_plugins/diff/diff-markdown.js,
+// `openHeadLinks`), so the links of one text open alike.
 //
 // Loaded on demand (`ensureAsset("repository-links")`) by the views that show authored text
 // from a GitHub repository: only a page with a repository identity uses it, and the startup
@@ -621,9 +624,11 @@
   /**
    * Make every link of *root*, an inert text already reduced to the allowlist, open what
    * `localize` says. An in-app link loses `target` and `rel`, since it does not leave the
-   * page, and a plain click on a `/view/` target opens it through
-   * `metabrowser.navigation.open`, as a Markdown file's links do; a modified click, a new
-   * tab, and a copied address use the same `href`. Returns how many links it changed.
+   * page, and a plain click opens it in place, as a Markdown file's links do: a `/view/`
+   * target through `metabrowser.navigation.open`, and any other in-app page, a pull
+   * request's, the list's, or a commit's, through `metabrowser.navigation.openRoute`. A
+   * modified click, a new tab, and a copied address use the same `href`, and so does a
+   * plain click the shell cannot open in place. Returns how many links it changed.
    *
    * It may run again over the same text with more context, and then reads each link as the
    * text wrote it and moves its one click handler to the new answer.
@@ -636,10 +641,13 @@
    *   views?: boolean,
    * }} [options]
    *   `text` as `localize` takes it. `open` may open an in-app route other than `/view/`
-   *   in place, as a pull request's page opens another's, answering whether it did;
-   *   otherwise the browser follows the link. `views: false` leaves every `/view/` target
+   *   in place itself, as a pull request's page opens another's, answering whether it did;
+   *   otherwise the shell opens it (`navigation.openRoute`), so no text's route link is a
+   *   page load while the shell can show it. `views: false` leaves every `/view/` target
    *   as written, for a text whose page keeps it while the served pin can change under it,
-   *   as a rendered diff does: a route names no revision, a `/view/` address the served one.
+   *   as a rendered diff does away from its head: a route names no revision, a `/view/`
+   *   address the served one. A later pass with `views: false` restores each `/view/`
+   *   target an earlier one made to the link the text wrote, whose click is the browser's.
    * @returns {number}
    */
   function enhance(root, mb, options = {}) {
@@ -734,33 +742,49 @@
   }
 
   /**
-   * Open what `enhance` last made of *anchor* on a plain primary click; any other click is
-   * the browser's, which follows the same `href`.
+   * Whether a click on a link is the page's to open in place: a primary click with no
+   * modifier that nothing has kept from the browser yet. A modified or middle click opens
+   * the link's own `href` the browser's way, in a new tab or window.
    *
-   * @param {Element} anchor
    * @param {Event} event
+   * @returns {boolean}
    */
-  function openOnPlainClick(anchor, event) {
+  function isPlainClick(event) {
     const mouse = /** @type {MouseEvent} */ (event);
-    const opened = opens.get(anchor);
-    if (
-      !opened ||
+    return !(
       mouse.defaultPrevented ||
       mouse.button !== 0 ||
       mouse.altKey ||
       mouse.ctrlKey ||
       mouse.metaKey ||
       mouse.shiftKey
-    ) {
+    );
+  }
+
+  /**
+   * Open what `enhance` last made of *anchor* on a plain primary click: a route by the
+   * page's own `open` first, then by the shell's. Any other click is the browser's, which
+   * follows the same `href`, as it does a route neither opened.
+   *
+   * @param {Element} anchor
+   * @param {Event} event
+   */
+  function openOnPlainClick(anchor, event) {
+    const opened = opens.get(anchor);
+    if (!opened || !isPlainClick(event)) {
       return;
     }
+    const mouse = /** @type {MouseEvent} */ (event);
     const { resolved, mb, open } = opened;
     if (resolved.kind === "view") {
       mouse.preventDefault();
       void mb.navigation.open(resolved.target).catch((error) => {
         console.warn("Could not open the link", error);
       });
-    } else if (resolved.kind === "route" && open?.(resolved) === true) {
+    } else if (
+      resolved.kind === "route" &&
+      (open?.(resolved) === true || mb.navigation.openRoute(resolved.href))
+    ) {
       mouse.preventDefault();
     }
   }
@@ -881,6 +905,7 @@
     WORKING_TREE_TITLE,
     enhance,
     fileUrl,
+    isPlainClick,
     localize,
     viewFileUrl,
   });

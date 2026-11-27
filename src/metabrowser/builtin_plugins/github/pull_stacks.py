@@ -262,7 +262,10 @@ async def _check_hold(repository: ListedRepository) -> None:
 
 
 async def refresh_stacks(
-    repository: ListedRepository, *, slot: asyncio.Semaphore | None = None, retry: bool = False
+    repository: ListedRepository,
+    *,
+    slot: contextlib.AbstractAsyncContextManager[None] | None = None,
+    retry: bool = False,
 ) -> None:
     """Refresh independently, yielding the network slot after each bounded page."""
     if not await asyncio.to_thread(refresh_wanted, repository, retry=retry):

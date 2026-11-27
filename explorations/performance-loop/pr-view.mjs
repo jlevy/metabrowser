@@ -182,6 +182,7 @@ async function startServer() {
       PATH: `${shimDir}:${process.env.PATH}`,
       METABROWSER_CACHE_DIR: CACHE,
       METABROWSER_CONFIG_DIR: cfg,
+      METABROWSER_STATE_DIR: path.join(ROOT, `state-${runId}`),
       METABROWSER_RECORD_RECENT: "0",
       METABROWSER_REQUEST_LOG: "verbose",
     },

@@ -3411,8 +3411,8 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 }
 
 /* A served mirror's freshness, at the foot of the navigation pane where a
-   folder shows crawl progress: when it was last fetched, and an offer when a
-   refresh moved the pinned ref. Quiet unless a refresh failed. A checkout's page
+   folder shows crawl progress: fetch status and offers when a revision moves.
+   A checkout's page
    offers its reload in the same row (.source-ref-selector-stale), so every tab
    shows it. */
 .source-freshness[hidden] {

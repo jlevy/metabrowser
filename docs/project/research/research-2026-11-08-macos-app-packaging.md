@@ -1336,6 +1336,22 @@ gate’s driver, found the Print request reaching that path and a dropped file h
 the app’s open path
 ([`window.print()` and Drag and Drop](../qa/qa-2026-11-11-webkit-measurement-gate.md#windowprint-and-drag-and-drop)).
 
+## 2026-11-12 Addendum: Plugin Sources
+
+Adding Plugins Without Rebuilding the App kept every Python plugin in a runtime’s own
+environment and had the plugin mode reinstall Metabrowser with `--with`.
+[Loading Plugins from Any Source](research-2026-11-12-plugin-sources.md) found that
+install unresolvable for the motivating plugin, because of Metabrowser’s exact pins, and
+the owner ruled out reinstalling Metabrowser to add a plugin.
+[Plugin Sources, Process Isolation, and Out-of-Process Plugin Environments](../specs/active/plan-2026-11-12-plugin-sources.md)
+proposes replacing that section’s install mechanics and project-plugin sketch.
+Under the proposal, plugins would come from registered sources or a trusted repository.
+Python plugins would run on their own interpreters in workers, with operating-system
+confinement for repository plugins.
+Updating the app-managed runtime’s base would leave registered plugin environments in
+place. The plan is a draft and its eleven decisions await the owner.
+The signed bundle would continue to hold no plugins.
+
 ## References
 
 - Metabrowser: [Views, Models, and Routes](../architecture/arch-views-models-routes.md),

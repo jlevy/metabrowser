@@ -87,7 +87,8 @@ The runner prints each file’s output whole when the file finishes, then a `gol
 with its verdict and time, and fails unless every file the pattern matches printed its
 own `PASS` verdict. A file that printed no verdict fails the run, and so does a pattern
 that matches nothing.
-`make test GOLDEN_JOBS=1` runs them one at a time.
+`make test GOLDEN_JOBS=1` runs them one at a time, and
+`make test-goldens GOLDENS='<file or pattern>...'` runs only those.
 `make test-goldens SHARD=I/N` runs the Ith of N parts, which CI uses to split the
 goldens across jobs; the runner’s docstring says how the files are dealt and why by
 size.
@@ -114,6 +115,12 @@ transcript being rewritten from a stale input.
 The recorders and drivers run through `devtools/golden_update.py`, under which no test
 may skip (see [Skips](#skips)): a host without Node, or with a Git below the acquisition
 floor, cannot report that it regenerated what it skipped.
+
+`make golden-update ONLY='<file>...'` runs the same steps on only the transcripts and
+modules it names, and stops before writing anything when a name is neither a transcript
+nor a module of either list; the `Makefile` says how a name is matched.
+Naming only what an intended change touches keeps a regeneration from also recording
+what this machine gets wrong, such as a test that fails here and passes in CI.
 
 `devtools/check_goldens.py`, part of `make lint-check`, keeps that true and keeps a
 transcript from passing while wrong:
@@ -170,8 +177,9 @@ A transcript must not depend on how busy the machine is.
 The server logs a request slower than `SLOW_OPERATION_LOG_SECONDS` (`settings.py`) to
 stderr, which a transcript captures, so the Make targets run tryscript with
 `METABROWSER_SLOW_SERVER_MS` set past tryscript’s own command timeout.
-Run tryscript through `make test` or `make golden-update`, or set that variable, when
-the machine is loaded.
+Run tryscript through `devtools/tryscript.sh`, the `Makefile`’s `TRYSCRIPT`, which sets
+that variable and the rest of the goldens’ environment and says why, so a command typed
+in a shell runs a golden as `make test` does.
 
 ### Distribution Tests
 
@@ -474,7 +482,8 @@ Strict mode is off on a developer machine, which can add these:
   Git is newer, so CI runs them and strict mode fails them if they skip, and the
   admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
-- `root is never denied by modes`, when the suite runs as root;
+- `root is never denied by modes`, when the suite runs as root, for the tests that stage
+  a refusal by a file’s mode (`tests/mode_denials.py`);
 - `this machine has no IPv6 loopback`, where `::1` cannot be bound, for the tests that
   serve on an IPv6 host (`tests/ipv6_loopback.py`); CI’s runners have one and run them;
 - `symlinks are unavailable`, where the platform or the account cannot create one;

@@ -213,7 +213,18 @@
     /** @type {Map<string, () => string | null>} */
     const tips = new Map();
     function paintTooltip() {
-      const detail = tips.get(view().front)?.() ?? null;
+      let detail = tips.get(view().front)?.() ?? null;
+      if (detail === null) {
+        const at = Date.parse(
+          document.getElementById("source-freshness")?.dataset.lastFetchAt ?? "",
+        );
+        if (Number.isFinite(at)) {
+          const age = window.MetabrowserFormatters.age(at / 1000, { style: "relative" }).label;
+          if (age) {
+            detail = `Last fetched ${age}`;
+          }
+        }
+      }
       button.dataset.tipText = detail ?? "Refresh";
       if (detail === null) {
         button.removeAttribute("aria-description");

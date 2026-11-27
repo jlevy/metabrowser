@@ -1,0 +1,19 @@
+Exp-107 — upstream Markdown sanitizer comparison
+Registered 2026-11-26 before reading measurements.
+
+H130: compare the immediate parent of upstream Metabrowser f6a44d9e1 with that
+commit. The change upgrades KPress 0.3.10 to 0.3.11 and stops collecting discarded
+diagnostics in the projected Markdown sanitizer. Use equal locked environments
+except for KPress; the package difference is the intervention. Drive the same
+golden-backed PR metadata and rendered description GETs through real loopback
+servers in ABBA order. Give each start its own copy of the same captured public
+PR cache and disable origin store acquisition. Require matching checked body
+hashes before comparing elapsed. Separate server readiness, first description,
+and kept reads. This is a loaded-host diagnostic and does not measure DOM paint.
+
+Supplement registered after the HTTP series and before the CPU probe: render the
+pinned corpus's README and large design-system Markdown to HTML once. Compare
+KPress 0.3.11's sanitizer CPU time with and without diagnostics within one process,
+in alternating order, on the same two HTML inputs. Warm each mode once, collect
+12 calls per condition, and require byte-identical sanitized HTML. This isolates
+the skipped work from server startup, transport, Markdown parsing and output paint.

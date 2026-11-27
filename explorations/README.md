@@ -9,6 +9,7 @@ rule, and a ledger generated from the record.
 | --- | --- |
 | [git-history](git-history/README.md) | The server and browser cost shape for continuous, virtualized Git history, including the frozen v0.9.0 structural budgets |
 | [performance-loop](performance-loop/README.md) | How fast Metabrowser becomes usable — loading, responsiveness, visual stability, assets, the scan, and the server underneath, using the reusable [Web Performance Framework](../docs/web-performance-framework.md) |
+| [plugin-worker-spike](plugin-worker-spike/README.md) | One-time spikes, not a loop: Python data hooks and log parsing served from a plugin’s own environment over stdio and what that costs, the worker’s failure modes, and a child process confined on Linux |
 | [repository-cache](repository-cache/README.md) | Acquisition strategy and layout for the worktree-free repository store, blobless reads and lazy fetch, concurrent readers and fetches, maintenance, and the lock and rename primitives behind cache publication |
 
 The [SoftSchema collection projection](softschema-projection/README.md) exploration

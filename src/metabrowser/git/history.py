@@ -25,16 +25,18 @@ import contextlib
 import hashlib
 import json
 import logging
+import os
 import re
 import secrets
 import struct
 import tempfile
+import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
 from metabrowser.git.log import (
     LOG_FORMAT,
@@ -588,8 +590,9 @@ class HistorySession:
         self.storage_max_bytes = storage_max_bytes
         self._clock = clock
         self.last_access = clock()
-        self._temporary_directory: tempfile.TemporaryDirectory[str] | None = None
-        self._spool_path: Path | None = None
+        self._spool: BinaryIO | None = None
+        # A cancelled await can release the session lock before its worker finishes.
+        self._spool_io = threading.Lock()
         self._process: asyncio.subprocess.Process | None = None
         self._stderr_task: asyncio.Task[bytes] | None = None
         self._stderr = b""
@@ -625,11 +628,14 @@ class HistorySession:
             storage_max_bytes=storage_max_bytes,
             clock=clock,
         )
-        session._temporary_directory = await asyncio.to_thread(
-            tempfile.TemporaryDirectory,
-            prefix="metabrowser-git-history-",
-        )
-        session._spool_path = Path(session._temporary_directory.name) / "pages.bin"
+        try:
+            # Ctrl-C can exit without running lifespan cleanup. Keep no named spool that
+            # would outlive this server when the OS closes its file handles.
+            session._spool = await asyncio.to_thread(
+                tempfile.TemporaryFile, "w+b", prefix="metabrowser-git-history-"
+            )
+        except OSError as exc:
+            raise HistoryStorageError("could not create the git history replay spool") from exc
         args = (
             "log",
             # At a store target, what every log there says (GitLocation.diff_driver_args);
@@ -649,8 +655,7 @@ class HistorySession:
                 pipe_stdin=True,
             )
         except BaseException:
-            await asyncio.to_thread(session._temporary_directory.cleanup)
-            session._temporary_directory = None
+            await session._close_locked()
             raise
         session._stderr_task = asyncio.create_task(
             _drain_stderr(session._process.stderr),
@@ -686,10 +691,6 @@ class HistorySession:
     @property
     def closed(self) -> bool:
         return self._closed
-
-    @property
-    def spool_path(self) -> Path | None:
-        return self._spool_path
 
     async def page(self, cursor: HistoryCursor) -> GitLogPage:
         """Build or replay the exact page named by *cursor*."""
@@ -805,24 +806,24 @@ class HistorySession:
         if self._storage_bytes + frame_bytes > self.storage_max_bytes:
             await self._close_locked()
             raise HistoryStorageError("git history session storage budget exhausted")
-        spool_path = self._spool_path
-        if spool_path is None:
-            raise ExpiredHistorySessionError("history spool no longer exists")
+        spool = self._spool
+        if spool is None:
+            raise ExpiredHistorySessionError("history spool is closed")
 
-        def append() -> tuple[int, int]:
-            with spool_path.open("ab") as destination:
-                offset = destination.tell()
-                destination.write(_FRAME_HEADER.pack(len(payload)))
-                destination.write(payload)
-                destination.flush()
-            return offset, frame_bytes
+        def append() -> int:
+            with self._spool_io:
+                offset = spool.seek(0, os.SEEK_END)
+                spool.write(_FRAME_HEADER.pack(len(payload)))
+                spool.write(payload)
+                spool.flush()
+                return offset
 
         try:
-            offset, written = await asyncio.to_thread(append)
+            offset = await asyncio.to_thread(append)
         except OSError as exc:
             await self._close_locked()
             raise HistoryStorageError("git history replay spool write failed") from exc
-        self._storage_bytes += written
+        self._storage_bytes += frame_bytes
         return _Frame(
             offset=offset,
             length=len(payload),
@@ -832,20 +833,20 @@ class HistorySession:
         )
 
     async def _replay_frame(self, frame: _Frame) -> list[GitCommit]:
-        spool_path = self._spool_path
-        if spool_path is None:
-            raise ExpiredHistorySessionError("history spool no longer exists")
+        spool = self._spool
+        if spool is None:
+            raise ExpiredHistorySessionError("history spool is closed")
 
         def read() -> bytes:
-            with spool_path.open("rb") as source:
-                source.seek(frame.offset)
-                header = source.read(_FRAME_HEADER.size)
+            with self._spool_io:
+                spool.seek(frame.offset)
+                header = spool.read(_FRAME_HEADER.size)
                 if len(header) != _FRAME_HEADER.size:
                     raise HistoryParserError("git history frame header is truncated")
                 length = _FRAME_HEADER.unpack(header)[0]
                 if length != frame.length:
                     raise HistoryParserError("git history frame index is inconsistent")
-                payload = source.read(length)
+                payload = spool.read(length)
                 if len(payload) != length:
                     raise HistoryParserError("git history frame payload is truncated")
                 return payload
@@ -918,14 +919,17 @@ class HistorySession:
             with contextlib.suppress(asyncio.CancelledError):
                 self._stderr = await self._stderr_task
             self._stderr_task = None
-        temporary_directory = self._temporary_directory
-        self._temporary_directory = None
-        self._spool_path = None
+        spool, self._spool = self._spool, None
         self._frames.clear()
         self._buffer.clear()
         self._lookahead = None
-        if temporary_directory is not None:
-            await asyncio.to_thread(temporary_directory.cleanup)
+        if spool is not None:
+
+            def close_spool() -> None:
+                with self._spool_io:
+                    spool.close()
+
+            await asyncio.to_thread(close_spool)
 
 
 def _first_cursor(session: HistorySession) -> HistoryCursor:
@@ -941,7 +945,7 @@ def _first_cursor(session: HistorySession) -> HistoryCursor:
 
 
 class HistorySessionRegistry:
-    """Process-wide LRU owner for bounded history sessions and Git walks."""
+    """LRU owner for an event loop’s bounded history sessions and Git walks."""
 
     def __init__(
         self,
@@ -988,29 +992,9 @@ class HistorySessionRegistry:
         self._ensure_reaper()
         location = as_location(root)
         if cursor is None:
-            state = await ref_state(location)
-            scope = await current_history_scope(location, wants_all=bool(wants_all), state=state)
-            session, reused = await self._first_page_session(
-                location, scope=scope, page_size=limit, state=state
+            return await self._read_first_page(
+                location, wants_all=bool(wants_all), limit=limit, state=await ref_state(location)
             )
-            if reused:
-                # Another request's walk: a cancellation here is this request's alone, and
-                # leaves the session to the reader paging it.
-                try:
-                    return await session.page(_first_cursor(session))
-                except ExpiredHistorySessionError:
-                    # Closed between being found and being read: start the walk afresh.
-                    session = await self._create_session(
-                        location, scope=scope, page_size=limit, state=state
-                    )
-                except (GitError, HistoryStorageError):
-                    await self._discard(session.id)
-                    raise
-            try:
-                return await session.page(_first_cursor(session))
-            except BaseException:
-                await self._discard(session.id)
-                raise
 
         decoded = decode_history_cursor(cursor)
         if decoded is None:
@@ -1044,6 +1028,43 @@ class HistorySessionRegistry:
         try:
             return await session.page(decoded)
         except (GitError, HistoryStorageError):
+            await self._discard(session.id)
+            raise
+
+    async def prepare_default_page(self, location: GitLocation) -> bool:
+        """Prepare only a first page whose ref state lets the reader reuse its walk."""
+        state = await ref_state(location)
+        if state is None:
+            return False
+        self._ensure_reaper()
+        await self._read_first_page(
+            location, wants_all=False, limit=GIT_LOG_DEFAULT_LIMIT, state=state
+        )
+        return True
+
+    async def _read_first_page(
+        self, location: GitLocation, *, wants_all: bool, limit: int, state: str | None
+    ) -> GitLogPage:
+        scope = await current_history_scope(location, wants_all=wants_all, state=state)
+        session, reused = await self._first_page_session(
+            location, scope=scope, page_size=limit, state=state
+        )
+        if reused:
+            # Another request's walk: a cancellation here is this request's alone, and
+            # leaves the session to the reader paging it.
+            try:
+                return await session.page(_first_cursor(session))
+            except ExpiredHistorySessionError:
+                # Closed between being found and being read: start the walk afresh.
+                session = await self._create_session(
+                    location, scope=scope, page_size=limit, state=state
+                )
+            except (GitError, HistoryStorageError):
+                await self._discard(session.id)
+                raise
+        try:
+            return await session.page(_first_cursor(session))
+        except BaseException:
             await self._discard(session.id)
             raise
 
@@ -1152,7 +1173,7 @@ class HistorySessionRegistry:
                 await self.reap_expired()
             except Exception:
                 # If a failing pass ended the loop, every remaining idle
-                # session would keep its git process and spool directory
+                # session would keep its git process and spool
                 # until process exit — the leak the idle TTL exists to
                 # prevent. Cancellation still propagates and stops the
                 # task.
@@ -1197,12 +1218,45 @@ class HistorySessionRegistry:
             await session.close()
 
 
+@dataclass
+class _ServingHistory:
+    registry: HistorySessionRegistry
+    lifespans: int = 0
+
+
+# Direct handler calls without ASGI startup can supply their own registry.
 HISTORY_SESSIONS = HistorySessionRegistry()
+_SERVING_REGISTRIES: dict[asyncio.AbstractEventLoop, _ServingHistory] = {}
+_REGISTRY_LOCK = threading.Lock()
 
 
-async def close_history_sessions() -> None:
-    """Release process-wide Git history resources during server shutdown."""
-    await HISTORY_SESSIONS.close_all()
+def current_history_sessions(fallback: HistorySessionRegistry) -> HistorySessionRegistry:
+    """The history reader owned by the current application lifespan."""
+    loop = asyncio.get_running_loop()
+    with _REGISTRY_LOCK:
+        serving = _SERVING_REGISTRIES.get(loop)
+        return fallback if serving is None else serving.registry
+
+
+@contextlib.asynccontextmanager
+async def lifespan_history_sessions() -> AsyncGenerator[None]:
+    """Share history walks until the last serving lifespan on the loop exits."""
+    loop = asyncio.get_running_loop()
+    with _REGISTRY_LOCK:
+        serving = _SERVING_REGISTRIES.get(loop)
+        if serving is None:
+            serving = _SERVING_REGISTRIES[loop] = _ServingHistory(HistorySessionRegistry())
+        serving.lifespans += 1
+    try:
+        yield
+    finally:
+        with _REGISTRY_LOCK:
+            serving.lifespans -= 1
+            last_lifespan = serving.lifespans == 0
+            if last_lifespan:
+                del _SERVING_REGISTRIES[loop]
+        if last_lifespan:
+            await serving.registry.close_all()
 
 
 __all__ = [
@@ -1215,7 +1269,8 @@ __all__ = [
     "InvalidHistoryCursorError",
     "StaleHistorySessionError",
     "clear_kept_scopes",
-    "close_history_sessions",
+    "current_history_sessions",
+    "lifespan_history_sessions",
     "current_history_scope",
     "kept_scope_targets",
     "decode_history_cursor",

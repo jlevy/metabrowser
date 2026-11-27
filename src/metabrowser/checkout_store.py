@@ -537,7 +537,7 @@ class CheckoutStore:
         # Not background work at the store: a pull request's job that needs this store
         # waits for it and then finds it made, where stopping this would start it again.
         try:
-            async with store_turn(origin.home, origin.source)(lambda: False):
+            async with store_turn(origin.home, origin.source)(lambda: False, acquisition=True):
                 await self._acquire(origin.source, origin.home)
         finally:
             self._pending = False

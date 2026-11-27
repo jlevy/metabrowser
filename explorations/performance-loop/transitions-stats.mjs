@@ -4,6 +4,7 @@
 // Pure functions over parsed rows, so tests/dom/transitions-instrument-behavior.mjs can
 // drive every refusal and verdict from fixture rows. transitions.mjs is the command line.
 import path from "node:path";
+import { versionIdentity } from "./provenance.mjs";
 
 export const SCENARIO = "transition-navigation/v1";
 export const SCENARIO_REVISION = 6;
@@ -252,6 +253,7 @@ export const METRICS = [
     ["pr_header_ms", "prHeader"],
     ["pr_description_shown_ms", "prDescriptionShown"],
     ["pr_description_final_ms", "prDescriptionFinal"],
+    ["pr_changes_hunk_ms", "prChangesHunk"],
   ].map(([key, name]) => ({
     ...T(key, (t) => t.milestones?.[name]),
     milestone: name,
@@ -350,7 +352,7 @@ export function parseRows(text, file = "rows") {
 
 /** The identity of a build: version, commit, dirty state, and content identity. */
 export const buildIdentity = (b) =>
-  `${b?.version} ${b?.commit} ${b?.dirty}${b?.content ? ` ${b.content}` : ""}`;
+  `${versionIdentity(b?.version)} ${b?.commit} ${b?.dirty}${b?.content ? ` ${b.content}` : ""}`;
 
 /** Valid runs per condition, refusing to pool runs of different builds under one label. */
 export function groupConditions(rows, { allowMixed = false } = {}) {
@@ -720,9 +722,16 @@ export function compareRuns(
     );
   }
   const memoryAfter = flags.memory_after ?? [];
-  if (flags.headed || flags.no_warmup || flags.journey_subset || memoryAfter.length) {
+  if (
+    flags.headed ||
+    flags.no_warmup ||
+    flags.journey_subset ||
+    flags.pull_subjects ||
+    flags.changes_hunks ||
+    memoryAfter.length
+  ) {
     notes.push(
-      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
+      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.first_visit ? "fresh-state first visit" : flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", flags.pull_subjects && "alternate pull subjects", flags.changes_hunks && "visible Changes hunks", flags.wait_origin_ready && "wait for the origin checkout store", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
     );
   }
   const harnesses = new Set(
@@ -1095,6 +1104,7 @@ const TABLES = [
       ["pr_header_ms", "PR header ms"],
       ["pr_description_shown_ms", "PR description shown ms"],
       ["pr_description_final_ms", "PR description final ms"],
+      ["pr_changes_hunk_ms", "PR first visible hunk ms"],
     ],
   },
   {
@@ -1158,6 +1168,25 @@ const TABLES = [
 export function summaryTables(condition) {
   const byId = collect(condition);
   const lines = [];
+  const slowest = [...byId.values()]
+    .filter((entry) => !entry.end && entry.subjects.size === 1)
+    .map((entry) => ({ entry, ready: stat(valuesOf(entry, "painted_ready_ms")) }))
+    .filter(({ entry, ready }) => ready?.n === condition.valid.length && entry.runs === ready.n)
+    .sort((a, b) => b.ready.median - a.ready.median || b.ready.max - a.ready.max)
+    .slice(0, 10);
+  if (slowest.length) {
+    lines.push(
+      "#### Slowest transitions to useful content",
+      "",
+      "| Transition | Runs | Median (ms) | Maximum (ms) |",
+      "| --- | ---: | ---: | ---: |",
+      ...slowest.map(
+        ({ entry, ready }) =>
+          `| \`${entry.id}\` | ${ready.n} | ${Math.round(ready.median)} | ${Math.round(ready.max)} |`,
+      ),
+      "",
+    );
+  }
   for (const table of TABLES) {
     const columns = table.families
       ? table.families.map((f) => [f, f.replace("_", "-")])
@@ -1370,7 +1399,9 @@ export function sampleRow(r) {
     corpus_end: rest.corpus_end
       ? { ...rest.corpus_end, path: scrub(rest.corpus_end.path) }
       : undefined,
-    server: rest.server ? { ...rest.server, serving_line: undefined, log: undefined } : rest.server,
+    server: rest.server
+      ? { ...rest.server, serving_line: undefined, log: undefined, event_log: undefined }
+      : rest.server,
     warmup:
       (rest.warmup ?? undefined) &&
       rest.warmup.map((w) => ({ ...w, refusals: scrubRefusals(w.refusals) })),

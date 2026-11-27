@@ -26,6 +26,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { FakeDocument, FakeElement } = require("./key-reveal-dom.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
@@ -52,7 +53,7 @@ function assert(condition, message) {
   }
 }
 
-function loadProductionModules() {
+function loadProductionModules(globals = {}) {
   const context = {
     window: {},
     console,
@@ -65,6 +66,7 @@ function loadProductionModules() {
     Promise,
     Request,
     URL,
+    ...globals,
   };
   context.window.window = context.window;
   vm.createContext(context);
@@ -331,6 +333,7 @@ function paintOf(model) {
           ? `${offer.text} [${offer.button}] → ${offer.ref}`
           : `${offer.text} [${offer.button}]`,
     error: model.error,
+    ...(model.pull === null ? {} : { pull: model.pull.text }),
   };
 }
 
@@ -360,7 +363,7 @@ async function runFolder() {
 
     page.setStatus(recordedFolder.status_refreshed);
     await page.fireTimer();
-    steps.push(page.observe("the store was fetched; the row says when, and nothing reloads"));
+    steps.push(page.observe("the store was fetched without showing the footer or reloading"));
 
     page.answerPost(
       "/api/source/refresh",
@@ -385,8 +388,8 @@ async function runFolder() {
     });
     page.setStatus(status);
     await page.start(controller);
-    steps.push(page.observe("an origin branch's page names the store, not a mirror"));
-    assert(!JSON.stringify(steps.at(-1).paint).includes("mirror"), "a folder's row said mirror");
+    steps.push(page.observe("an origin branch's page with no fetch issue has no footer"));
+    assert(steps.at(-1).paint === null, "routine origin freshness painted a footer");
     // The server came to serve the working tree: the selector offers the reload, not the row.
     page.setStatus(recordedFolder.status_working_tree);
     await page.fireTimer();
@@ -634,7 +637,61 @@ async function runCheckoutBranch() {
   return steps;
 }
 
+async function checkMountedFooter() {
+  const document = new FakeDocument();
+  document.visibilityState = "visible";
+  const footer = document.createElement("div");
+  footer.hidden = true;
+  document.body.append(footer);
+  const status = { ...recorded.refreshed, stale: false, probe_every_s: null };
+  let next = status;
+  const shown = { pin: status.pin, ref: status.ref };
+  const { MetabrowserSourceFreshness: browser } = loadProductionModules({
+    window: {
+      METABROWSER_SOURCE_PIN: shown,
+      location: { pathname: "/view/" },
+      setTimeout: () => 1,
+      clearTimeout() {},
+      addEventListener() {},
+    },
+    document,
+    HTMLElement: FakeElement,
+    AbortController,
+    fetch: async () => ({ status: 200, headers: new Headers(), json: async () => next }),
+  });
+  const controller = browser.mount(footer);
+  await settle();
+  assert(footer.hidden, "an ordinary successful fetch drew a footer");
+  assert(footer.dataset.lastFetchAt === status.last_fetch_at, "hidden footer lost fetch timing");
+
+  next = { ...status, last_fetch_at: "2026-09-23T12:04:00Z" };
+  await controller.poll();
+  assert(footer.hidden, "a newer successful timestamp drew a footer");
+  assert(
+    footer.dataset.lastFetchAt === next.last_fetch_at,
+    "hidden footer did not update its timing",
+  );
+
+  next = { ...next, pull_request: 7 };
+  await controller.poll();
+  assert(
+    !footer.hidden && footer.querySelector(".source-freshness-pull"),
+    "attended link vanished",
+  );
+  assert(footer.querySelector(".source-freshness-label") === null, "link left a blank label");
+
+  next = { ...next, ref: "refs/remotes/origin/other", follows: false, pull_request: null };
+  await controller.poll();
+  assert(
+    !footer.hidden && footer.querySelector(".source-freshness-offer"),
+    "reload offer vanished",
+  );
+  assert(footer.querySelector(".source-freshness-label") === null, "offer left a blank label");
+  controller.dispose();
+}
+
 async function run() {
+  await checkMountedFooter();
   const steps = [];
   // The steps of a page's own ask, printed under the `asks` argument: one transcript of
   // every step is more than the golden runner can match as one block.
@@ -1499,13 +1556,25 @@ async function run() {
       nowMs: NOW_MS,
     });
     assert(
-      offered.follow === null &&
+      offered.visible &&
+        offered.label === "" &&
+        offered.follow === null &&
         offered.offer?.kind === "switch" &&
         offered.offer.ref === byId.ref &&
         offered.offer.text === "Pull request #7 has moved" &&
         offered.offer.button === "Switch",
       `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
     );
+    const current = { ...recorded.refreshed, pull_request: 7 };
+    const linkOnly = freshness.describe(current, {
+      shown: { pin: current.pin, ref: current.ref },
+      nowMs: NOW_MS,
+    });
+    assert(
+      linkOnly.visible && linkOnly.label === "" && linkOnly.pull?.href === "/pull/7",
+      "a pin's attended pull request is still linked without a routine fetch label",
+    );
+
     // The row's own words start a sentence capitalized, and a ref's name stays its own.
     const gone = { ...byId, latest: byId.pin, ref_on_origin: false };
     const goneRow = freshness.describe(gone, {

@@ -9,7 +9,7 @@
   /**
    * @param {HTMLElement} container
    * @param {{path?: unknown}} ctx
-   * @returns {{dispose: () => void}}
+   * @returns {{dispose: () => void, ready: Promise<void>}}
    */
   function renderImage(container, ctx) {
     if (typeof ctx?.path !== "string" || !ctx.path) {
@@ -29,13 +29,19 @@
     container.replaceChildren(image);
 
     let disposed = false;
+    // The compositor can keep the previous view until the image can paint.
+    const ready = image.decode();
+    // Cancellation can dispose the handle before the compositor starts awaiting it.
+    void ready.catch(() => {});
     return {
+      ready,
       dispose() {
         if (disposed) {
           return;
         }
         disposed = true;
         image.remove();
+        image.removeAttribute("src");
       },
     };
   }

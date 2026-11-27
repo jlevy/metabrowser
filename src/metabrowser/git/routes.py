@@ -30,13 +30,14 @@ carries an entity tag, so a repeat answers from memory or with a 304.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from metabrowser import server_timing
+from metabrowser import event_log, server_timing
 from metabrowser.content_errors import ContentUnavailableError, content_error_wire
 from metabrowser.git.change_size import commit_size
 from metabrowser.git.detail import read_commit_detail
@@ -47,6 +48,7 @@ from metabrowser.git.history import (
     InvalidHistoryCursorError,
     StaleHistorySessionError,
     current_history_scope,
+    current_history_sessions,
 )
 from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.message import read_commit_message, render_commit_body
@@ -56,8 +58,14 @@ from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.route_memo import answer_tag, keep_answer, kept_answer
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.http_caching import etag_headers, matches_if_none_match
+from metabrowser.repository_context import is_checkout_root
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
-from metabrowser.source import as_git_revision_subject, get_source_session, session_filesystem_root
+from metabrowser.source import (
+    UnsupportedSourceCapabilityError,
+    as_git_revision_subject,
+    get_source_session,
+    session_filesystem_root,
+)
 
 log = logging.getLogger(__name__)
 
@@ -209,6 +217,31 @@ async def api_git_summary(request: Request) -> Response:
     )
 
 
+async def prepare_initial_history() -> None:
+    """Start the default Commits page on a serving process's opening subject."""
+
+    try:
+        location = session_git_location()
+    except UnsupportedSourceCapabilityError:
+        return
+    if location.cwd is not None and not await asyncio.to_thread(is_checkout_root, location.cwd):
+        return
+    with event_log.span("job", "git.history_prepare", announce=True) as span:
+        context, _info = await _resolve(location)
+        if context is None or context.head.get("unborn"):
+            span.set(prepared=False, reason="no_history")
+            return
+        try:
+            # The registry reuses this walk for the same subject, refs, scope, and page size.
+            prepared = await current_history_sessions(HISTORY_SESSIONS).prepare_default_page(
+                location
+            )
+        except (GitError, HistoryStorageError) as exc:
+            span.note_failure(type(exc).__name__)
+        else:
+            span.set(prepared=prepared)
+
+
 async def api_git_log(request: Request) -> Response:
     """``GET /api/git/log`` — one page of history.
 
@@ -254,7 +287,7 @@ async def api_git_log(request: Request) -> Response:
         # Mostly waiting on the session's long-lived `git log`, which run_git's phase
         # does not see; the one-shot commands under it are not counted twice.
         with server_timing.phase("git"):
-            page = await HISTORY_SESSIONS.read_page(
+            page = await current_history_sessions(HISTORY_SESSIONS).read_page(
                 location,
                 wants_all=wants_all,
                 limit=limit,

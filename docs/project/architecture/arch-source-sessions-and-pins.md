@@ -315,9 +315,11 @@ repository’s commit and a symbolic link’s would open its target.
 The pin is server-wide, so a switch from one tab moves every tab’s; a tab learns it when
 a data request is refused (`metabrowser:pin-changed`). A mounted diff then turns each
 link into the button that switches back, since the same `/view/` address now opens the
-other pin, and its rendered Markdown’s links to files of the head into plain text.
-A switch and the navigation after it are two steps, because a `/view/` address names no
-revision; that is a limit of this design, not something View on branch adds.
+other pin; its rendered Markdown’s links to files of the head open those files at the
+head on github.com instead, and each GitHub link it opened in place is the link the text
+wrote again (`closeHeadLinks` in `builtin_plugins/diff/diff-markdown.js`). A switch and
+the navigation after it are two steps, because a `/view/` address names no revision;
+that is a limit of this design, not something View on branch adds.
 `builtin_plugins/diff/diff-view-file.js` holds the rules in its header, and the parity
 rows `diff.view-file` and `diff.view-file-sides` pin them.
 

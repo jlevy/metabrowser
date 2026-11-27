@@ -1,0 +1,19 @@
+Exp-109 — open Git views with diff assets already prepared
+Registered 2026-11-26 before any candidate measurement.
+
+H131: first Commits navigation after the Files landing no longer requests the
+diff renderer's static import graph if the existing SDK prepares it at browser
+idle after Git repository discovery. Use the existing loader so an early click
+joins its flight and a failed speculative load remains retryable.
+
+Compare the same pinned public Metabrowser corpus in two interleaved runs per
+condition, with one clean fresh app state per start, one headless Chrome profile
+per journey, origin checkout acquisition off and GitHub offline. Run the Commits
+first-visit scenario and verify its exact newest commit. Count diff plugin
+requests after the trusted Commits click and compare time to useful paint, blank
+and placeholder frames, first Files readiness, and any startup requests still
+in flight. Retain refused rows. These are diagnostic attempts with restricted
+provider settings, the busy Mac, and fewer than the judged sample count.
+
+Keep the prior integrated Chrome and WKWebView smoke separate as exp-108. The
+native cold scenario records native startup only, with its own readiness clock.

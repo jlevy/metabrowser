@@ -1,14 +1,18 @@
 // Browserless session for what a link in rendered text opens (static/repository-links.js).
 //
 // The exact production module loads whole, as the shell loads it on demand, beside the
-// GitPath codec (static/git-path.js) a pinned revision's shell loads first. `localize` reads
-// one table of URLs against the contexts a page can have: a checkout on a branch whose name
-// holds a slash, the same checkout served from a subfolder, a mirror's pinned revision,
-// and a pull request's text whose head is or is not the served commit. `enhance` then runs
-// over a few links of an inert text, as a pull request's page and a commit's page call it,
-// and a plain and a modified click on each. tests/test_repository_links_js.py holds its
-// in-app addresses to the server's route grammar and its github.com addresses to the
-// server's URL reducer.
+// GitPath codec (static/git-path.js) a pinned revision's shell loads first. `localize`, which
+// the part `localized` prints, reads one table of URLs against the contexts a page can
+// have: a checkout on a branch whose name holds a slash, the same checkout served from a
+// subfolder, a mirror's pinned revision, and a pull request's text whose head is or is not
+// the served commit. With no part named, `viewFileUrl` reads a rendered diff's links to
+// files of the head, and `enhance` runs over a few links of an inert text, as a pull
+// request's page and a commit's page call it, and a plain and a modified click on each: a
+// `/view/` target opens through `navigation.open`, a route through the page's own `open`
+// when it takes it and otherwise through the shell's `navigation.openRoute`, and the
+// browser follows what neither opened, as it does every modified click.
+// tests/test_repository_links_js.py holds its in-app addresses to the server's route
+// grammar and its github.com addresses to the server's URL reducer.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -307,11 +311,15 @@ function anchor(href, attributes = {}) {
 function enhanced(context, sourceKind, options) {
   const opened = [];
   const routed = [];
+  const asked = [];
+  // Whether the shell opens a route in place: false before its tab controller has loaded.
+  const shellOpens = options.shell !== false;
   const outside = { target: "_blank", rel: "noopener noreferrer" };
   const anchors = {
     file: anchor(`${repo}/pull/docs/new.md`, { ...outside, "data-metabrowser-path-relative": "" }),
     pull: anchor(`${repo}/pull/12/files`, outside),
     commit: anchor(`${repo}/commit/${OTHER}`, outside),
+    list: anchor(`${repo}/pulls`, outside),
     other: anchor("https://example.com/", outside),
   };
   const root = { querySelectorAll: () => Object.values(anchors) };
@@ -325,10 +333,11 @@ function enhanced(context, sourceKind, options) {
         opened.push(target);
         return Promise.resolve();
       },
+      openRoute: (href) => asked.push(href) > 0 && shellOpens,
     },
   };
   // As a pull request's page does: another pull request opens in place, and a commit's
-  // page is followed as a link.
+  // page or the list is the shell's to open.
   const open = options.routes
     ? (route) =>
         route.pull !== null && routed.push(`${route.href} ${JSON.stringify(route.pull)}`) > 0
@@ -355,6 +364,7 @@ function enhanced(context, sourceKind, options) {
     clicks,
     opened,
     routed,
+    shell: { opens: shellOpens, asked },
   };
 }
 
@@ -386,57 +396,60 @@ const viewFiles = Object.fromEntries(
 );
 
 const textContext = contexts["text at the served head"].context;
-console.log(
-  JSON.stringify(
-    {
-      localized,
-      viewFiles,
-      enhanced: {
-        "a text at its served head": enhanced(textContext, "git_revision", {
-          text: { head: SERVED },
-        }),
-        "a text away from its head, with the page's own router": enhanced(
-          contexts["text away from its head"].context,
-          "git_revision",
-          { text: { head: OTHER }, routes: true },
-        ),
-        "a text whose pull request's changed files arrive after it is drawn": enhanced(
-          contexts["text away from its head"].context,
-          "git_revision",
-          {
-            text: { head: OTHER },
-            later: [
-              {
-                head: OTHER,
-                changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
-              },
-            ],
-            routes: true,
-          },
-        ),
-        "a text whose head moves past its files, and whose new files then arrive": enhanced(
-          contexts["text away from its head"].context,
-          "git_revision",
-          {
-            text: {
-              head: OTHER,
-              changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
-            },
-            later: [
-              { head: PINNED.replace(/c/g, "d") },
-              {
-                head: PINNED.replace(/c/g, "d"),
-                changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
-              },
-            ],
-            routes: true,
-          },
-        ),
-        "a commit's message, which has no text context": enhanced(textContext, "filesystem", {}),
-        "a page with no repository": enhanced(null, "filesystem", { text: { head: SERVED } }),
-      },
-    },
-    null,
-    2,
+const runs = {
+  "a text at its served head": enhanced(textContext, "git_revision", {
+    text: { head: SERVED },
+  }),
+  "a text away from its head, with the page's own router": enhanced(
+    contexts["text away from its head"].context,
+    "git_revision",
+    { text: { head: OTHER }, routes: true },
   ),
+  "a text whose pull request's changed files arrive after it is drawn": enhanced(
+    contexts["text away from its head"].context,
+    "git_revision",
+    {
+      text: { head: OTHER },
+      later: [
+        {
+          head: OTHER,
+          changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+        },
+      ],
+      routes: true,
+    },
+  ),
+  "a text whose head moves past its files, and whose new files then arrive": enhanced(
+    contexts["text away from its head"].context,
+    "git_revision",
+    {
+      text: {
+        head: OTHER,
+        changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+      },
+      later: [
+        { head: PINNED.replace(/c/g, "d") },
+        {
+          head: PINNED.replace(/c/g, "d"),
+          changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+        },
+      ],
+      routes: true,
+    },
+  ),
+  "a commit's message, which has no text context": enhanced(textContext, "filesystem", {}),
+  "a commit's message before the shell's tabs have loaded": enhanced(textContext, "filesystem", {
+    shell: false,
+  }),
+  "a page with no repository": enhanced(null, "filesystem", { text: { head: SERVED } }),
+};
+
+// The part `localized` prints what `localize` answers for the table of URLs, and no part
+// the rest, so each is one transcript block of a size tryscript reads.
+const part = process.argv[2] ?? null;
+if (part !== null && part !== "localized") {
+  throw new Error(`Unknown part ${part}; the one part to name is localized`);
+}
+console.log(
+  JSON.stringify(part === "localized" ? { localized } : { viewFiles, enhanced: runs }, null, 2),
 );

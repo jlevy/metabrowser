@@ -45,6 +45,7 @@ from tests.github_pull_fixture import (
     tree_files,
 )
 from tests.golden_harness import check_recording, origin_identity, read_recording, run_session
+from tests.mode_denials import require_mode_denials
 from tests.required_tools import needs_git
 from tests.test_cli_github_pull_files_golden import _after, _api, _first, _Session, _with
 
@@ -193,6 +194,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
 def test_recording_is_what_the_routes_answer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
+    require_mode_denials()
     recorded = _record(tmp_path, monkeypatch, pull_origin)
     assert (recorded["absent"]["state"], recorded["absent"]["reason"]) == ("absent", "not_cached")
     # Full-size pages: each published as it arrived, the count honest at each.

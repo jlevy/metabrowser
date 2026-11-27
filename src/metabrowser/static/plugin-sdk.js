@@ -49,6 +49,8 @@
 //   Navigation:
 //     navigation.href(target)            — canonical /view/ href for a target
 //     navigation.open(target, {viewId?}) — open a target, optionally preferring a view
+//     navigation.openRoute(href)         — open a /pull/, /stack/, /pulls, or /commit/
+//                                          page in place; false leaves it to the browser
 //     navigation.current()               — current path/query/fragment target or null
 //     fileCatalog.snapshot()              — immutable known-file inventory snapshot
 //     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
