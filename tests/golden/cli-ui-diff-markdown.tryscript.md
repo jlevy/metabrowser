@@ -87,6 +87,14 @@ request’s branch at an earlier commit, where that address would open the earli
 When the page learns that another tab changed the pin, every link it opened in place is
 the link it would be in a file drawn after the change, a click on each is the browser’s,
 and no link opens a `/view/` address; the session fails otherwise.
+Each link that opens in place has its link card, the tooltip that says what it opens
+(`static/link-previews.js`, a recording stand-in here), registered with the block that
+holds it: a link to the served branch as a file or folder of the served working tree,
+and a link to a file of the head the server spelled as that file (`view-head`), so no
+link carries a tooltip of its own.
+The pin change takes every card, and gives back only the card of where each link now
+goes, another site’s (`external`), since no link opens here any more, and the views’
+disposal puts away the cards of each file’s article and every block it drew.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
 `builtin_plugins/diff/index.js`, `static/repository-links.js`, and
@@ -111,15 +119,14 @@ an earlier commit, beside a checkout at the head, which has no pin, and pinned a
 head once another tab changed the pin.
 `links.opens` says which addresses in a rendered block open something on the page pinned
 at the head. `links.repository` draws a block of GitHub links to the branch on each of
-those pages, and what a plain click on each does.
-Each step lists the requests the page made and each file whose state it changed: its
-chooser (`*` chosen, and `unavailable` with the reason for a view that cannot be
-chosen), what its body shows (`nothing` while it waits for its rendered view),
-`progress` while its mark counts down, and its rendered rows, a fold as its bar and a
-chunk not drawn yet as the place it keeps, a long file’s rows shortened to their first
-and last four.
-The session fails if a file’s chooser is ever gone, or if a file’s section
-says it waits at any time but while its body shows nothing.
+those pages, what a plain click on each does, and each link’s card (`cards`). Each step
+lists the requests the page made and each file whose state it changed: its chooser (`*`
+chosen, and `unavailable` with the reason for a view that cannot be chosen), what its
+body shows (`nothing` while it waits for its rendered view), `progress` while its mark
+counts down, and its rendered rows, a fold as its bar and a chunk not drawn yet as the
+place it keeps, a long file’s rows shortened to their first and last four.
+The session fails if a file’s chooser is ever gone, or if a file’s section says it waits
+at any time but while its body shows nothing.
 It prints its transcript in two parts, each a block of its own: the links and the steps
 before the long document’s, then the long document’s steps on (`long`).
 
@@ -147,10 +154,14 @@ $ node tests/dom/diff-markdown-session.js
     },
     "repository": {
       "pinned at the comparison's head": {
-        "drawn": "<p>See <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the setup notes</a> in <a href=\"/view/g1-ZG9jcw/\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the docs folder</a>.</p>",
+        "drawn": "<p>See <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\" data-metabrowser-github-localization=\"working-tree\">the setup notes</a> in <a href=\"/view/g1-ZG9jcw/\" data-metabrowser-github-localization=\"working-tree\">the docs folder</a>.</p>",
         "plain clicks": [
           "in place: /view/g1-ZG9jcw/g1-c2V0dXAubWQ",
           "in place: /view/g1-ZG9jcw/"
+        ],
+        "cards": [
+          "the setup notes: view working-tree /view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+          "the docs folder: view working-tree /view/g1-ZG9jcw/"
         ]
       },
       "pinned at the merge base": {
@@ -158,6 +169,10 @@ $ node tests/dom/diff-markdown-session.js
         "plain clicks": [
           "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ],
+        "cards": [
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       },
       "pinned on the pull request's branch before its last push": {
@@ -165,6 +180,10 @@ $ node tests/dom/diff-markdown-session.js
         "plain clicks": [
           "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ],
+        "cards": [
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       },
       "beside a checkout at the head, which has no pin": {
@@ -172,6 +191,10 @@ $ node tests/dom/diff-markdown-session.js
         "plain clicks": [
           "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ],
+        "cards": [
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       },
       "pinned at the comparison's head, after another tab changed the pin": {
@@ -179,6 +202,10 @@ $ node tests/dom/diff-markdown-session.js
         "plain clicks": [
           "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
           "the browser's: https://github.com/octo/demo/tree/feature/docs"
+        ],
+        "cards": [
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
         ]
       }
     }
@@ -521,7 +548,7 @@ $ node tests/dom/diff-markdown-session.js
           "shows": "rendered",
           "rows": [
             "added: <h1 id=\"user-content-eaea5626d13a00d99ed68705-new-links\">Links</h1>",
-            "added: <p>See <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the setup notes</a> in <a href=\"/view/g1-ZG9jcw/\" data-metabrowser-github-localization=\"working-tree\" data-tip-text=\"Open the corresponding path in the currently served working tree.\">the docs folder</a>.</p>"
+            "added: <p>See <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\" data-metabrowser-github-localization=\"working-tree\">the setup notes</a> in <a href=\"/view/g1-ZG9jcw/\" data-metabrowser-github-localization=\"working-tree\">the docs folder</a>.</p>"
           ]
         }
       }
@@ -1091,6 +1118,27 @@ $ node tests/dom/diff-markdown-session.js long
       }
     },
     {
+      "step": "each link that opened here had its card, which the pin change took",
+      "at the head": {
+        "f1": [
+          "first setup notes: view-head /view/g1-ZG9jcw/g1-c2V0dXAubWQ"
+        ],
+        "f12": [
+          "the setup notes: view working-tree /view/g1-ZG9jcw/g1-c2V0dXAubWQ",
+          "the docs folder: view working-tree /view/g1-ZG9jcw/"
+        ]
+      },
+      "after": {
+        "f1": [
+          "first setup notes: external https://github.com/octo/demo/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/setup.md"
+        ],
+        "f12": [
+          "the setup notes: external https://github.com/octo/demo/blob/feature/docs/setup.md",
+          "the docs folder: external https://github.com/octo/demo/tree/feature/docs"
+        ]
+      }
+    },
+    {
       "step": "disposal unbinds every chooser and stops every timer",
       "requests": [],
       "files": {}
@@ -1098,7 +1146,8 @@ $ node tests/dom/diff-markdown-session.js long
     {
       "step": "after disposal",
       "bound": 0,
-      "timers": 0
+      "timers": 0,
+      "cards put away": true
     },
     {
       "step": "a file drawn after the pin change links as the one the change closed",

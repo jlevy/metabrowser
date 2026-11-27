@@ -1078,6 +1078,7 @@ let groupHeadings = 0;
  *   loadDrawPatch: () => Promise<DrawPatch>,
  *   loadDrawDocument: () => Promise<DrawDocument>,
  *   loadDrawProse: () => Promise<DrawProse>,
+ *   releaseProse?: (prose: HTMLElement) => void,
  *   refusalNote: RefusalNote,
  *   introductionReady?: () => Promise<unknown>,
  *   ahead?: (read: () => void) => () => void,
@@ -1095,6 +1096,9 @@ let groupHeadings = 0;
  *   never loads it.
  *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through, and
  *   *refusalNote* says why a note's render was refused, in a description's words.
+ *   *releaseProse* hears each note the guide drew once it lets the note go: its step left
+ *   for another, a step composed out of sight given up, and the guide's end, so the page
+ *   puts away what it gave the note, its links' cards.
  *   *introductionReady* settles once the introduction shows as it will stay, its Markdown
  *   inserted or refused, which the overview waits for. *ahead* schedules a read ahead of the
  *   reader, as the page schedules its idle work, and returns its canceller; without it a
@@ -1404,6 +1408,17 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     const shown = element("section", "", "github-pull-guide-step");
     /** @type {Stage} */
     const stage = { detail: shown, drawn: [], waits: [], apply: () => {} };
+    // Each note this stage draws goes with the stage, as its excerpts do (`undraw`).
+    const draw = drawProse;
+    /** @type {DrawProse | null} */
+    const drawNote =
+      draw === null
+        ? null
+        : (html, base) => {
+            const prose = draw(html, base);
+            stage.drawn.push({ dispose: () => deps.releaseProse?.(prose) });
+            return prose;
+          };
     // The overview's introduction is the page's, and shows once its Markdown is in.
     const introduced = (/** @type {boolean} */ showsIntro) => {
       if (showsIntro && deps.introductionReady !== undefined) {
@@ -1467,7 +1482,7 @@ export function mountGuidedReview(host, introduction, subject, deps) {
       return stage;
     }
     const changed = outdated(answered.stale) ? (answered.stale.changed_steps ?? []) : [];
-    const step = stepProse(answered, drawProse, refusalNote);
+    const step = stepProse(answered, drawNote, refusalNote);
     const stale = answered.stale;
     const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
     /** @type {Drawers} */
@@ -1541,7 +1556,7 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     const opens =
       group !== null && group.note !== null && group.children[0]?.step === answered.step;
     shown.append(
-      ...(opens ? groupNote(group.note ?? "", answered, drawProse, refusalNote) : []),
+      ...(opens ? groupNote(group.note ?? "", answered, drawNote, refusalNote) : []),
       card,
     );
     return stage;

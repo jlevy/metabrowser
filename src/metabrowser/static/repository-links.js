@@ -45,6 +45,12 @@
 // links to files of its head read it too (builtin_plugins/diff/diff-markdown.js,
 // `openHeadLinks`), so the links of one text open alike.
 //
+// Each link `enhance` makes in-app has its link card, the tooltip that says what it opens,
+// and so has each link it leaves for another site, whose card says where it goes: it
+// registers each through the SDK it is given (`previewLink`, static/plugin-sdk-views.js),
+// as every surface registers its links, so this module needs nothing of the card's, which
+// loads in a bundle of its own at the first rest on a link (static/link-previews.js).
+//
 // Loaded on demand (`ensureAsset("repository-links")`) by the views that show authored text
 // from a GitHub repository: only a page with a repository identity uses it, and the startup
 // scripts are at their transfer budget (performance-budgets.toml). The exact module runs
@@ -604,8 +610,6 @@
   // changes. Keeping the original lets a later pass undo an earlier rewrite.
   /** @type {WeakMap<Element, {href: string, target: string | null, rel: string | null}>} */
   const authoredLinks = new WeakMap();
-  // The tooltip of a link that opens whatever revision is served, not the one it named.
-  const WORKING_TREE_TITLE = "Open the corresponding path in the currently served working tree.";
   /**
    * What a plain click on each link `enhance` made in-app opens, read at the click, so a
    * later pass changes it without a second listener.
@@ -630,11 +634,19 @@
    * modified click, a new tab, and a copied address use the same `href`, and so does a
    * plain click the shell cannot open in place. Returns how many links it changed.
    *
-   * It may run again over the same text with more context, and then reads each link as the
-   * text wrote it and moves its one click handler to the new answer.
+   * Each link it reads is registered for its link card with *root*, through *mb*
+   * (`mb.previewLink`), so *root* is the text's own element, the boundary whose card its page
+   * puts away when the text goes (`mb.disposePreviews`): an in-app link's card says what it
+   * opens, and that a link
+   * to the served branch opens whatever the page serves, and a link it leaves for another
+   * site, or restores to one, says where it goes. It shows no tooltip of its own.
    *
-   * @param {ParentNode} root
-   * @param {Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">} mb
+   * It may run again over the same text with more context, and then reads each link as the
+   * text wrote it and moves its one click handler and its card to the new answer.
+   *
+   * @param {Element} root
+   * @param {MetabrowserRepositoryLinksSdk} mb The page's SDK, which a link opens and is
+   *   given its card through.
    * @param {{
    *   text?: TextContext,
    *   open?: (route: RouteTarget) => boolean,
@@ -667,8 +679,9 @@
       });
       if (resolved === null) {
         if (original) {
-          restoreAuthoredLink(anchor, original);
+          restoreAuthoredLink(anchor, original, mb);
         }
+        previewOutside(root, anchor, mb);
         continue;
       }
       let href;
@@ -684,8 +697,9 @@
         // other links are still read.
         console.warn("metabrowser: a link was left as written", error);
         if (original) {
-          restoreAuthoredLink(anchor, original);
+          restoreAuthoredLink(anchor, original, mb);
         }
+        previewOutside(root, anchor, mb);
         continue;
       }
       changed += 1;
@@ -696,7 +710,6 @@
           rel: anchor.getAttribute("rel"),
         });
       }
-      anchor.removeAttribute("data-tip-text");
       anchor.setAttribute("href", href);
       if (resolved.kind === "external") {
         // It leaves the page, as the allowlist's outside links do.
@@ -704,17 +717,14 @@
         anchor.setAttribute("rel", "noopener noreferrer");
         anchor.removeAttribute("data-metabrowser-github-localization");
         opens.delete(anchor);
+        previewOutside(root, anchor, mb);
         continue;
       }
       anchor.removeAttribute("target");
       anchor.removeAttribute("rel");
       anchor.setAttribute("data-metabrowser-github-localization", resolved.localization);
-      if (resolved.kind === "view" && resolved.localization === "working-tree") {
-        // The app's own tooltip (devtools/check_tooltips.py), which an inert text, keeping no
-        // attribute of its own, cannot have set.
-        anchor.setAttribute("data-tip-text", WORKING_TREE_TITLE);
-      }
       opens.set(anchor, { resolved, mb, open: options.open });
+      mb.previewLink(root, anchor, resolved);
       if (!listening.has(anchor)) {
         listening.add(anchor);
         anchor.addEventListener("click", (event) => openOnPlainClick(anchor, event));
@@ -726,8 +736,9 @@
   /**
    * @param {Element} anchor
    * @param {{href: string, target: string | null, rel: string | null}} original
+   * @param {MetabrowserRepositoryLinksSdk} mb
    */
-  function restoreAuthoredLink(anchor, original) {
+  function restoreAuthoredLink(anchor, original, mb) {
     for (const [name, value] of Object.entries(original)) {
       if (value === null) {
         anchor.removeAttribute(name);
@@ -736,9 +747,22 @@
       }
     }
     anchor.removeAttribute("data-metabrowser-github-localization");
-    anchor.removeAttribute("data-tip-text");
     authoredLinks.delete(anchor);
     opens.delete(anchor);
+    mb.forgetPreview(anchor);
+  }
+
+  /**
+   * Give *anchor*, a link of *root* that leaves for another site, the card that says where
+   * it goes, by the address it now has; a link whose address names no site, such as a mail
+   * link's or a place in the text, has none.
+   *
+   * @param {Element} root
+   * @param {Element} anchor
+   * @param {MetabrowserRepositoryLinksSdk} mb
+   */
+  function previewOutside(root, anchor, mb) {
+    mb.previewLink(root, anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" });
   }
 
   /**
@@ -902,7 +926,6 @@
   }
 
   window.MetabrowserRepositoryLinks = Object.freeze({
-    WORKING_TREE_TITLE,
     enhance,
     fileUrl,
     isPlainClick,

@@ -6373,7 +6373,9 @@ export function mountPullPage(container, ctx, mb) {
   /**
    * Make *prose*'s links open what *text* says they open, and mark each outside link. Only
    * this sanitized message is visited. Authored SVG and state attributes have already been
-   * discarded; known state comes from our record.
+   * discarded; known state comes from our record. Each link that opens here has its link
+   * card, registered with *prose*, the text's own element, which `unlinkTexts` puts away
+   * when the page lets the text go.
    *
    * @param {Element} prose
    * @param {MetabrowserRepositoryTextContext} text
@@ -6411,6 +6413,23 @@ export function mountPullPage(container, ctx, mb) {
     }
     for (const prose of drawn) {
       linkText(prose, text);
+    }
+  }
+
+  /**
+   * Put away the link cards of the texts drawn in *holders* (`linkText`), and the one up on
+   * any of their links, as the page lets those texts go: a section the conversation drops,
+   * and every text, Guided Review's notes among them, at the page's end.
+   *
+   * @param {Iterable<Element>} holders
+   */
+  function unlinkTexts(holders) {
+    for (const holder of holders) {
+      for (const prose of holder.querySelectorAll(".kpress-prose")) {
+        if (textProses.has(prose)) {
+          mb.disposePreviews(prose);
+        }
+      }
     }
   }
 
@@ -7797,13 +7816,15 @@ export function mountPullPage(container, ctx, mb) {
     for (const [index, note] of (model.corePreview ? [] : model.notes).entries()) {
       section(["note", index, note], () => notice("warning", [note]));
     }
-    // A section the conversation no longer shows takes its texts' diagrams with it.
+    // A section the conversation no longer shows takes its texts' diagrams and their links'
+    // cards with it.
     const kept = new Set(order);
     for (const node of sections.values()) {
       if (!kept.has(node)) {
         for (const text of sectionTexts.get(node) ?? []) {
           disposeTextDiagrams(text);
         }
+        unlinkTexts([node]);
       }
     }
     sections = next;
@@ -9596,6 +9617,9 @@ export function mountPullPage(container, ctx, mb) {
             }
             return (html) => inertProse(inert, html);
           },
+          // A note the guide lets go, its step left for another, takes its links' cards with
+          // it, as a text the conversation drops does.
+          releaseProse: (prose) => mb.disposePreviews(prose),
           // A refused note says why in a description's words.
           refusalNote: textRefusalNote,
           // The overview shows the description once its Markdown is drawn, or its source
@@ -10405,6 +10429,8 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    // The handoff keeps the texts on screen, but their links' cards are this page's.
+    unlinkTexts([container, ...sections.values()]);
     disposeGuided();
     cancelGuideAhead?.();
     cancelGuideAhead = null;

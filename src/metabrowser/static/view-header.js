@@ -32,7 +32,7 @@
     const {
       esc,
       servedRoot,
-      pathBaseName,
+      servedRootName,
       ownedControlAttr,
       mirrorHeading,
       getFileIcon,
@@ -86,14 +86,17 @@
       return cut > 0 ? trimmed.slice(0, cut) : cut === 0 ? "/" : "";
     }
 
-    /** A view header's title: the item's name, or the served root's. @param {string} path */
+    /**
+     * A view header's title: the item's name, or the served root's, as a link card names
+     * the root (`rootName` in static/link-previews.js), or `/` where it has none.
+     * @param {string} path
+     */
     function viewHeaderName(path) {
       if (path) {
         const segments = path.split("/");
         return window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 1]);
       }
-      const root = servedRoot();
-      return pathBaseName(root) || root || "/";
+      return servedRootName() || "/";
     }
 
     /** The eyebrow's Up: the item's folder, or disabled in place at the root. @param {string} path */

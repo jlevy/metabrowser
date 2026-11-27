@@ -2434,19 +2434,60 @@ async def index(
         # through metabrowser.loadRepositoryLinks(): only a page with a GitHub repository's
         # identity reads one, beside the text that holds it, a Markdown render, a pull
         # request's text, a commit's message, or a rendered diff. As a startup script it
-        # would cost every folder's shell its compressed size, 8,166 bytes, and the startup
-        # scripts were 109 bytes under their budget when it was written (2026-11-26). On
-        # demand it arrives before a Markdown file's render is asked for
-        # (static/plugin-sdk-views.js has the measurement). The GitPath codec it
-        # spells a pin's addresses with comes first: a startup script of a pin's shell,
-        # which a browser has cached there, and needed elsewhere only by a rendered diff
-        # beside a checkout, whose link to a file of the head it reads back.
+        # would cost every folder's shell its compressed size, and the startup scripts were
+        # 109 bytes under their budget when it was written (2026-11-26). On demand it arrives
+        # before a Markdown file's render is asked for (static/plugin-sdk-views.js has the
+        # measurement). The GitPath codec it spells a pin's addresses with comes first: a
+        # startup script of a pin's shell, which a browser has cached there, and needed
+        # elsewhere only by a rendered diff beside a checkout, whose link to a file of the
+        # head it reads back. Measured 2026-11-27 at `delivery.GZIP_LEVEL`, as
+        # devtools/check_startup_scripts.py measures a script sent: 1,742 and 10,394 bytes
+        # (4,626 and 36,633 raw). Its wait, `ensureAsset("repository-links")` to its
+        # answer, which `REPOSITORY_LINKS_WAIT_MS` bounds (static/plugin-sdk-views.js): on a
+        # checkout's Markdown file in headless Chrome 158 from 127.0.0.1, to which the server
+        # sends every script uncompressed, on a 4-core Linux container at load averages of
+        # 0.1 to 2.6, cold loads with the cache off alternating this bundle with the one it
+        # was, which also held the link card's two scripts (`link-previews` below), 20 loads
+        # of each in each of two runs: medians of 24.7 and 23.1 ms (at most 31.6) here,
+        # against 41.2 and 40.1 ms (at most 52.9) with the card.
         "repository-links": [
             {"src": _static_asset_url("git-path.js"), "provides": "MetabrowserGitPath"},
             {
                 "src": _static_asset_url("repository-links.js"),
                 "provides": "MetabrowserRepositoryLinks",
             },
+        ],
+        # The link card (static/link-previews.js), its registry, and its providers
+        # (static/link-preview-providers.js), which register with it and so come after it:
+        # code that runs only once a pointer rests on a link a surface registered, on any
+        # page, through metabrowser.previewLink() (static/plugin-sdk-views.js), which loads
+        # this at the page's first such rest and hands it that rest. Measured 2026-11-27 at
+        # `delivery.GZIP_LEVEL`: 12,899 and 7,003 bytes sent (45,001 and 23,974 raw; the
+        # timings below were taken at 13,069 and 6,970, before review I's fixes, which read
+        # an outside link's address through the SDK's `outsideAddress`, dropped the file
+        # catalog, and give an author's title back), which as a startup script, or
+        # in the resolver's bundle, every page would wait for; at a
+        # rest, the card's appear delay (`TOOLTIP_APPEAR_DELAY` in static/app.js) hides most
+        # of its load. In headless Chrome 158 from 127.0.0.1 as above, the first rest on a
+        # file's link of a fresh page, a checkout's Markdown file and a plain folder's, cache
+        # off, 20 pages of each variant in each of three runs, two resting a second after the
+        # links were in and one as soon as they were: the bundle loaded in medians of 9.1 to
+        # 16.2 ms (at most 42.8), and the card was up medians of 314.0 to 330.8 ms after the
+        # pointer arrived (at most 349.6), inside the window every rest's card comes in
+        # (tests/test_link_card_chrome.py), against 302.4 to 315.4 ms when the page
+        # preloaded the bundle in idle time after its first registration. Preloading costs
+        # every page with a link the bundle whether or not a pointer rests on one, and had
+        # loaded by a rest as soon as the links were in on only 9 and 12 of 20 pages. On the
+        # first page of a freshly started server, 10 servers a variant, the card was up a
+        # median of 337 ms (at most 367) with the bundle loaded at the rest and 311 ms (at
+        # most 367) preloaded, loaded by the rest on 4 of 10; the Chrome check's first rests
+        # there waited up to 188 ms for the bundle. So the page loads it at the rest.
+        "link-previews": [
+            {
+                "src": _static_asset_url("link-previews.js"),
+                "provides": "MetabrowserLinkPreviews",
+            },
+            {"src": _static_asset_url("link-preview-providers.js")},
         ],
         # These preferences need listeners only when the reader opens the menu.
         "settings-menu": [
