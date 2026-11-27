@@ -36,7 +36,7 @@ the SDK asked for the card’s bundle (`load`) and it ran (`loaded`), focus move
 - `a failed read, then the next rest`: the first read fails, and the next rest reads
   again and says the title.
 - `one file or folder prefetch at a time`: the folder starts its counterpart request
-  once the file's request finishes.
+  once the file’s request finishes.
 - `files the catalog leaves out`: a plain folder’s document links each of its files, and
   one the page’s Quick File catalog leaves out (`unlisted`: a hidden, a gitignored, and
   a symlinked file, which the folder opens all the same) has the card a file it lists
