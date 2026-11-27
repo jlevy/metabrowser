@@ -1767,6 +1767,9 @@ catch (error) { console.log("rejected: " + error.message); }`,
   try {
     globalThis.fetch = async (url) => {
       urls.push(url);
+      if (urls.length === 1) {
+        throw new DOMException("a stalled source status poll", "TimeoutError");
+      }
       return { ok: true, json: async () => statuses.shift() ?? absent };
     };
     const result = await waitForOriginStore(B, 5000);
@@ -1776,7 +1779,7 @@ catch (error) { console.log("rejected: " + error.message); }`,
       assert.equal(result.last_fetch_at, fetchAt);
       assert.equal(refused.ready, false);
       assert.equal(refused.last_fetch_at, null);
-      assert.ok(urls.length >= 4);
+      assert.ok(urls.length >= 5);
       assert.ok(urls.every((url) => url === `${B}/api/source/status`));
     });
   } finally {

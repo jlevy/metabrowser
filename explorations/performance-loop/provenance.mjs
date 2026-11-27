@@ -189,13 +189,12 @@ export async function waitForOriginStore(base, timeoutMs) {
         Math.max(1, Math.min(5000, Math.ceil(remaining))),
       );
     } catch (error) {
-      if (error.name === "TimeoutError" && performance.now() - started >= timeoutMs) {
-        break;
+      if (error.name !== "TimeoutError") {
+        throw error;
       }
-      throw error;
     }
     if (
-      status.refreshable === true &&
+      status?.refreshable === true &&
       status.refreshing === false &&
       status.stale === false &&
       Number.isFinite(Date.parse(status.last_fetch_at))
