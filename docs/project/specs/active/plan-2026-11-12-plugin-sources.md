@@ -111,7 +111,7 @@ and cons.
 | 6 | The order of the work | Unblock and extract isolation first, then one vertical slice, then the registry | now | No |
 | 7 | Where sources and trust decisions live | The state home, read fail-closed | Phase 2 | Yes: moving a released record needs a migration |
 | 8 | How many plugin API versions | One, under Cargo’s caret rule, plus a build stamp that is not a version | Phase 0 | Somewhat: splitting later adds a field to every manifest |
-| 9 | How widely a worker is shared | One per server, environment, and grant set | Phase 1 | No: a shared worker can sit behind the same client |
+| 9 | How widely a worker is shared | One per server, environment, and grant set, subject to provider isolation | Phase 1 | No: a shared worker can sit behind the same client |
 | 10 | How log adapters are detected | Declarative predicates in the manifest, proved on the built-in adapters first | Phase 3 | Somewhat: manifests carry the predicates |
 | 11 | What a trusted plugin’s Python may do | Confined, with declared needs as grants; where the machine cannot confine, it does not load | Phase 4 | No to tighten; a released grant of full access is hard to take back |
 
@@ -484,24 +484,38 @@ Plugins that share a worker share its event loop, its memory, and whatever ends 
   - Pros: a worker serves one root, so plugin caches and root callbacks keep their
     meaning; its lifetime is tied to its server; no new supervisor.
   - Cons: several open folders on one environment cost one worker each; plugins that
-    share a worker share a fate, so ending one must be rare; a plugin with a need of its
-    own costs a worker of its own, which is the price of not handing its grant to the
-    others.
+    share a worker share a fate, so ending one must be rare.
+    A plugin with a need of its own costs a worker of its own.
+    Separate workers give providers different authority only if startup and imports
+    respect the provider boundary.
+
 - **B. One worker per environment, shared by every server.**
   - Pros: one worker’s memory per environment, however many folders are open.
   - Cons: needs a supervisor outside any server, a root on every call, and cache
     isolation between roots inside plugin code, which plugins do not do today.
+
 - **C. One worker per server and plugin.**
   - Pros: one plugin’s stuck hook cannot touch another’s.
   - Cons: three plugins in one environment cost three workers’ memory and three imports
     of what they share.
+
 - **D. In process.**
   - Pros: no extra process.
   - Cons: the dependency conflicts, GIL contention, and shared crashes this design
     exists to remove.
 
-**Recommendation: A,** with deadlines that fail a call and not a worker (Process Model),
-and revisit B if the app’s open-folder memory needs it.
+- **E. Grant authority to the environment as a whole.** The owner approves the
+  environment’s effective grants.
+  Providers that need different authority use separate environments.
+  - Pros: consent covers startup code and imports from the environment.
+  - Cons: providers in one environment share its grants.
+    Separating them adds setup and maintenance.
+
+**Recommendation: A if Phase 1 demonstrates provider isolation.** Ordinary startup in a
+shared environment can execute its `.pth` files and load its packages under each
+worker’s grants. Until the acceptance test passes, per-provider grants are a proposal.
+If the boundary cannot be demonstrated, return to the owner with E. Keep the call
+deadlines in the Process Model and revisit B if open folders use too much memory.
 
 **Affects:** Process Model, the app’s open folders.
 
@@ -1200,18 +1214,22 @@ by name, and the plugin’s other parts load.
 
 A worker is a child of the isolation facility, with a protocol on top.
 
-- **One worker per server, environment, and grant set** (Key Decision 9). Plugins of one
-  environment that were granted the same things share a worker; a plugin with a need of
-  its own gets its own, so no plugin runs with what only another was granted.
-  A worker serves one server and one root.
+- **Proposed worker grouping** (Key Decision 9). One worker serves one server and one
+  root. Providers in the same environment with the same grants can share a worker.
+  Provider-specific grants require the startup and import controls in the Phase 1
+  acceptance test.
 - **Started on evidence.** A worker starts at the first hook call or parse for one of
   its plugins, or when the server first classifies a file into a kind one of them owns.
   It exits after an idle period that Phase 1 sets from measurements.
   An open live stream does not hold it: a live stream is at most 2 MiB, so re-priming a
   parser in the next worker is cheap.
 - **How it is started.** With `subprocess`, as every other child is: `close_fds`,
-  `pass_fds` for its pipes, `process_group=0`, and `cwd="/"`. The command is
+  `pass_fds` for its pipes, `process_group=0`, and `cwd="/"`. The proposed launch begins
+  with
   `[confinement prefix] <watchdog> <interpreter> -I -X pycache_prefix=<its cache> <runtime>/worker.py <request fd> <reply fd>`.
+  The `-I` flag still permits startup code installed in the environment.
+  This command needs additional startup and import controls before it can support
+  provider-specific grants.
   The pipes’ numbers are arguments, not fixed descriptors: raw `posix_spawn` closes
   nothing it was not told to, cannot set a working directory, and a fixed number
   collides with whatever the host already has there.
@@ -1882,6 +1900,13 @@ Independent pull requests, each useful on its own:
   runtime’s import name.
 - [ ] One fixture plugin run in process and in a worker with matching transcripts, and a
   CI job where the worker’s interpreter is not the host’s (`mb-sbjf`).
+- [ ] Before offering provider-specific grants, verify controlled interpreter startup
+  and provider loading with two fixture providers in one environment that have different
+  grants. Include an environment startup hook and an import across providers.
+  Verify that a provider’s code cannot run under the other provider’s exclusive grants,
+  including during startup.
+  If this boundary cannot be demonstrated, bring the environment-wide option in Key
+  Decision 9 back to the owner (`mb-p62c`).
 
 ### Phase 2: The Registry Reaches the App
 
@@ -1916,8 +1941,10 @@ every folder, which is the requirement’s first half.
   folders, missing-provider reports, the bar’s model, and the `SECURITY.md`, threat
   model, agents guide, and `docs/plugins.md` changes (`mb-nkc3`).
 - [ ] Authority: the manifest’s `[plugin.needs]`, the grant as what is both declared and
-  approved, the consent’s wording, a worker confined to its grants and keyed by them,
-  `full` only by declaration or by command, and `no_sandbox` where no backend exists
+  approved, the consent’s wording, a worker confined to its grants, `full` only by
+  declaration or by command, and `no_sandbox` where no backend exists.
+  Bind grants to providers only after the Phase 1 isolation check passes.
+  The alternative is environment-wide grants, subject to the owner’s decision
   (`mb-p62c`).
 - [ ] Checked-in `.metabrowser/plugins/` directories, with their Python in the clone’s
   worker or on an isolated interpreter (`mb-wpq3`).
