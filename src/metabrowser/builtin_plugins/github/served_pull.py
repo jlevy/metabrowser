@@ -40,7 +40,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
-from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_pull_status
 from metabrowser.builtin_plugins.github.pull_freshness import (
     checks_settling,
@@ -1091,19 +1091,34 @@ class ServedPull:
             if reads is None:
                 return
             if reads == "status":
-                await self._refresh_status(started)
+                with gh_lanes.serving(self._lane(asks)):
+                    await self._refresh_status(started)
                 if not self._recoveries and "record" not in asks:
                     return
                 # A reader's own refresh, or another ask for the record, joined while the
                 # status was read: it reads all.
                 started = pulls.utc_now()
-            await self._refresh_record(started)
+            with gh_lanes.serving(self._lane(asks)):
+                await self._refresh_record(started)
         finally:
             self.display_core = None
             self._clear_core_preview()
             self._core_requested = False
             self._core_ready.set()
             self._refreshing = False
+
+    def _lane(self, asks: AbstractSet[RefreshAsk]) -> gh_lanes.Lane:
+        """The lane a read for *asks* serves, the most urgent of them (:mod:`.gh_lanes`).
+
+        A page's ask and an ask for the record are a page's on screen, as a reader's own
+        action is. An ask for what is due alone is the attended pull request's, read with
+        its mirror, or the prefetch's, which starts it in its lane; one a page joined has
+        been promoted to the page's.
+        """
+
+        if self._recoveries or asks & {"page", "record"}:
+            return "visible"
+        return "prefetch" if gh_lanes.current_lane() == "prefetch" else "attended"
 
     def record_window(self, now: datetime) -> float:
         """How old the record held may be before the clock asks for it: :data:`FULL_REFRESH_S`

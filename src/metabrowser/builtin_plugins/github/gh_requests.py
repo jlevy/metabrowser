@@ -3,7 +3,8 @@
 Every ``gh`` process is a span in the event log (:func:`.gh._run`), and its end record
 says what it asked and how it went: its command (``args``, without values), how long gh
 ran, the budget it was charged to (``budget``, :func:`.gh_budget.current_budget`), the
-request's ``fingerprint`` (:func:`.gh.fingerprint`), and, for a read of GitHub's answer,
+lane it served (``lane``, :func:`.gh_lanes.current_lane`), the request's ``fingerprint``
+(:func:`.gh.fingerprint`), and, for a read of GitHub's answer,
 its ``http_status`` and ``cost``, the number :mod:`.gh_budget` counted. Its parent is
 the job it ran in, or the request that ran it, whose own record says how long it waited
 for a network slot (``queued_ms``, :class:`metabrowser.mirror_refresh.NetworkSlots`).
@@ -18,6 +19,11 @@ The answer counts each ``gh`` call that ended in the window:
 
 ``requests``
     Every call, as one row.
+``lanes``
+    A row for each lane a call served (:mod:`.gh_lanes`), most urgent first: ``visible``
+    (a page on screen, or a reader's own action), ``attended`` (read for what is on screen
+    and not shown), ``prefetch``, and ``background``, and ``unknown`` for a call recorded
+    before calls recorded their lane.
 ``budgets``
     A row for each budget a call is charged to, as :mod:`.gh_budget` counts them:
     ``reader`` (a reader's own action), ``automatic``, ``speculative``, and ``walk`` (the
@@ -90,6 +96,7 @@ from typing import Any, Final, Literal
 
 from metabrowser import event_log
 from metabrowser.builtin_plugins.github.gh_budget import BUDGETS
+from metabrowser.builtin_plugins.github.gh_lanes import LANES
 from metabrowser.builtin_plugins.github.served_pull import PROBE_FLOOR_S
 from metabrowser.event_log_route import (
     QueryError,
@@ -124,16 +131,14 @@ type OwnerKind = Literal["job", "request", "none", "unknown"]
 COMMANDS: Final[tuple[Command, ...]] = ("rest", "graphql", "other")
 # Every budget a row is kept for, :mod:`.gh_budget`'s and one for calls that record none.
 REPORTED_BUDGETS: Final[tuple[str, ...]] = (*BUDGETS, "unknown")
+# Every lane a row is kept for, :mod:`.gh_lanes`'s in its order and one for calls that
+# record none.
+REPORTED_LANES: Final[tuple[str, ...]] = (*LANES, "unknown")
 
 UNRECORDED: Final[dict[str, str]] = {
     "first_answer_seen": (
         "when a page first showed GitHub's answer: a page reports a wait only once it is "
         "late, so the time to a first answer is not in the log"
-    ),
-    "lanes": (
-        "whether a call served the pull request on screen, a visible list, the prefetch, or "
-        "other background work: a call records the budget it was charged to and the job it "
-        "ran in, not which of those it was for"
     ),
     "local_cache_hits": (
         "reads the server answered from its own store: those make no gh call, so cache_hits "
@@ -247,6 +252,7 @@ class _Call:
     cost: int | None
     conditional: bool
     budget: str
+    lane: str
     fingerprint: str | None
     failed: bool
     recorded: bool
@@ -278,6 +284,7 @@ def _call(order: int, process: Process, record: dict[str, Any], moment: datetime
     args: list[Any] = raw_args if isinstance(raw_args, list) else []  # pyright: ignore[reportUnknownVariableType]
     budget = attrs.get("budget")
     recorded = budget in BUDGETS
+    lane = attrs.get("lane")
     fingerprint = attrs.get("fingerprint")
     end = moment.timestamp()
     return _Call(
@@ -295,6 +302,7 @@ def _call(order: int, process: Process, record: dict[str, Any], moment: datetime
             isinstance(arg, str) and arg.lower().startswith(_CONDITIONAL_ARG) for arg in args
         ),
         budget=budget if isinstance(budget, str) and recorded else "unknown",
+        lane=lane if isinstance(lane, str) and lane in LANES else "unknown",
         fingerprint=fingerprint if isinstance(fingerprint, str) else None,
         failed=record.get("outcome") != "ok",
         recorded=recorded,
@@ -539,9 +547,11 @@ def report(query: Query, *, state: Path, directory: Path) -> dict[str, Any]:
     read = _read(query, state=state, directory=directory)
     calls = read.calls
     repeats = _duplicates(calls)
+    by_lane: dict[str, list[_Call]] = {lane: [] for lane in REPORTED_LANES}
     by_budget: dict[str, list[_Call]] = {budget: [] for budget in REPORTED_BUDGETS}
     by_job: dict[tuple[OwnerKind, str | None], list[_Call]] = defaultdict(list)
     for call in calls:
+        by_lane[call.lane].append(call)
         by_budget[call.budget].append(call)
         by_job[_job(call, read.owners)].append(call)
     ranked = sorted(by_job.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1] or ""))
@@ -559,6 +569,7 @@ def report(query: Query, *, state: Path, directory: Path) -> dict[str, Any]:
         "pids": sorted({call.pid for call in calls}),
         "duplicate_window_s": DUPLICATE_WINDOW_S,
         "requests": row(calls),
+        "lanes": {lane: row(of) for lane, of in by_lane.items()},
         "budgets": {budget: row(of) for budget, of in by_budget.items()},
         "jobs": [{"job": name, "kind": kind, **row(of)} for (kind, name), of in ranked[:MAX_JOBS]],
         "jobs_more": max(0, len(ranked) - MAX_JOBS),
@@ -574,6 +585,7 @@ __all__ = [
     "MAX_BUCKETS",
     "MAX_JOBS",
     "REPORTED_BUDGETS",
+    "REPORTED_LANES",
     "UNRECORDED",
     "Query",
     "parse_query",

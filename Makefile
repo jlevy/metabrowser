@@ -311,6 +311,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pull_page_session.py \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_pulls_readiness_session.py \
+	tests/test_github_gh_lanes.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \

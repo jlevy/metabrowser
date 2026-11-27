@@ -993,10 +993,16 @@ It absorbs `mb-mg37`, the hour of real browsing that `AUTOMATIC_CORE_PER_HOUR` a
   Each `gh` span now records its HTTP status, its cost, the budget it is charged to, and
   a fingerprint, and times gh alone; every wait for a network slot is added to the
   waiting span’s `queued_ms`. A call records its budget (reader, automatic, speculative,
-  or the walk) and its job, not which of the four lanes it served, so the report groups
-  by those; and when a page first showed an answer is not in the log, since a page
-  reports a wait only once it is late.
-  The report lists both under `unrecorded`.
+  or the walk) and its job, and the report groups by those; when a page first showed an
+  answer is not in the log, since a page reports a wait only once it is late, and the
+  report lists it under `unrecorded`.
+- [x] **The lane each call served** (`mb-6719`): `gh_lanes.py` defines the four lanes
+  and what each holds, set as a context variable where the work starts, so every `gh`
+  span records `lane` as it records `budget`, and the report groups by lane too.
+  A pull request’s job serves the most urgent of its asks, the catalog’s job its asker
+  on the reader’s pages and the background on a scan due by age and the backfill, and a
+  pull request page’s ask for the list behind it names the attended lane.
+  The lanes are recorded, not yet scheduled by, which is the tuning below.
 - [ ] **A browsing benchmark** (`mb-ulvg`): one scripted session (open the Pulls tab,
   scroll, open several pull requests, switch tabs, come back) run two ways.
   Against the fake `gh` with recorded latencies it is deterministic, and its test holds

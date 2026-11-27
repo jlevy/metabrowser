@@ -164,6 +164,11 @@ and its record says what the report needs to measure browsing:
 
 - `budget`, the count `gh_budget.current_budget` charges the call to (`reader`,
   `automatic`, `speculative`, or `walk`), the same rule `gh_budget.spent` counts by;
+- `lane`, who waits for its answer (`gh_lanes.current_lane`): `visible`, a page on
+  screen or a reader’s own action; `attended`, what the session reads for that page
+  without showing it, the attended pull request and the list behind a pull request page;
+  `prefetch`; or `background`, the catalog’s scan when it is due by age and its
+  backfill, the status scan, and the cores walk (`gh_lanes.py` names each kind of work);
 - `fingerprint` (`gh.fingerprint`), a digest of the command without the ETag header a
   conditional read sends, equal for two calls that ask GitHub the same thing, so a
   GraphQL read, whose variables the log drops, can be told from another;
@@ -173,6 +178,14 @@ and its record says what the report needs to measure browsing:
 - a duration that is gh’s alone: the span stops its clock when gh exits
   (`event_log.Span.stop`), before its answer is read.
 
+The lane is set where the work starts (`gh_lanes.serving`) and copied into every job
+started inside it, as the budget is, so no call site passes it; work nothing marks is
+`visible`, since a page or a command asked for it.
+A pull request’s job serves the most urgent of the asks it has, the catalog’s job serves
+its asker on the reader’s pages and the background on the rest, and the lanes are
+recorded but not yet scheduled by: what runs at once is bounded by the network slots and
+the probes’ cap whatever the lane.
+
 A job, or a request, that waits for one of the refresh coordinator’s network slots
 records the wait as `queued_ms`, summed over every slot it takes
 (`mirror_refresh.NetworkSlots`), so a scan that takes a slot for each page says how long
@@ -180,19 +193,18 @@ it queued in all. A wait for the store’s turn is not recorded.
 
 `GET gh-requests` reads those records over a window, `since` an hour ago by default, as
 `/api/event-log/failures` reads its window (`event_log_route.window_segments`), and adds
-them up for every call, for each budget, and for each job: the calls by command, the
-statuses GitHub answered, the calls with no status and why, `core` and GraphQL points
-spent, the share answered `304`, the conditional reads GitHub answered `304`, gh’s
-median and 95th percentile time, the calls that repeat an identical one still in flight
-or answered within `DUPLICATE_WINDOW_S`, the most in flight together, and how long the
-spans the calls ran in queued; and, for every call together, how many ran at once over
-the window. `gh_requests.py` names each field.
+them up for every call, for each lane, for each budget, and for each job: the calls by
+command, the statuses GitHub answered, the calls with no status and why, `core` and
+GraphQL points spent, the share answered `304`, the conditional reads GitHub answered
+`304`, gh’s median and 95th percentile time, the calls that repeat an identical one
+still in flight or answered within `DUPLICATE_WINDOW_S`, the most in flight together,
+and how long the spans the calls ran in queued; and, for every call together, how many
+ran at once over the window.
+`gh_requests.py` names each field.
 `unrecorded` lists what such a report would want that the log does not hold: when a page
-first showed GitHub’s answer, since a page reports a wait only once it is late; which of
-the attended pull request, a visible list, the prefetch, or other background work a call
-served, since a call records its budget and job; reads the server answered from its own
-store, which make no `gh` call; and waits for the store’s turn.
-`cli-github-gh-requests.tryscript.md` pins it over a synthetic event log.
+first showed GitHub’s answer, since a page reports a wait only once it is late; reads
+the server answered from its own store, which make no `gh` call; and waits for the
+store’s turn. `cli-github-gh-requests.tryscript.md` pins it over a synthetic event log.
 
 ## Files Beside a Source
 
@@ -339,6 +351,7 @@ has the rules.
   is each pull request’s own as of its last sync, and the ask never waits on Git: only
   when a moved base alone could start a scan does it look at the mirror, in a job of its
   own after its answer, and a mirror Git cannot read moves nothing.
+  It serves the background lane, but for a reader’s Refresh, which serves the asker’s.
   Each page it reads spaces the next scan by `SCAN_POINT_GAP_S`, which bounds what the
   scans of any repository spend an hour; the process keeps the stamp its last scan left
   as well as the file, so the spacing holds when the cache cannot keep the file.
@@ -464,6 +477,9 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   lacks, and a link into the pull request ask.
   The coordinator keeps those asks with the job for exactly as long as it runs
   (`RefreshCoordinator.asks`), so a start refused `too_many` leaves none behind.
+  The same asks name the lane its calls serve (`ServedPull._lane`): a page’s ask or an
+  ask for the record is `visible`, and one for what is due alone the attended pull
+  request’s, or the prefetch’s when the prefetch started it.
   The job decides what it reads when its turn at the store comes (`ServedPull._reads`),
   from every ask it has, whoever started it: one asked only for what was due reads
   nothing if nothing still is, as when a hold was noted while it waited, and one asked
@@ -591,6 +607,11 @@ Nothing caps the catalog’s size.
 The prefix and the delta scan are the reader’s work; the backfill is background work
 that asks the governor before each page and stops at a page boundary when it is held, to
 resume from the saved cursor.
+Each page serves a lane (`gh_lanes.py`): the reader’s pages, and a delta scan a change
+or a Refresh asks for, the lane of the ask that started the job, the Pulls tab’s
+`visible` or a pull request page’s `attended` (`"lane"` in the `pulls-refresh` body); a
+delta scan due by age and the backfill, the background, and a job started for those
+alone serves the background throughout.
 Every page query returns `viewer.login`, which must match the job’s reader before any
 row is published, and a later page from another account is refused.
 A delta scan reads by `UPDATED_AT` through the previous watermark and advances freshness
@@ -704,13 +725,14 @@ across refreshes and restarts, a changed fingerprint shows the older core marked
 while preparation fetches the update, and a changed account, repository, or epoch
 refuses it. A complete record always takes precedence.
 `POST pull-cores-prepare` prepares a bounded batch admitted against the exact catalog
-generation, one core job per source, a `visible` batch preempting a `background` one;
-`pull_cores.py`’s docstring gives its outcomes, retries, and waits.
-A reader who selects a pull request with no record may ask its refresh to wait for the
-core, and the envelope then carries a `core_preview` until the full record lands.
-The page renders the preview’s description through `GET pull-markdown` as it renders the
-record’s, so the description shows rendered from its first paint, and the record that
-follows with the same text reuses that render.
+generation, one core job per source, a `visible` batch preempting a `background` one,
+each the lane its calls record; `pull_cores.py`’s docstring gives its outcomes, retries,
+and waits.
+A reader who selects a pull request with no record may ask its refresh to wait
+for the core, and the envelope then carries a `core_preview` until the full record
+lands. The page renders the preview’s description through `GET pull-markdown` as it
+renders the record’s, so the description shows rendered from its first paint, and the
+record that follows with the same text reuses that render.
 
 ## Changed Files
 
@@ -1033,7 +1055,9 @@ step with `pull_stacks.py` (`repository_snapshot.py`).
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
 (`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
 starts that work by itself, so a hidden or offline page spends nothing.
-The lane is one coordinator job per served repository that runs one item at a time.
+The lane is one coordinator job per served repository that runs one item at a time, and
+every `gh` call it makes, the records and lists it starts among them, serves the
+`prefetch` lane of `gh_lanes.py` until a reader’s ask promotes the job.
 It first makes the queued file lists local where the store can give them: an open pull
 request with no current comparison is listed from the head and base branch the list of
 pull requests names, with every head the store lacks fetched in one Git command

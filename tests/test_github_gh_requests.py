@@ -23,11 +23,12 @@ from typing import Any
 import pytest
 
 from metabrowser import event_log, home
-from metabrowser.builtin_plugins.github import gh, gh_budget
+from metabrowser.builtin_plugins.github import gh, gh_budget, gh_lanes
 from metabrowser.builtin_plugins.github.gh_requests import (
     DUPLICATE_WINDOW_S,
     MAX_BUCKETS,
     REPORTED_BUDGETS,
+    REPORTED_LANES,
     Query,
     parse_query,
     report,
@@ -165,6 +166,29 @@ def test_what_gh_budget_counted_is_what_the_report_says_each_budget_spent(
                 1,
                 1,
             )
+
+
+def test_a_call_records_the_lane_its_work_was_started_in(
+    sink: event_log.EventLog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lane is the context's, so a job started inside a lane serves it with nothing
+    passed to it, and work nothing marks is visible (``gh_lanes``)."""
+
+    _stand_in_gh(monkeypatch, _github)
+
+    async def session() -> None:
+        await _read_pull()
+        with gh_lanes.serving("background"):
+            job = asyncio.get_running_loop().create_task(_read_pull())
+        await _read_pull()
+        await job
+
+    asyncio.run(session())
+    assert sorted(end["attrs"]["lane"] for end in _gh_ends(sink)) == [
+        "background",
+        "visible",
+        "visible",
+    ]
 
 
 def test_an_unchanged_answer_ends_its_span_answered_and_a_refusal_ends_it_failed(
@@ -319,6 +343,7 @@ def _call(
     parent: int | None,
     fingerprint: str,
     budget: str = "automatic",
+    lane: str | None = "visible",
     status: int | None = 200,
     graphql: bool = False,
     conditional: bool = False,
@@ -327,6 +352,8 @@ def _call(
     if conditional:
         args += ["-H", "If-None-Match: …"]
     attrs: dict[str, Any] = {"args": args, "budget": budget, "fingerprint": fingerprint}
+    if lane is not None:
+        attrs["lane"] = lane
     if status is not None:
         attrs |= {"http_status": status, "cost": 1 if graphql or status != 304 else 0}
     # gh exits 1 on a 304 too, and its span still ends answered (gh._run).
@@ -377,6 +404,8 @@ def _random_log(
                     parent=chance.choice([*jobs, None, 99]),
                     fingerprint=f"f{chance.randrange(12)}",
                     budget=chance.choice(gh_budget.BUDGETS),
+                    # A call recorded before calls recorded their lane is unknown.
+                    lane=chance.choice([*gh_lanes.LANES, None]),
                     status=chance.choice([*_STATUSES, None]) if not graphql else 200,
                     graphql=graphql,
                     conditional=chance.random() < 0.5,
@@ -415,8 +444,10 @@ def test_every_call_is_counted_once_in_each_grouping(tmp_path: Path, seed: int) 
     answer = _report(tmp_path, log)
     total = answer["requests"]
     assert set(answer["budgets"]) == set(REPORTED_BUDGETS)
+    assert list(answer["lanes"]) == list(REPORTED_LANES)
     assert answer["jobs_more"] == 0
-    for rows in (list(answer["budgets"].values()), answer["jobs"]):
+    groupings = (list(answer["lanes"].values()), list(answer["budgets"].values()), answer["jobs"])
+    for rows in groupings:
         for field in _ADDITIVE:
             assert sum(row[field] for row in rows) == total[field], field
         for status, count in total["statuses"].items():
@@ -432,7 +463,8 @@ def test_every_call_is_counted_once_in_each_grouping(tmp_path: Path, seed: int) 
 @pytest.mark.parametrize("seed", range(4))
 def test_each_row_holds_its_bounds(tmp_path: Path, seed: int) -> None:
     answer = _report(tmp_path, _random_log(seed))
-    for row in [answer["requests"], *answer["budgets"].values(), *answer["jobs"]]:
+    rows = [answer["requests"], *answer["lanes"].values(), *answer["budgets"].values()]
+    for row in [*rows, *answer["jobs"]]:
         answered = sum(row["statuses"].values()) + sum(row["no_status"].values())
         assert answered == row["commands"]["rest"] + row["commands"]["graphql"]
         assert row["cache_hits"] <= row["conditional"] <= row["commands"]["rest"]

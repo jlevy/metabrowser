@@ -26,7 +26,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser.builtin_plugins.github import gh_budget, pull_prefetch, pulls
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes, pull_prefetch, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import READ_FAILURES, as_dict, asked_repository
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -77,7 +77,8 @@ type CoreAttempt = tuple[str, str, str, str, int, CatalogMember]
 type Preparation = Literal[
     "started", "joined", "ready", "released", "not_owner", "busy", "failed", "held", "partial"
 ]
-# Whose batch it is: the rows a reader is looking at, or the panel's walk through the rest.
+# Whose batch it is: the rows a reader is looking at, or the panel's walk through the rest,
+# two of the lanes every gh call records (:mod:`.gh_lanes`), which its job serves.
 # A visible batch preempts a background one reading other rows (`request_preparation`).
 type CoreLane = Literal["visible", "background"]
 CORE_LANES: Final[tuple[CoreLane, ...]] = ("visible", "background")
@@ -768,8 +769,11 @@ async def request_preparation(
         eligible = (catalog, admitted)
     pulls_set.core_window = window
     # The walk's batch is speculative work, counted as the walk's, and its job copies the
-    # context it starts in.
-    with gh_budget.speculative(walk=True) if ask.lane != "visible" else nullcontext():
+    # context it starts in, the lane its batch serves among it.
+    with (
+        gh_budget.speculative(walk=True) if ask.lane != "visible" else nullcontext(),
+        gh_lanes.serving(ask.lane),
+    ):
         return coordinator.start(
             key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
         )

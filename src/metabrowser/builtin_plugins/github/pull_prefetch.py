@@ -89,7 +89,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
 from metabrowser import event_log
-from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.builtin_plugins.github.pull_list import (
@@ -429,9 +429,10 @@ _KIND_STOPS: Final = frozenset({"deferred:hourly_cap", "deferred:scan_cap"})
 
 async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
     # Nobody is looking at what the lane reads: every job it starts copies this context,
-    # so what each spends counts toward speculative work's share of the ceiling.
+    # so what each spends counts toward speculative work's share of the ceiling, and each
+    # gh call it makes serves the prefetch lane (:mod:`.gh_lanes`).
     try:
-        with gh_budget.speculative():
+        with gh_budget.speculative(), gh_lanes.serving("prefetch"):
             await _work_lane(app, host, lane)
     finally:
         # A lane stopped before its end, as at shutdown, runs nothing it had queued, so it

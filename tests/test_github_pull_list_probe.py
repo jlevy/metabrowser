@@ -625,14 +625,14 @@ def test_an_ask_scans_every_full_refresh_while_probes_vouch_and_every_window_oth
         github.later(LIST_PROBE_S)
         assert refresh_wanted(_view(repository, probe), ask) == "probe"
         _probe(probe, repository)
-    assert refresh_wanted(_view(repository, ListProbe()), ask) is True
-    assert refresh_wanted(_view(repository, None), ask) is True
+    assert refresh_wanted(_view(repository, ListProbe()), ask) == "scan"
+    assert refresh_wanted(_view(repository, None), ask) == "scan"
     # Past FULL_REFRESH_S the scan is due whatever the probes say.
     while github.now <= FETCHED_AT + timedelta(seconds=FULL_REFRESH_S):
         assert refresh_wanted(_view(repository, probe), ask) in {"probe", False}
         github.later(LIST_PROBE_S)
         _probe(probe, repository)
-    assert refresh_wanted(_view(repository, probe), ask) is True
+    assert refresh_wanted(_view(repository, probe), ask) == "scan"
 
 
 def test_a_change_a_probe_found_starts_the_delta_scan_at_once_and_only_once(

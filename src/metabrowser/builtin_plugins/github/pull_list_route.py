@@ -28,7 +28,7 @@ from time import monotonic
 from typing import Any, Final, Literal, NotRequired, TypedDict
 from weakref import WeakKeyDictionary
 
-from metabrowser.builtin_plugins.github import gh_budget, pull_list
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes, pull_list
 from metabrowser.builtin_plugins.github.checkout import served_checkout
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -81,8 +81,11 @@ type ListState = Literal["absent", "pending", "current", "stale"]
 type ListAbsence = Literal["not_github"] | RecordAbsence
 type ListRefreshStart = Literal["started", "joined", "not_due"]
 # ``probe``: nothing is due but a list probe, which the route runs and which then makes
-# the ask ``changed`` (a delta scan is due at once) or ``False``.
-type ListRefreshWanted = bool | Literal["reconnect", "probe", "changed"]
+# the ask ``changed`` (a delta scan is due at once) or ``False``. ``scan``: the delta scan
+# is due by age; ``backfill``: only the backfill past every reader's prefix is due. Either
+# starts the catalog's job in the background lane (:mod:`.gh_lanes`), and ``True`` in the
+# asker's.
+type ListRefreshWanted = bool | Literal["reconnect", "probe", "changed", "scan", "backfill"]
 
 
 class ListRequestError(Exception):
@@ -138,6 +141,11 @@ class ListWindow:
     at: int | None = None
 
 
+# The lanes a list's ask may name (:mod:`.gh_lanes`): the Pulls tab's, for the list it
+# shows, and a pull request page's, for the list behind it that vouches for its record.
+ASK_LANES: Final[tuple[gh_lanes.Lane, ...]] = ("visible", "attended")
+
+
 @dataclass(frozen=True, slots=True)
 class RefreshRequest:
     name: PullListName
@@ -145,6 +153,7 @@ class RefreshRequest:
     retry: bool = False
     background: bool = False
     reconnect: bool = False
+    lane: gh_lanes.Lane = "visible"
 
 
 def _list_name(value: object) -> PullListName:
@@ -184,21 +193,29 @@ def search_query(value: str) -> str:
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
-    if set(body) - {"state", "target", "retry", "background", "reconnect"}:
+    if set(body) - {"state", "target", "retry", "background", "reconnect", "lane"}:
         raise ListRequestError(
-            'a catalog request names only "state", "target", "retry", "background", and "reconnect"'
+            'a catalog request names only "state", "target", "retry", "background", '
+            '"reconnect", and "lane"'
         )
     retry = body.get("retry", False)
     background, reconnect = body.get("background", False), body.get("reconnect", False)
     target = body.get("target", DEFAULT_TARGET)
+    named = body.get("lane", "visible")
+    lane: gh_lanes.Lane | None = None
+    for each in ASK_LANES:
+        if named == each:
+            lane = each
     if not isinstance(background, bool):
         raise ListRequestError('"background" is boolean')
     if not isinstance(retry, bool) or type(target) is not int or not 1 <= target <= _MAX_TARGET:
         raise ListRequestError('"retry" is boolean and "target" is a positive PR count')
     if not isinstance(reconnect, bool) or (retry and reconnect):
         raise ListRequestError('"reconnect" is boolean and cannot be combined with "retry"')
+    if lane is None:
+        raise ListRequestError('"lane" is "visible" or "attended"')
     return RefreshRequest(
-        _list_name(body.get("state", DEFAULT_LIST)), target, retry, background, reconnect
+        _list_name(body.get("state", DEFAULT_LIST)), target, retry, background, reconnect, lane
     )
 
 
@@ -525,8 +542,9 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
     """What *ask* is due to start. Blocking and bounded; never contacts GitHub.
 
     ``True`` for the catalog job, ``changed`` for the job with its delta scan first, since
-    a probe found GitHub ahead of the catalog, ``probe`` when only a list probe is due,
-    which the route then runs, and ``False`` for nothing.
+    a probe found GitHub ahead of the catalog, ``scan`` for the job when only its delta scan
+    is due by age, ``backfill`` when only the backfill past every reader's prefix is, ``probe``
+    when only a list probe is due, which the route then runs, and ``False`` for nothing.
     """
 
     repository = view.repository
@@ -559,17 +577,21 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
     # The periodic scan is automatic work, admitted as background work is; below the floor
     # it stops.
     admitted = gh_budget.admission(("graphql", "core"), now=now, ceiling=False).admitted
-    if admitted and scan_is_due(stamp, probe, now=now):
-        return True
+    scan_due = admitted and scan_is_due(stamp, probe, now=now)
     if not listed.done["all"]:
         from metabrowser.builtin_plugins.github.pull_list_refresh import (
             backfill_admitted,
             prefix_wanted,
         )
 
-        # Past the asked prefix the backfill is background work, which the budget may pause.
-        if prefix_wanted(listed, ask.name, ask.target) or backfill_admitted():
+        # The asked prefix is the asker's to wait for, whatever else is due. Past it the
+        # backfill is background work, which the budget may pause.
+        if prefix_wanted(listed, ask.name, ask.target):
             return True
+        if not scan_due and backfill_admitted():
+            return "backfill"
+    if scan_due:
+        return "scan"
     due = probe is not None and listed.source == repository.source and probe.due(now)
     return "probe" if due else False
 
@@ -613,13 +635,16 @@ def _attended_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
 
 
 async def _attend(view: ListView) -> None:
-    ask = RefreshRequest(DEFAULT_LIST, background=True)
+    ask = RefreshRequest(DEFAULT_LIST, background=True, lane="attended")
     try:
         wanted = await asyncio.to_thread(_attended_wanted, view, ask)
-        if wanted == "probe":
-            wanted = await probe_list(view)
-        if wanted:
-            start_refresh(view, ask, wanted=wanted)
+        # The list is read for the page's record, not shown: the probe's job and the
+        # catalog's copy this lane (:mod:`.gh_lanes`).
+        with gh_lanes.serving(ask.lane):
+            if wanted == "probe":
+                wanted = await probe_list(view)
+            if wanted:
+                start_refresh(view, ask, wanted=wanted)
     except Exception:
         # Nothing waits on this but the catalog's freshness, and the page's own ask must
         # still be answered.
@@ -678,7 +703,12 @@ def start_refresh(
     _DEMANDS[_demand_key(repository, coordinator)] = _Demand(
         ask.name, ask.target, ask.retry or reconnect or changed
     )
-    return coordinator.start(key, partial(_run_refresh, repository, coordinator), network=False)
+    # A job started for the clock's scan or the backfill alone reads nothing a reader
+    # waits for; any other reads its asker's pages first (:mod:`.gh_lanes`). A job keeps
+    # the lane it was started in, as it keeps its budget, whoever joins it.
+    lane = "background" if wanted in ("scan", "backfill") else ask.lane
+    with gh_lanes.serving(lane):
+        return coordinator.start(key, partial(_run_refresh, repository, coordinator), network=False)
 
 
 def status_route(name: PullListName) -> str:
