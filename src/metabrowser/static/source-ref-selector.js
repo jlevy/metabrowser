@@ -1,10 +1,11 @@
 // The branch and tag selector of a served mirror, and of a served checkout.
 //
 // A page on a mirror's pin shows a compact button naming the ref it was rendered for.
-// Opening it lists every one of the mirror's branches or tags from GET /api/source/refs,
-// the default branch first and then newest first, with the served ref marked, narrowed
-// by a filter box. The list draws only the rows near its view (`drawWindow`), so what it
-// draws costs the same over ten thousand branches as over ten. Choosing a ref
+// Opening it lists the mirror's branches or tags from GET /api/source/refs. Primary and
+// default branches come first. Each branch group and the tag list sort newest first,
+// and the served ref is marked. A filter box narrows either list. The list draws only
+// the rows near its view (`drawWindow`), so what it draws costs the same over ten
+// thousand branches as over ten. Choosing a ref
 // switches the served pin with POST /api/source/pin -- a same-origin JSON request
 // behind the server's guard -- and names the page's own /view/ address, so the answer
 // says where the page goes: the same file or folder when the new revision has it,
@@ -43,7 +44,7 @@
 //   Remotes list has the origin's branches as Metabrowser last fetched them, in place of
 //   the checkout's own `origin/*`, and the Tags list the origin's tags; a line under the
 //   list says so and when, or why the origin is not fetched. The origin's default branch
-//   is first there and marked. A row there whose branch the reader's own checkout has
+//   is marked. A row there whose branch the reader's own checkout has
 //   at another commit, or not at all, says so (`ownDifference`): "yours differs" where
 //   the checkout's own `origin/<branch>` is not where the origin's is, which is a branch
 //   the reader has not fetched since it moved, or has pushed since. An open list of a
@@ -1018,7 +1019,7 @@
       state.error = null;
       askedForOrigin = false;
       // The list opens on the tab that holds what the page shows (`openKind`), whichever
-      // one it was closed on, so the choice marked current is the first thing in it.
+      // one it was closed on.
       const kind = openKind(state.shown, checkout);
       if (kind !== state.kind) {
         state.kind = kind;
@@ -1466,6 +1467,9 @@
       }
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
+    if (model.open && parts.panel.hidden && (model.kind === "branch" || model.kind === "remote")) {
+      parts.rows.listing = "";
+    }
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
     if (!model.open) {
@@ -1933,7 +1937,7 @@
    * in view, though the rows above have grown (`anchoredScroll`; mb-tjbm review A1, A2).
    *
    * The row that takes Tab is the one that had focus when this listing still has its
-   * ref, else the served one, else the first; a row that had focus keeps it.
+   * ref, else the served tag on Tags, else the first. A row that had focus keeps it.
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    * @param {MetabrowserSourceRefSelectorModel} model
@@ -1946,8 +1950,8 @@
       active !== null && parts.list.contains(active) && active.dataset.index !== undefined
         ? rows.shown[Number(active.dataset.index)]?.ref
         : undefined;
-    // A new list, or a new filter, starts at its top, its newest refs, unless it shows
-    // the served ref: then at that ref's row, once its rows arrive (below).
+    // Branch lists start at the top so the primary branches stay in view. Tags retain
+    // their served-row reveal once the rows arrive.
     const shows = `${model.kind}\0${model.query}`;
     const again = rows.listing === shows;
     if (!again) {
@@ -1980,7 +1984,7 @@
     const measured = measureRows(parts, annotated);
     rows.offsets = rowOffsets(model.rows, measured.plain, measured.tall);
     const kept = hadFocus === undefined ? -1 : model.rows.findIndex((row) => row.ref === hadFocus);
-    const current = model.rows.findIndex((row) => row.current);
+    const current = model.kind === "tag" ? model.rows.findIndex((row) => row.current) : -1;
     rows.roving = kept >= 0 ? kept : current >= 0 ? current : 0;
     // The box is as tall as the rows are now before the list is scrolled in it, or the
     // browser holds the scroll to the old height.

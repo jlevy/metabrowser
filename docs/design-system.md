@@ -7420,9 +7420,12 @@ A mirror’s tabs are **Branches** and **Tags**, and a checkout’s are **Workin
   list loads on demand and draws the rows with once it has; the slot is the icon’s width
   from the first frame, so nothing moves.
 
-- **The list holds every ref, newest first, and draws only the rows near its view.** It
-  reads by the age its rows show, after the mirror’s default branch or the checkout’s
-  checked-out one, and states no count, since it leaves nothing out.
+- **The list holds every ref and draws only the rows near its view.** The branch lists
+  put `main`, `master`, their remote-tracking counterparts, and known default branches
+  above other branches.
+  Each group sorts newest first by the age its rows show.
+  Tags sort newest first.
+  The lists state no count because they hold every ref.
   Each row is placed by its offset over a box as tall as the whole list (`rowOffsets`,
   `ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), and a row has
   one of two heights, with a pull request or without, each measured by a row drawn out
@@ -7433,7 +7436,8 @@ A mirror’s tabs are **Branches** and **Tags**, and a checkout’s are **Workin
   2 to 3 px taller than the list places it.
   A row with no pull request is as tall as every row was before the line existed.
   The row that takes Tab stays drawn however far the list scrolls from it, so focus on
-  it is never lost, and a list that holds the served ref opens scrolled to its row.
+  it is never lost. Branches and Remotes open at the top, with their first row as the
+  initial Tab stop. Tags opens scrolled to the served tag when it holds it.
   The `ul` says `role="list"`, which WebKit drops from a list drawn without markers.
   `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
   thousands of branches that the rows are one height and abut, that a scroll and End
@@ -7492,10 +7496,10 @@ revisions.
   tint a menu row shows focus with, so keyboard focus on the current row draws the one
   [focus ring](#focus-ring) instead.
 
-- **The checked-out branch stays in Branches, as its last commit.** It is a ref like any
-  other: it lists first, says “checked out” in the `.source-ref-selector-badge` a
-  mirror’s default branch says “default” in, and choosing it shows what is committed on
-  it, without the uncommitted changes the working tree has.
+- **The checked-out branch stays in Branches, as its last commit.** It says “checked
+  out” in the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
+  Choosing it shows what is committed on it.
+  Uncommitted changes appear in Working tree.
   It is current there only once it was chosen.
   Dropping it would leave Branches without the branch a reader is most likely to look
   for, and the filter unable to find it; and its committed state beside the files on

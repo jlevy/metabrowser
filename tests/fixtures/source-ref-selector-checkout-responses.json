@@ -153,19 +153,19 @@
       "pull_requests": null,
       "refs": [
         {
-          "name": "origin/feature",
-          "ref": "refs/remotes/origin/feature",
-          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-          "committed_at": 1767232800.0,
+          "name": "origin/topic",
+          "ref": "refs/remotes/origin/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
           "default": false,
           "checked_out": false,
           "current": false
         },
         {
-          "name": "origin/topic",
-          "ref": "refs/remotes/origin/topic",
-          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "committed_at": 1767229200.0,
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -497,12 +497,12 @@
       "pull_requests": null,
       "refs": [
         {
-          "name": "feature",
-          "ref": "refs/heads/feature",
-          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-          "committed_at": 1767232800.0,
+          "name": "topic",
+          "ref": "refs/heads/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
           "default": false,
-          "checked_out": true,
+          "checked_out": false,
           "current": false
         },
         {
@@ -515,12 +515,12 @@
           "current": false
         },
         {
-          "name": "topic",
-          "ref": "refs/heads/topic",
-          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "committed_at": 1767229200.0,
+          "name": "feature",
+          "ref": "refs/heads/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
           "default": false,
-          "checked_out": false,
+          "checked_out": true,
           "current": false
         }
       ]
@@ -577,6 +577,15 @@
       "pull_requests": null,
       "refs": [
         {
+          "name": "topic",
+          "ref": "refs/heads/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        },
+        {
           "name": "local-work",
           "ref": "refs/heads/local-work",
           "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
@@ -590,15 +599,6 @@
           "ref": "refs/heads/feature",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
           "committed_at": 1767232800.0,
-          "default": false,
-          "checked_out": false,
-          "current": false
-        },
-        {
-          "name": "topic",
-          "ref": "refs/heads/topic",
-          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "committed_at": 1767229200.0,
           "default": false,
           "checked_out": false,
           "current": false

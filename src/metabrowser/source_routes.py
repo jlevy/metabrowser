@@ -9,8 +9,8 @@ rendered from the same :func:`source_status`, so the label and
 ``metab --api /api/source/status`` cannot disagree.
 
 ``GET /api/source/refs`` lists every one of the mirror's branches or tags for the ref
-selector, filtered by name, the default branch first and then newest first, with the
-served ref marked. It reads the mirror alone, never the network. An answer the Git
+selector, filtered by name, with notable branches first and each group ordered newest
+first. The served ref is marked. It reads the mirror alone, never the network. An answer the Git
 routes' memo can keep is kept under the refs' state, so asking again while no ref moved
 runs no Git; past about 9,000 branches, fewer where branches list pull requests
 (:data:`REF_PULLS_PER_ROW`), or past ``MAX_REF_ENTRIES`` loose refs, every listing runs Git.
@@ -339,7 +339,7 @@ class SourceRef(TypedDict):
     """One row of ``/api/source/refs``: a :class:`MirrorRef` and whether it is served.
 
     ``default`` marks a mirror's default branch and ``checked_out`` the branch a
-    checkout's ``HEAD`` is on; each lists first, and the other is false.
+    checkout's ``HEAD`` is on; the other is false.
     ``committed_at`` is the commit's committer date in epoch seconds, from which a row
     shows its age; ``None`` when Git printed none. The page shows ``commit`` as every line
     names a commit (``shortCommit`` in static/formatters.js). ``pulls`` are the pull
@@ -421,8 +421,8 @@ class WorkingTree(TypedDict):
 class SourceRefs(TypedDict):
     """The envelope of ``GET /api/source/refs``.
 
-    ``refs`` are every matching ref, in listing order: the default or checked-out branch
-    first, then newest first by the date each row shows (``_newest_first`` in
+    ``refs`` are every matching ref, in listing order: notable branches first, newest
+    first within each group by the date each row shows (``_newest_first`` in
     ``cache/resolve.py``). ``pin`` and ``ref`` are what the server serves now, so the
     selector marks the served ref even when the page was rendered for another; both are
     ``None`` while a checkout's working tree is served. ``kinds`` are the lists the subject
@@ -479,7 +479,7 @@ def source_refs(
     """Every ref of *listed* that matches *query*, a case-insensitive name fragment.
 
     *subject* is the served revision, ``None`` on a checkout's working tree, and
-    *working_tree* is given for a checkout, whose first-listed branch is the one checked
+    *working_tree* is given for a checkout, whose marked local branch is the one checked
     out where a mirror's is its default. *pulls* are the pull requests the provider has
     cached by head branch: a row lists the ones of its branch, and a branch whose pull
     request matches *query* is listed whether or not its name does.
@@ -487,8 +487,7 @@ def source_refs(
 
     needle = query.casefold()
     of_checkout = working_tree is not None
-    # A checkout's first-listed branch is the one checked out. Its first-listed
-    # remote-tracking branch is its origin's default, as the origin's store has it.
+    # A checkout's checked-out badge belongs only to its local branch list.
     checked_out = of_checkout and kind == "branch"
     served_ref = subject.ref if subject is not None else None
     found = pulls.matching(query) if pulls is not None and needle else frozenset[str]()
@@ -539,7 +538,7 @@ async def _refs_answer_key(
     kind: RefKind,
     query: str,
     subject: GitRevisionSubject | None,
-    first_ref: str | None,
+    marked_ref: str | None,
     pulls: RefPulls | None,
 ) -> tuple[str, ...] | None:
     """What a listing is kept under in the Git routes' memo, or ``None`` to keep nothing.
@@ -548,7 +547,7 @@ async def _refs_answer_key(
     :func:`~metabrowser.git.ref_state.ref_state` names; the list and the filter; what is
     served, which marks a row and says whether the working tree is; the pull requests'
     ``token``, which names what the provider has cached and whether it is filling it; and
-    *first_ref*, the branch listed first and marked. That is a mirror's default branch, which its store
+    *marked_ref*, the branch marked. That is a mirror's default branch, which its store
     records outside its refs, or the branch a checkout's ``HEAD`` is on as
     :func:`~metabrowser.git.repo.repo_info` names it, which ``working_tree`` reports too.
     ``repo_info`` keeps ``HEAD`` for ``GIT_REPO_INFO_TTL_S``, so the state alone, which
@@ -570,7 +569,7 @@ async def _refs_answer_key(
         query,
         subject.commit_oid if subject is not None else "",
         (subject.ref or "") if subject is not None else "",
-        first_ref or "",
+        marked_ref or "",
         pulls.token if pulls is not None else "",
         state,
     )
@@ -760,7 +759,7 @@ async def api_source_refs(request: Request) -> Response:
                 kind=kind,
                 query=query,
                 subject=subject,
-                first_ref=head_ref,
+                marked_ref=head_ref,
                 pulls=pulls,
             )
             # The store of the checkout's origin: its state is part of the answer, and
@@ -770,11 +769,16 @@ async def api_source_refs(request: Request) -> Response:
                 await store.ensure_open()
             origin = store.state() if store is not None else None
             key = await _with_origin_state(key, store, source, kind=kind, origin=origin)
+            origin_default_ref = None
+            if kind == "branch" and (session := source.origin) is not None:
+                origin_default_ref = await session.mirror.default_ref()
+                if key is not None:
+                    key = (*key, origin_default_ref or "")
             kept = kept_answer(request, key)
             if kept is not None:
                 return kept
             # One reading of the repository answers both: its HEAD and its refs.
-            head, listed = await source.list_refs(kind)
+            head, listed = await source.list_refs(kind, origin_default_ref=origin_default_ref)
             if head != head_ref:
                 # HEAD was read again between the key and the listing: keep nothing.
                 key = None
@@ -794,7 +798,7 @@ async def api_source_refs(request: Request) -> Response:
                 kind=kind,
                 query=query,
                 subject=pin,
-                first_ref=default_ref,
+                marked_ref=default_ref,
                 pulls=pulls,
             )
             kept = kept_answer(request, key)

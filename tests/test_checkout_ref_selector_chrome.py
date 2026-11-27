@@ -167,9 +167,9 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         ("Remotes", False),
         ("Tags", False),
     ]
-    # An arrow key onto Branches lists them. The checked-out branch is badged, lists
-    # first, and is not the served row; the rest are newest first, local-work committed
-    # in the checkout after feature (mb-dcp2).
+    # An arrow key onto Branches lists them. The origin's default, topic, lists
+    # first and has the checked-out badge. The rest are newest first: local-work
+    # was committed in the checkout after feature (mb-dcp2).
     branches = result["workingTreeBranches"]
     assert (branches["workingTree"], branches["filterShown"], branches["listShown"]) == (
         None,
@@ -183,9 +183,10 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     ]
     assert not any(row["current"] for row in branches["rows"])
     assert {row["chip"] for row in branches["rows"]} == {"local"}
+    # origin/HEAD names topic, so it comes first despite feature's newer commit.
     assert _rows(result["workingTreeRemotes"]) == [
-        f"origin/feature {FEATURE_SHORT}",
         f"origin/topic {TOPIC}",
+        f"origin/feature {FEATURE_SHORT}",
     ]
     assert {row["chip"] for row in result["workingTreeRemotes"]["rows"]} == {"remote"}
     assert sorted(_rows(result["workingTreeTags"])) == [

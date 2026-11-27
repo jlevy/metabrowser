@@ -279,14 +279,14 @@ def test_recording_is_what_a_served_checkout_answers(
         **tree["working_tree"],
         "current": False,
     }
-    # The checked-out branch first, then newest first: local-work was committed in
-    # February, after feature's commit.
+    # The origin's default, topic, is first. The rest are newest first: local-work
+    # was committed in February, after feature's commit.
     assert [row["name"] for row in branches["refs"]] == ["topic", "local-work", "feature"]
     assert branches["refs"][0]["checked_out"] and not branches["refs"][0]["current"]
-    # origin/feature's commit is an hour newer than origin/topic's.
+    # origin/HEAD names origin/topic. Its older commit still lists above origin/feature.
     assert [row["name"] for row in recorded["remotes"]["body"]["refs"]] == [
-        "origin/feature",
         "origin/topic",
+        "origin/feature",
     ]
     switched = recorded["switch_branch"]["body"]
     assert (switched["changed"], switched["view_href"]) == (
@@ -310,14 +310,14 @@ def test_recording_is_what_a_served_checkout_answers(
     assert recorded["switch_missing"]["status"] == 404
     # A branch checked out in a terminal is named by the next listing, of either kind,
     # though the server's kept identity of the repository is seconds old: the working
-    # tree's own list names it, and Branches marks it and lists it first.
+    # tree's own list names it, and Branches moves the checked-out badge to it.
     feature = next(row for row in branches["refs"] if row["name"] == "feature")
     moved = recorded["working_tree_moved"]["body"]["working_tree"]
     assert (moved["head_name"], moved["head_commit"]) == ("feature", feature["commit"])
     listed_moved = recorded["branches_moved"]["body"]
     assert listed_moved["working_tree"] == moved
     assert [row["name"] for row in listed_moved["refs"] if row["checked_out"]] == ["feature"]
-    assert listed_moved["refs"][0]["name"] == "feature"
+    assert [row["name"] for row in listed_moved["refs"]] == ["topic", "local-work", "feature"]
     # A detached HEAD names its commit, and no branch is checked out.
     for name in ("working_tree_detached", "branches_detached"):
         detached = recorded[name]["body"]["working_tree"]
@@ -347,7 +347,7 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         "Working tree on topic: /sandbox/checkout (kept whole: checkout) [current]"
     )
     assert listed["lists"] == ["working_tree", "branch", "remote", "tag"]
-    listed = by_name["the checkout's branches, the checked-out one first and marked"]
+    listed = by_name["the checkout's branches, with the checked-out branch marked"]
     assert listed["requests"] == ["GET /api/source/refs?kind=branch"]
     assert listed["paint"]["rows"][0].startswith("topic ")
     assert "[checked out]" in listed["paint"]["rows"][0]

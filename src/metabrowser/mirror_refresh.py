@@ -326,9 +326,10 @@ class MirrorRef:
     """One branch or tag a mirror or a checkout holds, and the commit it names.
 
     ``name`` is the name a reader knows it by, ``ref`` the full ref a pin request names
-    it with, and ``default`` marks the branch that lists first: the origin's default
-    branch in a mirror, the checked-out branch in a checkout. ``committed_at`` is the
-    commit's committer date in epoch seconds, ``None`` when Git printed none.
+    it with, and ``default`` marks the origin's default branch in a mirror or the
+    checked-out branch in a checkout. ``notable`` gives a branch listing priority
+    independently of that marker. ``committed_at`` is the commit's committer date in
+    epoch seconds, ``None`` when Git printed none.
     """
 
     name: str
@@ -340,6 +341,7 @@ class MirrorRef:
     # Metabrowser keeps of that origin: where the checkout's own remote-tracking branch
     # is, when that is not ``commit`` (``_with_origin`` in ``checkout_revisions.py``).
     checkout: CheckoutOwnRef | None = None
+    notable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -467,8 +469,8 @@ class ServedMirror(Protocol):
     async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         """Every branch, or every tag, the mirror holds that names a commit.
 
-        *default_ref*, :meth:`default_ref` as the caller read it, lists first and is
-        marked; then newest first by the commit each ref names, then by name.
+        *default_ref*, :meth:`default_ref` as the caller read it, is marked and lists
+        with the other notable branches. Each group reads newest first, then by name.
         """
         ...
 
