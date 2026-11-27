@@ -1355,7 +1355,11 @@
         now: () => Date.now(),
         isVisible: () => document.visibilityState === "visible",
         observeStatus(next) {
-          element.dataset.lastFetchAt = next.last_fetch_at ?? "";
+          const fetchedAt = next.last_fetch_at ?? "";
+          if (element.dataset.lastFetchAt !== fetchedAt) {
+            element.dataset.lastFetchAt = fetchedAt;
+            window.MetabrowserRefreshPlan?.plan()?.updateTooltip?.();
+          }
         },
         render: (model) => {
           noteRefresh(model);

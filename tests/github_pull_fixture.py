@@ -69,6 +69,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -1772,6 +1773,7 @@ def build_home(
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
         _patched(pulls, "utc_now", lambda: FETCHED_AT),
+        _patched(pulls, "monotonic_ns", count(0, 425_000_000).__next__),
         _patched(pull_list, "utc_now", lambda: FETCHED_AT),
     ):
         for number in (7, 8, 9, 10):
@@ -2314,6 +2316,7 @@ def build_checkout_home(directory: Path) -> None:
     ]
     with (
         _patched(pulls, "utc_now", lambda: FETCHED_AT),
+        _patched(pulls, "monotonic_ns", count(0, 425_000_000).__next__),
         _patched(pull_list, "utc_now", lambda: FETCHED_AT),
         _patched(acquire, "canonical_now", lambda: FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")),
     ):

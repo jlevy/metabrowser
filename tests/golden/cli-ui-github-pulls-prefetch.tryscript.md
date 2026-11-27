@@ -93,12 +93,20 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
   "firstRead": [
     "GET /api/plugin/github/pull?number=7"
   ],
-  "checked": "Fetched 3 h ago via GitHub CLI",
+  "checked": {
+    "finished_at": "2026-09-17T09:00:00Z",
+    "label": "Last fetched",
+    "provider": "github_cli"
+  },
   "lapsedRead": [
     "POST /api/plugin/github/pulls-refresh",
     "GET /api/plugin/github/pull?number=7"
   ],
-  "checkedAfter304": "Fetched 3 h ago via GitHub CLI",
+  "checkedAfter304": {
+    "finished_at": "2026-09-17T09:00:00Z",
+    "label": "Last fetched",
+    "provider": "github_cli"
+  },
   "withinWindow": [
     "GET /api/plugin/github/pull?number=7"
   ],
@@ -122,7 +130,7 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
     "GET /api/plugin/github/pull?number=7",
     "POST /api/plugin/github/pull-refresh"
   ],
-  "pendingFreshness": "Fetched 3 h ago via GitHub CLI",
+  "pendingFreshness": null,
   "headMoved": "New commits were pushed; updating.",
   "headMovedOffline": "New commits were pushed to this pull request.",
   "headStill": null

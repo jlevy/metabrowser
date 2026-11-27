@@ -89,6 +89,8 @@ class _Session:
             "metabrowser.builtin_plugins.github.pull_list_refresh.monotonic_ns", elapsed.__next__
         )
         monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+        elapsed_pull = count(step=425_000_000)
+        monkeypatch.setattr(pulls, "monotonic_ns", elapsed_pull.__next__)
         generations = count(1)
         monkeypatch.setattr(pull_files_refresh, "uuid4", lambda: UUID(int=next(generations)))
         self.blocks: list[str] = []

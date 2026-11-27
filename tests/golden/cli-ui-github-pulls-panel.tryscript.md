@@ -133,7 +133,13 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Closed] spam | #9 · ghost | /pull/9"
         ]
       },
-      "refreshDetail": "Refreshed 2 min ago in 300ms"
+      "refreshDetail": {
+        "finished_at": "2026-09-17T12:00:00Z",
+        "duration_ms": 300,
+        "provider": "github_cli",
+        "request_count": 3,
+        "response_body_bytes": 45891
+      }
     },
     {
       "step": "cached windows fill only the display budget",
@@ -923,12 +929,12 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": null,
-        "canRefresh": false,
+        "canRefresh": true,
         "revalidating": false
       },
       "after": {
         "message": null,
-        "canRefresh": false,
+        "canRefresh": true,
         "revalidating": false
       }
     },
