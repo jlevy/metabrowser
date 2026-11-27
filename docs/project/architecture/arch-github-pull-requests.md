@@ -1069,6 +1069,14 @@ step with `pull_stacks.py` (`repository_snapshot.py`).
 
 ## Background Prefetch
 
+The
+[external fetch probes](../../../explorations/performance-loop/README.md#measuring-external-fetching)
+measure process cost, response status and spending, and the overlap of Git and GitHub
+commands with browser work.
+Evaluate additional speculation against first visits as well as revisits.
+A prefetched response helps a click when its result is available in the cache or view
+that the click actually uses.
+
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
 (`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
 starts that work by itself, so a hidden or offline page spends nothing.
@@ -1143,6 +1151,15 @@ A subdirectory resolves to its enclosing checkout.
 Reading creates nothing, and a job’s first write publishes an `unattached` source with
 no store.
 
+- **Conversation can read during cold acquisition.** A selected, missing pull can read
+  its viewer-checked metadata while the checkout’s origin store is being made.
+  It uses one ordinary provider slot and a publication with no Git store.
+  Only one metadata read shares that turn.
+  A pending background read waiting for the first checkout store advertises
+  `promotable_prefetch`. Opening its visible Conversation asks once to promote it, even
+  if the page first saw an ordinary pending response.
+  If Git finishes first, the next turn waits for the read to finish, so a new attachment
+  cannot revoke the provisional description.
 - **Comparisons need a store.** Without one, the envelope withholds a record’s
   comparison as `no_store`. Opening **Changes** sends
   `"retry": true, "comparison": true`, which asks core for the checkout’s store

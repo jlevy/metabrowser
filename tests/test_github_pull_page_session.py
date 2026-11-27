@@ -1345,10 +1345,11 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
     }
 
 
-def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -> None:
+@pytest.mark.parametrize("initial", ["absent", "prefetch", "late-prefetch"])
+def test_selected_core_preview_waits_for_description_and_keeps_parts_pending(initial: str) -> None:
     """A cold selected page retains prior content until its honest core is ready."""
 
-    assert run_session("github-pull-core-preview-behavior.js") == {
+    assert run_session("github-pull-core-preview-behavior.js", initial) == {
         "description": "rendered preview before full conversation",
         "pendingParts": ["discussion", "checks"],
         "checkResults": {"route": "/pull/7/checks", "links": 2, "empty": True, "pending": True},

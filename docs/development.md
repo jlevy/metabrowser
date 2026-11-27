@@ -128,7 +128,7 @@ lists what a new one brings.
 
 ## Benchmarking Scan and Serve
 
-Two harnesses answer different questions.
+The performance tools cover three different stages of a browsing session.
 [`explorations/performance-loop/`](../explorations/performance-loop/README.md) is the
 measured-improvement loop: one hypothesis per round, measured against the unchanged
 build on the same corpus, with the verdict written down either way; its browser half
@@ -137,9 +137,15 @@ follows the [Web Performance Framework](web-performance-framework.md).
 [Scale Benchmark](scale-benchmark.md) runs at fixed sizes.
 An exploration answers a question once; a benchmark defends an answer, and only the
 second belongs in a release gate.
-Both run on one corpus, built once per machine into the gitignored `.bench/` by
-[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus)
-from this repository’s own locked installs, so one commit gives one tree.
+The scan and startup scenarios share a generated corpus, built from locked installs
+under the gitignored `.bench/`. See
+[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus).
+For post-load browsing, use the
+[transition scenario](../explorations/performance-loop/README.md#transition-navigation-scenario)
+with a pinned standalone clone of Metabrowser.
+For the cost of external fetching, use the
+[provider probes](../explorations/performance-loop/README.md#measuring-external-fetching)
+and correlate any provider change with a browser result.
 
 Run `devtools/bench_serving.py` before and after a change to the walker, the derived
 index state, or the delivery layer, and record the comparison in the pull request; its
@@ -167,9 +173,9 @@ These rules hold for every timing claim, in either harness and for any engine.
   and entry count beside the number, and iterate against a synthetic corpus.
 - **Deterministic profilers overstate high-call-count functions.** Use such a profile to
   find where, then price the candidates in isolation.
-- **Order and warmup are part of the measurement.** Interleave builds and alternate
-  passes, so drift is not charged to whichever ran second, and time and discard a warmup
-  pass.
+- **Order and warm-up are part of the measurement.** Interleave builds and alternate
+  passes. Record product startup work separately from post-warm-up measurement.
+  Record any synthetic harness warm-up as part of the regime.
 - **Record what was compared:** commit and clean-or-dirty state for each build, and a
   mark on profiled runs so they are never quoted as measurements.
 
@@ -187,8 +193,55 @@ The per-entry rule these measure is in the
 existing tree, each fresh process completing discovery before it is measured, and
 compares warm text reads, ETag revalidation, optional Markdown rendering, and concurrent
 inventory traffic without writing to the tree.
-Its docstring has the setup, the command, and the agreement checks that must pass before
-timings compare.
+Its docstring gives the setup and the agreement checks.
+Omit `--baseline-metab` for a single-build survey.
+`--api-cases` takes a JSON array of named GET cases.
+Use paths from the CLI API golden transcripts, such as the Git history in
+[cli-api-git.tryscript.md](../tests/golden/cli-api-git.tryscript.md).
+The
+[ready-to-run history case](../explorations/performance-loop/cases/commit-history.json)
+works on a pinned checkout with at least one commit.
+
+```json
+[
+  {
+    "name": "history",
+    "path": "/api/git/log?limit=250",
+    "expect": {"is_repo": true},
+    "compare": ["commits"],
+    "revalidate": true
+  }
+]
+```
+
+```shell
+uv --config-file uv.toml run --frozen python -m devtools.bench_navigation \
+  --root "$CORPUS" --candidate-metab .venv/bin/metab --api-only \
+  --api-cases explorations/performance-loop/cases/commit-history.json \
+  --rounds 2 --json "$RESULT"
+```
+
+`expect` checks golden-derived field values, and `compare` hashes named fields for
+equality across reads and builds.
+Both accept dotted object keys.
+Include fields that prove the expected subject, scope, and content, and omit
+run-specific cursors or timestamps.
+`revalidate` asks for a verified HTTP 304 on a route with a stable ETag.
+The recorded times cover real HTTP requests through the running server, including
+response-body transfer and server phases.
+Startup until HTTP and inventory readiness, first requests, and repeated requests are
+reported separately.
+`--api-only` skips the default inventory, Files, and Recent test traffic after
+readiness. Add `--baseline-metab` for the interleaved two-build comparison.
+Use `--prepare-api NAME` to time a case in the startup preparation phase before
+measuring the first user read.
+Set the same preparation for both builds in a code comparison.
+Use `--cache-seed DIR` for cases that need previously fetched data, such as a cached PR
+record. Each server gets its own copy of that cache before its startup clock starts.
+Use a snapshot from an isolated preparation run and keep it fixed across the series.
+CLI `--api` golden transcripts provide the semantic contract.
+Their timings do not include this HTTP path.
+Use the browser transition scenario for paint and visual continuity.
 
 ## Dependencies
 

@@ -1024,6 +1024,16 @@ class ServedPull:
                 self._core_ready.clear()
             self._core_requested = True
 
+    def unattached_selection(self) -> ListedRepository | None:
+        """The missing Conversation a reader selected in a checkout without its store."""
+        if (
+            self._core_requested
+            and self.fetched_at is None
+            and isinstance(self.published, ListedRepository)
+        ):
+            return self.published
+        return None
+
     def _clear_core_preview(self) -> None:
         self.core_preview = None
         self._core_epoch = object()
@@ -1072,7 +1082,9 @@ class ServedPull:
             self._full_waiter = None
         return True
 
-    async def refresh(self, asks: AbstractSet[RefreshAsk]) -> None:
+    async def refresh(
+        self, asks: AbstractSet[RefreshAsk], *, unattached: ListedRepository | None = None
+    ) -> None:
         """Read what *asks*, why its job was started or joined, need, consuming explicit
         recovery requests before the ordinary PR fetch.
 
@@ -1083,6 +1095,9 @@ class ServedPull:
         (:func:`.pulls.refresh_pull_status`), which moves none of the record's clocks, or
         nothing. *asks* is the job's live view, so an ask for the record that joins while
         the status alone is read reads the record after it, as a reader's own action does.
+
+        An unattached publication fixes one selected metadata read to a source with no
+        Git store. The checkout job handles joining recoveries once it can take the turn.
         """
         started = pulls.utc_now()
         self._refreshing = True
@@ -1099,7 +1114,7 @@ class ServedPull:
                 # status was read: it reads all.
                 started = pulls.utc_now()
             with gh_lanes.serving(self._lane(asks)):
-                await self._refresh_record(started)
+                await self._refresh_record(started, unattached=unattached)
         finally:
             self.display_core = None
             self._clear_core_preview()
@@ -1170,7 +1185,9 @@ class ServedPull:
             if self.fetched_at != held:
                 self.full_read_at = self.fetched_at
 
-    async def _refresh_record(self, started: datetime) -> None:
+    async def _refresh_record(
+        self, started: datetime, *, unattached: ListedRepository | None = None
+    ) -> None:
         """Read the record, and its status after it, consuming each recovery request."""
 
         previous_attempt, self._last_attempt = self._last_attempt, started
@@ -1188,7 +1205,7 @@ class ServedPull:
             while True:
                 recover = bool(self._recoveries)
                 pair = self._recoveries.popitem(last=False)[0] if recover else None
-                published = self.published
+                published = unattached or self.published
                 epoch: object | None = None
 
                 def observe_reader(
@@ -1296,7 +1313,7 @@ class ServedPull:
                     self.last = PullRefreshOutcome(
                         outcome="succeeded", message=None, reset_at=None, at=record.fetched_at
                     )
-                if not self._recoveries:
+                if unattached is not None or not self._recoveries:
                     return
         except asyncio.CancelledError:
             self._last_attempt, self._attempted_row = previous_attempt, previous_row
@@ -1456,11 +1473,12 @@ class ServedPulls:
             self.core_window = None
             window.cancel()
         for held in self._kept.values():
-            if (
-                held.published is publication
-                and held.display_core is not None
-                and held.display_core[0]["reader"] != reader
-            ):
+            if held.published is not publication:
+                continue
+            if held.core_preview is not None and held.core_preview["reader"] != reader:
+                held._clear_core_preview()
+                held._core_ready.set()
+            if held.display_core is not None and held.display_core[0]["reader"] != reader:
                 held.display_core = None
 
     def key(self, number: int) -> str:

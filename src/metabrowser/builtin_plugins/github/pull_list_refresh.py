@@ -440,7 +440,7 @@ async def refresh_pull_list(
     name: PullListName,
     *,
     target: int = 500,
-    slot: asyncio.Semaphore | None = None,
+    slot: contextlib.AbstractAsyncContextManager[None] | None = None,
     demand: Callable[[], tuple[PullListName, int]] | None = None,
     retry: bool = False,
     take_retry: Callable[[], bool] | None = None,

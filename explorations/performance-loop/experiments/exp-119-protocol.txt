@@ -1,0 +1,8 @@
+Exp-119 — check the post-warm-up gate on a fresh loopback server
+
+Start a real Metabrowser server for the pinned public checkout with new cache,
+state, and config. Wait for the normal inventory readiness signal. Use the
+transitions harness helper to passively poll source status until the checkout
+origin has a fresh completed fetch, or refuse at the 120-second deadline.
+Record both phases and leave Chrome unopened. A separate bounded fixture checks
+that an absent or still-refreshing origin does not pass the gate.

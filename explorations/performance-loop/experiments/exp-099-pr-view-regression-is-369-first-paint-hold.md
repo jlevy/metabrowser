@@ -1,5 +1,5 @@
 ---
-title: The Cached Pull Request Page's Regression Is #369's First-Paint Hold
+title: "The Cached Pull Request Page's Regression Is #369's First-Paint Hold"
 softschema:
   contract: metabrowser.loadtime:Experiment/v1
   schema: experiment.schema.yaml
@@ -7,7 +7,7 @@ softschema:
   status: enforced
 experiment:
   id: exp-099
-  title: The Cached Pull Request Page's Regression Is #369's First-Paint Hold
+  title: "The Cached Pull Request Page's Regression Is #369's First-Paint Hold"
   date: "2026-11-17"
   hypotheses:
     - H119
