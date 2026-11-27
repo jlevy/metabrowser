@@ -3,9 +3,9 @@ type: is
 id: is-01m8ceg1yk1r9jgmgeeapzjys4
 title: Speed up the local development loop
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/889
@@ -16,8 +16,12 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-26T17:29:49.266Z
-updated_at: 2026-11-26T19:07:49.143Z
+updated_at: 2026-11-27T11:39:25.807Z
 started_at: 2026-11-26T18:01:36.731Z
+closed_at: 2026-11-27T11:39:25.806Z
+close_reason: "Merged reviewed #889 at be414959. Exact Linux CI 45980717021 and macOS build 45980716995 passed, including the scoped golden selector and nested Make fixes."
+resolution: null
+duplicate_of: null
 ---
 Straightforward wins found while building the merge readiness stack (mb-u16j): golden updates for a subset of files, a tryscript runner that works outside make, the UV_NATIVE_TLS warning kept out of goldens, root-only tests skipped when running as root, golden and pytest parallelism matched to the machine, a fast affected-tests target, and a tested environment setup script that installs a Git at or above the floor. Goldens that print whole status objects are tracked separately.
 
