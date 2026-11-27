@@ -590,14 +590,14 @@ try {
   };
   // A pull request's toggle (mb-d0a3, mb-pw8t) carries its number too, and is named apart: it
   // is never focused (mb-1z7j), which naming it would show.
-  const focused = () =>
-    evaluate(`(() => {
+  const FOCUSED = `(() => {
       const el = document.activeElement;
       if (el?.matches?.(".github-pulls-change")) return "line " + el.dataset.number;
       if (el?.matches?.(".github-pull-file-row, .github-pull-folder-row")) return "file";
       if (el?.matches?.(".github-pulls-whole-row")) return "whole " + el.dataset.stack;
       return el?.dataset?.stack ? "stack " + el.dataset.stack : el?.dataset?.number ? "#" + el.dataset.number : el?.tagName ?? null;
-    })()`);
+    })()`;
+  const focused = () => evaluate(FOCUSED);
   /** Whether the first stack's row is inside the list's scroller's view, and where it is. */
   const stackInView = () =>
     evaluate(`(() => {
@@ -1126,16 +1126,33 @@ try {
     // its files, as on a folder's.
     const ROW106 = `document.querySelector('a.github-pulls-row[data-number="106"]')`;
     const LINE = `document.querySelector('.github-pulls-change[data-number="106"]')`;
-    const state = async () => [
-      await focused(),
-      await evaluate(`${ROW106}?.getAttribute("aria-expanded") ?? null`),
-      await evaluate(
-        // A pull request's row with its files open: a Stack Overview row is a link too, whose
-        // files are its stack's, and is not one.
-        `document.querySelectorAll('a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-whole-row)').length`,
-      ),
-    ];
-    await evaluate(`document.activeElement?.blur(), ${ROW106}.focus()`);
+    // Observe focus, disclosure and the number of expanded pull requests in the same
+    // browser turn. An opening tree may still be waiting for its cached files.
+    const state = async (expanded) => {
+      const deadline = Date.now() + STEP_MS;
+      let sample;
+      do {
+        sample = await evaluate(`[${FOCUSED}, ${ROW106}?.getAttribute("aria-expanded") ?? null,
+          document.querySelectorAll('a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-whole-row)').length]`);
+        if (sample[1] === expanded) {
+          return sample;
+        }
+        await frames();
+      } while (Date.now() < deadline);
+      throw new Error(
+        `#106 disclosure did not settle; last keyboard state ${JSON.stringify(sample)}`,
+      );
+    };
+    // The previous walk finishes at Stack #286. Start this walk with its two adjacent
+    // rows in view so both remain observable when Down moves the focus from #106.
+    await evaluate(`document.querySelector(".tree-content").scrollTop = 0`);
+    await waitFor(`[105, 106].every((number) => {
+      const row = document.querySelector('a.github-pulls-row[data-number="' + number + '"]');
+      const pane = document.querySelector(".tree-content").getBoundingClientRect();
+      const box = row?.getBoundingClientRect();
+      return box && box.bottom > pane.top && box.top < pane.bottom;
+    })`);
+    await evaluate(`document.activeElement?.blur(), ${ROW106}.focus({preventScroll: true})`);
     const scrolled = `Math.round(document.querySelector(".tree-content").scrollTop)`;
     const spaceBefore = await evaluate(scrolled);
     const walk = [];
@@ -1160,11 +1177,7 @@ try {
         );
       }
       await press(key);
-      // The tree opens once its cached list is read, or past its hold (FILES_OPEN_HOLD_MS).
-      await chrome
-        .waitFor(`${ROW106}?.getAttribute("aria-expanded") === ${JSON.stringify(want[1])}`, 2000)
-        .catch(() => false);
-      walk.push([key, ...(await state())]);
+      walk.push([key, ...(await state(want[1]))]);
       if (walk.length === 2) {
         measured.spaceOnRow = { before: spaceBefore, after: await evaluate(scrolled) };
       }
