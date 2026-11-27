@@ -5,7 +5,7 @@ title: Refresh the post-load navigation and fetch performance campaign
 kind: epic
 status: in_progress
 priority: 1
-version: 26
+version: 27
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
@@ -54,10 +54,11 @@ child_order_hints:
   - is-01m8d7qe087mjkep5t4t8mxtgg
   - is-01m8d8063m8y25s44y4c20d673
   - is-01m8d879b5wgca2sq719p8b0y3
+  - is-01m8d8j2d2f12rya3xwqfq5tsp
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:37:58.326Z
-updated_at: 2026-11-27T00:59:24.899Z
+updated_at: 2026-11-27T01:05:18.239Z
 started_at: 2026-11-26T20:38:34.641Z
 extensions:
   linear:
