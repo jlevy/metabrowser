@@ -5,7 +5,7 @@ title: Address review H of the link preview tooltips phase
 kind: task
 status: in_progress
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-26-link-preview-tooltips.md
 delegate: claude-code@vm
 labels: []
@@ -18,7 +18,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T22:59:45.657Z
-updated_at: 2026-11-26T22:59:48.223Z
+updated_at: 2026-11-27T01:49:50.013Z
 started_at: 2026-11-26T22:59:48.223Z
 ---
 Independent senior review at ee9a3e61 (not published; recorded on the stacked PR): H1 High, H2-H7 Medium, H8-H14 Low. Probes in the session scratchpad review-h/.
+
+## Notes
+
+PR: https://github.com/jlevy/metabrowser/pull/912 (stacked on #891)
