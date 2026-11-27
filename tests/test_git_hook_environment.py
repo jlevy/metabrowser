@@ -333,7 +333,9 @@ def test_every_python_fixture_that_runs_git_init_reads_the_environment_after_the
 
 # A CSS class or custom property containing "git" names a UI element, while a quoted
 # executable may be just "git" or have a path ending in "/git".
-_GIT_EXECUTABLE = re.compile(r"(?<![\w.-])git(?![\w.-])")
+# Git named as a word, as an executable or an argument names it; not an attribute's value in
+# a CSS selector (`[data-tab="git"]`, the Git tab), which starts nothing.
+_GIT_EXECUTABLE = re.compile(r"(?<![\w.-])(?<!=\")(?<!=')git(?![\w.-])")
 
 
 def _script_starts_git(text: str) -> bool:
@@ -353,6 +355,8 @@ def _script_starts_git(text: str) -> bool:
         ('console.log("git status")', False),
         ('import { spawn } from "node:child_process"; token("--git-status-added")', False),
         ('import { spawn } from "node:child_process"; querySelector(".git-ref-menu-caret")', False),
+        ('import { spawn } from "node:child_process"; press(\'[data-tab="git"]\')', False),
+        ('import { spawn } from "node:child_process"; spawn("git", ["status"])', True),
         ('require("child_process").spawnSync("/usr/bin/git", ["status"])', True),
         ('require("child_process").spawnSync("git", ["--git-dir=x", "log"])', True),
     ],
