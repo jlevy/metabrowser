@@ -22,6 +22,8 @@ Everything after ``--`` is the command, and each file's path is added to its end
 environment, then ``run`` to check them or ``run --update`` to rewrite them, as
 ``make golden-update`` does. A file tryscript rewrote reports ``FAIL``, as tryscript
 itself does.
+``--check-patterns PATTERN...`` refuses any unmatched pattern before ``golden-update``
+runs its recorders or rewrites a transcript.
 
 Each file's output is printed whole when the file finishes, then one line that
 ``devtools/suite_report.py`` reads:
@@ -172,6 +174,12 @@ def _jobs(value: str) -> int:
 
 def main(arguments: Sequence[str] | None = None) -> int:
     given = list(sys.argv[1:] if arguments is None else arguments)
+    if given[:1] == ["--check-patterns"]:
+        unmatched = [pattern for pattern in given[1:] if not matched([pattern])]
+        if unmatched:
+            print(f"{PREFIX} no file matches {' '.join(unmatched)}", file=sys.stderr)
+            return 1
+        return 0
     if "--" not in given or given.index("--") == len(given) - 1:
         print(
             "usage: python -m devtools.run_goldens [--jobs N] PATTERN... -- COMMAND...",

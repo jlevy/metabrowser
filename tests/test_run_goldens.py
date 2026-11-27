@@ -3,7 +3,9 @@ time, and a failure for any golden that gave no verdict."""
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -219,6 +221,53 @@ def test_a_run_without_a_command_is_refused(
 ) -> None:
     assert run_goldens.main(arguments) == 2
     assert "usage:" in capsys.readouterr().err
+
+
+def test_only_limits_updates_even_when_goldens_has_a_command_line_value() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "golden-update",
+            "GOLDENS=tests/golden/*.tryscript.md",
+            "ONLY=tests/golden/cli-doctor.tryscript.md",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "run --update" in result.stdout
+    assert "tests/golden/cli-doctor.tryscript.md" in result.stdout
+    assert "tests/golden/*.tryscript.md" not in result.stdout
+
+
+def test_only_refuses_unmatched_patterns_before_running_recorders(tmp_path: Path) -> None:
+    (tmp_path / "devtools").symlink_to(ROOT / "devtools", target_is_directory=True)
+    (tmp_path / "real.tryscript.md").touch()
+    env = {
+        **os.environ,
+        "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ["PATH"]]),
+    }
+    result = subprocess.run(
+        [
+            "make",
+            "-f",
+            str(ROOT / "Makefile"),
+            "golden-update",
+            "UV_RUN=env",
+            "ONLY=real*.tryscript.md missing.tryscript.md tests/test_inert_toc.py",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "no file matches missing.tryscript.md" in result.stderr
+    assert "devtools.golden_update" not in result.stdout
+    assert "run --update" not in result.stdout
 
 
 def test_make_test_goldens_runs_every_golden_through_the_runner_with_the_makefiles_tryscript(

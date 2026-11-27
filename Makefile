@@ -411,7 +411,7 @@ GOLDEN_DRIVERS := \
 # `make golden-update ONLY='<file>...'` runs these steps on only what ONLY names:
 # transcripts, as .tryscript.md files or patterns, and modules of the two lists, by the
 # names the lists give them. A word that is neither stops the run before anything is
-# written, so a misspelled module cannot pass having regenerated nothing. A transcript a
+# written, as does a transcript pattern that matches no file. A transcript a
 # recorder's recording feeds has to be named too, and a step with nothing named is
 # skipped. Both tryscript passes run GOLDEN_JOBS files at a time, as `make test-goldens`
 # does; the second checks what the first rewrote, once the fixup has restored its
@@ -420,6 +420,7 @@ ONLY_UNLISTED = $(filter-out %.tryscript.md $(GOLDEN_RECORDERS) $(GOLDEN_DRIVERS
 
 golden-update:
 	$(if $(ONLY_UNLISTED),$(error ONLY names $(ONLY_UNLISTED), which is no .tryscript.md golden and no module of GOLDEN_RECORDERS or GOLDEN_DRIVERS))
+	$(if $(and $(strip $(ONLY)),$(GOLDENS)),$(UV_RUN) python -m devtools.run_goldens --check-patterns $(QUOTED_GOLDENS))
 	$(if $(GOLDEN_RECORDERS),$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS))
 	$(if $(GOLDENS),$(RUN_GOLDENS) $(QUOTED_GOLDENS) -- $(TRYSCRIPT) run --update || true)
 	$(if $(GOLDENS),$(UV_RUN) python -m devtools.golden_fixup $(QUOTED_GOLDENS))
@@ -428,11 +429,11 @@ golden-update:
 
 # What ONLY narrows golden-update to. Set for that target alone, so `make test-goldens`
 # still runs GOLDENS, and after its recipe, which devtools/check_goldens.py reads from the
-# target's first line.
+# target's first line. ONLY takes precedence over a broader command-line selection.
 ifneq ($(strip $(ONLY)),)
-golden-update: GOLDENS := $(filter %.tryscript.md,$(ONLY))
-golden-update: GOLDEN_RECORDERS := $(filter $(ONLY),$(GOLDEN_RECORDERS))
-golden-update: GOLDEN_DRIVERS := $(filter $(ONLY),$(GOLDEN_DRIVERS))
+golden-update: override GOLDENS := $(filter %.tryscript.md,$(ONLY))
+golden-update: override GOLDEN_RECORDERS := $(filter $(ONLY),$(GOLDEN_RECORDERS))
+golden-update: override GOLDEN_DRIVERS := $(filter $(ONLY),$(GOLDEN_DRIVERS))
 endif
 
 audit:
