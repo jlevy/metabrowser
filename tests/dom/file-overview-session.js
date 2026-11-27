@@ -1152,7 +1152,7 @@ const rollupError = (status) =>
        MetabrowserViewHeader.create({
          esc: notDrawnHere,
          servedRoot: notDrawnHere,
-         pathBaseName: notDrawnHere,
+         servedRootName: notDrawnHere,
          ownedControlAttr: notDrawnHere,
          mirrorHeading: notDrawnHere,
          getFileIcon: notDrawnHere,

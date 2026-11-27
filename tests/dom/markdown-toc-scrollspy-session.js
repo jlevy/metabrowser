@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { createSdkSandbox } = require("./sdk-sandbox.js");
+const { createSdkSandbox, linkCardRegistration } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(process.argv[2] || ".");
 const markdownModuleRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
@@ -306,6 +306,7 @@ async function overviewReadmeSession({
   let mountOptions = null;
   const mb = {
     decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
+    ...linkCardRegistration(),
     plugins: {
       // index.js's mountRendered, with the session's stand-in for the Markdown Worker.
       load: async () => ({
@@ -542,6 +543,7 @@ async function overviewReadmeSession({
   let tocMountedWithoutCatalogSnapshot = false;
   const mb = {
     decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
+    ...linkCardRegistration(),
     errors: { isAbortError: () => false },
     escapeHtml: (value) => value,
     fetchKpressRender: async () => ({ diagnostics: [], html: "<article></article>" }),

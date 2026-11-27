@@ -204,8 +204,11 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
             in_app = "data-metabrowser-github-localization" in attributes
             assert ("target" in attributes) is not in_app, (name, link)
             assert not run["clicks"][link]["withMeta"], (name, link)
-            # One click handler a link, however many times its text is read.
-            assert run["clicks"][link]["listeners"] == (1 if in_app else 0), (name, link)
+            # One click handler a link, however many times its text is read; a link restored
+            # to what the text wrote keeps its handler, which leaves every click to the browser.
+            listeners = run["clicks"][link]["listeners"]
+            assert listeners == 1 if in_app else listeners in (0, 1), (name, link)
+            assert in_app or not run["clicks"][link]["plain"], (name, link)
         opened = [f"/view/{target['path']}" for target in run["opened"]]
         followed = [
             attributes["href"]
@@ -231,3 +234,35 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
         assert not set(page) & set(shell), name
         opened_in_place = page + (shell if run["shell"]["opens"] else [])
         assert sorted(opened_in_place) == sorted(routed), name
+
+
+def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
+    """A link ``enhance`` leaves in-app has its link card, for what its address opens, with
+    the text it was given as the root; a link it restores or makes an outside one has the
+    card that says where its address goes, and no link carries a tooltip of its own."""
+
+    runs = _session()["enhanced"]
+    for name, run in runs.items():
+        cards: dict[str, str] = {}
+        for call in run["previews"]:
+            verb, rest = call.split(" ", 1)
+            if verb == "register":
+                link, target = rest.split(" in the text: ", 1)
+                cards[link] = target
+            else:
+                assert verb == "forget", (name, call)
+                cards.pop(rest, None)
+        for link, attributes in run["anchors"].items():
+            assert "data-tip-text" not in attributes, (name, link)
+            localization = attributes.get("data-metabrowser-github-localization")
+            # On a page with no repository identity, which `enhance` leaves as written, no
+            # link has one of its giving.
+            if not any(call.startswith("register ") for call in run["previews"]):
+                assert link not in cards, (name, link)
+                continue
+            href = attributes["href"]
+            if localization is None:
+                assert cards[link] == f"external {href}", (name, link)
+                continue
+            kind = f"view {localization}" if href.startswith("/view/") else "route"
+            assert cards[link] == f"{kind} {href}", (name, link)

@@ -30,6 +30,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 const { Element, root, settle } = require("./github-pull-page-mount-behavior.js");
 
 const recorded = JSON.parse(
@@ -415,6 +416,8 @@ async function run() {
     })),
     formatTimestamp: () => "now",
     formatInteger: (value) => String(value),
+    // The SDK's own registration of a note's links for their cards.
+    ...linkCardRegistration(),
     // A count summary's parts as its text: each number, word, and separator.
     countPartsNodes: (parts) =>
       parts.map((part) =>
@@ -1067,6 +1070,25 @@ async function noteLinks(page, mb) {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
+  // The link cards, which the page and the resolver register a note's links for through the
+  // SDK (`metabrowser.previewLink`, static/plugin-sdk-views.js): a recording stand-in.
+  const cards = new Map();
+  const cardSdk = {
+    previewLink(cardRoot, anchor, target) {
+      cards.set(anchor, { root: cardRoot, target });
+      return true;
+    },
+    forgetPreview(anchor) {
+      cards.delete(anchor);
+    },
+    disposePreviews(cardRoot) {
+      for (const [anchor, card] of cards) {
+        if (card.root === cardRoot) {
+          cards.delete(anchor);
+        }
+      }
+    },
+  };
   const allowlist = window.MetabrowserInertHtml;
   window.MetabrowserInertHtml = {
     sanitizeHtml(html, base, keepPathRelative) {
@@ -1130,6 +1152,7 @@ async function noteLinks(page, mb) {
     },
     {
       ...mb,
+      ...cardSdk,
       // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
       loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
       getRegisteredView: () => view,
@@ -1198,7 +1221,42 @@ async function noteLinks(page, mb) {
     }
   }
   said.clicks = clicks;
+  // Each link's card is for its own address, with the note as its root: an in-app link's
+  // says what it opens, and one that leaves for github.com where it goes. No link has a
+  // tooltip of its own.
+  const drawnLinks = note().querySelectorAll("a[href]");
+  said.cards = drawnLinks.map((link) => {
+    assert.equal(link.getAttribute("data-tip-text"), null, "a link has no tooltip of its own");
+    const card = cards.get(link);
+    if (card === undefined) {
+      return `${link.textContent}: none`;
+    }
+    assert.equal(card.root, note(), "a link's card has its note as its root");
+    assert.equal(
+      card.target.kind === "external" ? card.target.url : card.target.href,
+      link.getAttribute("href"),
+      "a card is for the link's address",
+    );
+    return `${link.textContent}: ${card.target.kind}`;
+  });
+  // The next step replaces the note: the first note's links take their cards with them.
+  [...container.descendants()]
+    .find((node) => node.tag === "button" && node.getAttribute("aria-label") === "Next step")
+    .events.get("click")();
+  await settle();
+  reads.at(-1).answer({
+    ...step(revision(4), 2, pinsOf(drawn)),
+    note_html: '<p><a href="https://github.com/octo/demo/pulls">the pull requests</a></p>',
+  });
+  await settle();
+  assert.notEqual(note(), drawnFirstNote, "the next step draws its own note");
+  said.cards_left_once_the_step_changes = drawnLinks.filter((link) => cards.has(link)).length;
+  assert.equal(said.cards_left_once_the_step_changes, 0, "a note the guide let go kept cards");
+  const nextLinks = note().querySelectorAll("a[href]");
   handle.dispose?.();
+  said.cards_left_once_the_page_ends = [...drawnLinks, ...nextLinks].filter((link) =>
+    cards.has(link),
+  ).length;
   window.MetabrowserInertHtml = allowlist;
   return said;
 }

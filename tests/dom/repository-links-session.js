@@ -13,6 +13,11 @@
 // browser follows what neither opened, as it does every modified click.
 // tests/test_repository_links_js.py holds its in-app addresses to the server's route
 // grammar and its github.com addresses to the server's URL reducer.
+//
+// The link cards, which `enhance` registers each link for through the SDK it is given
+// (`metabrowser.previewLink` and `forgetPreview`, static/plugin-sdk-views.js), are a
+// recording stand-in here: each run prints what `enhance` gave a card, with which root and
+// target, and took one from (`previews`).
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -27,6 +32,26 @@ for (const name of ["git-path.js", "repository-links.js"]) {
   vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
 }
 const links = sandbox.MetabrowserRepositoryLinks;
+
+// What the stand-in for the link cards heard, one line a call, each element by its name.
+const previews = [];
+/** @type {Map<object, string>} */
+const names = new Map();
+const named = (element) => names.get(element) ?? "an element of no name";
+const described = (target) => {
+  if (target.kind === "view") {
+    return `view ${target.localization} /view/${target.target.path}`;
+  }
+  return `${target.kind} ${target.kind === "external" ? target.url : target.href}`;
+};
+const cards = {
+  previewLink(root, anchor, target, options = {}) {
+    const title = options.authorTitle ? ` titled ${JSON.stringify(options.authorTitle)}` : "";
+    previews.push(`register ${named(anchor)} in ${named(root)}: ${described(target)}${title}`);
+    return true;
+  },
+  forgetPreview: (anchor) => previews.push(`forget ${named(anchor)}`),
+};
 
 const SERVED = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -317,15 +342,22 @@ function enhanced(context, sourceKind, options) {
   const outside = { target: "_blank", rel: "noopener noreferrer" };
   const anchors = {
     file: anchor(`${repo}/pull/docs/new.md`, { ...outside, "data-metabrowser-path-relative": "" }),
+    branch: anchor(`${repo}/blob/main/README.md`, outside),
     pull: anchor(`${repo}/pull/12/files`, outside),
     commit: anchor(`${repo}/commit/${OTHER}`, outside),
     list: anchor(`${repo}/pulls`, outside),
     other: anchor("https://example.com/", outside),
   };
   const root = { querySelectorAll: () => Object.values(anchors) };
+  names.set(root, "the text");
+  for (const [name, link] of Object.entries(anchors)) {
+    names.set(link, name);
+  }
+  previews.length = 0;
   const mb = {
     repository: context,
     sourceKind: () => sourceKind,
+    ...cards,
     navigation: {
       href: (target) =>
         `/view/${target.path}${target.query ? `?${target.query}` : ""}${target.fragment ? `#${target.fragment}` : ""}`,
@@ -344,9 +376,10 @@ function enhanced(context, sourceKind, options) {
     : undefined;
   const changed = [links.enhance(root, mb, { text: options.text, open })];
   // The same text, read again as the page learns more: the files its pull request changes,
-  // or a head that moved past them.
-  for (const text of options.later ?? []) {
-    changed.push(links.enhance(root, mb, { text, open }));
+  // or a head that moved past them, or, as a rendered diff away from its head is, with its
+  // `/view/` targets left as the text wrote them.
+  for (const later of options.later ?? []) {
+    changed.push(links.enhance(root, mb, { text: options.text, ...later, open }));
   }
   const clicks = {};
   for (const [name, link] of Object.entries(anchors)) {
@@ -365,6 +398,7 @@ function enhanced(context, sourceKind, options) {
     opened,
     routed,
     shell: { opens: shellOpens, asked },
+    previews: [...previews],
   };
 }
 
@@ -412,8 +446,10 @@ const runs = {
       text: { head: OTHER },
       later: [
         {
-          head: OTHER,
-          changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+          text: {
+            head: OTHER,
+            changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+          },
         },
       ],
       routes: true,
@@ -428,14 +464,21 @@ const runs = {
         changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
       },
       later: [
-        { head: PINNED.replace(/c/g, "d") },
+        { text: { head: PINNED.replace(/c/g, "d") } },
         {
-          head: PINNED.replace(/c/g, "d"),
-          changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+          text: {
+            head: PINNED.replace(/c/g, "d"),
+            changes: { number: 7, stack: false, files: new Set(["docs/new.md"]) },
+          },
         },
       ],
       routes: true,
     },
+  ),
+  "a rendered diff's text, read again once the served pin moves": enhanced(
+    contexts["text away from its head"].context,
+    "git_revision",
+    { later: [{ views: false }] },
   ),
   "a commit's message, which has no text context": enhanced(textContext, "filesystem", {}),
   "a commit's message before the shell's tabs have loaded": enhanced(textContext, "filesystem", {
