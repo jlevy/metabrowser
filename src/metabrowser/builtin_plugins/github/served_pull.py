@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 from collections import OrderedDict
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -60,7 +61,7 @@ from metabrowser.builtin_plugins.github.pull_status_store import (
 )
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.home import PrivateStorageError
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshAsk, RefreshCoordinator
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -480,11 +481,6 @@ class ServedPull:
     # adopts it.
     full_read_at: str | None = field(default=None, repr=False)
     _full_attempt: datetime | None = field(default=None, repr=False)
-    # A visible page's last ask found a read due (:meth:`automatic_due`): the refresh it
-    # starts reads what is due when its turn comes, and nothing if none of it still is
-    # (:meth:`_reads`). Each ask sets it again, so one whose start was refused leaves it at
-    # most until the page asks next.
-    _page_asked: bool = field(default=False, repr=False)
 
     def note_comparison(self, pair: tuple[str, str], *, displayed: bool = False) -> None:
         """Remember a comparison this PR issued; metadata cannot evict the displayed pair."""
@@ -709,12 +705,13 @@ class ServedPull:
         read at once; one the clock or a missing status asks for is probed for first when
         a probe is due, so a change the probe finds in the record reads the record and the
         status after it in one job, and otherwise the next ask reads the status alone.
-        Either is ``full``. The refresh it starts decides again when its turn at the store
-        comes (:meth:`_reads`): it reads what is due then, and nothing if none of it still
-        is, as when a hold is noted or a floor crossed while it waits.
+        Either is ``full``, and the page then starts or joins the refresh as a ``"page"``
+        ask (:data:`~metabrowser.mirror_refresh.RefreshAsk`). That refresh decides again
+        when its turn at the store comes (:meth:`_reads`): it reads what is due then, and
+        nothing if none of it still is, as when a hold is noted or a floor crossed while it
+        waits.
         """
 
-        self._page_asked = False
         window = self.record_window(now)
         if (
             gh_budget.over_ceiling(now)
@@ -726,12 +723,10 @@ class ServedPull:
             # that waits is not probed for again.
             return "probe" if self._probe_saw_at is None and self.probe_due(now) else None
         if self.full_read_due(now) or self.record_due(now, window_s=window):
-            self._page_asked = True
             return "full"
         if not self.status_due(now):
             return "probe" if self.probe_due(now) else None
         if self._status_change_found() or not self.probe_due(now):
-            self._page_asked = True
             return "full"
         return "probe"
 
@@ -1077,28 +1072,30 @@ class ServedPull:
             self._full_waiter = None
         return True
 
-    async def refresh(self) -> None:
-        """Read again, consuming explicit recovery requests before the ordinary PR fetch.
+    async def refresh(self, asks: AbstractSet[RefreshAsk]) -> None:
+        """Read what *asks*, why its job was started or joined, need, consuming explicit
+        recovery requests before the ordinary PR fetch.
 
         A refresh cancelled before it ended, as a background job a reader's work preempts
         is, forgets its attempt, so the next automatic request is not held for a window.
         What it reads is decided when it starts, after its turn at the store and its slot
         (:meth:`_reads`): the record and its status after it, the status alone
         (:func:`.pulls.refresh_pull_status`), which moves none of the record's clocks, or
-        nothing.
+        nothing. *asks* is the job's live view, so an ask for the record that joins while
+        the status alone is read reads the record after it, as a reader's own action does.
         """
         started = pulls.utc_now()
-        page, self._page_asked = self._page_asked, False
         self._refreshing = True
         try:
-            reads = self._reads(started, page=page)
+            reads = self._reads(started, asks)
             if reads is None:
                 return
             if reads == "status":
                 await self._refresh_status(started)
-                if not self._recoveries:
+                if not self._recoveries and "record" not in asks:
                     return
-                # A reader's own refresh joined while the status was read: it reads all.
+                # A reader's own refresh, or another ask for the record, joined while the
+                # status was read: it reads all.
                 started = pulls.utc_now()
             await self._refresh_record(started)
         finally:
@@ -1114,29 +1111,28 @@ class ServedPull:
 
         return FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
 
-    def _reads(self, now: datetime, *, page: bool) -> Literal["record", "status"] | None:
-        """What a refresh that starts at *now* reads: ``record``, the record and its status
-        after it; ``status``, the status alone; or nothing.
+    def _reads(
+        self, now: datetime, asks: AbstractSet[RefreshAsk]
+    ) -> Literal["record", "status"] | None:
+        """What a refresh that starts at *now* for *asks* reads: ``record``, the record and
+        its status after it; ``status``, the status alone; or nothing.
 
-        A reader's own action (a recovery) reads the record. Otherwise the record when it
-        is due (:meth:`record_due`), or, for a visible page's ask (*page*), when its full
-        read is (:meth:`full_read_due`), so a record whose status alone is due is read in
-        full that often; the status alone when only it is (:meth:`status_due`), which
-        speculative work never has. When nothing is due, a page's ask and speculative work
-        read nothing: each asked for what was due, and a hold noted, a floor crossed, or a
-        record adopted while the job waited its turn has made none of it due. Any other
-        caller's ask is for a read of its own, as a reader's retry of a commit fetch, a
-        commit the mirror lacks, or a comparison that needs the record is, and reads the
-        record.
+        A reader's own action (a recovery), and any ask for the record (``"record"``),
+        reads the record. Otherwise the record when it is due (:meth:`record_due`), or, for
+        a visible page's ask (``"page"``), when its full read is (:meth:`full_read_due`),
+        so a record whose status alone is due is read in full that often; the status alone
+        when only it is (:meth:`status_due`), which speculative work never has; and nothing
+        when nothing is: each of those asks was for what was due, and a hold noted, a floor
+        crossed, or a record adopted while the job waited its turn has made none of it due.
         """
 
-        if self._recoveries or (page and self.full_read_due(now)):
+        if self._recoveries or "record" in asks or ("page" in asks and self.full_read_due(now)):
             return "record"
         if self.record_due(now, window_s=self.record_window(now)):
             return "record"
         if self.status_due(now):
             return "status"
-        return None if page or gh_budget.speculating() else "record"
+        return None
 
     async def _refresh_status(self, started: datetime) -> None:
         """Read and keep the status alone; a failure is the status's, kept beside it.

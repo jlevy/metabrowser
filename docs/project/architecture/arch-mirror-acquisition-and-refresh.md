@@ -304,8 +304,14 @@ store a repository folder keeps of its checkout’s origin
   key, a store key or a store key and a pull-request number, so concurrent requests join
   the running one; `MAX_CONCURRENT_REFRESHES` bounds the network jobs across every key.
   A job outlives the request that started it, and its failures are typed outcomes.
-  Graceful shutdown cancels the jobs, which kills their Git; Ctrl-C kills the process
-  groups and exits at once.
+  Why each pull request’s job was started or joined (`RefreshAsk`) is kept with it for
+  as long as it runs, and through a restart (`RefreshCoordinator.asks`), and the job’s
+  `CompanionRefresh.refresh` reads what those asks need
+  ([What a job reads](arch-github-pull-requests.md#serving-pull-requests)). Graceful
+  shutdown cancels the jobs, which kills their Git; Ctrl-C kills the process groups and
+  exits at once. A one-shot command drains the coordinator before it shuts down, until no
+  job is left, so a job that a job started finishes too, with every round under one
+  deadline (`RefreshCoordinator.drain`).
 - **Turns at the store:** within one server, jobs that fetch into the store take turns
   (`StoreTurn`) before its fetch lock, so none finds another holding it.
   The mirror’s fetch and the attended pull request’s go first, since a page of code

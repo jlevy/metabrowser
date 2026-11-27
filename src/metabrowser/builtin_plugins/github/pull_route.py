@@ -110,6 +110,7 @@ from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
+    RefreshAsk,
     RefreshCoordinator,
     mirror_session,
     refresh_coordinator,
@@ -408,14 +409,15 @@ class PullHost:
     """What the pull routes need of a server that has pull requests, and no more.
 
     ``pulls`` is the repository's set, ``running`` says whether a number's refresh is
-    running, and ``start`` starts or joins it. ``start_background`` starts a prefetch's
-    refresh, which gives way to a reader's (:mod:`.pull_prefetch`), and ``job_key`` names a
-    number's job in the coordinator.
+    running, and ``start`` starts or joins it for an ask, which says what it reads
+    (:data:`~metabrowser.mirror_refresh.RefreshAsk`). ``start_background`` starts a
+    prefetch's refresh, which gives way to a reader's (:mod:`.pull_prefetch`), and
+    ``job_key`` names a number's job in the coordinator.
     """
 
     pulls: ServedPulls
     running: Callable[[int], bool]
-    start: Callable[[int], PullJobStart]
+    start: Callable[[int, RefreshAsk], PullJobStart]
     start_comparison: Callable[[int], PullJobStart] | None = None
     coordinator: RefreshCoordinator | None = None
     prepare: Callable[[int, str], PullRefreshStart] | None = None
@@ -448,13 +450,13 @@ def pull_host(app: Any) -> PullHost | None:
             pulls,
             lambda number: coordinator.running(checkout_job_key(checkout, number)),
             partial(start_pull_refresh, coordinator, checkout),
-            partial(start_pull_refresh, coordinator, checkout, comparison=True),
+            partial(start_pull_refresh, coordinator, checkout, ask="record", comparison=True),
             coordinator,
             lambda number, revision: start_pull_refresh(
-                coordinator, checkout, number, comparison=True, eager_revision=revision
+                coordinator, checkout, number, "record", comparison=True, eager_revision=revision
             ),
             partial(comparison_preparing, coordinator, checkout),
-            partial(start_pull_refresh, coordinator, checkout, background=True),
+            partial(start_pull_refresh, coordinator, checkout, ask="due", background=True),
             partial(checkout_job_key, checkout),
             partial(checkout_store_turn, checkout),
         )
@@ -466,7 +468,7 @@ def pull_host(app: Any) -> PullHost | None:
         session.pull_refreshing,
         session.request_pull_refresh,
         coordinator=refresh_coordinator(app),
-        start_background=partial(session.request_pull_refresh, background=True),
+        start_background=partial(session.request_pull_refresh, ask="due", background=True),
         job_key=served.key,
         store_turn=session.background_store_turn,
         observe_head=session.observe_pull_head,
@@ -1140,7 +1142,9 @@ async def _start_refresh(
     if host.running(ask.number) and not idle:
         # Only checkout jobs can be promoted from idle preparation. The other
         # hosts are already running the requested refresh.
-        return host.start(ask.number) if ask.retry and host.prepare is not None else "joined"
+        return (
+            host.start(ask.number, "record") if ask.retry and host.prepare is not None else "joined"
+        )
     if not ask.retry:
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
@@ -1182,7 +1186,8 @@ async def _start_refresh(
             adopt = None
     if host.running(ask.number) and not idle:
         return "joined"
-    started = host.start(ask.number)
+    # A reader's own action reads the record; a page's automatic ask, what it found due.
+    started = host.start(ask.number, "record" if ask.retry else "page")
     if queued is not None:
         if started == "too_many":
             queued.discard_recovery(ask.recovery)

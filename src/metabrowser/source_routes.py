@@ -1146,7 +1146,7 @@ async def api_source_link(request: Request) -> JSONResponse:
             refresh = "started" if "started" in (refresh, fetched) else fetched
             if selection.pull_request is not None and mirror.pull_requests is not None:
                 # A commit inside a pull request may come only with the pull request's own.
-                mirror.request_pull_refresh(selection.pull_request)
+                mirror.request_pull_refresh(selection.pull_request, "record")
             return JSONResponse(
                 {
                     "error": "the mirror is fetching from its origin; ask again when it finishes",

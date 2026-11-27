@@ -585,7 +585,7 @@ def test_an_open_records_status_is_read_once_a_window_on_its_own(
     assert not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
     clock = [NOW]
     read = _reading(monkeypatch, record, clock)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"due"}))
     assert read == ["status"]
     assert held.fetched_at == record.fetched_at and held._last_attempt is None  # pyright: ignore[reportPrivateUsage]
     # Tried, whether or not it succeeded, it waits a window.
@@ -593,7 +593,7 @@ def test_an_open_records_status_is_read_once_a_window_on_its_own(
     assert held.status_due(NOW + WINDOW + timedelta(seconds=1))
     # A reader's own refresh reads everything, and the status after it.
     held.request_recovery()
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"record"}))
     assert read[-1] == repr({"recover": True, "recovery_pair": None, "adopt_current": False})
     assert held._status_attempt == NOW  # pyright: ignore[reportPrivateUsage]
 
@@ -621,7 +621,7 @@ def test_a_visible_record_with_no_status_of_its_head_reads_one_whatever_the_cata
     assert held.automatic_due(NOW) == "full"
     _observe_core(100)
     assert held.below_floor(NOW) and held.automatic_due(NOW) == "full"
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read == ["status"] and not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
     # A status of another head is none, and one of its head ends the wait.
     held._status_attempt = None  # pyright: ignore[reportPrivateUsage]
@@ -663,7 +663,7 @@ def test_speculative_work_reads_no_status_and_nothing_while_its_record_is_not_du
     async def speculative() -> bool:
         with gh_budget.speculative():
             stale = held.is_stale(clock[0], window_s=FRESHNESS_WINDOW_S)
-            await held.refresh()
+            await held.refresh({"due"})
             return stale
 
     assert not asyncio.run(speculative())
@@ -679,8 +679,8 @@ def test_a_pages_ask_reads_nothing_once_what_it_found_due_no_longer_is(
     """The ask found the status alone due, and its job waited its turn at the store; a
     rate-limit hold noted meanwhile holds the status and the record alike. The job read
     the record in full all the same, about four ``core`` during the hold, and now reads
-    nothing. A reader's own action still reads everything, and a job another caller
-    started, a commit the mirror lacks, asks for a read of its own and reads the record."""
+    nothing. A reader's own action still reads everything, and an ask for the record, as
+    a commit the mirror lacks makes, reads the record."""
 
     record = _record(fetched=NOW - timedelta(seconds=30))
     held = _held(record, tmp_path)
@@ -693,14 +693,14 @@ def test_a_pages_ask_reads_nothing_once_what_it_found_due_no_longer_is(
     read = _reading(monkeypatch, record, clock)
     gh_budget.hold(_stamp(NOW + timedelta(minutes=10)), now=NOW)
     assert not held.status_due(NOW) and not held.record_due(NOW, window_s=FRESHNESS_WINDOW_S)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read == [] and held._last_attempt is None  # pyright: ignore[reportPrivateUsage]
     held.request_recovery()
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"record"}))
     assert read == [repr({"recover": True, "recovery_pair": None, "adopt_current": False})]
     gh_budget.forget()
     assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"record"}))
     assert read[1:] == ["full"]
 
 
@@ -725,7 +725,7 @@ def test_a_record_adopted_while_the_status_alone_is_read_counts_as_read_in_full(
         held.saw_record(_stamp(published))
 
     monkeypatch.setattr(pulls, "refresh_pull_status", status)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read == ["status"] and held.fetched_at == _stamp(published)
     full = timedelta(seconds=FULL_REFRESH_S)
     assert not held.full_read_overdue(published + full)
@@ -751,7 +751,7 @@ def test_a_scans_status_the_page_has_no_list_for_is_read_at_once_and_once(
     held.saw_record(record.fetched_at, freshness=freshness)
     _observe_core(100)
     assert held.status_due(NOW) and held.automatic_due(NOW) == "full"
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read == ["status"]
     # The read that started after the scan's status answers it: no read again for it.
     held.saw_record(record.fetched_at, freshness=freshness)
@@ -791,7 +791,7 @@ def test_a_cancelled_refresh_forgets_its_attempt(
     monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
 
     async def run() -> None:
-        task = asyncio.ensure_future(held.refresh())
+        task = asyncio.ensure_future(held.refresh({"due"}))
         await started.wait()
         assert held.refreshing and held._last_attempt == NOW  # pyright: ignore[reportPrivateUsage]
         task.cancel()
@@ -959,7 +959,7 @@ def test_a_change_to_checks_alone_reads_the_status_alone(
     assert held.status_due(clock[0]) and not held.record_due(clock[0], window_s=FULL_REFRESH_S)
     assert held.automatic_due(clock[0]) == "full"
     read = _reading(monkeypatch, record, clock)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read == ["status"]
     # The same record, still vouched for, is probed again once ATTENDED_PROBE_S has passed.
     assert held.fetched_at == record.fetched_at and held.probed_at == _stamp(clock[0])
@@ -1086,13 +1086,13 @@ def test_a_full_read_comes_due_every_full_refresh_s_whatever_reads_only_the_stat
         clock[0] = NOW + timedelta(seconds=seconds)
         held.probed_at = _stamp(clock[0])
         held._probe_saw, held._probe_saw_at = "checks", clock[0]  # pyright: ignore[reportPrivateUsage]
-        asyncio.run(held.refresh())
+        asyncio.run(held.refresh({"page"}))
     assert read == ["status", "status", "status"]
     assert held.full_read_at == held.fetched_at == record.fetched_at
     clock[0] = NOW + timedelta(seconds=FULL_REFRESH_S + 1)
     assert held.automatic_due(clock[0]) == "full"
     held.checks_due = True
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read[-1] == "full" and held.full_read_at == _stamp(clock[0])
     # A failed full read is not retried on every ask, but once FULL_REFRESH_S later.
     held.full_read_at = _stamp(NOW)
@@ -1248,12 +1248,10 @@ def test_below_the_floor_probes_go_on_and_only_a_change_they_find_is_read_in_ful
 
     _observe_core(int(gh_budget.BACKGROUND_FLOOR * 5000))
     assert held.below_floor(late)
-    # The full read is as overdue as it was, and waits; the probe is what is due, and the
-    # ask that found the full read due before leaves nothing for a refresh to read.
+    # The full read is as overdue as it was, and waits; the probe is what is due.
     assert held.full_read_overdue(late) and not held.full_read_due(late)
     assert not held.is_stale(late, window_s=FRESHNESS_WINDOW_S)
     assert held.automatic_due(late) == "probe"
-    assert not held._page_asked  # pyright: ignore[reportPrivateUsage]
     # A probe that finds a change starts its full read all the same.
     clock[0] = late
     asyncio.run(held.probe(record))
@@ -1439,7 +1437,7 @@ def test_a_change_the_full_read_did_not_bring_is_read_again_once_a_window(
 
     monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
     clock[0] = NOW + timedelta(seconds=1)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     lagging = record.model_copy(update={"fetched_at": held.fetched_at})
     clock[0] = NOW + timedelta(seconds=ATTENDED_PROBE_S + 1)
     asyncio.run(held.probe(lagging))
@@ -1533,7 +1531,7 @@ def test_mergeability_a_probe_sees_resolve_reads_the_status_alone_below_the_floo
     )
     asyncio.run(held.probe(record, status=_unknown(record)))
     assert held.status_below_floor(NOW) and held.automatic_due(NOW) == "full"
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     assert read == ["status"]
 
 
@@ -1560,7 +1558,7 @@ def test_a_lagging_read_with_no_issue_etag_is_read_again_once_a_window(
         asyncio.run(held.probe(current))
         if held.automatic_due(clock[0]) == "full":
             clock[0] += timedelta(seconds=1)
-            asyncio.run(held.refresh())
+            asyncio.run(held.refresh({"page"}))
             reads += 1
             current = record.model_copy(update={"fetched_at": held.fetched_at})
         clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
@@ -1588,7 +1586,7 @@ def test_below_the_floor_a_lagging_read_is_tried_again_after_a_window_and_not_be
 
     monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
     clock[0] = NOW + timedelta(seconds=1)
-    asyncio.run(held.refresh())
+    asyncio.run(held.refresh({"page"}))
     lagging = record.model_copy(update={"fetched_at": held.fetched_at})
     clock[0] = NOW + timedelta(seconds=ATTENDED_PROBE_S + 1)
     asyncio.run(held.probe(lagging))
@@ -1806,7 +1804,7 @@ def test_a_cancelled_refresh_forgets_the_change_it_was_started_for(
             raise AssertionError("not reached")
 
         monkeypatch.setattr(pulls, "refresh_pull_request", slow)
-        task = asyncio.ensure_future(held.refresh())
+        task = asyncio.ensure_future(held.refresh({"page"}))
         await started.wait()
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
