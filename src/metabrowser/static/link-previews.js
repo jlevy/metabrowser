@@ -716,11 +716,12 @@
   // ── The registry ───────────────────────────────────────────────
 
   /**
-   * Give *anchor*, a link in *root* that opens *target* here, the link card. A later call
-   * replaces its entry, and one whose target names no page here forgets it. *mb* is the
-   * SDK of the surface that drew the link; *authorTitle* is the title its author wrote,
-   * which the surface takes off the link so the reader never sees two tooltips. Returns
-   * whether the link has a card.
+   * Give *anchor*, a link in *root* that opens *target*, a page here or one on another site,
+   * the link card. A later call replaces its entry, and one whose target the card says
+   * nothing of forgets it. *mb* is the SDK of the surface that drew the link;
+   * *authorTitle* is the title its author wrote, which the surface takes off the link so
+   * the reader never sees two tooltips, as this takes the tooltip off each image fallback
+   * inside it (`takeImageTips`). Returns whether the link has a card.
    *
    * @param {Element} root
    * @param {Element} anchor
