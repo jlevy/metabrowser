@@ -1157,7 +1157,7 @@ def test_selected_conversation_can_publish_while_checkout_acquisition_holds_its_
                     if queued_prefetch:
                         assert (
                             checkout_module.start_pull_refresh(
-                                coordinator, repository, 7, background=True
+                                coordinator, repository, 7, "due", background=True
                             )
                             == "started"
                         )
