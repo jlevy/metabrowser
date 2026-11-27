@@ -4129,7 +4129,7 @@ def test_selected_core_is_revoked_when_the_source_observes_another_reader(
         repository = ServedPulls(stand.published)
         held = await repository.companion(7)
         held.request_core_preview()
-        job = asyncio.create_task(held.refresh())
+        job = asyncio.create_task(held.refresh({"record"}))
         try:
             await held.wait_for_core()
             preview = held.core_preview
