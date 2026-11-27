@@ -271,8 +271,8 @@ def main() -> int:
             relative = finding.path.relative_to(ROOT)
             print(f"  {relative}:{finding.line}: {finding.text[:96]}", file=sys.stderr)
         print(
-            "\nRegister the link with MetabrowserLinkPreviews.register, which draws its\n"
-            'card (docs/design-system.md, "Tooltips on Links").',
+            "\nRegister the link through the resolver's runtime, previewLink, which draws\n"
+            'its card (docs/design-system.md, "Tooltips on Links").',
             file=sys.stderr,
         )
 

@@ -241,6 +241,13 @@ parity row for each new surface (AGENTS.md, CLI and Functional UI Parity); a Chr
 check confirms the tooltip’s placement and timing.
 The renderer’s session holds one invariant per rule above: a card never repeats its
 link’s text, never claims a state its data does not give, and never appears on focus.
+Each of those sessions puts a stand-in at the boundaries it does not own, which is how
+the review of 2026-11-26 found a card that came back after focus moved, an answer of
+nothing kept for the page’s life, and an image’s tooltip fighting its link’s card, each
+with every session green.
+`tests/dom/link-card-integration-session.js` runs those boundaries for real, app.js’s
+tooltip and its delegated listeners, the resolver, the registry, and the providers on
+recorded answers, with a golden and a parity row of its own.
 
 The Chrome check is `tests/test_link_card_chrome.py`, which drives
 `tests/dom/link-card-chrome.mjs`. It serves the GitHub stand-in’s checkout, whose

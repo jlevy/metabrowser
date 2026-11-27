@@ -6976,7 +6976,8 @@ New markup in place would not move the box, but it would change the box’s size
 grows wider from where it was placed is no longer centered on its anchor, and one
 flipped above its anchor grows down over it, while placing it again moves it.
 Either breaks this rule, and the lines the reader is partway through would shift with
-it. A link card’s title that arrives after the card is up is kept for the next rest
+it. A link card’s title that arrives after the card is up is its provider’s to keep, and
+the next rest’s card says it from the pointer’s arrival
 ([Tooltips on Links](#tooltips-on-links)).
 
 ### A Surface Puts Away Only Its Own Tooltip
@@ -7032,9 +7033,11 @@ words or user name name another site still says which one it opens, and an in-ap
 The card is the app’s one tooltip
 ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)), so it keeps every rule
 above: it appears on pointer rest and never on focus or a touch
-([Tooltip Input Modality](#tooltip-input-modality)), placed on its link and holding
-still ([A Tooltip Holds Still](#a-tooltip-holds-still)), and the surface that drew the
-link puts it away
+([Tooltip Input Modality](#tooltip-input-modality)), and a press or a focus while the
+pointer rests on the link ends that rest, so nothing it asked for brings the card back
+(`endOnInput` in `static/link-previews.js`); placed on its link and holding still
+([A Tooltip Holds Still](#a-tooltip-holds-still)), and the surface that drew the link
+puts it away
 ([A Surface Puts Away Only Its Own Tooltip](#a-surface-puts-away-only-its-own-tooltip)).
 
 **Its lines**, in order, using the tooltip’s own content classes, as a Files row’s
@@ -7097,21 +7100,29 @@ equal to app.js’s `FILE_PREFETCH_HOVER_DELAY_MS`), the card’s data is read a
 link opens is prefetched, from reads the app already makes for that object, all from its
 caches.
 A title that arrives while the tooltip still waits is shown with it, on the delay
-the rest began; one that arrives after the card is up is kept for the next rest
-([A Tooltip Holds Still](#a-tooltip-holds-still)). At most one read and one prefetch are
-in flight, and a newer rest waits for them rather than aborting them, since an aborted
-request counts against the page’s `fetch_aborts` budget
+the rest began; one that arrives after the card is up is its provider’s to keep
+([A Tooltip Holds Still](#a-tooltip-holds-still)). The card’s registry keeps no answer:
+each provider keeps what it reads for as long as that stays true, reads again what
+failed or was not yet known, and says what it keeps as the pointer arrives, so a card
+never says what the page knew once and no longer does.
+At most one read and one prefetch are in flight, and a newer rest waits for them rather
+than aborting them, since an aborted request counts against the page’s `fetch_aborts`
+budget
 ([performance budgets](../explorations/performance-loop/performance-budgets.toml)).
 
-**One renderer draws every card.** A surface registers each in-app link it draws with
-`MetabrowserLinkPreviews.register` and puts its links away with `dispose`; it never
+**One renderer draws every card.** A surface registers each link it draws through the
+resolver’s runtime, `previewLink`, and puts its links away with `disposePreviews`
+([docs/plugins.md](plugins.md)), never through the module’s window global; it never
 draws a card. `card` in `static/link-previews.js` draws every one from data, escaping
 every value, and each kind’s provider gives that data as plain text, never markup.
 `devtools/check_tooltips.py` fails any other browser source or stylesheet that writes
 the card’s classes or its words for where a link opens.
 `tests/dom/link-previews-session.js` holds the lines, the timing, and the input modality
 on the module’s own code and app.js’s tooltip, and `tests/test_link_previews_js.py`
-holds its invariants.
+holds its invariants; `tests/dom/link-card-integration-session.js` runs app.js’s tooltip
+and its delegated listeners, the resolver, the registry, and the providers on recorded
+answers together, and `tests/test_link_card_integration_session.py` holds the rules
+across those boundaries.
 
 ### Shared Overlay Lifecycle
 
