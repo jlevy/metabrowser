@@ -33,6 +33,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,7 @@ PREFIX_RECORDING = "github-pulls-catalog-prefix-responses.json"
 TRANSCRIPT = "cli-ui-github-pulls-panel.tryscript.md"
 _PULLS = "/api/plugin/github/pulls"
 _REFRESH = "/api/plugin/github/pulls-refresh"
+_STATUSES = "/api/plugin/github/pull-statuses"
 pytestmark = [
     needs_git,
     pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
@@ -153,6 +155,8 @@ def _record(
     )
     clock = [FETCHED_AT]
     monkeypatch.setattr(pull_list, "utc_now", lambda: clock[0])
+    elapsed = count(step=300_000_000)
+    monkeypatch.setattr(pull_list_refresh, "monotonic_ns", elapsed.__next__)
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
     online = scenario(origin)
 
@@ -215,10 +219,28 @@ def _record(
                     assert time.monotonic() < deadline, "the catalog job did not finish"
                     time.sleep(0.01)
 
+            def scan_ended() -> None:
+                """Wait for the scan of the open pull requests' statuses a list ask starts
+                beside the list's job, so the next recorded ask finds none running: whether it
+                answers ``joined`` or what the scan's schedule says is then the story's, and
+                not the race of that scan's end with the test thread (mb-3n21)."""
+
+                deadline = time.monotonic() + 50
+                while client.get(_STATUSES, params={"numbers": "1"}).json()["scanning"]:
+                    assert time.monotonic() < deadline, "the status scan did not finish"
+                    time.sleep(0.01)
+
+            def calls() -> list[str]:
+                """What gh was asked, once the scan a list ask starts has ended: its pages are
+                this step's."""
+
+                scan_ended()
+                return logged_gh_calls(tmp_path)
+
             repository = ListedRepository(home, published.slug, "octo", "demo")
             recorded["absent"] = read()
             recorded["landing_absent"] = read(limit="0")
-            provider_calls["cold cache reads"] = logged_gh_calls(tmp_path)
+            provider_calls["cold cache reads"] = calls()
             gate.clear()
             recorded["refresh_started"] = ask(state="all", target=500)
             recorded["pending"] = read()
@@ -226,7 +248,7 @@ def _record(
             gate.set()
             settled()
             recorded["current"] = read()
-            provider_calls["catalog backfill"] = logged_gh_calls(tmp_path)
+            provider_calls["catalog backfill"] = calls()
             recorded["more_done"] = read()
             recorded["more_window"] = read(after=str(recorded["current"]["body"]["next_after"]))
             recorded["open_current"] = read(state="open")
@@ -239,9 +261,7 @@ def _record(
             recorded["not_due"] = ask(state="all", target=500)
             assert ask(state="all", target=1000)["body"]["refresh"] == "not_due"
             assert read() == recorded["current"]
-            provider_calls["cached windows, filters, scrolling and reopen"] = logged_gh_calls(
-                tmp_path
-            )
+            provider_calls["cached windows, filters, scrolling and reopen"] = calls()
             recorded["pin_changed"] = _answer(
                 client.get(_PULLS, params={"state": "all"}, headers={PIN_HEADER: "0" * 40})
             )
@@ -253,9 +273,9 @@ def _record(
             gate.set()
             settled()
             recorded["refreshed"] = read()
-            provider_calls["due metadata refresh"] = logged_gh_calls(tmp_path)
+            provider_calls["due metadata refresh"] = calls()
             assert read() == recorded["refreshed"]
-            provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
+            provider_calls["fresh cached revisit"] = calls()
 
             # The list probe, inside the window of that scan: an automatic ask that finds
             # GitHub's newest pull request in the catalog starts nothing and moves
@@ -293,7 +313,7 @@ def _record(
                 after=str(recorded["probe_scanned"]["body"]["next_after"]), limit="2"
             )
             assert recorded["probe_scanned"]["body"]["rows"][0]["title"] == "Retitled between scans"
-            provider_calls["list probes"] = logged_gh_calls(tmp_path)
+            provider_calls["list probes"] = calls()
             answering(online)
             probed_catalog.write_bytes(before_probes)
             write_list_refresh(home, published.slug, "all", stamp_before)
@@ -322,7 +342,7 @@ def _record(
                 assert refused["status"] == 202, refused
                 settled()
                 recorded[f"failed {name}"] = read()
-                provider_calls[f"refused {name}"] = logged_gh_calls(tmp_path)
+                provider_calls[f"refused {name}"] = calls()
                 catalog.write_bytes(saved)
 
             # Actual persisted failure stamps, read through the production cache-only route.
@@ -365,6 +385,8 @@ def _record(
                 write_list_refresh(home, published.slug, "all", stamp)
                 recorded[f"failed {name}"] = read()
             recorded["rate_limit_holds"] = ask(state="all", target=500, retry=True)
+            # The Refresh starts the scan, which the next recorded ask must not find running.
+            scan_ended()
 
             # The following account story is independent of the saved network hold.
             clock[0] = FETCHED_AT + timedelta(days=2)
@@ -435,6 +457,8 @@ def _record(
 
             gate.set()
             settled()
+            # The resumed job's ask may have started a scan; it ends before the next ask.
+            scan_ended()
             seed_catalog(repository, [], repository_id="R_empty", fetched_at=utc_stamp(clock[0]))
             write_list_refresh(
                 home,
@@ -842,6 +866,9 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         refresh()
         present = read("current")
         assert present["stacks"][0]["pulls"] == [6, 7, 8]
+        assert present["stacks"][0]["updated_at"] == generated_item(8)["updated_at"]
+        assert present["stacks"][0]["leaders"]["open"]["number"] == 8
+        assert present["stacks"][0]["leaders"]["all"]["number"] == 8
         response = client.get(
             "/api/plugin/github/stacks",
             headers={
@@ -882,13 +909,29 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         )
         seed_catalog(
             repository,
-            [generated_item(n) | {"title": f"Stack change {n}"} for n in range(6, 11)],
+            [generated_item(n) | {"title": f"Stack change {n}"} for n in (6, 7, 9)]
+            + [
+                generated_item(8) | {"title": "Stack change 8", "updated_at": utc_stamp(clock[0])},
+                generated_item(10)
+                | {
+                    "title": "Stack change 10",
+                    "state": "closed",
+                    "updated_at": utc_stamp(clock[0] + timedelta(seconds=1)),
+                },
+            ],
             fetched_at=utc_stamp(clock[0]),
         )
         install()
         refresh()
         shared = read("shared")
         assert [stack["pulls"] for stack in shared["stacks"]] == [[6, 7, 8], [8, 9, 10]]
+        earlier, newer = (stack["leaders"] for stack in shared["stacks"])
+        assert {name: row["number"] for name, row in earlier.items()} == {"open": 7, "all": 7}
+        assert {name: row["number"] for name, row in newer.items()} == {
+            "open": 8,
+            "closed": 10,
+            "all": 10,
+        }
     check_recording(
         "github-stacks-responses.json",
         _session_tags(recorded),

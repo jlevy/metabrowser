@@ -40,7 +40,7 @@ default: install format lint test
 install:
 	# --locked also asserts uv.lock matches pyproject.toml and uv.toml, so a
 	# stale or locally contaminated lock fails here instead of shipping.
-	$(UV) sync --all-extras --all-groups --locked
+	$(UV) sync --all-groups --locked
 	npm ci
 
 hooks-install: install
@@ -290,17 +290,20 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
+	tests/test_cli_github_pull_statuses_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_github_ref_pulls.py \
 	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_github_pull_files.py \
 	tests/test_github_pull_files_summary.py \
+	tests/test_github_pull_status_scan.py \
 	tests/test_github_drawn_from_disk.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_github_pull_page_session.py \
 	tests/test_github_pulls_panel_session.py \
+	tests/test_github_pulls_readiness_session.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \
@@ -368,8 +371,10 @@ GOLDEN_RECORDERS := \
 	tests/test_diff_structured_session.py \
 	tests/test_pdf_surfaces_session.py \
 	tests/test_github_pull_page_session.py \
+	tests/test_github_pull_readiness_page.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
+	tests/test_github_pulls_readiness_session.py \
 	tests/test_github_stack_change.py \
 	tests/test_cli_github_stack_golden.py \
 	tests/test_github_pull_files_summary.py \
@@ -397,6 +402,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
+	tests/test_cli_github_pull_statuses_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_cli_checkout_golden.py \
@@ -446,7 +452,7 @@ lock:
 
 upgrade:
 	$(UV) lock --upgrade
-	$(UV) sync --all-extras --all-groups --frozen
+	$(UV) sync --all-groups --frozen
 
 build:
 	$(UV) build --clear --no-build-isolation

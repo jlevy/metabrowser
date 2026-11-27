@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
@@ -219,6 +219,25 @@ def login_of(user: object) -> str | None:
     return login if isinstance(login, str) and _LOGIN.match(login) else None
 
 
+def asked_repository(repository: Mapping[str, Any], repository_id: str | None) -> bool:
+    """Whether a GraphQL answer's ``repository(owner:, name:)`` is the repository asked for.
+
+    GitHub answers the name asked with the repository it names now, following a rename or
+    a transfer as REST follows its redirect, so ``nameWithOwner`` is that repository's
+    current name, not necessarily the one asked: ``tiangolo/fastapi`` answered
+    ``fastapi/fastapi`` on 2026-11-26. What says which repository it is is its ``id``.
+    When the one asked about is known, *repository_id* (the catalog's), the answer is it
+    exactly when the ids are equal, so a new repository that took a renamed one's old name
+    is another; with none known, GitHub's answer for the name is the repository the name
+    means, as it is for every REST read. Either way the answer must name a repository.
+    """
+
+    name = repository.get("nameWithOwner")
+    if not isinstance(name, str) or not name:
+        return False
+    return repository_id is None or repository.get("id") == repository_id
+
+
 def readable_items[M: BaseModel](
     values: Sequence[object], build: Callable[[object], M]
 ) -> tuple[tuple[M, ...], bool]:
@@ -383,6 +402,7 @@ __all__ = [
     "UnreadableItemError",
     "active_account",
     "as_dict",
+    "asked_repository",
     "cache_clear_command",
     "cache_failure_reason",
     "cache_unwritable",

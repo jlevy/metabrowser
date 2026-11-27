@@ -105,7 +105,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 71,
@@ -135,7 +137,9 @@ status: 200
         null,
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 72,
@@ -160,7 +164,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     },
     {
       "number": 73,
@@ -185,7 +191,9 @@ status: 200
       "labels": [
         null,
         null
-      ]
+      ],
+      "updated_at": null,
+      "leaders": {}
     }
   ]
 }
@@ -282,12 +290,11 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/8
-gh api repos/octo/demo/commits/<merged_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<merged_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=8 cursor=start
 # metab https://github.com/octo/demo/pull/10 --no-serve
 exit: 0
 --- stdout ---
@@ -303,12 +310,11 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/10
-gh api repos/octo/demo/commits/<draft_head>/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/<draft_head>/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+gh api graphql status number=10 cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=70'
 exit: 0
 --- stdout ---
@@ -420,12 +426,12 @@ status: 200
   ],
   "guide": {
     "number": 10,
-    "revision": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7"
+    "revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
   },
   "github_url": "https://github.com/octo/demo/pull/10",
   "probe": {
     "number": 10,
-    "held": "cc95ed6fb9a8007110412b022297b6993da2b49de209af7e55cec605edd3f3b7",
+    "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
     "every_s": 5.0
   },
   "moved": null
@@ -939,7 +945,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -951,7 +957,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -963,7 +969,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -975,7 +981,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -987,7 +993,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -999,7 +1005,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1011,7 +1017,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1023,7 +1029,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1035,7 +1041,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1047,7 +1053,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -1105,4 +1111,172 @@ status: 410
 }
 --- stderr ---
 Error: /api/plugin/github/pull-image?stack=70&left=<base>&right=<merged_head>&store=<STORE>&path=g1-ZG9jcw/g1-c2hvdC5wbmc returned HTTP 410
+--- gh ---
+## A member the top's head lacks: 7's fork head is in no history of 10's, so it adds no file and is named in `lacking`.
+# metab https://github.com/octo/demo/pull/7 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com-octo-demo-9vhngza0oa1
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: <topic>
+selection: pull_request
+pin: <fork_head> (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh api user
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh api user (If-None-Match)
+gh api graphql status number=7 cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack?number=71'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack?number=71
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 71,
+  "base_ref": "topic",
+  "head_ref": "wip",
+  "open": true,
+  "members": [
+    {
+      "number": 8,
+      "place": 1,
+      "title": "Say more in the guide",
+      "state": "merged",
+      "author": "maintainer",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<merged_head>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    },
+    {
+      "number": 7,
+      "place": 2,
+      "title": "Count to two in the app",
+      "state": "open",
+      "author": "forker",
+      "avatar": null,
+      "base": "<base>",
+      "head": "<fork_head>",
+      "in_top": false,
+      "pending": false,
+      "fetching": false
+    },
+    {
+      "number": 10,
+      "place": 3,
+      "title": "WIP: draft the next page",
+      "state": "draft",
+      "author": "maintainer",
+      "avatar": null,
+      "base": "<topic>",
+      "head": "<draft_head>",
+      "in_top": true,
+      "pending": false,
+      "fetching": false
+    }
+  ],
+  "pending": [],
+  "lacking": [
+    7
+  ],
+  "states": {
+    "open": 1,
+    "draft": 1,
+    "merged": 1,
+    "closed": 0
+  },
+  "opened_at": "2026-09-16T10:57:23Z",
+  "updated_at": "2026-09-16T17:39:01Z",
+  "authors": [
+    {
+      "login": "maintainer",
+      "avatar": null
+    },
+    {
+      "login": "forker",
+      "avatar": null
+    }
+  ],
+  "mergers": [
+    {
+      "login": "octo",
+      "avatar": null
+    }
+  ],
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "labels": [
+    {
+      "name": "bugfix",
+      "color": "d73a4a",
+      "description": null
+    },
+    {
+      "name": "shared design",
+      "color": "0e8a16",
+      "description": null
+    },
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    },
+    {
+      "name": "earnings analysis",
+      "color": "5319e7",
+      "description": null
+    }
+  ],
+  "commits": 2,
+  "size": null,
+  "comparison": {
+    "left": "<base>",
+    "right": "<draft_head>",
+    "key": "4477f6ee951f57617055456af12caf4e",
+    "route": "/api/plugin/github/stack-comparison?number=71&left=<base>&right=<draft_head>&base_policy=direct&key=4477f6ee951f57617055456af12caf4e&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?stack=71&left=<base>&right=<draft_head>&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?stack=71&left=<base>&right=<draft_head>&store=<STORE>"
+  },
+  "totals": {
+    "files": 1,
+    "additions": 1,
+    "deletions": 0,
+    "exact": true
+  },
+  "truncated": false,
+  "files": [
+    {
+      "path": "docs/draft.md",
+      "layers": [
+        {
+          "number": 10,
+          "place": 3,
+          "path": "docs/draft.md"
+        }
+      ]
+    }
+  ],
+  "guide": {
+    "number": 10,
+    "revision": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4"
+  },
+  "github_url": "https://github.com/octo/demo/pull/10",
+  "probe": {
+    "number": 10,
+    "held": "161cdf3eeeedf69a8203fbc796617cc789a010845c45b4a08d405766b45885d4",
+    "every_s": 5.0
+  },
+  "moved": null
+}
+--- stderr ---
 --- gh ---

@@ -44,6 +44,7 @@ from typing import Final, Literal
 from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX, TAG_PREFIX
 from metabrowser.cache.repository_store import object_type
 from metabrowser.cache.urls import RepositorySelection
+from metabrowser.git.log import TRUNK_BRANCH_NAMES
 from metabrowser.git.process import (
     STORE_READ_POLICY,
     GitCommandError,
@@ -131,10 +132,12 @@ MIRROR_REFS: Final = RefNamespaces(
         "and pull-request heads (refs/pull/<n>/head) can be pinned"
     ),
 )
+_REMOTE_REF_PREFIX: Final = "refs/remotes/"
+
 CHECKOUT_REFS: Final = RefNamespaces(
     branch="refs/heads/",
     tag=TAG_PREFIX,
-    remote="refs/remotes/",
+    remote=_REMOTE_REF_PREFIX,
     pull_heads=False,
     where="the checkout",
     no_head="the checkout is on no branch",
@@ -399,7 +402,7 @@ _LIST_FIELDS: Final = 8
 
 
 def _newest_first(entry: MirrorRef) -> tuple[bool, bool, float, str]:
-    """A listing's order: the default branch, then newest first, then by name.
+    """Notable branches first, then newest first within each group, then by name.
 
     Every list, branches, tags, and remote-tracking branches alike, reads by the committer
     date of the commit each ref names, ``committed_at``, which is the date its row shows
@@ -413,7 +416,7 @@ def _newest_first(entry: MirrorRef) -> tuple[bool, bool, float, str]:
     """
 
     dated = entry.committed_at is not None
-    return (not entry.default, not dated, -(entry.committed_at or 0.0), entry.name)
+    return (not entry.notable, not dated, -(entry.committed_at or 0.0), entry.name)
 
 
 def in_listing_order(entries: tuple[MirrorRef, ...]) -> tuple[MirrorRef, ...]:
@@ -428,6 +431,7 @@ async def list_mirror_refs(
     *,
     default_ref: str | None = None,
     namespaces: RefNamespaces = MIRROR_REFS,
+    origin_default_ref: str | None = None,
 ) -> tuple[MirrorRef, ...]:
     """Every branch, or every tag, the store holds that names a commit, in one ``for-each-ref``.
 
@@ -435,9 +439,11 @@ async def list_mirror_refs(
     mirror has no remote-tracking branches, lists nothing. A remote-tracking ref that is
     symbolic, ``origin/HEAD``, is left out: it names another row of the same list.
 
-    Every ref is listed, in :func:`_newest_first`'s order: the default branch,
-    *default_ref*, first and marked, then newest first by the date each row shows, then
-    by name. Git sorts nothing; ordering 10,001 refs here took a median 1.8 ms of nine
+    Notable branches list first, then each group reads newest first by the date each row
+    shows, then by name. Main, master, and any known remote default are notable. A
+    mirror's *default_ref* marks its default and a checkout's marks its checked-out branch.
+    *origin_default_ref* is the checkout's origin default as recorded in its mirror,
+    when available. Git sorts nothing; ordering 10,001 refs here took a median 1.8 ms of nine
     runs (measured 2026-11-19 on an M1 Pro at a load average of 18). A ref is listed when
     it names a commit, or names an annotated tag whose own target is a commit. A tag of
     a tree, a blob, or another tag is left out rather than peeled one process at a
@@ -453,28 +459,67 @@ async def list_mirror_refs(
     prefix = namespaces.prefix(kind)
     if prefix is None:
         return ()
-    out = await _git(target, ["for-each-ref", f"--format={_LIST_FORMAT}", "--", prefix])
+    checkout_branches = kind == "branch" and namespaces == CHECKOUT_REFS
+    patterns = [prefix]
+    if checkout_branches:
+        patterns.append(f"{_REMOTE_REF_PREFIX}**/HEAD")
+    out = await _git(target, ["for-each-ref", f"--format={_LIST_FORMAT}", "--", *patterns])
     return await asyncio.to_thread(
-        _listed_refs, out, kind=kind, prefix=prefix, default_ref=default_ref
+        _listed_refs,
+        out,
+        kind=kind,
+        prefix=prefix,
+        default_ref=default_ref,
+        checkout_branches=checkout_branches,
+        origin_default_ref=origin_default_ref,
     )
 
 
 def _listed_refs(
-    out: bytes, *, kind: RefKind, prefix: str, default_ref: str | None
+    out: bytes,
+    *,
+    kind: RefKind,
+    prefix: str,
+    default_ref: str | None,
+    checkout_branches: bool,
+    origin_default_ref: str | None,
 ) -> tuple[MirrorRef, ...]:
     """The rows of :func:`list_mirror_refs`'s ``for-each-ref`` output, in their order."""
 
-    listed: list[MirrorRef] = []
+    notable_refs = {prefix + name for name in TRUNK_BRANCH_NAMES} if kind == "branch" else set()
+    origin_default_name = None
+    if origin_default_ref is not None and origin_default_ref.startswith(BRANCH_MIRROR_PREFIX):
+        origin_default_name = origin_default_ref.removeprefix(BRANCH_MIRROR_PREFIX)
+    if checkout_branches and origin_default_name is not None:
+        notable_refs.add(prefix + origin_default_name)
+    elif kind == "branch" and not checkout_branches and default_ref is not None:
+        notable_refs.add(default_ref)
+    listed: list[tuple[str, str, float | None]] = []
     for line in out.split(b"\n"):
         try:
             fields = line.decode("utf-8").split("\0")
         except UnicodeDecodeError:
             continue
-        if len(fields) != _LIST_FIELDS or not fields[0].startswith(prefix):
+        if len(fields) != _LIST_FIELDS:
             continue
         ref, oid, object_kind, target_oid, target_kind, symbolic = fields[:6]
         own_date, tagged_date = fields[6:]
-        if kind == "remote" and symbolic:
+        if (checkout_branches or kind == "remote") and ref.startswith(_REMOTE_REF_PREFIX):
+            if symbolic:
+                if ref.endswith("/HEAD"):
+                    remote_prefix = ref.removesuffix("HEAD")
+                    default = symbolic.removeprefix(remote_prefix)
+                    if default != symbolic and default:
+                        if kind == "remote":
+                            notable_refs.add(symbolic)
+                            notable_refs.update(remote_prefix + name for name in TRUNK_BRANCH_NAMES)
+                        elif remote_prefix != BRANCH_MIRROR_PREFIX or origin_default_name is None:
+                            notable_refs.add(prefix + default)
+                continue
+            name = ref.removeprefix(_REMOTE_REF_PREFIX)
+            if kind == "remote" and name.partition("/")[2] in TRUNK_BRANCH_NAMES:
+                notable_refs.add(ref)
+        if not ref.startswith(prefix):
             continue
         if object_kind == "commit":
             commit, date = oid, own_date
@@ -484,18 +529,20 @@ def _listed_refs(
             continue
         if not is_full_revision(commit) or not is_valid_ref_name(ref):
             continue
-        name = ref.removeprefix(prefix)
-        listed.append(
+        listed.append((ref, commit, float(date) if date.isdigit() else None))
+    return in_listing_order(
+        tuple(
             MirrorRef(
-                name=name,
+                name=ref.removeprefix(prefix),
                 ref=ref,
                 commit=commit,
                 default=ref == default_ref,
-                committed_at=float(date) if date.isdigit() else None,
+                committed_at=date,
+                notable=ref in notable_refs,
             )
+            for ref, commit, date in listed
         )
-    listed.sort(key=_newest_first)
-    return tuple(listed)
+    )
 
 
 async def _peeled_commit(target: RepositoryStoreTarget, ref: _RefObject) -> str | None:

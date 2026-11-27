@@ -843,6 +843,15 @@
   --header-text: oklch(32.1% 0 89.9);
   --sidebar-bg: oklch(98.44% 0.0015 247.84);
   --hover-bg: oklch(95.4% 0 89.9);
+  /* A clickable chip's hover ground (docs/design-system.md, "Clickable and Static Chips"):
+     one layer laid over the whole chip, its fill and its ink alike, so it reads over any
+     fill, a status tint, a label's color, or none, and darkens both together. Its alpha is
+     --hover-bg's step: black at 0.06 over --bg reads at 0.869 luminance, --hover-bg at
+     0.868. Laid over the ink too, it holds every clickable chip's ink at 4.5:1: the
+     lowest, the attention tone's readiness on --bg, reads 4.87 at rest and 4.71 under it
+     (laid under the ink, 4.26). tests/dom/chip-affordance-chrome.mjs reads each chip's
+     contrast where it is drawn. */
+  --chip-hover-overlay: oklch(0% 0 0 / 0.06);
   --link: oklch(54.14% 0.1337 246.71);
   --muted: oklch(56.1% 0.016 244.4);
   --dimmed-content-opacity: 0.45;
@@ -1533,6 +1542,10 @@
   --header-text: oklch(92.1% 0.009 247.9);
   --sidebar-bg: oklch(25.8% 0.019 266.8);
   --hover-bg: oklch(32.72% 0.0235 266.85);
+  /* White at 0.12 over --bg reads at 0.033 luminance, --hover-bg at 0.035; the lowest
+     clickable chip's ink under it, a remote ref on --git-ref-bg, reads 6.71 at rest and
+     5.15 under it. */
+  --chip-hover-overlay: oklch(100% 0 0 / 0.12);
   --link: oklch(75% 0.1241 246.71);
   --muted: oklch(74.1% 0.019 256.7);
   --code-bg: oklch(25% 0.017 264.2);
@@ -1870,6 +1883,18 @@ body {
    margin. */
 .app-header > .nav-refresh {
   margin-left: auto;
+}
+.nav-refresh:not([data-refreshing]) > .nav-refresh-spinner,
+.nav-refresh[data-refreshing] > svg {
+  display: none;
+}
+.app-header > .nav-refresh[data-refreshing] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-refresh-spinner {
+    animation: none;
+  }
 }
 /* A pin with no mirror's heading: it has no name and no ref selector, so its ref
    stands in the name's place at the heading's weight, then its short commit, muted,
@@ -5583,7 +5608,6 @@ a.tab-btn {
 .badge-frontmatter-error {
   background: var(--badge-failed-bg);
   color: var(--badge-failed-text);
-  cursor: help;
 }
 
 /* ── Content copy button ─────────────────────────────────────── */
@@ -5876,12 +5900,16 @@ a.tab-btn {
    a row of badges does, and it reads as a thing that is not there rather than as text:
    the glyph and the border. Where the image's address is known the page's tooltip shows
    it (`data-tip-text`). A chip never wraps its text; one wider than its line is cut
-   with an ellipsis, and the tooltip has the rest. */
+   with an ellipsis, and the tooltip has the rest. It is always a link's content, so it is
+   a clickable chip ("Clickable and Static Chips" below): its ink is a link's, and stays
+   so under the pointer, where a document's links take a lighter one (KPress's
+   `.kpress a:hover`, 2.65:1 on the hover ground in the light theme). */
 .mb-image-fallback {
   background: var(--viz-surface);
   border: var(--chip-border) solid var(--viz-border);
   border-radius: var(--radius-tag);
   box-sizing: border-box;
+  color: var(--link);
   display: inline-block;
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
@@ -5913,9 +5941,6 @@ a.tab-btn {
   .mb-image-fallback::before {
     background-color: CanvasText;
   }
-}
-.kpress-prose a:hover > .mb-image-fallback {
-  background: var(--hover-bg);
 }
 
 /* KPress gives every image `margin-block: 1rem`, which lifts a badge a rem above the chip
@@ -8617,6 +8642,76 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .git-graph-item {
   height: 22px;
+}
+
+/* ── Clickable and static chips ───────────────────────────────────
+   docs/design-system.md, "Clickable and Static Chips". A chip that is a control, or the
+   whole content of one, says it is clickable: the pointer, a ground of its own under the
+   pointer, the one focus ring, and never an underline. A static chip shows nothing under
+   the pointer. The rules below share one list of the shell's chip atoms, here and nowhere
+   else: a badge (`.file-header-badge`), a ref chip (`.git-ref`), and the chip that stands
+   for an image (`.mb-image-fallback`). A filter chip (`.chip`) is a control family of its
+   own, which answers the pointer with its family's `--hover-bg`; a history row's ref menu
+   lays its button over its chip, and the overlay with it (`.git-ref-menu-hit`, below).
+
+   A control that holds a chip is never underlined, whatever its context's rule for its
+   links says at whatever specificity: the readiness badge's link took the pull request
+   header's underline on hover, and an image's chip a document's. Important for that reason,
+   for this one property alone. */
+:where(a:any-link, button):where(
+  :has(> :is(.file-header-badge, .git-ref, .mb-image-fallback)),
+  :is(.file-header-badge, .git-ref, .mb-image-fallback)
+) {
+  /* biome-ignore lint/complexity/noImportantStyles: no context's link underline may reach a chip, at any specificity. */
+  text-decoration-line: none !important;
+}
+/* A clickable chip holds the layer its hover lays over it. */
+:where(a:any-link, button:enabled) > :is(.file-header-badge, .git-ref, .mb-image-fallback),
+:is(.file-header-badge, .git-ref, .mb-image-fallback):is(a:any-link, button:enabled) {
+  position: relative;
+  cursor: pointer;
+}
+/* The hover ground: `--chip-hover-overlay` over the whole chip, its fill and its ink, which
+   it darkens together, or in the dark theme lightens, so the ink keeps its contrast on any
+   fill (the token's comment has the figures). It fills the chip inside its border, within
+   the chip's corners (below), and a tag's `clip-path` clips it to the tag's notch. */
+:where(a:any-link, button:enabled):not([aria-disabled="true"]):hover
+  > :is(.file-header-badge, .git-ref, .mb-image-fallback)::after,
+:is(.file-header-badge, .git-ref, .mb-image-fallback):is(a:any-link, button:enabled):not(
+  [aria-disabled="true"]
+):hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--chip-hover-overlay);
+  pointer-events: none;
+}
+/* A badge clips nothing, so its layer takes the badge's corners, square while
+   `--radius-chrome` is 0 and whatever they become; a ref chip and an image's chip clip
+   their own (`overflow: hidden`), and a tag its notch, which no rule here may reshape
+   ("One Size"). tests/dom/chip-affordance-chrome.mjs holds every hover layer inside its
+   chip's shape. */
+:where(a:any-link, button:enabled):hover > .file-header-badge::after,
+.file-header-badge:is(a:any-link, button:enabled):hover::after {
+  border-radius: inherit;
+}
+/* A control whose content is a chip draws its ring on the chip, whose box is what the
+   reader sees: an inline link's own box is its line's, not the chip's. The user agent's
+   ring on the control goes; a context that rings its links draws that ring on the same box
+   where the link is the chip's box, as the readiness badge's is. */
+:where(a:any-link, button):focus-visible > :is(.file-header-badge, .git-ref, .mb-image-fallback) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+:where(
+  :is(a:any-link, button):has(> :is(.file-header-badge, .git-ref, .mb-image-fallback)):focus-visible
+) {
+  outline: none;
+}
+/* A history row's ref menu is a button laid over its chip, the chip's box, so it lays the
+   overlay over the chip, ink and all, as the rule above does from inside the chip. */
+.git-ref-menu-hit:hover {
+  background: var(--chip-hover-overlay);
 }
 
 /* Destination marks never make a long link an unbreakable inline-flex box. */

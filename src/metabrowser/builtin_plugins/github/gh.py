@@ -23,12 +23,17 @@ same-second refreshes at once on purpose (measured 2026-11-11).
 :func:`gh_graphql` runs only a read-only query document, checked by its structure. Both
 hand every response's rate-limit headers, and every ``rate_limited`` refusal, to
 :mod:`.gh_budget`, which decides whether background work may spend the account's budget.
+
+Every run is a span in the event log (:func:`_run`), and a read of GitHub's answer
+records its HTTP status and what it cost there, the same number :mod:`.gh_budget`
+counts; :mod:`.gh_requests` reports them.
 """
 
 from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
 import json
 import logging
 import os
@@ -206,6 +211,25 @@ class _Completed:
     returncode: int
     stdout: bytes
     stderr: bytes
+    # GitHub's answer, read in the gh span when :func:`_run` is asked to read one, and
+    # ``None`` when it was not or gh printed none.
+    answer: _Answer | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Answer:
+    """GitHub's answer as ``gh api --include`` printed it, read inside the gh span.
+
+    ``cost`` is what GitHub charged for it, which the span records and :mod:`.gh_budget`
+    counts (:func:`_read_answer`). ``payload`` is a GraphQL answer's body, parsed, for an
+    answer GitHub did not refuse, and ``json_error`` why that body could not be; both are
+    ``None`` for a REST answer, whose callers parse the body they want.
+    """
+
+    response: GhResponse
+    cost: int
+    payload: object = None
+    json_error: ValueError | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,20 +313,31 @@ async def _read_capped(
 
 
 async def _run(
-    args: Sequence[str], *, timeout_s: float, max_bytes: int, cwd: Path | None = None
+    args: Sequence[str],
+    *,
+    timeout_s: float,
+    max_bytes: int,
+    cwd: Path | None = None,
+    answer: Literal["rest", "graphql"] | None = None,
 ) -> _Completed:
     """Run ``gh`` once. Raises only for a missing gh, a deadline, or too much output.
 
     A cancellation while gh is still being spawned waits for the spawn and kills the
-    child, so no gh process outlives the call untracked.
+    child, so no gh process outlives the call untracked. With *answer*, the ``gh api
+    --include`` output is read as a REST or a GraphQL answer inside the span, which then
+    records its status and cost, and the result carries it.
     """
 
     exe = gh_executable()
     if exe is None:
         raise GhUnavailableError
     # Every gh process is a span in the event log (metabrowser.event_log): its command
-    # without field values or headers, its deadline, how it ended, and the cause its
-    # error text names.
+    # without field values or headers, its deadline, the budget it is charged to
+    # (gh_budget.current_budget), a fingerprint that is the same for two calls that ask
+    # GitHub the same thing (fingerprint), how it ended, and the cause its error text
+    # names; for a read of GitHub's answer, its HTTP status and what it cost. Its time is
+    # gh's: the clock stops when gh exits, before its output is read. The request report
+    # (gh_requests) reads these.
     unreachable = False
     try:
         with event_log.span(
@@ -312,11 +347,25 @@ async def _run(
                 "args": loggable_args(args),
                 "timeout_s": timeout_s,
                 "host": network_cause.GITHUB_API_HOST,
+                "budget": gh_budget.current_budget(),
+                "fingerprint": fingerprint(args),
             },
         ) as span:
             completed = await _run_in(exe, args, timeout_s=timeout_s, max_bytes=max_bytes, cwd=cwd)
+            span.stop()
             span.set(exit=completed.returncode, stdout_bytes=len(completed.stdout))
-            if completed.returncode != 0:
+            if answer is not None:
+                read = _read_answer(completed.stdout, graphql=answer == "graphql")
+                if read is not None:
+                    span.set(http_status=read.response.status, cost=read.cost)
+                    completed = _Completed(
+                        completed.returncode, completed.stdout, completed.stderr, read
+                    )
+            # gh exits 1 on any status past a 2xx, a 304 among them (gh 2.97.0, checked
+            # 2026-11-26 against api.github.com), so an exit alone does not say gh failed:
+            # GitHub answering a conditional read unchanged is an answer, and the span
+            # ends as one; a refusal it answered (4xx, 5xx) still ends failed.
+            if completed.returncode != 0 and not _answered(completed):
                 diagnostic = completed.stderr.decode("utf-8", errors="replace")
                 cause = network_cause.classify(diagnostic)
                 if cause is not None:
@@ -455,6 +504,37 @@ def loggable_args(args: Sequence[str]) -> list[str]:
             out.append("…")
             break
     return out
+
+
+# The hex digits of a request's fingerprint the event log keeps: 64 bits, so two different
+# requests share one with a chance of about one in 10^19 a pair.
+_FINGERPRINT_CHARS: Final = 16
+# The header a conditional read sends its ETag in.
+_CONDITIONAL_HEADER: Final = "if-none-match"
+
+
+def fingerprint(args: Sequence[str]) -> str:
+    """A digest of *args* that is the same for two gh calls that ask GitHub the same thing.
+
+    The ETag header a conditional read sends is left out, since it says what the reader
+    holds rather than what it asks: a probe asked again with the ETag its last answer gave,
+    or read again without one, is the same request. Everything else counts, the values
+    :func:`loggable_args` drops included, a GraphQL query's variables among them: those are
+    what tell one pull request's read from another's. The log keeps the digest, never a
+    value it was made from.
+    """
+
+    kept: list[str] = []
+    rest = iter(args)
+    for arg in rest:
+        if arg in _HEADER_OPTIONS:
+            header = next(rest, "")
+            if header.partition(":")[0].strip().lower() != _CONDITIONAL_HEADER:
+                kept += [arg, header]
+        else:
+            kept.append(arg)
+    text = "\0".join(kept).encode("utf-8", errors="backslashreplace")
+    return hashlib.sha256(text).hexdigest()[:_FINGERPRINT_CHARS]
 
 
 async def _run_in(
@@ -663,10 +743,46 @@ def _mentions_rate_limit(body: bytes) -> bool:
     return isinstance(message, str) and network_cause.mentions_rate_limit(message)
 
 
+def _accepted(status: int) -> bool:
+    """Whether GitHub answered *status* without refusing: 2xx, or ``304`` unchanged."""
+
+    return 200 <= status < 300 or status == 304
+
+
+def _answered(completed: _Completed) -> bool:
+    """Whether GitHub's answer in *completed* was one it gave without refusing."""
+
+    return completed.answer is not None and _accepted(completed.answer.response.status)
+
+
+def _read_answer(stdout: bytes, *, graphql: bool) -> _Answer | None:
+    """GitHub's answer in *stdout* and what it cost, or ``None`` when gh printed none.
+
+    GitHub counts every REST answer but a ``304`` against the rate limit, refusals
+    included. A GraphQL query costs what its answer reports (:func:`_graphql_cost`), and
+    one when GitHub refused it or its body cannot be read. Both are one rule here, which
+    the span records and :mod:`.gh_budget` counts.
+    """
+
+    response = parse_included_response(stdout)
+    if response is None:
+        return None
+    if not graphql:
+        return _Answer(response, 0 if response.status == 304 else 1)
+    payload: object = None
+    json_error: ValueError | None = None
+    if _accepted(response.status):
+        try:
+            payload = json.loads(response.body)
+        except ValueError as exc:
+            json_error = exc
+    return _Answer(response, _graphql_cost(payload), payload, json_error)
+
+
 def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:
     """The typed failure an HTTP status means, or ``None`` for 2xx and 304."""
 
-    if 200 <= response.status < 300 or response.status == 304:
+    if _accepted(response.status):
         return None
     # The cause goes on the span that asked (the job or request), so the event log says
     # which status GitHub answered with.
@@ -750,14 +866,16 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
             raise ValueError("not an ETag")
         args += ["-H", f"If-None-Match: {etag}"]
     args.append(path)
-    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=GH_API_MAX_BYTES)
-    response = parse_included_response(completed.stdout)
-    if response is None:
+    completed = await _run(
+        args, timeout_s=GH_API_TIMEOUT_S, max_bytes=GH_API_MAX_BYTES, answer="rest"
+    )
+    read = completed.answer
+    if read is None:
         raise _failure_without_response(completed)
+    response = read.response
     moment = now or datetime.now(UTC)
     gh_budget.observe(response.headers, resource="core")
-    # GitHub counts every answer but a 304 against the rate limit, refusals included.
-    gh_budget.spent(0 if response.status == 304 else 1, now=moment)
+    gh_budget.spent(read.cost, now=moment)
     refused = _refusal(response, now=moment)
     if refused is not None:
         if refused.state == "rate_limited":
@@ -872,24 +990,23 @@ async def gh_graphql(
             args.extend(("-f", f"{name}={value}"))
         else:
             args.extend(("-F", f"{name}={json.dumps(value)}"))
-    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=max_bytes)
-    response = parse_included_response(completed.stdout)
-    if response is None:
+    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=max_bytes, answer="graphql")
+    read = completed.answer
+    if read is None:
         raise _failure_without_response(completed)
+    response = read.response
     moment = now or datetime.now(UTC)
     gh_budget.observe(response.headers, resource="graphql")
+    # Counted before anything below can refuse the answer: GitHub charged for it.
+    gh_budget.spent(read.cost, now=moment)
     refused = _refusal(response, now=moment)
     if refused is not None:
-        gh_budget.spent(1, now=moment)
         if refused.state == "rate_limited":
             gh_budget.hold(refused.reset_at, now=moment)
         raise refused
-    payload: object = None
-    try:
-        payload = response.json()
-    finally:
-        # Counted before anything below can refuse the answer: GitHub charged for it.
-        gh_budget.spent(_graphql_cost(payload), now=moment)
+    if read.json_error is not None:
+        raise GhError("GitHub answered with something other than JSON") from read.json_error
+    payload = read.payload
     if not isinstance(payload, dict):
         raise GhError("GitHub answered with an unreadable GraphQL response")
     errors = payload.get("errors")
@@ -1191,6 +1308,7 @@ __all__ = [
     "GhServerError",
     "GhTokenRefusedError",
     "GhUnavailableError",
+    "fingerprint",
     "forget_account",
     "gh_account",
     "gh_active_account",

@@ -1,7 +1,7 @@
 // Browserless session: each stack's brief change line in the Pulls tab (mb-9ekj), on its
-// Whole stack row (mb-tvhs), through the production code.
+// Stack Overview row (mb-tvhs), through the production code.
 //
-// builtin_plugins/github/stack-lines.js decides what a stack's Whole stack row shows of its
+// builtin_plugins/github/stack-lines.js decides what a stack's Stack Overview row shows of its
 // change line, its combined change, its members' own changes accumulated, which the server sums
 // (`GET stack-change`): the shell's pending placeholder while the read of its stack is on
 // its way, the line once it is, and nothing where it cannot be had. It reads the stacks the
@@ -17,7 +17,7 @@
 // at each step and what was asked. `heading` mounts the production panel over a stand-in
 // for the DOM with the SDK's own painters (tests/dom/sdk-ref-fixture.js) and prints each
 // stack's heading, which is whole from its first paint, its label, its size, and its age,
-// and waits on no read, and its Whole stack row in its three states: waiting, its line
+// and waits on no read, and its Stack Overview row in its three states: waiting, its line
 // arrived, and unavailable, with its parts as drawn and its accessible name, then, in a fresh document each, its line
 // with totals that are zero or not known: a total of zero is left out, and a change of no
 // lines is "0 lines" (mb-efum). `invariants` are the relations every step holds.
@@ -41,6 +41,7 @@ const rowsOf = (rows) =>
     ? rows.map((row) => JSON.parse(row))
     : [rows.same_as].flat().flatMap((holder) => rowsOf(lists[holder].body.rows));
 const listed = { ...lists.current.body, rows: rowsOf(lists.current.body.rows) };
+const more = { ...lists.more_window.body, rows: rowsOf(lists.more_window.body.rows) };
 const SOURCE = "https://github.com/octo/demo";
 // A head the catalog reports once a stack's top has moved: no commit of the recording.
 const MOVED = "1".repeat(40);
@@ -104,7 +105,9 @@ async function laneStory(lines, prefetch) {
     changed: (number) => repaints.push(number),
   });
   // Each stack as the list draws it: its members, and each one's head from the recorded rows.
-  const heads = new Map(listed.rows.map((row) => [row.number, row.head_oid ?? null]));
+  const heads = new Map(
+    [...listed.rows, ...more.rows].map((row) => [row.number, row.head_oid ?? null]),
+  );
   let shared = stacks.shared.body.stacks.map(({ number, pulls }) => ({
     number,
     pulls,
@@ -392,7 +395,7 @@ async function headingStory() {
         );
       }
       if (route.startsWith("/api/plugin/github/pulls?")) {
-        return respond(listed);
+        return respond(route.includes("&after=") ? more : listed);
       }
       if (route === "/api/plugin/github/stacks") {
         return respond(stacks.shared.body);
@@ -489,13 +492,13 @@ async function headingStory() {
       );
     const textOf = (node) =>
       node.data !== undefined ? node.data : node.childNodes.map(textOf).join("");
-    /** A stack's Whole stack row, the first row under its open stack. */
+    /** A stack's Stack Overview row, the first row under its open stack. */
     const wholeRow = (stack) =>
       listNode()
         .childNodes.filter((item) => item.classList.contains("github-pulls-whole-item"))
         .map((item) => item.childNodes[0])
         .find((row) => row.dataset.stack === String(stack));
-    /** A stack's toggle of its changed files, on its Whole stack row's line (mb-odt4). */
+    /** A stack's toggle of its changed files, on its Stack Overview row's line (mb-odt4). */
     const toggleOf = (row) =>
       childByClass(
         childByClass(wholeRow(row.dataset.stack), "github-pulls-whole-line"),
@@ -513,7 +516,7 @@ async function headingStory() {
     };
     /**
      * Each stack as drawn. `heading` is its row: its text, its age, and its name, none of
-     * which a read of the stack's change moves. The rest is its Whole stack row: its change
+     * which a read of the stack's change moves. The rest is its Stack Overview row: its change
      * slot and its name.
      */
     const headings = () =>
@@ -575,7 +578,7 @@ async function headingStory() {
     // does its heading wait, its name saying so; #286's, queued behind it, does not.
     await idleOnce();
     steps.push({
-      step: "idle: #290's read is sent, and its Whole stack row waits; #286's is queued and does not",
+      step: "idle: #290's read is sent, and its Stack Overview row waits; #286's is queued and does not",
       headings: headings(),
       requests: requests.splice(0),
     });
@@ -594,7 +597,7 @@ async function headingStory() {
       headings: headings(),
       requests: requests.splice(0),
     });
-    // The label, and the Whole stack row's words, are the nodes the arrival keeps.
+    // The label, and the Stack Overview row's words, are the nodes the arrival keeps.
     const row286 = stackRows().find((row) => row.dataset.stack === "286");
     const wholeWords = () => childByClass(wholeRow(286), "github-pulls-whole-line").childNodes[0];
     const wordsBefore = wholeWords();
@@ -605,7 +608,7 @@ async function headingStory() {
     await release();
     const arrived = headings();
     steps.push({
-      step: "#286's line arrives on its Whole stack row, and #290's shows nothing still",
+      step: "#286's line arrives on its Stack Overview row, and #290's shows nothing still",
       headings: arrived,
       requests: requests.splice(0),
     });
@@ -624,8 +627,8 @@ async function headingStory() {
       labelBefore,
       "the label stays",
     );
-    assert.equal(wholeWords(), wordsBefore, "the Whole stack row's words stay");
-    assert.equal(textOf(wordsBefore), "Whole stack");
+    assert.equal(wholeWords(), wordsBefore, "the Stack Overview row's words stay");
+    assert.equal(textOf(wordsBefore), "Stack Overview");
     // The line is the shell's one component, through the SDK: the same nodes, part for part,
     // of the stack's line totals alone, with no file statuses (mb-lqkb).
     const { stackLineInput } = await import(
@@ -638,7 +641,7 @@ async function headingStory() {
       ...sdk.changeLineNodes(said),
     ]);
     assert.deepEqual(arrived["Stack #286"].change, expected, "the row draws the component");
-    assert.equal(arrived["Stack #286"].name, `Whole stack, Stack #286: ${said.label}`);
+    assert.equal(arrived["Stack #286"].name, `Stack Overview, Stack #286: ${said.label}`);
     handle.dispose();
     // Totals a member's list could not count, a binary file, are followed by the muted
     // "(estimated)", which the name says too (B4 of review B on #484): a fresh document.
@@ -662,7 +665,7 @@ async function headingStory() {
     });
     assert.equal(estimated.change.at(-1).class, "github-pulls-stack-change-note");
     assert.equal(estimated.text.endsWith("(estimated)"), true);
-    assert.match(estimated.name, /^Whole stack, Stack #286: .+, estimated$/);
+    assert.match(estimated.name, /^Stack Overview, Stack #286: .+, estimated$/);
     handle.dispose();
     // A total of zero is left out, and a change of no lines is "0 lines", said "no lines
     // changed" (mb-efum): #286's answer with each of these totals, in a fresh document each.
@@ -703,7 +706,7 @@ async function headingStory() {
         shape([...sdk.countPartsNodes([{ separator: "·" }]), ...sdk.changeLineNodes(built)]),
         `${JSON.stringify(total)}: the row draws the component with its zero totals left out`,
       );
-      assert.equal(drawn.name, `Whole stack, Stack #286: ${built.label}`);
+      assert.equal(drawn.name, `Stack Overview, Stack #286: ${built.label}`);
       assert.ok(!/[+−]0\b/.test(drawn.text), `${JSON.stringify(total)}: no zero total shows`);
       totals.push({
         totals: total,

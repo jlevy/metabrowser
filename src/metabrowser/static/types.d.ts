@@ -158,7 +158,7 @@ type MetabrowserPullsPanelHandle = Readonly<{
      * request again when the address names the one already current, for an open of the
      * pull request shown (docs/design-system.md, "Navigation Reveals the Item"). *stack*,
      * with no pull request, is the native stack whose own page the address names, whose
-     * Whole stack row the list marks.
+     * Stack Overview row the list marks.
      */
     options?: { preserveScroll?: boolean; again?: boolean; stack?: number | null },
   ): void;
@@ -171,14 +171,14 @@ type MetabrowserPullsPanelHandle = Readonly<{
   /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
   toggleStack(number: number): boolean;
   /**
-   * Space on a stack's Whole stack row toggles the stack's changed files in place, under
+   * Space on a stack's Stack Overview row toggles the stack's changed files in place, under
    * it, as `toggleFiles` does a pull request's.
    */
   toggleStackFiles(stack: number): boolean;
   /**
-   * Right and Left on a pull request's row, or a stack's Whole stack row: its changed files
+   * Right and Left on a pull request's row, or a stack's Stack Overview row: its changed files
    * open, or close, and Left from a closed one goes to the stack's row it is under. On a
-   * stack's row: it opens, or Right goes to its first row, Whole stack, and Left closes it.
+   * stack's row: it opens, or Right goes to its first row, Stack Overview, and Left closes it.
    */
   expand(): boolean;
   collapse(): boolean;
@@ -194,6 +194,13 @@ type MetabrowserPullsPanelHandle = Readonly<{
   home?(): void;
   dispose(): void;
 }>;
+
+type MetabrowserViewRenderHandle = {
+  dispose?: () => void;
+  ready?: Promise<void>;
+  /** Reread a mounted view in place. Return false when a new mount is needed. */
+  refresh?: (context: MetabrowserRenderContext) => boolean | Promise<boolean>;
+};
 
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
@@ -252,7 +259,7 @@ type MetabrowserViewSpec = {
   /**
    * The rows a comparison's Diff summary lists, from what `prefetch` or `render` read, for a
    * page that draws the comparison's files in a tree of its own, as the Pulls tab draws a
-   * stack's under its Whole stack row. The diff view has one; null for a comparison it
+   * stack's under its Stack Overview row. The diff view has one; null for a comparison it
    * cannot read.
    */
   summaryRows?: (raw: unknown) => Promise<MetabrowserChangedFileRow[] | null>;
@@ -333,6 +340,28 @@ type MetabrowserViewCompositionRuntime = Readonly<{
     getRegisteredView(kind: string, viewId: string): MetabrowserViewSpec | null | undefined;
     isCurrent?: () => boolean;
   }): Promise<MetabrowserPreparedViewComposition>;
+  /** Render the tab bar and view hosts for a prepared file or folder. */
+  renderTabs(
+    views: MetabrowserPreparedViewComposition["views"],
+    activeId: string | undefined,
+    escapeHtml: (value: unknown) => string,
+  ): string;
+  /** Remember a committed layout and the context its lazy views will read. */
+  retain(
+    host: HTMLElement,
+    installed: {
+      views: MetabrowserPreparedViewComposition["views"];
+      context: { current: MetabrowserRenderContext };
+    },
+    disposers: Array<() => void>,
+  ): void;
+  /** Refresh a matching committed layout when all its mounted views support it. */
+  refresh(
+    host: HTMLElement,
+    views: MetabrowserPreparedViewComposition["views"],
+    context: MetabrowserRenderContext,
+    isCurrent: () => boolean,
+  ): Promise<boolean>;
 }>;
 
 type MetabrowserNavigationOpenOptions = {
@@ -4098,6 +4127,7 @@ declare global {
     now(): number;
     isVisible(): boolean;
     render(model: MetabrowserSourceFreshnessModel): void;
+    observeStatus?(status: MetabrowserSourceStatus): void;
     reload(): void;
     navigate(href: string): void;
     /** The page's own `/view/` address, or null on any other page. */
@@ -4208,8 +4238,8 @@ declare global {
     refreshing: boolean;
   };
 
-  /** One answer of `GET /api/source/refs`: every matching ref, the default or
-   * checked-out branch first and then newest first. */
+  /** One answer of `GET /api/source/refs`: every matching ref. Primary and default
+   * branches precede other branches, with each group newest first. Tags are newest first. */
   type MetabrowserSourceRefListing = {
     kind: MetabrowserSourceListKind;
     query: string;
@@ -4363,6 +4393,8 @@ declare global {
     schedule(callback: () => void, delayMs: number): unknown;
     cancel(handle: unknown): void;
     render(model: MetabrowserSourceRefSelectorModel): void;
+    /** A successful read of the current working tree’s HEAD. */
+    workingTreeObserved?(moved: boolean, filesCovered: boolean): void;
     /** Go to *href*, or, with *state*, reload there as that history entry: the Commits tab's
      * landing, which has no address of its own. */
     navigate(href: string, state?: Readonly<{ gitLanding: true }>): void;
@@ -4440,9 +4472,9 @@ declare global {
     /** Show a checkout's working tree; does nothing on a mirror. */
     chooseWorkingTree(): Promise<void>;
     /** The checkout's `HEAD` moved: ask where it is and name it in place. */
-    headChanged(): Promise<void>;
+    headChanged(filesCovered?: boolean): Promise<void>;
     /** Read an open list again, in place; a closed one reads when it next opens. */
-    reread(): Promise<void>;
+    reread(options?: { filesCovered?: boolean }): Promise<void>;
     /** Fetch the store of a checkout's origin, as the reader's Refresh asks; an open list
      * follows the fetch to its end. Does nothing on a mirror. */
     fetchOrigin(): Promise<void>;
@@ -4634,6 +4666,8 @@ declare global {
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
     provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
+    /** The refresh detail shown while this tab is in front, until released. */
+    provideTooltip?(tab: string, detail: () => string | null): () => void;
   }>;
 
   type MetabrowserRefreshPlan = MetabrowserRefreshParts &
@@ -5082,6 +5116,7 @@ declare global {
   type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
+  type MetabrowserPublicViewRenderHandle = MetabrowserViewRenderHandle;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
 
   var hljs: {

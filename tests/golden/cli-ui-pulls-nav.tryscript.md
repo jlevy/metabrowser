@@ -142,18 +142,18 @@ $ node tests/dom/pulls-nav-session.js
       "focus on": "Stack #286",
       "address": "/view/"
     },
-    "Space on a stack's Whole stack row opens the stack's changed files": {
+    "Space on a stack's Stack Overview row opens the stack's changed files": {
       "handled": true,
       "did": [
         "opened Stack #286's files"
       ],
-      "focus on": "Whole stack of #286",
+      "focus on": "Stack Overview of #286",
       "address": "/view/"
     },
     "holding Space on it leaves them open": {
       "handled": true,
       "did": [],
-      "focus on": "Whole stack of #286",
+      "focus on": "Stack Overview of #286",
       "address": "/view/"
     },
     "Space again closes them": {
@@ -161,7 +161,7 @@ $ node tests/dom/pulls-nav-session.js
       "did": [
         "closed Stack #286's files"
       ],
-      "focus on": "Whole stack of #286",
+      "focus on": "Stack Overview of #286",
       "address": "/view/"
     },
     "J on it is the list's": {
@@ -576,12 +576,12 @@ $ node tests/dom/pulls-nav-session.js
         ]
       },
       {
-        "a stack's page: its Whole stack row is the current row": [
+        "a stack's page: its Stack Overview row is the current row": [
           "view told: current null, Stack #70's page"
         ]
       },
       {
-        "the Whole stack row's open is the shell's": [
+        "the Stack Overview row's open is the shell's": [
           "opened Stack #70's page"
         ]
       },

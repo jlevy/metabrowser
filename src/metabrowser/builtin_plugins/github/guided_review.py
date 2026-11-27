@@ -540,7 +540,9 @@ def _collection(fence: Token, name: str = GUIDE_FENCE) -> Collection:
     refusal = _outside_shape(document["collection"])
     if refusal is not None:
         raise GuideError(refusal)
-    result = validate_artifact(Path(name), contract=_CONTRACT, document=document)
+    result = validate_artifact(
+        Path(name), contract=_CONTRACT, document=document, require=("structural",)
+    )
     if not result.ok:
         raise GuideError(_schema_refusal(result.structural.errors[0].get("path"), name))
     try:
@@ -1585,9 +1587,9 @@ def _own_paths(item: CollectionItem, own: int | None) -> set[str]:
 
 
 def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
-    return record_freshness(
-        record, *catalog_member(store.home, store.slug, record.number), now=pulls.utc_now()
-    ).head_moved
+    # Whether the head moved is the catalog row's to say; the status decides nothing of it.
+    member = catalog_member(store.home, store.slug, record.number)
+    return record_freshness(record, *member, status=None, now=pulls.utc_now()).head_moved
 
 
 # What a step's answer waits for its notes, measured 2026-11-25 at a load average of 224 to

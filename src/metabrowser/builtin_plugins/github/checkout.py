@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.served_pull import ServedPull, ServedPulls
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import GitSource
-    from metabrowser.mirror_refresh import RefreshCoordinator
+    from metabrowser.mirror_refresh import RefreshAsk, RefreshCoordinator
 
 # Roots a process resolves: one server serves one root, and tests serve several.
 _MAX_RESOLVED: Final = 8
@@ -365,6 +365,7 @@ def start_pull_refresh(
     coordinator: RefreshCoordinator,
     repository: CheckoutRepository,
     number: int,
+    ask: RefreshAsk,
     *,
     comparison: bool = False,
     eager_revision: None = None,
@@ -377,6 +378,7 @@ def start_pull_refresh(
     coordinator: RefreshCoordinator,
     repository: CheckoutRepository,
     number: int,
+    ask: RefreshAsk,
     *,
     comparison: Literal[False] = False,
     eager_revision: None = None,
@@ -389,6 +391,7 @@ def start_pull_refresh(
     coordinator: RefreshCoordinator,
     repository: CheckoutRepository,
     number: int,
+    ask: RefreshAsk,
     *,
     comparison: Literal[True],
     eager_revision: str,
@@ -400,12 +403,18 @@ def start_pull_refresh(
     coordinator: RefreshCoordinator,
     repository: CheckoutRepository,
     number: int,
+    ask: RefreshAsk,
     *,
     comparison: bool = False,
     eager_revision: str | None = None,
     background: bool = False,
 ) -> PullJobStart | Literal["not_due"]:
-    """Start or join a checkout's pull refresh; only *comparison* may acquire a store.
+    """Start or join a checkout's pull refresh for *ask*; only *comparison* may acquire a store.
+
+    *ask* is why (:data:`~metabrowser.mirror_refresh.RefreshAsk`), which the job is told
+    whoever started it (:meth:`~metabrowser.mirror_refresh.RefreshCoordinator.asked`). An
+    answer that starts and joins nothing notes none, even while another job of the number
+    runs.
 
     With *eager_revision* the start is optional: the comparison of that cached record
     revision, prepared in a store already attached, and only while no reader's pull job of
@@ -430,6 +439,30 @@ def start_pull_refresh(
     is never an answer for work that is then dropped.
     """
 
+    answer = _start_pull_refresh(
+        coordinator,
+        repository,
+        number,
+        ask,
+        comparison=comparison,
+        eager_revision=eager_revision,
+        background=background,
+    )
+    if answer in ("started", "joined"):
+        coordinator.asked(checkout_job_key(repository, number), ask)
+    return answer
+
+
+def _start_pull_refresh(
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    ask: RefreshAsk,
+    *,
+    comparison: bool,
+    eager_revision: str | None,
+    background: bool,
+) -> PullJobStart | Literal["not_due"]:
     key = checkout_job_key(repository, number)
     state = _checkout_state(repository)
     eager = _live_eager(coordinator, repository, state)
@@ -442,7 +475,7 @@ def start_pull_refresh(
             state.background.discard(key)
             state.turn.promoted()
             _PULL_JOBS.add(key)
-            _start_again_when_stopped(coordinator, repository, number, key)
+            _start_again_when_stopped(coordinator, repository, number, key, ask)
             return "joined"
         if (
             eager is not None
@@ -466,7 +499,7 @@ def start_pull_refresh(
         return coordinator.start(
             key, partial(_pull_job, coordinator, repository, number, key), network=False
         )
-    return _readers_start(coordinator, repository, number, comparison=comparison, bounded=True)
+    return _readers_start(coordinator, repository, number, ask, comparison=comparison, bounded=True)
 
 
 def _live_eager(
@@ -483,6 +516,7 @@ def _readers_start(
     coordinator: RefreshCoordinator,
     repository: CheckoutRepository,
     number: int,
+    ask: RefreshAsk,
     *,
     comparison: bool,
     bounded: bool,
@@ -520,7 +554,7 @@ def _readers_start(
             _PULL_JOBS.add(key)
         if comparison:
             _COMPARISON_WANTED.add(key)
-        _start_again_when_stopped(coordinator, repository, number, key)
+        _start_again_when_stopped(coordinator, repository, number, key, ask)
         return "joined"
     if bounded:
         _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
@@ -535,7 +569,11 @@ def _readers_start(
 
 
 def _start_again_when_stopped(
-    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    key: str,
+    ask: RefreshAsk,
 ) -> None:
     """Start the reader's job for *number* once its job, if it was told to stop, has unwound.
 
@@ -547,7 +585,7 @@ def _start_again_when_stopped(
     """
 
     def restart() -> None:
-        _readers_start(coordinator, repository, number, comparison=False, bounded=False)
+        _readers_start(coordinator, repository, number, ask, comparison=False, bounded=False)
 
     coordinator.start_again_when_stopped(key, restart)
 
@@ -914,7 +952,7 @@ async def _run_foreground(
         # A background refresh takes no network slot; a promoted one is a reader's.
         slot = contextlib.nullcontext() if key in state.background else coordinator.slot()
         async with slot:
-            await companion.refresh()
+            await companion.refresh(coordinator.asks(key))
         if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
             return
 

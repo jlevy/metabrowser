@@ -83,7 +83,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   id?: string,
  *   list?: import("./pull-files-tree.js").FileListSource,
  * }} host *number* is the tree's key and its pull request; *list* reads another list in its
- *   place, a stack's under its Whole stack row, which names its group by *id*.
+ *   place, a stack's under its Stack Overview row, which names its group by *id*.
  */
 export function mountFileTree(host) {
   const id = host.id ?? `github-pull-files-${host.number}`;

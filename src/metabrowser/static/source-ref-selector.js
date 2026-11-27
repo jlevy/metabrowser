@@ -1,10 +1,11 @@
 // The branch and tag selector of a served mirror, and of a served checkout.
 //
 // A page on a mirror's pin shows a compact button naming the ref it was rendered for.
-// Opening it lists every one of the mirror's branches or tags from GET /api/source/refs,
-// the default branch first and then newest first, with the served ref marked, narrowed
-// by a filter box. The list draws only the rows near its view (`drawWindow`), so what it
-// draws costs the same over ten thousand branches as over ten. Choosing a ref
+// Opening it lists the mirror's branches or tags from GET /api/source/refs. Primary and
+// default branches come first. Each branch group and the tag list sort newest first,
+// and the served ref is marked. A filter box narrows either list. The list draws only
+// the rows near its view (`drawWindow`), so what it draws costs the same over ten
+// thousand branches as over ten. Choosing a ref
 // switches the served pin with POST /api/source/pin -- a same-origin JSON request
 // behind the server's guard -- and names the page's own /view/ address, so the answer
 // says where the page goes: the same file or folder when the new revision has it,
@@ -43,7 +44,7 @@
 //   Remotes list has the origin's branches as Metabrowser last fetched them, in place of
 //   the checkout's own `origin/*`, and the Tags list the origin's tags; a line under the
 //   list says so and when, or why the origin is not fetched. The origin's default branch
-//   is first there and marked. A row there whose branch the reader's own checkout has
+//   is marked. A row there whose branch the reader's own checkout has
 //   at another commit, or not at all, says so (`ownDifference`): "yours differs" where
 //   the checkout's own `origin/<branch>` is not where the origin's is, which is a branch
 //   the reader has not fetched since it moved, or has pushed since. An open list of a
@@ -794,10 +795,10 @@
     let pullsTimer = null;
     // Whether the visible page's own ask went out since the list was opened.
     let askedForOrigin = false;
-    // Whether something the list shows moved while a list the reader waits on was loading,
-    // `HEAD` or the origin's store: that answer may have been read before it moved, so the
-    // list is asked for once more after it.
-    let headMoved = false;
+    // An ask to read again while a list the reader waits on was loading. A watch
+    // cannot rely on a manual plan's separate Files read, even when both ask again.
+    /** @type {boolean | null} */
+    let queuedFilesCovered = null;
     let disposed = false;
 
     function render() {
@@ -834,14 +835,24 @@
      * in a terminal since the page was drawn is named in the row and the tab's entry.
      *
      * @param {MetabrowserSourceRefListing | null} listing
+     * @param {boolean} filesCovered Whether the same refresh plan also reads Files.
      */
-    function takeHead(listing) {
+    function takeHead(listing, filesCovered) {
       const tree = listing?.working_tree;
       if (!tree) {
         return;
       }
-      state.workingBranch = tree.head_name ?? undefined;
-      state.workingCommit = tree.head_name === null ? (tree.head_commit ?? undefined) : undefined;
+      const branch = tree.head_name ?? undefined;
+      const commit = tree.head_commit ?? undefined;
+      const moved =
+        (state.workingBranch !== undefined || state.workingCommit !== undefined) &&
+        (branch !== state.workingBranch ||
+          (state.workingCommit !== undefined && commit !== state.workingCommit));
+      state.workingBranch = branch;
+      state.workingCommit = commit;
+      if (state.shown === null && tree.current && (branch !== undefined || commit !== undefined)) {
+        deps.workingTreeObserved?.(moved, filesCovered);
+      }
     }
 
     /** Ask again after PULLS_POLL_MS while the server fills its pull requests, or fetches
@@ -865,8 +876,9 @@
      * shows nothing while it waits, and a refusal leaves the rows as they are.
      *
      * @param {boolean} [quiet]
+     * @param {boolean} [filesCovered]
      */
-    async function load(quiet = false) {
+    async function load(quiet = false, filesCovered = false) {
       // A quiet ask never stands in for one the reader waits on: a filter still in its
       // pause asks for itself, with what was typed, and a quiet ask that failed meanwhile
       // would have dropped it (mb-tjbm review A9).
@@ -940,6 +952,7 @@
         // Nothing moved, so nothing is drawn: the rows keep their focus, their tooltips,
         // and a press in progress (mb-tjbm review A2).
         if (sameListing(state.listing, listing)) {
+          takeHead(listing, filesCovered);
           watchPulls();
           return;
         }
@@ -947,15 +960,16 @@
       state.loading = false;
       state.listing = listing;
       state.error = error;
-      takeHead(listing);
+      takeHead(listing, filesCovered);
       if (gone) {
         state.open = false;
         state.removed = true;
       }
       render();
-      if (headMoved) {
-        headMoved = false;
-        void load(true);
+      if (queuedFilesCovered !== null) {
+        const covered = queuedFilesCovered;
+        queuedFilesCovered = null;
+        void load(true, covered);
         return;
       }
       watchPulls();
@@ -1005,7 +1019,7 @@
       state.error = null;
       askedForOrigin = false;
       // The list opens on the tab that holds what the page shows (`openKind`), whichever
-      // one it was closed on, so the choice marked current is the first thing in it.
+      // one it was closed on.
       const kind = openKind(state.shown, checkout);
       if (kind !== state.kind) {
         state.kind = kind;
@@ -1026,7 +1040,7 @@
       // An answer still on its way belongs to a list nobody is looking at.
       abortInflight();
       requested += 1;
-      headMoved = false;
+      queuedFilesCovered = null;
       state.open = false;
       state.loading = false;
       // What the list said goes with it, so the row says only what failed while closed.
@@ -1111,13 +1125,20 @@
      * listing reads `HEAD`, and its rows and its "checked out" badge follow too. A closed
      * one asks the working tree's own listing, which runs no Git, and names the branch
      * in the row. A refusal leaves what the row says.
+     *
+     * @param {boolean} [filesCovered]
      */
-    async function headChanged() {
+    async function headChanged(filesCovered = false) {
       if (disposed || !checkout) {
         return;
       }
       if (state.open) {
-        await reread();
+        await reread({ filesCovered });
+        return;
+      }
+      // An in-flight observation may belong to the watch. Let it finish with its own
+      // Files policy when the plan merely wants to update the label.
+      if (filesCovered && headInflight !== null) {
         return;
       }
       headInflight?.abort();
@@ -1133,13 +1154,16 @@
         if (disposed || headInflight !== controller) {
           return;
         }
-        headInflight = null;
         if (response.status === 200 && isListing(response.body)) {
-          takeHead(response.body);
+          takeHead(response.body, filesCovered);
           render();
         }
       } catch {
-        // The row says what it said; the next change asks again.
+        // Keep the last observed HEAD. A later refresh or watch can try again.
+      } finally {
+        if (headInflight === controller) {
+          headInflight = null;
+        }
       }
     }
 
@@ -1229,18 +1253,23 @@
      * scroll and focus stay (`paintRows`), and an answer that says the same draws
      * nothing. What the navigation's Refresh does to the list (static/refresh-plan.js,
      * `refs`), and what a moved `HEAD` does. A closed list reads when it next opens.
+     *
+     * @param {{filesCovered?: boolean}} [options]
      */
-    async function reread() {
+    async function reread({ filesCovered = false } = {}) {
       if (disposed || !state.open) {
         return;
       }
       // A quiet ask never replaces the one the reader waits on, which says why it failed;
       // it follows it.
       if (state.loading) {
-        headMoved = true;
+        queuedFilesCovered = (queuedFilesCovered ?? true) && filesCovered;
         return;
       }
-      await load(true);
+      if (filesCovered && inflight !== null) {
+        return;
+      }
+      await load(true, filesCovered);
     }
 
     /**
@@ -1391,6 +1420,7 @@
       model.selectedRef,
     ]);
     if (parts.label.dataset.refKey !== refKey) {
+      window.MetabrowserTooltip?.hide(parts.label);
       parts.label.dataset.refKey = refKey;
       parts.label.replaceChildren();
       // A checkout's row on its files on disk says so before the branch they are on:
@@ -1429,8 +1459,17 @@
       } else if (model.viewLabel === null) {
         parts.label.textContent = model.button;
       }
+      if (parts.root.dataset.sourceMode) {
+        // The rich source tip owns this label and the chip within it.
+        for (const item of parts.label.querySelectorAll("[data-tip-text]")) {
+          item.removeAttribute("data-tip-text");
+        }
+      }
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
+    if (model.open && parts.panel.hidden && (model.kind === "branch" || model.kind === "remote")) {
+      parts.rows.listing = "";
+    }
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
     if (!model.open) {
@@ -1898,7 +1937,7 @@
    * in view, though the rows above have grown (`anchoredScroll`; mb-tjbm review A1, A2).
    *
    * The row that takes Tab is the one that had focus when this listing still has its
-   * ref, else the served one, else the first; a row that had focus keeps it.
+   * ref, else the served tag on Tags, else the first. A row that had focus keeps it.
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    * @param {MetabrowserSourceRefSelectorModel} model
@@ -1911,8 +1950,8 @@
       active !== null && parts.list.contains(active) && active.dataset.index !== undefined
         ? rows.shown[Number(active.dataset.index)]?.ref
         : undefined;
-    // A new list, or a new filter, starts at its top, its newest refs, unless it shows
-    // the served ref: then at that ref's row, once its rows arrive (below).
+    // Branch lists start at the top so the primary branches stay in view. Tags retain
+    // their served-row reveal once the rows arrive.
     const shows = `${model.kind}\0${model.query}`;
     const again = rows.listing === shows;
     if (!again) {
@@ -1945,7 +1984,7 @@
     const measured = measureRows(parts, annotated);
     rows.offsets = rowOffsets(model.rows, measured.plain, measured.tall);
     const kept = hadFocus === undefined ? -1 : model.rows.findIndex((row) => row.ref === hadFocus);
-    const current = model.rows.findIndex((row) => row.current);
+    const current = model.kind === "tag" ? model.rows.findIndex((row) => row.current) : -1;
     rows.roving = kept >= 0 ? kept : current >= 0 ? current : 0;
     // The box is as tall as the rows are now before the list is scrolled in it, or the
     // browser holds the scroll to the old height.
@@ -2110,7 +2149,14 @@
     });
     const tabs = /** @type {Record<MetabrowserSourceListKind, HTMLButtonElement>} */ ({});
     for (const tab of kinds.querySelectorAll("button")) {
-      tabs[/** @type {MetabrowserSourceListKind} */ (tab.dataset.chipValue)] = tab;
+      const kind = /** @type {MetabrowserSourceListKind} */ (tab.dataset.chipValue);
+      tabs[kind] = tab;
+      if (kind === WORKING_TREE_KIND) {
+        tab.dataset.tipText = "Browse the live files in your checkout on disk.";
+      } else if (kind === "remote") {
+        tab.dataset.tipText =
+          "Browse remote branch revisions while keeping your checkout in place.";
+      }
     }
     const filter = document.createElement("input");
     filter.type = "search";
@@ -2220,6 +2266,45 @@
   let mountedSelector = null;
 
   /**
+   * @param {HTMLElement} element
+   * @param {HTMLElement | null} freshness
+   * @param {string | null} viewTip
+   * @param {number} observedHeadAt
+   */
+  function sourceTipHtml(element, freshness, viewTip, observedHeadAt) {
+    const { sourceMode, sourceOrigin, sourcePath, sourceSyncedAt } = element.dataset;
+    const esc = window.metabrowser.escapeHtml;
+    const age = (/** @type {number} */ at) =>
+      window.MetabrowserFormatters.age(at / 1000, { style: "relative" }).label;
+    const detail = (/** @type {string | null | undefined} */ text) =>
+      text ? `<div class="tip-detail">${esc(text)}</div>` : "";
+    if (sourceMode === "working-tree" || sourceMode === "checkout-revision") {
+      const path = sourcePath ?? "";
+      const separator = path.startsWith("/") ? "/" : "\\";
+      const parentEnd = path.endsWith(separator) ? 0 : path.lastIndexOf(separator) + 1;
+      const location = path
+        ? `<div class="tip-name"><span class="path" dir="ltr">${esc(path.slice(0, parentEnd))}<span class="path-base">${esc(path.slice(parentEnd))}</span></span></div>`
+        : "";
+      if (sourceMode === "checkout-revision") {
+        return location + detail("Read-only Git revision from this checkout.");
+      }
+      const read = age(observedHeadAt);
+      return location + detail(viewTip) + detail(read && `Checkout state read ${read}.`);
+    }
+    if (sourceMode === "cloud-mirror" || sourceMode === "local-mirror") {
+      const kind = sourceMode === "cloud-mirror" ? "Cloud mirror" : "Local repository mirror";
+      const synced = age(Date.parse(freshness?.dataset.lastFetchAt ?? sourceSyncedAt ?? ""));
+      const name = sourceOrigin ? `${kind} of ${sourceOrigin}` : kind;
+      return (
+        `<div class="tip-name">${esc(name)}</div>` +
+        detail("Read-only Git revision.") +
+        detail(synced && `Last synced ${synced}.`)
+      );
+    }
+    return "";
+  }
+
+  /**
    * Start the selector on this page with the browser's fetch, timers, focus, and paint.
    *
    * @param {HTMLElement} element
@@ -2229,6 +2314,10 @@
     /** @type {ReturnType<typeof createSelector> | null} */
     let selector = null;
     const parts = build(element, checkout, (ref) => void selector?.choose(ref));
+    let observedHeadAt = 0;
+    /** @type {string | null} */
+    let viewTip = null;
+    const freshness = document.getElementById("source-freshness");
     selector = createSelector(
       {
         async request(method, route, body, signal) {
@@ -2249,7 +2338,16 @@
         },
         schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
-        render: (model) => paint(parts, model),
+        render(model) {
+          viewTip = model.viewTip;
+          paint(parts, model);
+        },
+        workingTreeObserved(moved, filesCovered) {
+          observedHeadAt = Date.now();
+          if (moved && !filesCovered) {
+            void window.MetabrowserShell?.rereadFiles();
+          }
+        },
         navigate(href, state) {
           if (state === undefined) {
             window.location.assign(href);
@@ -2275,6 +2373,29 @@
     const mounted = selector;
     const listening = new AbortController();
     const signal = listening.signal;
+    if (element.dataset.sourceMode) {
+      parts.label.addEventListener(
+        "mouseenter",
+        () => {
+          const html = sourceTipHtml(element, freshness, viewTip, observedHeadAt);
+          const ref = parts.label.querySelector(".git-ref-label");
+          // Preserve the chip's full name when it was ellipsized.
+          const name =
+            ref && ref.scrollWidth > ref.clientWidth
+              ? `<div class="tip-detail">${window.metabrowser.escapeHtml(ref.textContent)}</div>`
+              : "";
+          window.MetabrowserTooltip?.show(html + name, parts.label);
+        },
+        { signal },
+      );
+      parts.label.addEventListener(
+        "mouseleave",
+        () => window.MetabrowserTooltip?.hide(parts.label),
+        {
+          signal,
+        },
+      );
+    }
     parts.workingTree.addEventListener("click", () => void mounted.chooseWorkingTree(), {
       signal,
     });
@@ -2468,8 +2589,13 @@
         mounted.close();
         dismissal.closed();
       },
-      async reread() {
-        await mounted.reread();
+      /** @param {{filesCovered?: boolean}} [options] */
+      async reread(options) {
+        if (parts.panel.hidden && element.dataset.sourceMode === "working-tree") {
+          await mounted.headChanged(options?.filesCovered);
+        } else {
+          await mounted.reread(options);
+        }
         if (parts.panel.hidden || refreshButton?.contains(document.activeElement) !== true) {
           return;
         }
@@ -2482,6 +2608,7 @@
         back.focus({ preventScroll: true });
       },
       dispose() {
+        window.MetabrowserTooltip?.hide(parts.label);
         closeActionMenu();
         parts.disposed = true;
         dismissal.dispose();

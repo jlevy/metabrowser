@@ -13,7 +13,7 @@ index, a running scan, and complete.
 Each step prints what is on screen.
 Only a running scan may show a skeleton: every other answer finishes both bodies, and a
 control changed after a failure keeps the failure’s message.
-A later answer that the scan is running brings both skeletons back, whatever ended them.
+A later scan restores the skeletons when the panel has no completed data to show.
 The compact treemap under the breakdown follows the same answer: it keeps its box with a
 skeleton while the scan runs, without asking for its own tree; it is left out wherever
 the breakdown has no totals to show or offers Retry; and it asks for its tree once, when
@@ -42,9 +42,9 @@ are of, Total with Show ignored on and Files with it off.
 Other draws nothing.
 Details opened or closed under a pointer still on an entry marks or unmarks its row.
 When the folder’s sums redraw the bars under the pointer, an entry keeps its hover.
-Show ignored, a rescan that empties the legend, a refresh, or the section’s disposal
-under the pointer puts it away, and the browser’s entering the rebuilt entry brings it
-back.
+A rescan keeps the completed legend and its hover until the next completed rollup.
+Changing Show ignored, repainting the legend, or disposing the section puts the hover
+away. The browser’s entering a rebuilt entry brings it back.
 
 ```console
 $ node tests/dom/file-overview-session.js
@@ -318,7 +318,10 @@ $ node tests/dom/file-overview-session.js
       "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Log files 2.7% JSON 2.2% Other 6% Details Documentation Markdown 300 B 32.6% Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
       "step": "rollup refreshed"
     },
-    "rescanning": "skeleton",
+    "rescanning": {
+      "keptDistribution": true,
+      "keptOpenDetails": true
+    },
     "rescanned": {
       "details": "true",
       "caption": "Share of Files (920 B)",
@@ -421,10 +424,14 @@ $ node tests/dom/file-overview-session.js
       "tooltip": "150 files · 300 B",
       "anchoredOn": "legend family:markdown"
     },
-    "a rescan emptied the legend under the pointer": {
-      "marked": [],
-      "tooltip": null,
-      "anchoredOn": null
+    "a rescan kept the legend under the pointer": {
+      "marked": [
+        "Files family:markdown",
+        "Total family:markdown",
+        "legend family:markdown"
+      ],
+      "tooltip": "150 files · 300 B",
+      "anchoredOn": "legend family:markdown"
     },
     "the rollup refreshed under the pointer": {
       "marked": [],

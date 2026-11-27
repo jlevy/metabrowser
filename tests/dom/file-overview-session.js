@@ -888,14 +888,20 @@ const rollupError = (status) =>
       ) && unignored.caption === "Share of Files (920 B)",
       `Show ignored off: ${unignored.distribution}`,
     );
+    const detailsBeforeScan = toggle();
     view.answers.next = { path: "docs", index_status: "scanning", node: null };
     await view.inventoryChanged();
-    const rescanning = view.read().distribution;
+    const rescanning = {
+      keptDistribution: view.read().distribution === refreshed.distribution,
+      keptOpenDetails:
+        toggle() === detailsBeforeScan && toggle().attributes["aria-expanded"] === "true",
+    };
+    assert(rescanning.keptDistribution, "a rescan replaced the completed distribution");
+    assert(rescanning.keptOpenDetails, "a rescan replaced the open Details toggle");
     view.answers.next = MANY_TYPES_ROLLUP;
     await view.inventoryChanged();
     const rescanned = state("a rescan answered");
-    assert(rescanning === "skeleton", `a rescan: ${rescanning}`);
-    assert(rescanned.details === "true", "a rescan closed Details");
+    assert(rescanned.details === "true", "the completed rescan closed Details");
     toggle().listeners.click();
     const reclosed = state("Details closed");
     assert(reclosed.details === "false", "Details did not close");
@@ -1070,19 +1076,16 @@ const rollupError = (status) =>
       `the bars redrawn under the entry dropped its hover: ${JSON.stringify(redrawn)}`,
     );
 
-    // A rollup with no totals yet empties the legend and leaves the bars as they are, so
-    // only the legend can let go of the hover its entry held.
+    // The incomplete rollup keeps the existing legend entry and its hover.
+    const entryBeforeScan = markdown();
     view.answers.next = { path: "docs", index_status: "scanning", node: null };
     await view.inventoryChanged();
-    const emptied = view.hover();
+    const rescanning = view.hover();
     assert(
-      view.read().distribution === "skeleton" && same(emptied, nothing),
-      `a legend emptied under the pointer kept its hover: ${JSON.stringify(emptied)}`,
+      markdown() === entryBeforeScan && same(rescanning, filesOnly),
+      `a rescan displaced the legend hover: ${JSON.stringify(rescanning)}`,
     );
     view.answers.next = MANY_TYPES_ROLLUP;
-    await view.inventoryChanged();
-
-    markdown().listeners.mouseenter();
     await view.inventoryChanged();
     const repainted = view.hover();
     assert(same(repainted, nothing), `a repaint kept the hover: ${JSON.stringify(repainted)}`);
@@ -1106,7 +1109,7 @@ const rollupError = (status) =>
       "Show ignored turned off under the pointer": toggled,
       "pointer on the Markdown entry, Show ignored off": filesOnly,
       "the folder's sums redrew the bars under the pointer": redrawn,
-      "a rescan emptied the legend under the pointer": emptied,
+      "a rescan kept the legend under the pointer": rescanning,
       "the rollup refreshed under the pointer": repainted,
       "the browser entered the rebuilt entry": reentered,
       "the section disposed under the pointer": disposed,

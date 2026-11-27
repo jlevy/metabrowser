@@ -54,8 +54,10 @@ introduces.
 | `kpress==0.3.8` | `0.3.6` | Browser assets plus two names in the public CSS contract (0.3.7 and 0.3.8 together): TOC scrollspy without `IntersectionObserver`, over host-rewritten same-document links, and past headings with no layout box; a reload scroll restore confirmed one frame later; the public `--kpress-code-border` and `--kpress-code-radius` tokens; TOC inset and blockquote defaults; `kbd`, `samp`, and link-preview code in the shipped mono face; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `99c32266…f5b0efa9` and sdist `1db5df40…465833bd` match `uv.lock` |
 | `kpress==0.3.9` | `0.3.8` | Releases jlevy/kpress#80, which this repository built from commit `5a8e9ae` until KPress released it; the release tree differs from that commit only in `docs/README.md` and the new `docs/releases/0.3.9.md`. It adds the Mermaid diagram renderer and its opt-in controls (`js/diagrams.js`, `js/diagram-controls.js`), their styles and sprite symbols, and the `diagrams` render-request field; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `d3d4cc33…e7ef23f2` and sdist `b15c3e42…a30d09f1` match `uv.lock` |
 | `kpress==0.3.10` | `0.3.9` | Releases jlevy/kpress#82, which this repository built from commit `0c0f857` until KPress released it; the release adds the PR’s final-review fixes on top of that commit: the structural box style keeps an ordered or footnote item’s number and applies only to a disabled checkbox (`components.css`), and an `<input>` the sanitizer’s rewrite does not recognize is removed rather than kept (`sanitize.py`). Against `0.3.9` it draws task-list boxes from KPress’s own token (`kpress_task_checkbox`) instead of `mdit-py-plugins`’ `tasklists` raw HTML, keeps an `<input>` in `sanitized` mode only as a disabled checkbox, removes a raw `<link>`, and styles the box by structure as well as by class; its other sanitizer and parser changes, that a `<button>` is always `type="button"` and no element keeps `form`, that each footnote’s note and a host’s `body_html` are sanitized, that an `svg` fence drops any `<input>`, and that a document defining `[x]` as a link shows the link and no box, a marker ending its line is text, and any whitespace between the brackets is an open box, reach no untrusted page unchecked, because Metabrowser’s own allowlist runs after KPress on every untrusted path (`kpress_adapter.inert_render`, `markdown_projection._hardened`, `markdown_projection_worker._render`); runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `205d7f58…f9a28ab1` and sdist `8a00b909…cd5c110e` match `uv.lock` |
+| `kpress==0.3.11` | `0.3.10` | Releases jlevy/kpress#84: `sanitize_raw_html` takes `diagnose=False`, which returns the same HTML with no diagnostics and skips the audit and content-event parses that write them; neither feeds the output, which still comes from `nh3.clean` and the checkbox rewrite, and KPress’s sanitizer tests run every call both ways and require the same HTML. Metabrowser passes it only in `markdown_projection._hardened`, which discards the diagnostics. Also #83 (test temp-output cleanup) and release notes. Runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `65e7a972…320700d9` and sdist `1ffc254e…62960461` match `uv.lock` |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
+| `softschema==0.9.1` | `0.8.1` | Portable YAML guards and explicit validation execution. Release clears the ordinary cool-off. See [SoftSchema 0.9 review](#softschema-09-review). |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
 | `tryscript==0.3.1` | `0.3.0` | Security patch only; upgrades zod from 3.25.76 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 |
 | `tryscript==0.4.0` | `0.3.1` | Replaces tinyglobby with tryscript’s own matcher, removing tinyglobby, fdir, and picomatch and with them GHSA-fc5q-39xc-vjpf; rejects extended globs, alternation groups, and brace ranges in test patterns, none of which this repository uses |
@@ -219,6 +221,35 @@ installed-wheel smoke tests, and dependency audits.
 The hosted-review codecs were later removed from the v0.12 stack; SoftSchema now
 validates the repository cache’s record contracts, and the same gate reruns their schema
 compilation checks and installed-wheel smoke tests.
+
+### SoftSchema 0.9 Review
+
+[SoftSchema 0.9.1](https://pypi.org/project/softschema/0.9.1/) adds portable YAML
+checks, validation execution reporting, and a guarded C parser.
+Its MIT license and source repository match the prior pin.
+The updated requirement excludes `ruamel.yaml==0.19.0`, which the current lock already
+avoids. Metabrowser requires a completed validation at the existing configuration and
+guided-review gates.
+
+[Frontmatter Format 0.5.1](https://pypi.org/project/frontmatter-format/0.5.1/) fixes
+line-separator round trips and applies the same C-parser guard.
+Its MIT license, source repository, and only runtime dependency, `ruamel.yaml`, are
+unchanged. Both releases were published on October 26, 2026. Their wheel and source
+archive hashes match PyPI and `uv.lock`. The global cool-off admits both releases.
+
+[`ruamel.yaml.clib==0.2.15`](https://pypi.org/project/ruamel.yaml.clib/0.2.15/) is the
+optional native parser SoftSchema uses on CPython.
+Anthon van der Neut publishes it under the MIT license from the
+[ruamel-yaml-clib source repository](https://sourceforge.net/p/ruamel-yaml-clib/code/ci/default/tree/).
+The November 16, 2025 release has no Python runtime dependencies.
+Its wheels contain the `_ruamel_yaml` extension and distribution metadata.
+The source archive builds that extension on platforms without a matching wheel.
+The macOS arm64 and Linux x86-64 CPython 3.14 wheel hashes and the source archive hash
+match PyPI. Non-CPython installs use the pure reader.
+Stock installs use the pure reader as well.
+The `yaml-accelerator` extra opts in on CPython.
+Free-threaded CPython 3.14 and Windows ARM64 have no wheel for this pin.
+These three packages are the entire lockfile package delta.
 
 ## Admitted Git in CI
 

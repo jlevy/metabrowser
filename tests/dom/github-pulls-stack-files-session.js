@@ -1,4 +1,4 @@
-// Browserless session: a native stack's combined changed files, under its Whole stack row
+// Browserless session: a native stack's combined changed files, under its Stack Overview row
 // in the Pulls tab (mb-odt4), through the production code.
 //
 // builtin_plugins/github/stack-files.js reads them as the stack's own page reads the files

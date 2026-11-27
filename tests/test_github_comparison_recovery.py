@@ -47,7 +47,7 @@ def test_explicit_retry_joining_active_metadata_job_is_consumed(
         held = ServedPull(stand.published, 7)
         held.note_comparison(pair, displayed=True)
         kept = ServedPulls(stand.published, _kept=OrderedDict({7: held}))
-        host = PullHost(kept, lambda _number: held.refreshing, lambda _number: "started")
+        host = PullHost(kept, lambda _number: held.refreshing, lambda _number, _ask: "started")
 
         async def refresh(_published: Any, _number: int, **kwargs: Any) -> PullRecord:
             calls.append(kwargs)
@@ -59,7 +59,7 @@ def test_explicit_retry_joining_active_metadata_job_is_consumed(
             return record
 
         monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
-        task = asyncio.create_task(held.refresh())
+        task = asyncio.create_task(held.refresh({"record"}))
         await entered.wait()
         assert await start_refresh(host, RefreshRequest(7, True, recovery=pair)) == "joined"
         assert await start_refresh(host, RefreshRequest(7, True, recovery=pair)) == "joined"
@@ -282,7 +282,7 @@ def test_refused_job_cannot_leave_repair_for_a_later_automatic_refresh(stand: _S
         pair = ("a" * 40, "b" * 40)
         held.note_comparison(pair)
         kept = ServedPulls(stand.published, _kept=OrderedDict({7: held}))
-        host = PullHost(kept, lambda _number: False, lambda _number: "too_many")
+        host = PullHost(kept, lambda _number: False, lambda _number, _ask: "too_many")
         assert await start_refresh(host, RefreshRequest(7, True, recovery=pair)) == "too_many"
         assert not held._recoveries
 

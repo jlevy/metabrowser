@@ -162,26 +162,24 @@ def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     assert "font-size: var(--kbd-font-size);" in _rule(_css(), ".nav-shortcut-hints")
 
 
-def _render_file() -> str:
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    render = app[app.index("async function renderFile(") :]
-    return render[: render.index('"renderFile:mount"')]
+def _view_tab_markup() -> str:
+    composition = (STATIC / "view-composition.js").read_text(encoding="utf-8")
+    return _function(composition, "renderTabs")
 
 
 def test_every_file_has_a_view_tab_bar() -> None:
     """A kind with one view, or none, starts its content where a kind with two does."""
 
-    render = _render_file()
+    render = _view_tab_markup()
     # Only the view keys wait for a second view; the bar itself does not. The one test of
     # the length past "any views" is the key gate, and the gate decides only the key.
     lengths = re.findall(r"views\.length\s*(?:[<>]=?|[!=]==)\s*\d+", render)
-    assert lengths == ["views.length > 0", "views.length > 1"], lengths
-    assert "var keyedBar = views.length > 1;" in render
-    assert re.findall(r"[^\n]*\bkeyedBar\b[^\n]*", render) == [
-        "          var keyedBar = views.length > 1;",
-        '              (keyedBar ? viewKey : "") +',
+    assert lengths == ["views.length === 0", "views.length > 1"], lengths
+    assert [line.strip() for line in render.splitlines() if "keyedBar" in line] == [
+        "const keyedBar = views.length > 1;",
+        '(keyedBar ? viewKey : "") +',
     ], "keyedBar gates something besides the key"
-    assert 'html += \'<div class="tab-bar" role="tablist">\';' in render
+    assert '<div class="tab-bar" role="tablist">' in render
     assert '<span class="tab-btn tab-slot">&nbsp;</span>' in render
     slot = _rule(_css(), ".tab-slot")
     # It takes a tab's padding and type from .tab-btn, and a button's line-height.
@@ -193,31 +191,32 @@ def test_only_a_bar_of_two_views_carries_their_keys(tmp_path: Path) -> None:
     """A lone view's tab has no other view to switch to, so it publishes no key.
 
     The server already strips such a key (``keymap.live_view_keys``), so no page it serves
-    can show the gate; this runs renderFile's own lines for the bar, verbatim, on a list of
-    one view and a list of two, each declaring a key.
+    can show the gate. Render the compositor's markup on a list of one view and a list
+    of two, each declaring a key.
     """
 
-    render = _render_file()
-    start = render.index("          var keyedBar = views.length > 1;")
-    end = render.index('          html += "</div>";\n', start) + len('          html += "</div>";')
     script = tmp_path / "view-tab-bar.js"
     script.write_text(
-        "const esc = (text) => String(text);\n"
-        "const viewMetaAttrs = () => '';\n"
+        "const fs = require('node:fs');\n"
+        "const vm = require('node:vm');\n"
+        "const window = {};\n"
+        "vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});\n"
         "const lists = [\n"
         "  [{ id: 'source', label: 'Source', key: 's' }],\n"
         "  [{ id: 'rendered', label: 'Document', key: 'd' }, { id: 'source', label: 'Source', key: 's' }],\n"
         "];\n"
         "for (const views of lists) {\n"
-        "  const initialActiveView = views[0];\n"
-        "  let html = '';\n"
-        f"{render[start:end]}\n"
-        "  console.log(html);\n"
+        "  const prepared = views.map((view) => ({view, renderer: null}));\n"
+        "  console.log(window.MetabrowserViewComposition.renderTabs(prepared, views[0].id, String));\n"
         "}\n",
         encoding="utf-8",
     )
     one, two = subprocess.run(
-        [require_node(), str(script)], capture_output=True, text=True, timeout=30, check=True
+        [require_node(), str(script), str(STATIC / "view-composition.js")],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
     ).stdout.splitlines()
     assert one.startswith('<div class="tab-bar" role="tablist"><button class="tab-btn active"')
     assert 'role="tab" aria-selected="true" data-tab="source"' in one
@@ -369,7 +368,12 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
     # The stack's slot ends the row (mb-646g, mb-dwha), on a record's row and on the one held
     # before a record, with nothing after it: the page has no Refresh of its own (mb-ablv).
-    assert "placeChildren(openedRow, [stateSlot, opened.row, stackColumn]);" in page
+    # An open pull request's readiness has its slot after the state's (mb-io36).
+    assert (
+        "placeChildren(openedRow, [\n        stateSlot,\n"
+        "        ...(paintReadiness(model.readiness) ? [readinessSlot] : []),\n"
+        "        opened.row,\n        stackColumn,\n      ]);"
+    ) in page
     assert "          ),\n          stackColumn,\n        ]);" in page
     assert "github-pull-refresh" not in page and "github-pull-refresh" not in css
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
@@ -538,17 +542,18 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     assert "? (hold ?? model.freshness)" in page
 
 
-def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
+def test_the_pulls_metadata_uses_the_shared_line_boxes() -> None:
     """Each is a metadata line, which reserves its own line box (`.nav-metadata`)."""
 
     line = _rule(_css(), ".nav-metadata")
     assert "min-height: 1lh;" in line and "box-sizing: content-box;" in line
     css = _github_css()
-    # The count's one item is cut short; the line itself is the component's
-    # (tests/test_nav_metadata_line.py), and Chrome measures it one line in a narrow pane.
+    # The repository total gives way on the shared line, keeping the state tally visible.
     assert ".github-pulls-status {" not in css
     total = _rule(css, ".github-pulls-total-line")
-    assert "white-space: nowrap;" in total and "text-overflow: ellipsis;" in total
+    assert "white-space: nowrap;" in total
+    assert "text-overflow: ellipsis;" in _rule(css, ".github-pulls-total-lead")
+    assert "flex: none;" in _rule(css, ".github-pulls-total-scope")
     assert ".github-pulls-connection:not([hidden])" not in css
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     assert "status.hidden" not in panel and "connection.hidden" not in panel
@@ -606,9 +611,9 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     mb-d0a3, mb-85op, mb-lqkb, mb-pw8t, mb-rb3n). The run is one flow of the state icon, then
     the title, a stack member's place, the number, and the author, "title · 5/12 · #N · jlevy",
     every line of it in the text column, past the icon, as a tree's title wraps; the last line
-    is the lines with the chevron after them, "+12 −3 ›", and the age at the row's end. The
-    lines and the chevron are the toggle of its changed files, and the rest of the row opens
-    it. Before, the lines and the chevron ended the run, and the author and the age were the
+    is the lines with the chevron after them, "+12 −3 ›", the readiness column (mb-3n21), and
+    the age at the row's end. The lines and the chevron are the toggle of its changed files,
+    and the rest of the row opens it. Before, the lines and the chevron ended the run, and the author and the age were the
     last line (mb-pw8t); before that, the title alone held two lines, cut short at the second,
     and a third line held the number, the author, and the lines. The DOM keeps the title the link's first
     text, so its accessible name gives the state icon's label, the title, and the place, before
@@ -620,8 +625,8 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     build = _function(panel, "buildRow")
     # The run's order is the one every row of a pull request's fields has, the builder's
     # (stack-member-row.js); the last line is the toggle, whose lines come before its chevron,
-    # and the age.
-    assert 'h("span", { class: "github-pulls-tail" }, [change, updated])' in build
+    # the readiness column, and the age.
+    assert 'h("span", { class: "github-pulls-tail" }, [change, run.readiness, updated])' in build
     toggle = build[build.index('{ class: "github-pulls-change disclosure-toggle collapsed"') :]
     assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"'), (
         "the chevron comes after the lines it expands"

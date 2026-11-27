@@ -270,10 +270,16 @@ class Filter:
 
 @dataclass(frozen=True, slots=True)
 class RefFilter:
-    """Rows that reference one record: `ref=<table>:<key>`."""
+    """Rows that reference one record, optionally through one declared relationship."""
 
     table: str
     key: str
+    via: tuple[tuple[str, ...], tuple[str, ...]] | None = None
+
+    def matches(self, reference: FieldRef) -> bool:
+        return reference.table == self.table and (
+            self.via is None or self.via == (reference.fields, reference.to)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,6 +356,7 @@ class TableRecord:
     generation: str
     positional: bool
     referenced_by: tuple[BackrefCount, ...] = ()
+    label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -648,19 +655,20 @@ def parse_positional_cursor(after: str) -> tuple[int, str] | None:
 
 # Parameters the routes read; any other parameter except `f.<field>` is refused, so a
 # misspelled one is an error rather than a silently ignored filter.
-_QUERY_PARAMS = frozenset({"sort", "order", "q", "ref", "cols", "after", "limit"})
+_QUERY_PARAMS = frozenset({"sort", "order", "q", "ref", "via", "cols", "after", "limit"})
 _ROUTE_PARAMS = frozenset({"path", "key", "generation"})
 
 
 def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
     """Parse the rows route's query: `sort`, `order`, `q`, `f.<field>=<op>:<value>`,
-    `ref=<table>:<key>`, `cols`, `after`, and `limit`. Field names are checked against
+    `ref=<table>:<key>`, `via`, `cols`, `after`, and `limit`. Field names are checked against
     the schema by :func:`check_table_query`.
 
     `cols` names one field per parameter and repeats, in page order (`cols=a&cols=b`),
     since a field name may hold any character, a comma among them. Every other
     parameter is given at most once. `ref` splits at its last colon, since a key token
-    has none and a table name may."""
+    has none and a table name may. `via` is a JSON array of the two field lists
+    in a declared relationship and requires `ref`."""
 
     single: dict[str, str] = {}
     filters: list[Filter] = []
@@ -691,7 +699,10 @@ def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
         table, colon, key = raw_ref.rpartition(":")
         if not colon or not key:
             raise TableQueryError("ref must be <table>:<key>", param="ref")
-        ref = RefFilter(table=table, key=key)
+        via = _parse_via(single["via"]) if "via" in single else None
+        ref = RefFilter(table=table, key=key, via=via)
+    elif "via" in single:
+        raise TableQueryError("via requires a reference filter", param="via")
     cols = tuple(cols_given) if cols_given else None
     return TableQuery(
         sort=single.get("sort") or None,
@@ -703,6 +714,23 @@ def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
         after=single.get("after") or None,
         limit=limit,
     )
+
+
+def _parse_via(raw: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    error = TableQueryError("via must contain the two field lists of a relationship", param="via")
+    try:
+        pair: Any = json.loads(raw)
+    except (ValueError, RecursionError) as exc:
+        raise error from exc
+    if (
+        not isinstance(pair, list)
+        or len(pair) != 2
+        or not all(isinstance(group, list) and group for group in pair)
+        or not all(isinstance(name, str) for group in pair for name in group)
+        or len(pair[0]) != len(pair[1])
+    ):
+        raise error
+    return tuple(pair[0]), tuple(pair[1])
 
 
 def _parse_limit(raw: str) -> int:
@@ -766,7 +794,9 @@ def check_table_query(query: TableQuery, schema: TableSchema) -> None:
             )
     for name in query.cols or ():
         _known_field(schema, name, "cols")
-    if query.ref is not None and not any(ref.table == query.ref.table for ref in schema.references):
+    if query.ref is not None and not any(query.ref.matches(ref) for ref in schema.references):
+        if query.ref.via is not None:
+            raise TableQueryError("via does not name a declared relationship", param="via")
         raise TableQueryError(f"no field of this table references {query.ref.table!r}", param="ref")
 
 
@@ -911,6 +941,7 @@ def record_wire(
             requested_generation != record.generation if requested_generation else None
         ),
         "cells": dict(record.cells),
+        **({"label": record.label} if record.label else {}),
         "referenced_by": [
             {**_ref_wire(item.ref), "count": item.count, "count_complete": item.count_complete}
             for item in record.referenced_by

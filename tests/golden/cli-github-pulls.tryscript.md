@@ -158,7 +158,7 @@ status: 200
   },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
-  "generation": "00000000000000000000000000000001:1",
+  "generation": "00000000000000000000000000000001:2",
   "fetched": 102,
   "complete": true,
   "truncated": false,
@@ -251,6 +251,42 @@ status: 200
   "next_after": null,
   "rows": [
     {
+      "number": 6,
+      "title": "Work item 6",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-17T08:06:00Z",
+      "updated_at": "2026-09-17T08:06:00Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-6",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
+      "merged": false
+    },
+    {
+      "number": 5,
+      "title": "Work item 5",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-17T08:05:00Z",
+      "updated_at": "2026-09-17T08:05:00Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-5",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
+      "merged": false
+    },
+    {
       "number": 10,
       "title": "WIP: draft the next page",
       "state": "open",
@@ -286,42 +322,6 @@ status: 200
         "enhancement"
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
-      "merged": false
-    },
-    {
-      "number": 6,
-      "title": "Work item 6",
-      "state": "open",
-      "draft": false,
-      "merged_at": null,
-      "author": "contributor",
-      "author_avatar_url": null,
-      "created_at": "2026-09-17T08:06:00Z",
-      "updated_at": "2026-09-17T08:06:00Z",
-      "closed_at": null,
-      "base_ref": "topic",
-      "head_ref": "work-6",
-      "head_repository": "octo/demo",
-      "labels": [],
-      "head_oid": "0000000000000000000000000000000000000000",
-      "merged": false
-    },
-    {
-      "number": 5,
-      "title": "Work item 5",
-      "state": "open",
-      "draft": false,
-      "merged_at": null,
-      "author": "contributor",
-      "author_avatar_url": null,
-      "created_at": "2026-09-17T08:05:00Z",
-      "updated_at": "2026-09-17T08:05:00Z",
-      "closed_at": null,
-      "base_ref": "topic",
-      "head_ref": "work-5",
-      "head_repository": "octo/demo",
-      "labels": [],
-      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
   ]
@@ -409,44 +409,42 @@ status: 200
   "complete": true,
   "truncated": false,
   "limit": 2,
-  "next_after": 7,
+  "next_after": 5,
   "rows": [
     {
-      "number": 10,
-      "title": "WIP: draft the next page",
-      "state": "open",
-      "draft": true,
-      "merged_at": null,
-      "author": "maintainer",
-      "author_avatar_url": null,
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
-      "closed_at": null,
-      "base_ref": "topic",
-      "head_ref": "wip",
-      "head_repository": "octo/demo",
-      "labels": [],
-      "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
-      "merged": false
-    },
-    {
-      "number": 7,
-      "title": "Count to two in the app",
+      "number": 6,
+      "title": "Work item 6",
       "state": "open",
       "draft": false,
       "merged_at": null,
-      "author": "forker",
+      "author": "contributor",
       "author_avatar_url": null,
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
+      "created_at": "2026-09-17T08:06:00Z",
+      "updated_at": "2026-09-17T08:06:00Z",
       "closed_at": null,
       "base_ref": "topic",
-      "head_ref": "count-to-two",
-      "head_repository": "forker/demo",
-      "labels": [
-        "enhancement"
-      ],
-      "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "head_ref": "work-6",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
+      "merged": false
+    },
+    {
+      "number": 5,
+      "title": "Work item 5",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-17T08:05:00Z",
+      "updated_at": "2026-09-17T08:05:00Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-5",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
   ]
@@ -918,7 +916,9 @@ status: 202
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started",
+  "status_scan_at": null
 }
 after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
@@ -1005,7 +1005,9 @@ status: 200
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "not_due",
+  "status_scan_at": "[TIMESTAMP]"
 }
 ? 0
 ```
