@@ -51,10 +51,10 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from metabrowser.builtin_plugins.github.pull_route import PullRequestError, pull_host
+from metabrowser.builtin_plugins.github.pull_route import PullRequestError
 from metabrowser.builtin_plugins.github.pull_snapshot import (
     Snapshot,
-    admitted_snapshot,
+    admitted_pair,
     requested_snapshot,
 )
 from metabrowser.diff.adapters.base import DiffSourceError
@@ -576,10 +576,8 @@ async def _project(
 
 
 async def pull_rendered_diff_handler(request: Request) -> Response:
-    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
-    from metabrowser.builtin_plugins.github.pull_stack import combined, read_stack
-    from metabrowser.builtin_plugins.github.pull_stack_retained import retained_stack_pair
+    from metabrowser.builtin_plugins.github.pull_stack import combined
 
     params = request.query_params
     try:
@@ -602,7 +600,8 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     ):
         return _invalid()
     snapshot = Snapshot(number, base, head, params.get("store", ""), scope)
-    published, admission = await admitted_snapshot(request, snapshot)
+    with phase("admit"):
+        published, admission, admitted = await admitted_pair(request, snapshot)
     if admission == "unknown":
         return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)
     if published is None:
@@ -632,23 +631,10 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     named = str(number)
     if scope == "stack":
         # The stack's own manifest, restricted to its layers' files, whose digest names it:
-        # a pull request keeps the key, and so the rendered namespace, it had.
-        host = pull_host(request.app)
-        reader = host.pulls.observed_reader if host is not None else None
-        current = (await read_stack(served_repository(request.app), published, number, reader)).pair
-        # Admission found the pair current or retained; a retained one is the most recent
-        # with these commits, whose listing numbers the files as any other does.
-        pair = (
-            current
-            if current is not None and (current.base, current.head) == (base, head)
-            else await asyncio.to_thread(
-                retained_stack_pair, published, number, reader, base, head, None
-            )
-        )
-        if pair == "unknown":
-            return JSONResponse(
-                {"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE
-            )
+        # a pull request keeps the key, and so the rendered namespace, it had. Admission
+        # found the pair current or retained; a retained one is the most recent with these
+        # commits, whose listing numbers the files as any other does.
+        pair = admitted
         if pair is None:
             return JSONResponse({"code": "snapshot_expired"}, status_code=410, headers=_NO_STORE)
         named = f"stack-{number}-{pair.digest}"

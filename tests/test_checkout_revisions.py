@@ -24,6 +24,7 @@ import re
 import subprocess
 import time
 from collections.abc import Generator
+from html import escape
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -176,9 +177,8 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
         "location": str(checkout),
     }
     assert (branches["pin"], branches["ref"]) == (None, None)
-    # The checked-out branch lists first, as a mirror's default does, and is not "current":
-    # picked as a ref it shows its commit, which is not the working tree. The rest read
-    # newest first: local-work's commit was made here a month after feature's.
+    # The origin's default branch lists first. It also marks the checked-out branch here.
+    # The working tree is current, so a ref needs to be opened before its row is current.
     assert _names(branches) == ["topic", "local-work", "feature"]
     # Each row's commit and the date it was committed, read in the same for-each-ref. The
     # page shortens the ID as every line does (`shortCommit` in static/formatters.js).
@@ -199,13 +199,82 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
     assert v1["commit"] == FIRST
     assert v1["committed_at"] == float(git(checkout, "log", "-1", "--format=%ct", FIRST))
     remotes = _refs(served, kind="remote")
-    # A remote-tracking branch keeps its remote's name; origin/HEAD names another row.
-    assert _names(remotes) == ["origin/feature", "origin/topic"]
+    # The remote default comes first, while its symbolic HEAD is omitted.
+    assert _names(remotes) == ["origin/topic", "origin/feature"]
     assert [row["ref"] for row in remotes["refs"]] == [
-        "refs/remotes/origin/feature",
         "refs/remotes/origin/topic",
+        "refs/remotes/origin/feature",
     ]
     assert _names(_refs(served, kind="remote", q="FEAT")) == ["origin/feature"]
+
+
+def test_checkout_branch_lists_promote_primary_and_configured_defaults(
+    served: TestClient, checkout: Path
+) -> None:
+    remote = "origin"
+    for name, commit in (
+        ("main", FIRST),
+        ("master", FEATURE),
+        ("release/next", SECOND),
+        ("pr/main", "local-work"),
+    ):
+        git(checkout, "branch", name, commit)
+        git(checkout, "update-ref", f"refs/remotes/{remote}/{name}", commit)
+    git(checkout, "update-ref", "refs/remotes/upstream/master", SECOND)
+    git(
+        checkout,
+        "symbolic-ref",
+        f"refs/remotes/{remote}/HEAD",
+        f"refs/remotes/{remote}/release/next",
+    )
+    git(checkout, "remote", "add", "team/upstream", str(checkout.parent / "origin.git"))
+    git(checkout, "branch", "stable", SECOND)
+    git(checkout, "update-ref", "refs/remotes/team/upstream/stable", SECOND)
+    git(checkout, "update-ref", "refs/remotes/team/upstream/main", FIRST)
+    git(checkout, "update-ref", "refs/remotes/team/upstream/pr/main", "local-work")
+    git(
+        checkout,
+        "symbolic-ref",
+        "refs/remotes/team/upstream/HEAD",
+        "refs/remotes/team/upstream/stable",
+    )
+
+    local = _refs(served)
+    assert _names(local) == [
+        "master",
+        "release/next",
+        "stable",
+        "main",
+        "local-work",
+        "pr/main",
+        "feature",
+        "topic",
+    ]
+    assert [row["name"] for row in local["refs"] if row["checked_out"]] == ["topic"]
+    assert _names(_refs(served, q="MAIN")) == ["main", "pr/main"]
+    assert _names(_refs(served, kind="remote")) == [
+        f"{remote}/master",
+        f"{remote}/release/next",
+        "team/upstream/stable",
+        "upstream/master",
+        f"{remote}/main",
+        "team/upstream/main",
+        f"{remote}/pr/main",
+        "team/upstream/pr/main",
+        f"{remote}/feature",
+        f"{remote}/topic",
+    ]
+
+    # A symbolic HEAD can move while the branches themselves stay at the same commits.
+    git(checkout, "symbolic-ref", f"refs/remotes/{remote}/HEAD", f"refs/remotes/{remote}/topic")
+    assert _names(_refs(served))[:4] == ["master", "stable", "topic", "main"]
+    assert _names(_refs(served, kind="remote"))[:5] == [
+        f"{remote}/master",
+        f"{remote}/topic",
+        "team/upstream/stable",
+        "upstream/master",
+        f"{remote}/main",
+    ]
 
 
 def test_a_kept_listing_follows_head_to_another_branch(
@@ -233,13 +302,12 @@ def test_a_kept_listing_follows_head_to_another_branch(
     assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
     git(checkout, "symbolic-ref", "HEAD", "refs/heads/feature")
     # Within the TTL, with the clock where it was: the working tree's own list, which
-    # runs no Git, and the list of branches, which marks and lists first the one checked
-    # out, both name the branch HEAD is on now.
+    # runs no Git, and the list of branches both mark the branch HEAD is on now.
     tree = _refs(served, kind="working_tree")
     assert (tree["refs"], tree["working_tree"]["head"]) == ([], "refs/heads/feature")
     after = _refs(served)
     assert after["working_tree"] == tree["working_tree"]
-    assert _names(after)[0] == "feature"
+    assert _names(after)[0] == "topic"
     assert [row["name"] for row in after["refs"] if row["checked_out"]] == ["feature"]
     # Past the TTL it says the same.
     clock["offset"] = GIT_REPO_INFO_TTL_S + 1
@@ -400,7 +468,10 @@ def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
         return re.findall(r"<(\w+)[^>]*? class=\"([^\"]+)\"", outside)
 
     tree = _selector_row(served)
-    assert ' data-working-branch="topic">' in tree
+    assert ' data-working-branch="topic"' in tree
+    assert f' data-working-commit="{SECOND}">' in tree
+    assert 'data-source-mode="working-tree"' in tree
+    assert f'data-source-path="{escape(str(checkout.resolve()))}"' in tree
     assert (
         '<span class="source-ref-selector-label"><span class="source-ref-selector-view">'
         'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
@@ -410,6 +481,9 @@ def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
     _pin(served, ref="refs/heads/topic")
     revision = _selector_row(served)
     assert "data-working-" not in revision
+    assert 'data-source-mode="checkout-revision"' in revision
+    assert f'data-source-path="{escape(str(checkout.resolve()))}"' in revision
+    assert "data-source-synced-at" not in revision
     assert (
         '<span class="source-ref-selector-label">'
         '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
@@ -446,7 +520,8 @@ def test_a_github_checkouts_row_names_its_head_from_the_pages_repository_context
     monkeypatch.setattr(server, "checked_out_head", read_again)
     with TestClient(server.app) as client:
         tree = _selector_row(client)
-        assert ' data-working-branch="topic">' in tree
+        assert ' data-working-branch="topic"' in tree
+        assert f' data-working-commit="{SECOND}">' in tree
         assert '<span class="git-ref-label">topic</span>' in tree
         git(checkout, "checkout", "-q", "--detach", "topic")
         detached = _selector_row(client)
@@ -1527,7 +1602,8 @@ def test_a_linked_worktree_shows_its_repositorys_refs_and_neither_is_written(
         listing = _refs(client)
         # Its own HEAD's branch is the one checked out, and the refs are the repository's.
         assert listing["working_tree"]["head"] == "refs/heads/feature"
-        assert _names(listing) == ["feature", "local-work", "topic"]
+        assert _names(listing) == ["topic", "local-work", "feature"]
+        assert [row["name"] for row in listing["refs"] if row["checked_out"]] == ["feature"]
         assert _pin(client, ref="topic")["status"]["pin"] == SECOND
         assert _tree(client) == ["NOTES.md", "README.md"]
         _read_revisions(client, ("topic", "feature", "v1"), _commit_views(FEATURE, SECOND))

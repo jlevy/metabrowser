@@ -418,7 +418,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "step": "Changes opened during the page's own refresh waits for it",
     "requests": [
       "GET /api/plugin/github/pull?number=10",
-      "POST /api/plugin/github/pull-refresh {\"number\":10,\"held\":\"b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4\"}"
+      "POST /api/plugin/github/pull-refresh {\"number\":10,\"held\":\"641c13ea31b757850edb1a7975ac1051b58a9e221bb96e4d9e3451fd7b8d8c45\"}"
     ],
     "changesPending": true,
     "canRetryChanges": false,
@@ -449,7 +449,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "step": "Changes without its address paints no Fetch during the page's own refresh",
     "requests": [
       "GET /api/plugin/github/pull?number=10",
-      "POST /api/plugin/github/pull-refresh {\"number\":10,\"held\":\"b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4\"}"
+      "POST /api/plugin/github/pull-refresh {\"number\":10,\"held\":\"641c13ea31b757850edb1a7975ac1051b58a9e221bb96e4d9e3451fd7b8d8c45\"}"
     ],
     "changesPending": false,
     "canRetryChanges": false,

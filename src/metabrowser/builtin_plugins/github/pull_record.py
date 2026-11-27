@@ -1,8 +1,11 @@
 """The pull-request record: one validated JSON file per pull request, and its bounds.
 
 A record holds what ``gh api`` said about one pull request, as the reader it names saw
-it at ``fetched_at``: the pull request, its issue comments, reviews, review comments,
-check runs, and combined status, plus the comparison endpoints Git computed from it.
+it at ``fetched_at``: the pull request, its issue comments, reviews, and review comments,
+plus the comparison endpoints Git computed from it. Whether it conflicts and how its
+checks stand are its operational status, which changes without anyone touching the pull
+request and is kept apart from the record (:mod:`.pull_status`), so a check that
+finishes gives the record no new revision.
 It lives at ``sources/<slug>/pulls/<n>.json``, written by the home's private
 atomic file write under the source-alias lock and read lock-free with a size bound.
 Pydantic validates it on write and parses it on read; a record whose ``schema_version``
@@ -54,8 +57,10 @@ from metabrowser.home import (
 
 log = logging.getLogger(__name__)
 
-# 2 added the pull request's commit count and who merged it.
-PULL_RECORD_SCHEMA: Final = 2
+# 2 added the pull request's commit count and who merged it; 3 took out ``mergeable``,
+# the check runs, and the combined status, which are the operational status's
+# (:mod:`.pull_status`).
+PULL_RECORD_SCHEMA: Final = 3
 # 1 added each actor's avatar; 2 each label's color and description (:class:`PullLabel`).
 # A record of an earlier projection is still shown, but the catalog never vouches for it
 # (:func:`.pull_freshness.record_freshness`), so once its window has passed it is stale,
@@ -71,13 +76,9 @@ PULL_RECORD_PROJECTION: Final = 2
 #   fewer. 1,000 (ten pages) keeps every real discussion and cuts the spam magnet.
 # - reviews: Hello-World#1 has 1,437 and kubernetes#102884 408; 500 (five pages).
 # - review comments: kubernetes#102884 has 593, cpython#118450 275; 1,000 (ten pages).
-# - check runs: pytorch#196374 has 159, cli#14462 31; 300 (three pages).
-# - statuses: at most one on any of them; one page of 100.
 MAX_ISSUE_COMMENTS: Final = 1000
 MAX_REVIEWS: Final = 500
 MAX_REVIEW_COMMENTS: Final = 1000
-MAX_CHECK_RUNS: Final = 300
-MAX_STATUSES: Final = 100
 MAX_LABELS: Final = 100
 # A commit count past this is not a real pull request's: GitHub lists at most 250 of a
 # pull request's commits but counts them all, and no cap on that count is documented.
@@ -111,8 +112,7 @@ type Login = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_\
 type Short = Annotated[str, StringConstraints(max_length=1024)]
 type Url = Annotated[str, StringConstraints(pattern=r"^https://", max_length=4096)]
 type Reader = Annotated[str, StringConstraints(pattern=r"^gh:[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")]
-type Mergeable = Literal["mergeable", "conflicting", "unknown"]
-type UnavailablePart = Literal["check_runs", "status", "comparison"]
+type UnavailablePart = Literal["comparison"]
 
 
 class _Model(BaseModel):
@@ -186,11 +186,12 @@ class PullSide(_Model):
 
 
 class PullRequest(_Model):
-    """The pull request itself. ``mergeable`` is ``unknown`` while GitHub computes it.
+    """The pull request itself: its core, which changes when a person changes it.
 
     ``commits`` is how many commits GitHub counts in it and ``merged_by`` who merged it,
     which the page's header names as github.com's does; either is ``None`` when the
-    API's answer lacks it.
+    API's answer lacks it. Whether it conflicts is its operational status's
+    (:class:`~.pull_status.PullStatus`), never the core's.
     """
 
     number: int = Field(ge=1)
@@ -204,7 +205,6 @@ class PullRequest(_Model):
     merged_by_avatar_url: AvatarUrl = None
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
-    mergeable: Mergeable
     labels: Annotated[tuple[PullLabel, ...], BeforeValidator(bare_labels)] = Field(
         max_length=MAX_LABELS
     )
@@ -268,33 +268,6 @@ class ReviewComment(_Model):
     updated_at: Timestamp
 
 
-class CheckRun(_Model):
-    """A check run on the head commit. ``conclusion`` is ``None`` until it completes."""
-
-    id: int
-    name: Short
-    status: Short
-    conclusion: Short | None
-    details_url: Url | None
-    app: Short | None
-
-
-class CommitStatus(_Model):
-    """One context of the head commit's combined status."""
-
-    context: Short
-    state: Short
-    description: Short | None
-    target_url: Url | None
-
-
-class CombinedStatus(_Model):
-    """The head commit's combined status: an overall state and its contexts."""
-
-    state: Short
-    statuses: tuple[CommitStatus, ...] = Field(max_length=MAX_STATUSES)
-
-
 class Comparison(_Model):
     """The pinned endpoints of the pull request's Files changed.
 
@@ -318,8 +291,6 @@ class Truncation(_Model):
     issue_comments: bool
     reviews: bool
     review_comments: bool
-    check_runs: bool
-    statuses: bool
     text: bool
 
 
@@ -340,15 +311,12 @@ class PullRecord(_Model):
     issue_comments: tuple[IssueComment, ...] = Field(max_length=MAX_ISSUE_COMMENTS)
     reviews: tuple[Review, ...] = Field(max_length=MAX_REVIEWS)
     review_comments: tuple[ReviewComment, ...] = Field(max_length=MAX_REVIEW_COMMENTS)
-    check_runs: tuple[CheckRun, ...] = Field(max_length=MAX_CHECK_RUNS)
-    status: CombinedStatus | None
     comparison: Comparison | None
     truncated: Truncation
     unavailable: dict[UnavailablePart, Short]
     """Parts that could not be read, each with the typed state that said why.
 
-    ``check_runs`` and ``status`` when GitHub refused them (a token without checks
-    access answers 403); ``comparison`` when the base could not be fetched
+    ``comparison`` when the base could not be fetched
     (``not_found_or_private``, ``network_error``, ``fetch_failed``), shares no history
     with the head (``no_merge_base``, Git's own answer and nothing else), cannot be known
     because the store's history is shallow (``base_uncertain``), or needs a commit the
@@ -849,7 +817,6 @@ def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | 
 __all__ = [
     "API_PAGE_SIZE",
     "MAX_BODY_BYTES",
-    "MAX_CHECK_RUNS",
     "MAX_DIFF_HUNK_BYTES",
     "MAX_ISSUE_COMMENTS",
     "MAX_LABELS",
@@ -857,7 +824,6 @@ __all__ = [
     "MAX_PULL_REFRESH_BYTES",
     "MAX_REVIEWS",
     "MAX_REVIEW_COMMENTS",
-    "MAX_STATUSES",
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
     "MAX_REFRESH_MESSAGE_CHARS",
@@ -865,9 +831,6 @@ __all__ = [
     "PullObservationSuperseded",
     "PullRefreshStamp",
     "Reader",
-    "CheckRun",
-    "CombinedStatus",
-    "CommitStatus",
     "Comparison",
     "IssueComment",
     "LabelColor",

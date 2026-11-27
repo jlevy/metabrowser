@@ -8,7 +8,7 @@ exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
 flowmark-rs = "2026-07-16T00:00:00Z"
-kpress = "2026-11-24T08:00:00Z"
+kpress = "2026-11-26T20:00:00Z"
 
 [[package]]
 name = "annotated-doc"
@@ -283,7 +283,7 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.3.10"
+version = "0.3.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frontmatter-format" },
@@ -295,9 +295,9 @@ dependencies = [
     { name = "pygments" },
     { name = "strif" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/70/74/f2f357795054db1dc265a82ad2574e23c919fb1d73d075b3bb48bcf732cc/kpress-0.3.10.tar.gz", hash = "sha256:8a00b9090ca0df54368c34168243ec5c74a5dcc23b8d22e46a086c95cd5c110e", size = 1815946, upload-time = "2026-11-24T07:02:02.743Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/00/fe252b91817f25a313d2e8ce97cde2b40648e0f18ea947c57beecd2c602f/kpress-0.3.11.tar.gz", hash = "sha256:1ffc254ed82aa59236910c1b983064e253c40c11e9cccd7caae31f2e62960461", size = 1816864, upload-time = "2026-11-26T19:53:49.152Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/bb/3aaf318257d84be86dac42286f79354225b97c179b75ae33ce1ef2cd33cc/kpress-0.3.10-py3-none-any.whl", hash = "sha256:205d7f587c9d1da2ed332db6ec805d18b8e6ca4b2627e9964f88724ff9a28ab1", size = 1172218, upload-time = "2026-11-24T07:02:01.255Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/56/8cb6fc4454d2923059b3d2826af9afd7aa5034cab8008be64dd1e8438746/kpress-0.3.11-py3-none-any.whl", hash = "sha256:65e7a972d17ac56a7a29d5afe71137cc5de82a1a39954d0762e8459a320700d9", size = 1172399, upload-time = "2026-11-26T19:53:47.497Z" },
 ]
 
 [[package]]
@@ -462,7 +462,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.15.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "kpress", specifier = "==0.3.10" },
+    { name = "kpress", specifier = "==0.3.11" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "pathspec", specifier = ">=1.1.1" },
     { name = "prettyfmt", specifier = ">=0.4.1" },

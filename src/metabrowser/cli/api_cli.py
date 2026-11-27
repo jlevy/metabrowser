@@ -108,7 +108,10 @@ _REFRESH_ENDED_WELL = frozenset({"succeeded", "default_branch_unknown", "refresh
 _STATUS_ROUTE_FIELD = "status_route"
 # How long a one-shot command waits for that refresh: one Git deadline. A refresh that
 # prunes and fetches again can run longer; the command then says it did not finish, and
-# leaving stops it, as a server's shutdown does.
+# leaving stops it, as a server's shutdown does. It is one deadline for all the work the
+# request led to, the jobs it started and any those start in turn, such as the status scan
+# a list's look at the mirror starts (``RefreshCoordinator.drain``): a chain of jobs waits
+# no longer than one job, so the bound is still the slowest single fetch it was set for.
 _REFRESH_DRAIN_S = GIT_ACQUISITION_TIMEOUT_S
 
 
@@ -149,8 +152,9 @@ async def _issue(
         else:
             response = await client.get(route)
         # Leaving the client shuts the application down, which cancels background work.
-        # The only background work a one-shot command has is a refresh its own request
-        # asked for, and that is the work the command exists to do, so let it finish.
+        # The only background work a one-shot command has is what its own request asked
+        # for, and the jobs that work starts, which is the work the command exists to do,
+        # so let it finish.
         await drain_refreshes(app, timeout_s=_REFRESH_DRAIN_S)
         after: tuple[str, ApiResponse] | None = None
         follow = _follow_route(route, response) if body else None

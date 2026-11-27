@@ -35,7 +35,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "5b3e8db1e0012e725ad0118cfe608208412c91db24ee5af40cbe2c93f2642060",
+  "record_revision": "911c08462f932807a3a396fe6c4189005f2a1c1eb30e9c7d787dd008be378622",
   "state": "ready",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -117,7 +117,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -129,7 +129,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -141,7 +141,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -153,7 +153,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -165,7 +165,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -177,7 +177,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -189,7 +189,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -201,7 +201,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -213,7 +213,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -225,7 +225,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -243,7 +243,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7&step=2
 status: 200
 {
-  "record_revision": "5b3e8db1e0012e725ad0118cfe608208412c91db24ee5af40cbe2c93f2642060",
+  "record_revision": "911c08462f932807a3a396fe6c4189005f2a1c1eb30e9c7d787dd008be378622",
   "state": "ready",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -389,7 +389,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -401,7 +401,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -413,7 +413,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -425,7 +425,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -437,7 +437,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -449,7 +449,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -461,7 +461,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -473,7 +473,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -485,7 +485,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -497,7 +497,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -523,7 +523,7 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=8
 status: 200
 {
-  "record_revision": "68097bda4fea21c13b15976bab4fcc580a1667136df5ec513e270cb28b07eb0b",
+  "record_revision": "d02d5b302d16801a3d54d6b2f747a4c864d5bd41396470700af9f891ace510c7",
   "state": "stale",
   "stale": {
     "guide": {
@@ -610,7 +610,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -622,7 +622,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -634,7 +634,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -646,7 +646,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -658,7 +658,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -670,7 +670,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -682,7 +682,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -694,7 +694,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -706,7 +706,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -718,7 +718,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.11/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -736,7 +736,7 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=9
 status: 200
 {
-  "record_revision": "2de61d7e403b24595ab0a6ca6e1ce70c621358175d1b6e255e32830e538cec00",
+  "record_revision": "0bce3b28b4245dfa8df4b4e527c11d1e10b4db0d03de4f6c85463500dc84195c",
   "state": "invalid",
   "message": "Use one guided-review block in the pull request description."
 }
@@ -751,7 +751,7 @@ pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=10
 status: 200
 {
-  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+  "record_revision": "641c13ea31b757850edb1a7975ac1051b58a9e221bb96e4d9e3451fd7b8d8c45",
   "state": "absent"
 }
 ? 0
@@ -768,7 +768,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7&step=3
 status: 200
 {
-  "record_revision": "5b3e8db1e0012e725ad0118cfe608208412c91db24ee5af40cbe2c93f2642060",
+  "record_revision": "911c08462f932807a3a396fe6c4189005f2a1c1eb30e9c7d787dd008be378622",
   "state": "step_not_found"
 }
 ? 0
@@ -1020,7 +1020,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "3a845e764c4ec13e650bcd2f0aa2070b91bbf6d5622c7e90744d03c3085a687f",
+  "record_revision": "c94ee740113511383ac512893aba5474a9abbaf0682d5c2c1d14e0c34d88f6fa",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items."
 }
@@ -1040,7 +1040,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "7a8064e614fdf0641ca368682429b46d86d7a9f4cffd57d7757e6aa89c7acf71",
+  "record_revision": "557044960be2266bdad47509035304e96c7f570d96c1890412966fdb93f9e3c4",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items.0."
 }
@@ -1064,7 +1064,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "cdb594bebd68f182cd784b6b04e867d5a08cd44cfa280ac815fb67ae6941c1e1",
+  "record_revision": "31d028cdc733dea569075a47a94209cbb6266d1147431af192171b7a4a77954d",
   "state": "invalid",
   "message": "This guide has more than 40 steps and groups."
 }
@@ -1302,7 +1302,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "c45e40d11fbc230d39524aff52ffa37f378017259dde655aa23a909f91802bd3",
+  "record_revision": "d00da76d39499e284b2695500cae02e0880e399033092773f2120feb35158c62",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.end_line."
 }
@@ -1322,7 +1322,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "0ce2d3510d198ed3b03078eca300f119df0ed8cc7f7f5af79bfbb5c9ff9caaee",
+  "record_revision": "663b2ed2aac1c04f2cb6254ed7b3a99e1607e2b2ef681373d8ee62693c3e9026",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.path."
 }
@@ -1342,7 +1342,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "e14cf2d1446e0c28e8f103be8d021fe69c95d3c54dc7ccdc11d5d2e8e97873f6",
+  "record_revision": "32aafedf49b0e5b2e7084d128ad1865a9f34646300742476f507f9a6689842fd",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.pull."
 }
@@ -1362,7 +1362,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "2b982a9c15ef3d15368f831ebe65701b7e459949f32411cd0e7457e7354df853",
+  "record_revision": "73c9168b67a25f6610b7bb98608e1704fe74caadfd6391ae35e5821a7ff59a31",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.1.references.0.commit."
 }

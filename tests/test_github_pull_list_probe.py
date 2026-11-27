@@ -541,9 +541,13 @@ def test_a_probe_vouches_for_a_record_as_a_scan_run_when_it_asked() -> None:
 
     record = _record(fetched=RECORD_NOW - timedelta(minutes=5), state="closed")
     late = RECORD_NOW + timedelta(seconds=FRESHNESS_WINDOW_S + 30)
-    assert record_freshness(record, _catalog(), _row(), now=late).verdict == "unverified"
+    assert (
+        record_freshness(record, _catalog(), _row(), status=None, now=late).verdict == "unverified"
+    )
     checked = utc_stamp(late - timedelta(seconds=5))
-    verdict = record_freshness(record, _catalog(), _row(), now=late, checked_at=checked)
+    verdict = record_freshness(
+        record, _catalog(), _row(), status=None, now=late, checked_at=checked
+    )
     assert (verdict.verdict, verdict.verified_at, verdict.verified_by) == (
         "current",
         checked,
@@ -552,12 +556,16 @@ def test_a_probe_vouches_for_a_record_as_a_scan_run_when_it_asked() -> None:
     # A probe older than the window vouches for nothing, and never hides a changed row.
     stale = utc_stamp(late - timedelta(seconds=FRESHNESS_WINDOW_S + 1))
     assert (
-        record_freshness(record, _catalog(), _row(), now=late, checked_at=stale).verdict
+        record_freshness(
+            record, _catalog(), _row(), status=None, now=late, checked_at=stale
+        ).verdict
         == "unverified"
     )
     newer = _row(updated=RECORD_NOW)
     assert (
-        record_freshness(record, _catalog(), newer, now=late, checked_at=checked).verdict
+        record_freshness(
+            record, _catalog(), newer, status=None, now=late, checked_at=checked
+        ).verdict
         == "changed"
     )
 

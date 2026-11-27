@@ -1,5 +1,5 @@
 /** @typedef {{key: string, data: unknown} | null} PanelResolution */
-/** @typedef {{dispose: () => void, ready?: Promise<void>, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
+/** @typedef {{dispose: () => void, ready?: Promise<void>, refresh?: () => Promise<void>, update?: (context: {path?: string, raw?: unknown}, data: unknown) => void | Promise<void>}} PanelHandle */
 /** @typedef {{id: string, label: string, placement: "summary" | "content" | "supplemental", presentation: "surface" | "document", collapsible?: boolean, defaultExpanded?: boolean, printable?: boolean, required?: boolean, classifyError?: (error: unknown) => {message: string, retryable: boolean}, resolve: (context: {path?: string, raw?: unknown}, options: {signal: AbortSignal}) => PanelResolution | Promise<PanelResolution>, mount: (container: HTMLElement, context: {path?: string, raw?: unknown}, data: unknown, options: {signal?: AbortSignal}) => void | PanelHandle | Promise<void | PanelHandle>}} PanelDescriptor */
 /** @typedef {{descriptor: PanelDescriptor, slot: HTMLElement, body: HTMLElement, disposeDisclosure: () => void, generation: number, resolveController: AbortController | null, mountController: AbortController | null, handle: PanelHandle | null, key: string | null, retry: (() => void) | null, mounted: boolean}} PanelRecord */
 /** @typedef {{listPanels: () => ReadonlyArray<PanelDescriptor>}} PanelRegistry */
@@ -88,6 +88,7 @@ export function mountOverview(container, initialContext, mb, registry) {
   let disposed = false;
   let active = mb.viewState.isActive(container);
   let stale = false;
+  let rereadOnReveal = false;
   let context = initialContext;
   /** @type {Promise<void> | null} */
   let initialReady = null;
@@ -158,8 +159,8 @@ export function mountOverview(container, initialContext, mb, registry) {
     publishPrintState(container, records, mb);
   }
 
-  /** @param {PanelRecord} record @param {PanelResolution} result @param {number} generation */
-  async function applyResolution(record, result, generation) {
+  /** @param {PanelRecord} record @param {PanelResolution} result @param {number} generation @param {boolean} reread */
+  async function applyResolution(record, result, generation, reread) {
     if (disposed || generation !== record.generation) {
       return;
     }
@@ -179,9 +180,12 @@ export function mountOverview(container, initialContext, mb, registry) {
       return;
     }
     record.slot.hidden = false;
-    if (record.mounted && record.key === result.key) {
+    if (record.mounted && record.key === result.key && (!reread || record.handle?.refresh)) {
       try {
         await record.handle?.update?.(context, result.data);
+        if (reread) {
+          await record.handle?.refresh?.();
+        }
       } catch (error) {
         disposeMount(record);
         record.key = null;
@@ -225,7 +229,7 @@ export function mountOverview(container, initialContext, mb, registry) {
   }
 
   /** @param {PanelRecord} record */
-  async function resolvePanel(record) {
+  async function resolvePanel(record, reread = false) {
     record.resolveController?.abort();
     const resolveController = new AbortController();
     record.resolveController = resolveController;
@@ -234,7 +238,7 @@ export function mountOverview(container, initialContext, mb, registry) {
       const result = await record.descriptor.resolve(context, {
         signal: resolveController.signal,
       });
-      await applyResolution(record, result, generation);
+      await applyResolution(record, result, generation, reread);
     } catch (error) {
       if (generation === record.generation) {
         renderFailure(record, error);
@@ -242,14 +246,18 @@ export function mountOverview(container, initialContext, mb, registry) {
     }
   }
 
-  function reconcile() {
+  function reconcile(reread = false) {
     stale = false;
-    const work = Promise.all(records.map((record) => resolvePanel(record))).then(() => {});
+    rereadOnReveal = false;
+    const work = Promise.all(records.map((record) => resolvePanel(record, reread))).then(() => {});
     initialReady ??= work;
     return work;
   }
 
   const unsubscribeContext = mb.folderContext.subscribe(initialContext.path || "", (envelope) => {
+    if (context.raw === envelope) {
+      return;
+    }
     context = { ...context, path: envelope.path, raw: envelope };
     if (active) {
       void reconcile();
@@ -260,7 +268,7 @@ export function mountOverview(container, initialContext, mb, registry) {
   const unsubscribeActive = mb.viewState.subscribeActive(container, (nextActive) => {
     active = nextActive;
     if (active && stale) {
-      void reconcile();
+      void reconcile(rereadOnReveal);
     }
   });
   if (active && records.every((record) => record.generation === 0)) {
@@ -271,6 +279,17 @@ export function mountOverview(container, initialContext, mb, registry) {
   publishPrintState(container, records, mb);
   return Object.freeze({
     ready,
+    /** @param {MetabrowserPublicRenderContext} next */
+    async refresh(next) {
+      context = next;
+      if (active) {
+        await reconcile(true);
+      } else {
+        stale = true;
+        rereadOnReveal = true;
+      }
+      return true;
+    },
     dispose() {
       if (disposed) {
         return;

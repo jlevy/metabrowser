@@ -118,6 +118,9 @@ class _Host:
 def _verdict(kind: str) -> RecordFreshness:
     if kind == "changed":
         return RecordFreshness("changed", FETCHED, "fetch", False, False, _stamp(NOW))
+    if kind == "changed, no status":
+        # As a record the prefetch read has it: no kept status describes its head.
+        return RecordFreshness("changed", FETCHED, "fetch", False, False, _stamp(NOW), True)
     if kind == "current":
         return RecordFreshness("current", _stamp(NOW), "catalog", False, False)
     if kind == "checks":
@@ -223,6 +226,28 @@ def test_named_records_are_read_when_missing_or_changed_and_skipped_otherwise(
     ]
 
 
+def test_a_record_whose_status_alone_is_due_is_not_prefetched(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """The lane reads no status, so its record's own due rule decides. A changed record
+    whose row an attempt saw within the window, with no kept status, has only its status
+    due: the lane started a job for it, which read the status alone, spent a place in each
+    cap, and reported ``failed:unknown``. Once the record is due again it is read."""
+
+    host, verdicts, _revision = stand
+    verdicts[7] = "changed, no status"
+    held = asyncio.run(host.pulls.companion(7))
+    held._attempted_row = _verdict("changed").changed_row  # pyright: ignore[reportPrivateUsage]
+    held._last_attempt = NOW - timedelta(seconds=10)  # pyright: ignore[reportPrivateUsage]
+    _run(host, PrefetchRequest(records=(7,)))
+    assert host.started == []
+    assert _recent(host) == [("record", 7, "skipped:not_due")]
+    host.clock[0] = NOW + timedelta(seconds=FRESHNESS_WINDOW_S)  # pyright: ignore[reportAttributeAccessIssue]
+    _run(host, PrefetchRequest(records=(7,)))
+    assert host.started == [7]
+    assert _recent(host)[-1] == ("record", 7, "refreshed")
+
+
 def test_changed_adds_what_this_server_answered_most_recently_but_never_a_missing_one(
     stand: tuple[_Host, dict[int, str], list[int]],
 ) -> None:
@@ -286,7 +311,7 @@ def test_the_lane_leaves_what_is_on_screen_the_ceiling_it_needs(
 
 
 def test_the_caps_priced_at_a_page_a_part_fit_speculative_works_share() -> None:
-    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737)."""
+    """The arithmetic beside the caps: 4 points a record and 1 a list (A1, review A of #737)."""
 
     priced = RECORDS_PER_HOUR * POINTS_PER_RECORD + FILES_PER_HOUR * POINTS_PER_FILES_LIST
     assert priced <= gh_budget.SPECULATIVE_CORE_PER_HOUR

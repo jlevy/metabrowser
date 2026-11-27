@@ -151,6 +151,14 @@ route = "pull-files-summary"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_summary_handler"
 methods = ["GET"]
 
+# Each named pull request's operational status and its verdict, for the readiness its Pulls
+# row shows: what the Pulls tab's scan, which pulls-refresh starts, or the page's own read
+# last kept. From the cache alone: no gh and no Git.
+[[data_hook]]
+route = "pull-statuses"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_statuses_handler"
+methods = ["GET"]
+
 # Start or join that list's refresh in the refresh coordinator. A POST with a JSON object
 # body naming its number, behind the same-origin guard; it returns at once.
 [[data_hook]]
@@ -180,6 +188,15 @@ methods = ["POST"]
 route = "status"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:status_handler"
 methods = ["POST"]
+
+# What the servers sharing the event log asked of GitHub in a window, from its gh spans:
+# the calls by budget and job, what they cost, the share answered 304, their latency, how
+# many ran at once, and how long their jobs queued. From the event log alone: no gh and
+# no Git.
+[[data_hook]]
+route = "gh-requests"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:gh_requests_handler"
+methods = ["GET"]
 
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.

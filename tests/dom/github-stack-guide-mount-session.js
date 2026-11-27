@@ -15,9 +15,13 @@
 // disposes the view and aborts its read. Then Docs and Changes that could not load: each says so in a
 // pull request's error notice with Retry, whose press disposes what the failed draw left and
 // draws again, and a Retry left behind by a tab switch or the page's disposal draws nothing.
-// Last, two more stacks' headers from first paint to their answers: one whose members the
+// Then two more stacks' headers from first paint to their answers: one whose members the
 // Pulls tab knows carry no labels, which has no labels row from first paint, and one the
-// Pulls tab does not know, whose members row is held from first paint.
+// Pulls tab does not know, whose members row is held from first paint. Last, the members'
+// readiness (mb-3n21): the page reads the server's verdict on its open members when the
+// browser is idle, and each member's line ends with its glyph's cell, empty for a merged one,
+// though a member's record lags the head the server judged; a Pulls tab beside it shares its
+// answer, so neither reads it again; and a member whose record moves is read again once.
 // The navigation itself is github-guided-review-session.js's, and the stack's own
 // state machine github-stack-page-session.js's; this is the page's glue between them. Paint is
 // Chrome's.
@@ -883,6 +887,160 @@ async function run() {
   report.cold_without_labels = others[75];
   report.unknown_stack = others[76];
   report.note_links = await noteLinks(page, mb);
+
+  // The members' readiness (mb-3n21): the page reads, for the members its card lists, the
+  // server's verdict on each, from the statuses the server answered once the scan of every
+  // open pull request's status had ended (tests/fixtures/github-pulls-readiness-responses.json),
+  // when the browser is idle, and each member's line ends with its glyph's cell. #10, a draft,
+  // conflicts; #8 is merged, so it is not asked and its cell stays empty. The stack's heads are
+  // its members' records', placeholders here that lag the heads the statuses judged, as a
+  // record lags the catalog after a push: a member draws the verdict on the head the server
+  // judged all the same, as its Pulls row does.
+  const readiness = JSON.parse(
+    fs.readFileSync(
+      path.join(root, "tests/fixtures/github-pulls-readiness-responses.json"),
+      "utf8",
+    ),
+  ).scanned.body;
+  const judged = new Map(
+    readiness.rows.map((row) => JSON.parse(row)).map((row) => [row.number, row]),
+  );
+  const statusReads = [];
+  const answered = globalThis.fetch;
+  globalThis.fetch = async (route, init = {}) => {
+    if (route.startsWith("/api/plugin/github/pull-statuses?")) {
+      const numbers = new URL(route, "http://localhost").searchParams.get("numbers").split(",");
+      statusReads.push(route);
+      return response({
+        ...readiness,
+        rows: numbers.map((number) => judged.get(Number(number))).filter(Boolean),
+      });
+    }
+    return answered(route, init);
+  };
+  const idle = [];
+  const runIdle = async () => {
+    while (idle.length > 0) {
+      idle.shift()();
+      await settle();
+    }
+  };
+  const idleMb = {
+    ...mb,
+    whenIdle(callback) {
+      idle.push(callback);
+      return () => {};
+    },
+  };
+  const members = stack(revision(1)).members;
+  assert.ok(
+    members.every((member) => member.head !== judged.get(member.number)?.head),
+    "each member's record lags the head the statuses judged",
+  );
+  otherAnswers.set(77, { ...stack(revision(1)), number: 77, guide: null, members });
+  const judgedPage = new Element("main");
+  const judging = page.mountStackPage(
+    judgedPage,
+    { number: 77, tab: "changes", open: () => Promise.resolve() },
+    idleMb,
+  );
+  await settle();
+  const memberRows = () =>
+    judgedPage.querySelectorAll(".github-pull-stack-member").map((row) => {
+      const glyph = row.querySelector(".github-pull-readiness-icon");
+      return {
+        state: row.querySelector(".github-pull-state-icon")?.dataset.state ?? null,
+        words: row.querySelector(".github-pull-readiness-said")?.textContent ?? null,
+        glyph: glyph === null ? null : `${glyph.dataset.verdict} (${glyph.dataset.tone})`,
+        cell_last: row.children.at(-1)?.classes.has("github-pull-stack-member-readiness") ?? false,
+      };
+    });
+  const before = memberRows();
+  await runIdle();
+  report.members_readiness = {
+    before_idle: before,
+    asked: [...statusReads],
+    after_idle: memberRows(),
+  };
+  assert.deepEqual(
+    statusReads,
+    ["/api/plugin/github/pull-statuses?numbers=10"],
+    "the page asks for its open member alone, once",
+  );
+  assert.ok(
+    report.members_readiness.after_idle.every((row) => row.cell_last),
+    "every member's line ends with its readiness's cell",
+  );
+  assert.equal(report.members_readiness.after_idle[0].glyph, "conflicts (danger)");
+
+  // A Pulls tab in the same document draws #10 by the catalog's head, the one the server
+  // judged, beside the page that knows #10 by its record's lagging head: the document holds one
+  // answer of #10 for both, so neither reads it again as the tab draws and the page polls, turn
+  // after turn; and when #10's record moves to a new head in the stack's answer, #10 is read
+  // again once, whichever of them reads it, and both draw what it says.
+  const lanes = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/row-readiness.js")).href
+  );
+  const tabLane = lanes.createRowReadiness({
+    async read(numbers) {
+      const answer = await globalThis.fetch(`${lanes.PULL_STATUSES_ROUTE}?numbers=${numbers}`);
+      return { status: answer.status, body: await answer.json() };
+    },
+    schedule(callback) {
+      idle.push(callback);
+      return callback;
+    },
+    cancel() {},
+    isVisible: () => true,
+    now: () => NOW_MS,
+    changed() {},
+  });
+  const tabRow = { number: 10, head: judged.get(10).head, state: "draft" };
+  const source = stacksAnswer.source;
+  const beside = [];
+  for (let turn = 0; turn < 3; turn += 1) {
+    statusReads.length = 0;
+    tabLane.want([tabRow], source);
+    await poll();
+    await runIdle();
+    beside.push({
+      turn: turn + 1,
+      asked: [...statusReads],
+      pulls_tab: tabLane.readiness(tabRow, source)?.label ?? null,
+      page: memberRows()[0].glyph,
+    });
+  }
+  statusReads.length = 0;
+  otherAnswers.set(77, {
+    ...stack(revision(1)),
+    number: 77,
+    guide: null,
+    members: members.map((member) =>
+      member.number === 10 ? { ...member, head: "<moved_head>" } : member,
+    ),
+  });
+  await poll();
+  await runIdle();
+  tabLane.want([tabRow], source);
+  await runIdle();
+  report.members_readiness.beside_a_pulls_tab = beside;
+  report.members_readiness.record_moved = {
+    asked: [...statusReads],
+    pulls_tab: tabLane.readiness(tabRow, source)?.label ?? null,
+    page: memberRows()[0].glyph,
+  };
+  assert.ok(
+    beside.every((turn) => turn.asked.length === 0),
+    "a row two surfaces know by two heads is not read in turn",
+  );
+  assert.deepEqual(
+    statusReads,
+    ["/api/plugin/github/pull-statuses?numbers=10"],
+    "a member whose record moves is read again once",
+  );
+  tabLane.dispose();
+  judging.dispose?.();
+  globalThis.fetch = answered;
   console.log(JSON.stringify(report, null, 2));
 }
 

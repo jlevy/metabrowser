@@ -45,7 +45,7 @@ from __future__ import annotations
 import asyncio
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -323,7 +323,10 @@ _MOMENT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _EXAMPLES: Final = 3
 
 
-def _moment(raw: str | None, field: str) -> datetime | None:
+def parse_moment(raw: str | None, field: str) -> datetime | None:
+    """A ``since`` or ``until`` parameter as a UTC moment, ``None`` when not given, or
+    :class:`QueryError`."""
+
     if raw is None or raw == "":
         return None
     if not _MOMENT.match(raw):
@@ -334,7 +337,9 @@ def _moment(raw: str | None, field: str) -> datetime | None:
         raise QueryError(f"{field} must be a real moment") from exc
 
 
-def _record_time(record: dict[str, Any]) -> datetime | None:
+def record_time(record: dict[str, Any]) -> datetime | None:
+    """When *record* was written, or ``None`` for a record with no time the log writes."""
+
     stamp = record.get("ts")
     if not isinstance(stamp, str):
         return None
@@ -342,6 +347,39 @@ def _record_time(record: dict[str, Any]) -> datetime | None:
         return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=UTC)
     except ValueError:
         return None
+
+
+def window_segments(
+    *, state: Path, directory: Path, since: datetime
+) -> Iterator[tuple[str, bytes]]:
+    """The name and bytes of each segment that can hold a record since *since*. Blocking.
+
+    Every segment written to since then, newest first, at most every segment the directory
+    can hold, each read only to the size the writer bounds a segment to; one that cannot
+    be read is left out. A summary of a window (:func:`summarize_failures`, and the GitHub
+    plugin's request report) reads the log through this, one segment at a time.
+    """
+
+    from metabrowser import home
+
+    for f in event_log.list_files(directory)[:_MAX_SEGMENTS]:
+        if datetime.fromtimestamp(f.modified, UTC) < since:
+            continue  # Written to last before the window opened.
+        try:
+            data = home.read_private_file_bounded(
+                state,
+                f"{event_log.EVENTS_DIRECTORY}/{f.name}",
+                max_bytes=event_log.MAX_FILE_BYTES + event_log.MAX_LINE_BYTES,
+                shared="refuse",
+            )
+        except (
+            FileNotFoundError,
+            home.PrivateStorageError,
+            home.PrivateFileTooLargeError,
+            OSError,
+        ):
+            continue
+        yield f.name, data
 
 
 def _record_link(file: str, record: dict[str, Any]) -> str:
@@ -569,35 +607,17 @@ def summarize_failures(
     else the ``failure`` state its work noted, else its outcome. Blocking.
     """
 
-    from metabrowser import home
-
     tally = FailureTally(kinds=kinds)
     read: list[str] = []
     scanned = 0
-    for f in event_log.list_files(directory)[:_MAX_SEGMENTS]:
-        if datetime.fromtimestamp(f.modified, UTC) < since:
-            continue  # Written to last before the window opened.
-        try:
-            data = home.read_private_file_bounded(
-                state,
-                f"{event_log.EVENTS_DIRECTORY}/{f.name}",
-                max_bytes=event_log.MAX_FILE_BYTES + event_log.MAX_LINE_BYTES,
-                shared="refuse",
-            )
-        except (
-            FileNotFoundError,
-            home.PrivateStorageError,
-            home.PrivateFileTooLargeError,
-            OSError,
-        ):
-            continue
-        read.append(f.name)
+    for name, data in window_segments(state=state, directory=directory, since=since):
+        read.append(name)
         for record in event_log.parse_lines(data):
             scanned += 1
-            moment = _record_time(record)
+            moment = record_time(record)
             if moment is None or moment < since or (until is not None and moment > until):
                 continue
-            tally.add(record, file=f.name)
+            tally.add(record, file=name)
     return {
         "schema_version": event_log.SCHEMA_VERSION,
         "directory": str(directory),
@@ -622,8 +642,8 @@ async def api_event_log_failures(request: Request) -> JSONResponse:
         unknown = sorted(set(params) - {"since", "until", "kind"})
         if unknown:
             raise QueryError(f"unknown parameter {', '.join(unknown)}")
-        since = _moment(params.get("since"), "since")
-        until = _moment(params.get("until"), "until")
+        since = parse_moment(params.get("since"), "since")
+        until = parse_moment(params.get("until"), "until")
         kinds = choices(params.get("kind"), event_log.KINDS, "kind")
     except QueryError as exc:
         return JSONResponse({"error": str(exc), "code": "invalid_query"}, status_code=400)
@@ -660,7 +680,10 @@ __all__ = [
     "choices",
     "api_event_log",
     "api_event_log_failures",
+    "parse_moment",
     "parse_query",
     "read_log",
+    "record_time",
     "summarize_failures",
+    "window_segments",
 ]

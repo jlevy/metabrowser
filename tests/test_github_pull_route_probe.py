@@ -34,7 +34,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
 )
-from metabrowser.mirror_refresh import RefreshCoordinator
+from metabrowser.mirror_refresh import RefreshAsk, RefreshCoordinator
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import stand as stand
 
@@ -60,7 +60,7 @@ class _Route:
         monkeypatch.setattr(pulls, "utc_now", lambda: self.now)
         monkeypatch.setattr(pulls, "probe_pull_request", self._probe)
 
-    def _start(self, number: int) -> Any:
+    def _start(self, number: int, _ask: RefreshAsk) -> Any:
         self.started.append(number)
         return "started"
 

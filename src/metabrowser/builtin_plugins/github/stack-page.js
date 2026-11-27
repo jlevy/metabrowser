@@ -109,8 +109,15 @@ import {
   textRouteOpening,
   titleHeading,
 } from "./pull-page.js";
-import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
+import {
+  STACK_OVERVIEW,
+  stackLabel,
+  stackMenuOrder,
+  stackPosition,
+  watchStacks,
+} from "./pull-stacks.js";
 import { listedState, PULL_STATES, STACK_STATE_ORDER } from "./pull-state.js";
+import { createRowReadiness, PULL_STATUSES_ROUTE } from "./row-readiness.js";
 import { stackMemberRow } from "./stack-member-row.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
@@ -1554,7 +1561,7 @@ export function mountStackPage(container, ctx, mb) {
       { class: "github-pull-state-icon github-pull-stack-title-icon", "aria-hidden": "true" },
       [layers === null ? null : document.importNode(layers, true)],
     ),
-    ["Stack"],
+    [STACK_OVERVIEW],
     number,
   );
   // The header's corner, which holds View on GitHub: the SDK's control, which asks the
@@ -1752,8 +1759,74 @@ export function mountStackPage(container, ctx, mb) {
     }
   }
 
-  /** @param {StackMemberLine[] | null} lines */
-  function paintMembers(lines) {
+  // Each member's readiness (row-readiness.js), at its line's end as in the stack menu: read
+  // for the members the card lists, from the cache alone, when the browser is idle, again as
+  // a member's record moves to a new head in the stack's answer, and otherwise at most once a
+  // minute as the page polls, and kept for the document with what the Pulls tab and the stack
+  // menus read. An SDK without `whenIdle` reads none, and the members draw no readiness.
+  const memberReadiness =
+    typeof mb.whenIdle !== "function"
+      ? null
+      : createRowReadiness({
+          async read(numbers, signal) {
+            const response = await fetch(`${PULL_STATUSES_ROUTE}?numbers=${numbers.join(",")}`, {
+              signal,
+            });
+            return { status: response.status, body: response.ok ? await response.json() : null };
+          },
+          schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible",
+          now: () => Date.now(),
+          changed: () => paintMembers(drawnLines),
+        });
+  /** The members' lines last drawn, without their readiness. @type {StackMemberLine[] | null} */
+  let drawnLines = null;
+  /** Each member's record's head in the stack's answer last drawn. @type {Map<number, string | null>} */
+  let memberHeads = new Map();
+
+  /**
+   * Each member as its readiness is read: its number and the state its line shows, with no
+   * head. The head the stack's answer names is its record's, which can lag the head the list
+   * of pull requests names and the server judges, so it gates nothing here: the member draws
+   * the verdict on the head the server judged, as the Pulls row of it does.
+   * @param {StackMemberLine} line
+   * @returns {import("./row-readiness.js").ReadinessRow}
+   */
+  function readinessRow(line) {
+    return { number: line.number, head: null, state: line.state };
+  }
+
+  /** @param {StackMemberLine[] | null} given */
+  function paintMembers(given) {
+    drawnLines = given;
+    const rows = (given ?? []).map(readinessRow);
+    // A member whose record moved to a new head since the answer last drawn may have a new
+    // status with it: its readiness is read again.
+    /** @type {Map<number, string | null>} */
+    const heads = new Map();
+    for (const line of given ?? []) {
+      heads.set(
+        line.number,
+        envelope?.members.find((each) => each.number === line.number)?.head ?? null,
+      );
+    }
+    const moved = [...heads].filter(
+      ([number, head]) => memberHeads.has(number) && memberHeads.get(number) !== head,
+    );
+    memberHeads = heads;
+    memberReadiness?.reread(
+      moved.map(([number]) => number),
+      knownSource,
+    );
+    memberReadiness?.refresh(rows, knownSource);
+    const lines =
+      given === null || memberReadiness === null
+        ? given
+        : given.map((line, at) => ({
+            ...line,
+            readiness: memberReadiness.readiness(rows[at], knownSource),
+          }));
     const key = JSON.stringify(lines);
     if (key === membersKey) {
       return;
@@ -2898,6 +2971,7 @@ export function mountStackPage(container, ctx, mb) {
     cancelGuideAhead = null;
     controller.dispose();
     stacks.dispose();
+    memberReadiness?.dispose();
   }
 
   return {

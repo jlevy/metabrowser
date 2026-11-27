@@ -52,6 +52,7 @@ from tests.golden_harness import (
     check_recording,
     isolate_cli,
     label_home,
+    operational_once,
     origin_identity,
     quoted,
     run_metab,
@@ -83,6 +84,10 @@ class _Session:
 
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+        elapsed = count(step=300_000_000)
+        monkeypatch.setattr(
+            "metabrowser.builtin_plugins.github.pull_list_refresh.monotonic_ns", elapsed.__next__
+        )
         monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
         generations = count(1)
         monkeypatch.setattr(pull_files_refresh, "uuid4", lambda: UUID(int=next(generations)))
@@ -282,7 +287,7 @@ def test_golden_a_checkouts_pull_requests(
     rendered = label_home(labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
-    check_golden("cli-github-checkout.txt", rendered)
+    check_golden("cli-github-checkout.txt", operational_once(rendered))
 
 
 def test_golden_idle_comparison_preparation_on_a_checkout(
@@ -348,4 +353,4 @@ def test_golden_idle_comparison_preparation_on_a_checkout(
     labels.add(query["store"][0], "<STORE_TAG>")
     rendered = label_home(labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
-    check_golden("cli-github-checkout-idle.txt", rendered)
+    check_golden("cli-github-checkout-idle.txt", operational_once(rendered))

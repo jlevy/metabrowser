@@ -97,6 +97,13 @@ export function mountFileTypeSummary(
       return;
     }
     const nextEnvelope = normalizeRollupEnvelope(raw);
+    if (
+      nextEnvelope.indexStatus === "scanning" &&
+      envelope?.totals &&
+      (envelope.indexStatus === "done" || envelope.indexStatus === "truncated")
+    ) {
+      return;
+    }
     const nextModel = buildFileTypeSummaryModel(
       nextEnvelope,
       showIgnored,
@@ -201,5 +208,6 @@ export function mountFileTypeSummary(
   return Object.freeze({
     dispose,
     ready: firstAnswer,
+    refresh: watch.refresh,
   });
 }

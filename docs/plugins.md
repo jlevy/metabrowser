@@ -517,6 +517,11 @@ other views: it reads the plugin’s own parse of a JSON or YAML file and refuse
   `{length, preview: false}`. A reference is `{ref: {table, key, label}}`, and a value
   naming a record that is not there is
   `{ref: {table, key: null, label, missing: true}}`, drawn as its value marked missing.
+- A record can supply a short human-readable `TableRecord.label` for its heading.
+  It still has the same stable key or row position.
+  A back-reference count links to a `RefFilter` whose optional `via` pair selects the
+  referencing and referenced fields.
+  Match the filter to a declared `FieldRef` with `RefFilter.matches()`.
 - A file of several tables is a navigation container whose children are its tables:
   `<file>/<table>` reaches the source with `table` set to the inner path, so a source’s
   table ids are its address segments, and its kind declares a `children` hook that lists

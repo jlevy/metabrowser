@@ -15,7 +15,7 @@ gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 ## The clock moves on 20 s, to 2026-09-17T12:00:20Z.
-## An automatic ask finds nothing due and probes: one conditional read of the issue or pull request updated last, with no account check. The catalog holds that row, so nothing starts, and `checked_at` says when GitHub confirmed the list.
+## An automatic ask finds nothing due and probes: one conditional read of the issue or pull request updated last, with no account check. The catalog holds that row, so the list starts nothing, and `checked_at` says when GitHub confirmed the list. The first scan of the open pull requests' statuses starts beside it.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -55,15 +55,22 @@ status: 200
     "truncated": false,
     "limit": 0,
     "next_after": null,
-    "rows": []
+    "rows": [],
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": 300
+    }
   },
-  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0",
+  "status_scan": "started",
+  "status_scan_at": null
 }
 --- stderr ---
 --- body ---
 {"background": true}
 --- gh ---
 gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+gh api graphql statuses cursor=start
 ## The clock moves on 10 s, to 2026-09-17T12:00:30Z.
 ## GitHub retitles #10. The next ask's probe finds a row the catalog lacks and starts the delta scan at once, 30 s into a 60 s window.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
@@ -134,7 +141,11 @@ status: 200
       "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     }
-  ]
+  ],
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:30Z",
+    "duration_ms": 300
+  }
 }
 --- stderr ---
 --- gh ---
@@ -150,3 +161,4 @@ status: 200 succeeded, 2 cached PRs
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
+gh api graphql statuses cursor=start

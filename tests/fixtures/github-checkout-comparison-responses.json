@@ -14,7 +14,7 @@
       "verified_by": "catalog",
       "head_moved": false,
       "checks_pending": false,
-      "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+      "record_revision": "641c13ea31b757850edb1a7975ac1051b58a9e221bb96e4d9e3451fd7b8d8c45",
       "fresh_for_s": 60.0,
       "probe_every_s": 5.0,
       "refreshing": false,
@@ -29,7 +29,7 @@
       "rendered_route": null,
       "size_route": null,
       "record": {
-        "schema_version": 2,
+        "schema_version": 3,
         "projection_version": 2,
         "source": "https://github.com/octo/demo",
         "number": 10,
@@ -39,9 +39,7 @@
           "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
           "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
           "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
-          "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
-          "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
-          "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+          "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\""
         },
         "pull": {
           "number": 10,
@@ -55,7 +53,6 @@
           "merged_by_avatar_url": null,
           "commits": 1,
           "merge_commit_sha": null,
-          "mergeable": "conflicting",
           "labels": [],
           "author": "maintainer",
           "author_avatar_url": null,
@@ -78,18 +75,11 @@
         "issue_comments": [],
         "reviews": [],
         "review_comments": [],
-        "check_runs": [],
-        "status": {
-          "state": "pending",
-          "statuses": []
-        },
         "comparison": null,
         "truncated": {
           "issue_comments": false,
           "reviews": false,
           "review_comments": false,
-          "check_runs": false,
-          "statuses": false,
           "text": false
         },
         "unavailable": {
@@ -99,6 +89,64 @@
       "core_preview": null,
       "repository_labels": [],
       "labels_pending": false,
+      "status": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "base_ref": "topic",
+        "base": "c691256511d05858850bc7684ae062fea0d41132",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "observed_by": "read",
+        "conflicts": "conflicting",
+        "merge_state": "dirty",
+        "review_decision": null,
+        "checks": {
+          "state": "none",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "pending": 0,
+            "skipping": 0,
+            "cancel": 0
+          },
+          "required_failing": 0,
+          "required_pending": 0,
+          "listed_at": "2026-09-17T12:00:00Z",
+          "moved_at": null
+        },
+        "auto_merge": null,
+        "queue": null
+      },
+      "readiness": {
+        "verdict": "conflicts",
+        "tone": "danger",
+        "label": "Merge conflicts",
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "requirements": [
+          {
+            "kind": "conflicts",
+            "status": "unmet",
+            "summary": "Merge conflicts with topic must be resolved.",
+            "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+          },
+          {
+            "kind": "checks",
+            "status": "met",
+            "summary": "No checks.",
+            "github_url": null
+          }
+        ],
+        "auto_merge": null,
+        "auto_merge_summary": null
+      },
+      "checks": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "items": [],
+        "truncated": false
+      },
+      "status_unavailable": null,
       "no_store": true
     }
   },
@@ -119,7 +167,7 @@
         "verified_by": "catalog",
         "head_moved": false,
         "checks_pending": false,
-        "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+        "record_revision": "641c13ea31b757850edb1a7975ac1051b58a9e221bb96e4d9e3451fd7b8d8c45",
         "fresh_for_s": 60.0,
         "probe_every_s": 5.0,
         "refreshing": true,
@@ -134,7 +182,7 @@
         "rendered_route": null,
         "size_route": null,
         "record": {
-          "schema_version": 2,
+          "schema_version": 3,
           "projection_version": 2,
           "source": "https://github.com/octo/demo",
           "number": 10,
@@ -144,9 +192,7 @@
             "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
             "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
             "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
-            "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
-            "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
-            "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+            "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\""
           },
           "pull": {
             "number": 10,
@@ -160,7 +206,6 @@
             "merged_by_avatar_url": null,
             "commits": 1,
             "merge_commit_sha": null,
-            "mergeable": "conflicting",
             "labels": [],
             "author": "maintainer",
             "author_avatar_url": null,
@@ -183,18 +228,11 @@
           "issue_comments": [],
           "reviews": [],
           "review_comments": [],
-          "check_runs": [],
-          "status": {
-            "state": "pending",
-            "statuses": []
-          },
           "comparison": null,
           "truncated": {
             "issue_comments": false,
             "reviews": false,
             "review_comments": false,
-            "check_runs": false,
-            "statuses": false,
             "text": false
           },
           "unavailable": {
@@ -204,6 +242,64 @@
         "core_preview": null,
         "repository_labels": [],
         "labels_pending": false,
+        "status": {
+          "number": 10,
+          "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "base_ref": "topic",
+          "base": "c691256511d05858850bc7684ae062fea0d41132",
+          "observed_at": "2026-09-17T12:00:00Z",
+          "observed_by": "read",
+          "conflicts": "conflicting",
+          "merge_state": "dirty",
+          "review_decision": null,
+          "checks": {
+            "state": "none",
+            "counts": {
+              "pass": 0,
+              "fail": 0,
+              "pending": 0,
+              "skipping": 0,
+              "cancel": 0
+            },
+            "required_failing": 0,
+            "required_pending": 0,
+            "listed_at": "2026-09-17T12:00:00Z",
+            "moved_at": null
+          },
+          "auto_merge": null,
+          "queue": null
+        },
+        "readiness": {
+          "verdict": "conflicts",
+          "tone": "danger",
+          "label": "Merge conflicts",
+          "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "observed_at": "2026-09-17T12:00:00Z",
+          "requirements": [
+            {
+              "kind": "conflicts",
+              "status": "unmet",
+              "summary": "Merge conflicts with topic must be resolved.",
+              "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+            },
+            {
+              "kind": "checks",
+              "status": "met",
+              "summary": "No checks.",
+              "github_url": null
+            }
+          ],
+          "auto_merge": null,
+          "auto_merge_summary": null
+        },
+        "checks": {
+          "number": 10,
+          "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "observed_at": "2026-09-17T12:00:00Z",
+          "items": [],
+          "truncated": false
+        },
+        "status_unavailable": null,
         "no_store": true
       },
       "status_route": "/api/plugin/github/pull?number=10"
@@ -224,7 +320,7 @@
       "verified_by": "catalog",
       "head_moved": false,
       "checks_pending": false,
-      "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+      "record_revision": "641c13ea31b757850edb1a7975ac1051b58a9e221bb96e4d9e3451fd7b8d8c45",
       "fresh_for_s": 60.0,
       "probe_every_s": 5.0,
       "refreshing": false,
@@ -239,7 +335,7 @@
       "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
       "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
       "record": {
-        "schema_version": 2,
+        "schema_version": 3,
         "projection_version": 2,
         "source": "https://github.com/octo/demo",
         "number": 10,
@@ -249,9 +345,7 @@
           "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
           "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
           "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
-          "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
-          "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
-          "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+          "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\""
         },
         "pull": {
           "number": 10,
@@ -265,7 +359,6 @@
           "merged_by_avatar_url": null,
           "commits": 1,
           "merge_commit_sha": null,
-          "mergeable": "conflicting",
           "labels": [],
           "author": "maintainer",
           "author_avatar_url": null,
@@ -288,11 +381,6 @@
         "issue_comments": [],
         "reviews": [],
         "review_comments": [],
-        "check_runs": [],
-        "status": {
-          "state": "pending",
-          "statuses": []
-        },
         "comparison": {
           "base": "c691256511d05858850bc7684ae062fea0d41132",
           "head": "7a7d6596e515735d244dc1d942463c95851e139c",
@@ -303,15 +391,71 @@
           "issue_comments": false,
           "reviews": false,
           "review_comments": false,
-          "check_runs": false,
-          "statuses": false,
           "text": false
         },
         "unavailable": {}
       },
       "core_preview": null,
       "repository_labels": [],
-      "labels_pending": false
+      "labels_pending": false,
+      "status": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "base_ref": "topic",
+        "base": "c691256511d05858850bc7684ae062fea0d41132",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "observed_by": "read",
+        "conflicts": "conflicting",
+        "merge_state": "dirty",
+        "review_decision": null,
+        "checks": {
+          "state": "none",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "pending": 0,
+            "skipping": 0,
+            "cancel": 0
+          },
+          "required_failing": 0,
+          "required_pending": 0,
+          "listed_at": "2026-09-17T12:00:00Z",
+          "moved_at": null
+        },
+        "auto_merge": null,
+        "queue": null
+      },
+      "readiness": {
+        "verdict": "conflicts",
+        "tone": "danger",
+        "label": "Merge conflicts",
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "requirements": [
+          {
+            "kind": "conflicts",
+            "status": "unmet",
+            "summary": "Merge conflicts with topic must be resolved.",
+            "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+          },
+          {
+            "kind": "checks",
+            "status": "met",
+            "summary": "No checks.",
+            "github_url": null
+          }
+        ],
+        "auto_merge": null,
+        "auto_merge_summary": null
+      },
+      "checks": {
+        "number": 10,
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "observed_at": "2026-09-17T12:00:00Z",
+        "items": [],
+        "truncated": false
+      },
+      "status_unavailable": null
     }
   }
 }

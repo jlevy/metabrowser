@@ -3,7 +3,7 @@
 The owner, 2026-11-19: "the branch selector shows: Showing 100 of 1292 branches; filter to
 narrow. 1. We should not truncate at such an arbitrarily low number as 1,000. We can show
 all the branches. 2. We should sort them by recency, with most recently modified branches
-first". So the listing has every ref, newest first (``tests/test_source_refs.py``), and
+first". The listing has every ref, with primary branches first (``tests/test_source_refs.py``), and
 the list draws only the rows near its view and the row that takes Tab (``drawWindow`` in
 ``static/source-ref-selector.js``), which ``tests/dom/source-ref-selector-session.js``
 holds as a pure range (``rowWindow``). How tall a row is, where each is placed, which
@@ -11,7 +11,7 @@ rows a scroll position puts in view, and where focus lands are layout and the br
 so this serves a checkout of :data:`BRANCHES` branches with ``metab`` and reads, in one
 Chrome (``tests/dom/ref-selector-long-list-chrome.mjs``):
 
-- the open list: every branch counted, the checked-out one first and the rest newest
+- the open list: every branch counted, the primary one first and the rest newest
   first, no note, the list's role, and no more rows drawn than the view and the overscan;
 - a scroll to the middle, after which the row under the list's center is drawn where its
   index puts it;
@@ -20,7 +20,8 @@ Chrome (``tests/dom/ref-selector-long-list-chrome.mjs``):
 - a row given focus by the keys, which keeps it when the list scrolls far from it, and
   which Tab from the filter box reaches, and ArrowDown, which brings the next into view;
 - a filter, which narrows the list to its matches, newest first;
-- the oldest branch's page, whose list opens on that branch's row, the last.
+- the oldest branch's page, whose list and first Tab stop start at the top. End still
+  reaches the marked current row, and reopening the list returns to the top.
 
 It prints how long opening, End, and the filter took, and bounds them loosely
 (``STEP_BOUND_MS``). Without Chrome this skips (``require_chrome`` in
@@ -156,7 +157,7 @@ def test_a_list_of_every_branch_draws_only_its_view_in_chrome(
     newest = [_branch(at) for at in range(BRANCHES - 1, -1, -1)]
 
     opened = result["opened"]
-    # Every branch is in the list, the checked-out one first and then newest first, and
+    # Every branch is in the list, the primary one first and then newest first, and
     # nothing says the list stops short.
     assert opened["setSize"] == BRANCHES + 1
     assert opened["names"] == ["main", *newest[: len(opened["names"]) - 1]]
@@ -221,10 +222,18 @@ def test_a_list_of_every_branch_draws_only_its_view_in_chrome(
     assert filtered["names"] == newest[: len(filtered["names"])]
     assert filtered["note"] == ""
 
-    # On the oldest branch's page the list opens on its row, the last, not on the newest.
-    switched = result["switched"]
-    assert switched["setSize"] == BRANCHES + 1
-    assert switched["served"] == {"index": BRANCHES + 1, "name": newest[-1], "inView": True}
+    # The oldest branch is still current. Opening and tabbing keep primary branches visible.
+    for step in ("switched", "switchedTab", "reopened"):
+        view = result[step]
+        assert view["setSize"] == BRANCHES + 1
+        assert view["scrollTop"] == 0
+        assert view["names"][0] == "main"
+    assert result["switchedTab"]["focusedName"] == "main"
+    assert result["switchedEnd"]["served"] == {
+        "index": BRANCHES + 1,
+        "name": newest[-1],
+        "inView": True,
+    }
 
     for step in ("openMs", "endMs", "filterMs"):
         assert result[step] < STEP_BOUND_MS, (step, result[step])
