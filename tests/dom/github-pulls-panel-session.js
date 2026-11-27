@@ -1439,8 +1439,10 @@ async function paintStory(panel, selection = false) {
     // last line, the lines changed with the chevron after them, and the age at its end
     // (mb-rb3n). A row names no branches; the pull request's page does.
     const heading = child(row(hostile), "github-pulls-heading");
-    const numberLabel = child(heading, "github-pulls-number");
-    const by = child(heading, "github-pulls-by");
+    const copy = child(heading, "github-pull-row-copy");
+    const end = child(copy, "github-pull-row-end");
+    const numberLabel = child(end, "github-pulls-number");
+    const by = child(copy, "github-pulls-by");
     const tail = child(row(hostile), "github-pulls-tail");
     // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t, mb-rb3n): the state icon,
     // then the title, the place, the number, and the author, a dot before each part after the
@@ -1459,27 +1461,36 @@ async function paintStory(panel, selection = false) {
         JSON.stringify(["github-pulls-heading", "github-pulls-tail", "sr-only"]),
       `the row's link is its run, its last line, and its number, author, and age in words: ${classesOf(row(hostile))}`,
     );
-    const order = classesOf(heading);
     assert(
-      JSON.stringify(order) ===
+      JSON.stringify(classesOf(heading)) ===
         JSON.stringify([
           "github-pull-state-icon",
           "github-pull-readiness-said",
+          "github-pull-row-copy",
+        ]),
+      JSON.stringify(classesOf(heading)),
+    );
+    assert(
+      JSON.stringify(classesOf(copy)) ===
+        JSON.stringify([
           "github-pulls-title",
           "github-pulls-place",
-          "github-pulls-sep",
-          "github-pulls-number",
-          "github-pulls-sep",
           "github-pulls-by",
+          "github-pull-row-end",
         ]),
-      `the run is the state icon, its readiness's words, the title, the place, a dot and the number, and a dot and the author: ${order}`,
+      JSON.stringify(classesOf(copy)),
     );
-    // The author is its identity alone, hidden, since the link's name says it.
     assert(
-      JSON.stringify(classesOf(by)) === JSON.stringify(["github-pull-identity"]) &&
-        by.getAttribute("aria-hidden") === "true",
-      `the author is its identity: ${classesOf(by)}`,
+      JSON.stringify(classesOf(end)) ===
+        JSON.stringify(["github-pulls-readiness", "github-pulls-number"]),
+      JSON.stringify(classesOf(end)),
     );
+    assert(
+      JSON.stringify(classesOf(by)) ===
+        JSON.stringify(["github-pull-stack-dot", "github-pull-identity"]),
+      JSON.stringify(classesOf(by)),
+    );
+    assert(by.getAttribute("aria-hidden") === "true", "the row supplies the author’s name");
     // The number holds its text alone, and the last line is the toggle, the lines, then the
     // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), then the
     // readiness's column (mb-3n21), and the age at the row's end, hidden, since the link's
@@ -1489,7 +1500,7 @@ async function paintStory(panel, selection = false) {
     assert(
       classesOf(numberLabel).length === 0 &&
         JSON.stringify(classesOf(tail)) ===
-          JSON.stringify(["github-pulls-change", "github-pulls-readiness", "github-pulls-age"]) &&
+          JSON.stringify(["github-pulls-change", "github-pulls-age"]) &&
         tailAge.getAttribute("aria-hidden") === "true" &&
         JSON.stringify(classesOf(toggle)) ===
           JSON.stringify([
@@ -1512,7 +1523,8 @@ async function paintStory(panel, selection = false) {
       "one zone, the link: its run ends with the author, and its last line is the toggle, the lines, the chevron after them, and their words, which describe the row, and the age",
     );
     assert(
-      heading.childNodes[3].hidden && heading.childNodes[3].textContent === "",
+      child(copy, "github-pulls-place").hidden &&
+        child(copy, "github-pulls-place").textContent === "",
       "the place, after the title, is empty and hidden while no stack holds the row",
     );
     assert(
@@ -1526,14 +1538,9 @@ async function paintStory(panel, selection = false) {
     );
     assert(
       child(row(hostile), "sr-only").textContent.startsWith(
-        `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+        `${first.body.rows[0].author} · #${first.body.rows[0].number}`,
       ),
       "the link says the number, the author, and the age, which its run shows hidden",
-    );
-    assert(
-      heading.childNodes[4].classList.contains("github-pulls-sep") &&
-        heading.childNodes[4].textContent === "\u00a0· ",
-      "a part after the title carries the dot before it, kept to the part before by a no-break space",
     );
     const identity = child(by, "github-pull-identity");
     const authorLabel = child(identity, "github-pulls-author");
@@ -1592,7 +1599,10 @@ async function paintStory(panel, selection = false) {
       "its text leads with its title": row(shown)
         .textContent.trim()
         .startsWith(
-          child(child(row(shown), "github-pulls-heading"), "github-pulls-title").textContent,
+          child(
+            child(child(row(shown), "github-pulls-heading"), "github-pull-row-copy"),
+            "github-pulls-title",
+          ).textContent,
         ),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
       "Right on its row opens its cached changed files": filesRead,
@@ -1602,7 +1612,7 @@ async function paintStory(panel, selection = false) {
         described(change(shown)),
       ],
       "a title written as markup is one text node": child(
-        heading,
+        copy,
         "github-pulls-title",
       ).childNodes.map((node) => ({ node: node.nodeName, data: node.data })),
       "rows built for the first window": built,

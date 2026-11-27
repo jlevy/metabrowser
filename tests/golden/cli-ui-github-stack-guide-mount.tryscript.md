@@ -126,8 +126,8 @@ $ node tests/dom/github-stack-guide-mount-session.js
           "held": false,
           "expanded": "false",
           "rows": [
-            "WIP: draft the next page 2/2 · #10 · maintainer",
-            "Say more in the guide 1/2 · #8"
+            "WIP: draft the next page · 2/2 · maintainer #10",
+            "Say more in the guide · 1/2 #8"
           ]
         }
       },
@@ -163,8 +163,8 @@ $ node tests/dom/github-stack-guide-mount-session.js
           "held": false,
           "expanded": "false",
           "rows": [
-            "WIP: draft the next page 2/2 · #10 · maintainer",
-            "Say more in the guide 1/2 · #8 · maintainer"
+            "WIP: draft the next page · 2/2 · maintainer #10",
+            "Say more in the guide · 1/2 · maintainer #8"
           ]
         }
       },
@@ -316,8 +316,8 @@ $ node tests/dom/github-stack-guide-mount-session.js
           "held": false,
           "expanded": "false",
           "rows": [
-            "WIP: draft the next page 2/2 · #10 · maintainer",
-            "Say more in the guide 1/2 · #8 · maintainer"
+            "WIP: draft the next page · 2/2 · maintainer #10",
+            "Say more in the guide · 1/2 · maintainer #8"
           ]
         }
       },
@@ -346,8 +346,8 @@ $ node tests/dom/github-stack-guide-mount-session.js
           "held": false,
           "expanded": "false",
           "rows": [
-            "WIP: draft the next page 2/2 · #10 · maintainer",
-            "Say more in the guide 1/2 · #8 · maintainer"
+            "WIP: draft the next page · 2/2 · maintainer #10",
+            "Say more in the guide · 1/2 · maintainer #8"
           ]
         }
       },
@@ -415,8 +415,8 @@ $ node tests/dom/github-stack-guide-mount-session.js
           "held": false,
           "expanded": "false",
           "rows": [
-            "WIP: draft the next page 2/2 · #10 · maintainer",
-            "Say more in the guide 1/2 · #8 · maintainer"
+            "WIP: draft the next page · 2/2 · maintainer #10",
+            "Say more in the guide · 1/2 · maintainer #8"
           ]
         }
       },
@@ -467,13 +467,13 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "state": "draft",
         "words": "",
         "glyph": null,
-        "cell_last": true
+        "status_before_number": true
       },
       {
         "state": "merged",
         "words": "",
         "glyph": null,
-        "cell_last": true
+        "status_before_number": true
       }
     ],
     "asked": [
@@ -484,13 +484,13 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "state": "draft",
         "words": "Merge conflicts",
         "glyph": "conflicts (severe)",
-        "cell_last": true
+        "status_before_number": true
       },
       {
         "state": "merged",
         "words": "",
         "glyph": null,
-        "cell_last": true
+        "status_before_number": true
       }
     ],
     "beside_a_pulls_tab": [

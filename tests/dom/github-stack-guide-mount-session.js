@@ -951,11 +951,14 @@ async function run() {
   const memberRows = () =>
     judgedPage.querySelectorAll(".github-pull-stack-member").map((row) => {
       const glyph = row.querySelector(".github-pull-readiness-icon");
+      const suffix = row.querySelector(".github-pull-row-end");
       return {
         state: row.querySelector(".github-pull-state-icon")?.dataset.state ?? null,
         words: row.querySelector(".github-pull-readiness-said")?.textContent ?? null,
         glyph: glyph === null ? null : `${glyph.dataset.verdict} (${glyph.dataset.tone})`,
-        cell_last: row.children.at(-1)?.classes.has("github-pull-stack-member-readiness") ?? false,
+        status_before_number:
+          suffix?.querySelector(".github-pull-stack-member-readiness") !== null &&
+          suffix?.children.at(-1)?.classes.has("github-pull-stack-member-number") === true,
       };
     });
   const before = memberRows();
@@ -971,8 +974,8 @@ async function run() {
     "the page asks for its open member alone, once",
   );
   assert.ok(
-    report.members_readiness.after_idle.every((row) => row.cell_last),
-    "every member's line ends with its readiness's cell",
+    report.members_readiness.after_idle.every((row) => row.status_before_number),
+    "the readiness sits immediately before the number at the end of the heading",
   );
   assert.equal(report.members_readiness.after_idle[0].glyph, "conflicts (severe)");
 

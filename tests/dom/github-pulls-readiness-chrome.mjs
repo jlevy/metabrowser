@@ -214,7 +214,7 @@ const MOUNT = `async (width, theme) => {
   return true;
 }`;
 
-// In the page: each checked row's last line, its readiness's column, glyph, and label.
+// Measure the wrapping heading and its trailing readiness and PR number.
 const READ = `(() => {
   const box = (el) => {
     if (!el) return null;
@@ -222,46 +222,43 @@ const READ = `(() => {
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
   };
   const pane = document.getElementById("pane");
-  const list = pane.querySelector(".github-pulls-list");
   const rows = {};
-  for (const number of ${JSON.stringify(ROWS)}) {
-    const row = document.querySelector('a.github-pulls-row[data-number="' + number + '"]');
-    if (row === null) { rows[number] = null; continue; }
-    const tail = row.querySelector(":scope > .github-pulls-tail");
-    const cell = tail.querySelector(":scope > .github-pulls-readiness");
+  for (const id of ${JSON.stringify(ROWS)}) {
+    const row = pane.querySelector('a.github-pulls-row[data-number="' + id + '"]');
+    if (row === null) { rows[id] = null; continue; }
+    const head = row.querySelector(".github-pulls-heading");
+    const copy = head.querySelector(".github-pull-row-copy");
+    const end = head.querySelector(".github-pull-row-end");
+    const cell = end.querySelector(".github-pulls-readiness");
     const glyph = cell.querySelector(".github-pull-readiness-icon");
-    const label = cell.querySelector(".github-pulls-readiness-label");
-    const toggle = tail.querySelector(".github-pulls-toggle");
-    const style = getComputedStyle(tail);
-    rows[number] = {
+    const number = end.querySelector(".github-pulls-number");
+    const tail = row.querySelector(".github-pulls-tail");
+    const avatar = copy.querySelector(".actor-avatar");
+    const author = copy.querySelector(".github-pulls-author");
+    const title = copy.querySelector(".github-pulls-title");
+    const titleLines = [...title.getClientRects()];
+    end.style.display = "none";
+    const firstWithFullWidth = title.getClientRects()[0]?.width ?? 0;
+    end.style.removeProperty("display");
+    rows[id] = {
       level: row.closest("li").dataset.level,
-      item: box(row.closest("li")), tail: box(tail), cell: box(cell), age: box(tail.querySelector(".github-pulls-age")),
-      change: box(tail.querySelector(".github-pulls-change")),
+      head: box(head), copy: box(copy), end: box(end), cell: box(cell), number: box(number),
+      tail: box(tail), age: box(tail.querySelector(".github-pulls-age")),
       glyph: box(glyph?.querySelector("svg") ?? null), tone: glyph?.dataset.tone ?? null,
-      glyphInk: glyph ? getComputedStyle(glyph).color : null,
-      label: box(label), labelShown: label !== null && getComputedStyle(label).display !== "none",
-      labelWhole: label === null || label.scrollWidth <= label.clientWidth + 0.5,
-      labelInk: label ? getComputedStyle(label).color : null,
-      columns: style.gridTemplateColumns.split(" ").map(parseFloat),
-      gap: parseFloat(style.columnGap),
-      content: tail.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-      toggleRoom: toggle ? toggle.getBoundingClientRect().width + parseFloat(getComputedStyle(toggle).marginInlineStart) : null,
+      ink: glyph ? getComputedStyle(glyph).color : null,
+      next: cell.nextElementSibling === number,
+      wraps: getComputedStyle(title).whiteSpace === "normal" && getComputedStyle(title).textOverflow === "clip",
+      avatar: box(avatar),
+      authorHidden: author !== null && getComputedStyle(author).visibility === "hidden" &&
+        author.getBoundingClientRect().width === 0,
+      authorLine: box(author),
+      lineHeight: parseFloat(getComputedStyle(copy).lineHeight),
+      titleLines: titleLines.length,
+      firstLineUnchanged: titleLines[0]?.width === firstWithFullWidth,
     };
   }
-  return { rows, list: list.getBoundingClientRect().width, listFont: parseFloat(getComputedStyle(list).fontSize), scroll: [pane.scrollWidth, pane.clientWidth] };
+  return { rows, scroll: [pane.scrollWidth, pane.clientWidth] };
 })()`;
-
-// In the page: a length of the row's, in px, by a probe inside a row's last line, so its em is
-// the row's.
-const LENGTH = `((name) => {
-  const tail = document.querySelector("a.github-pulls-row .github-pulls-tail");
-  const probe = document.createElement("span");
-  probe.style.cssText = "position:absolute;visibility:hidden;width:var(" + name + ")";
-  tail.append(probe);
-  const width = probe.getBoundingClientRect().width;
-  probe.remove();
-  return width;
-})`;
 
 // In the page: a token's color, as a text's ink computes it.
 const INK = `((name) => {
@@ -271,19 +268,6 @@ const INK = `((name) => {
   const color = getComputedStyle(probe).color;
   probe.remove();
   return color;
-})`;
-
-// In the page: whether each label the server gives a verdict is whole in a shown label's room.
-const LABELS = `((labels) => {
-  const label = document.querySelector('a.github-pulls-row[data-number="106"] .github-pulls-readiness-label');
-  const was = label.textContent;
-  const widths = {};
-  for (const text of labels) {
-    label.textContent = text;
-    widths[text] = { natural: label.scrollWidth, room: label.clientWidth };
-  }
-  label.textContent = was;
-  return widths;
 })`;
 
 const TONE_TOKENS = {
@@ -338,9 +322,6 @@ async function main() {
     await browser.evaluate(
       `Promise.all([...document.fonts].map((face) => face.load().catch(() => null))).then(() => document.fonts.ready).then(() => true)`,
     );
-    const labels = await browser.evaluate(
-      `import("/github/pull-readiness.js").then((module) => [...module.SLOT_LABELS])`,
-    );
     lap("the page loaded");
     for (const theme of THEMES) {
       for (const width of WIDTHS) {
@@ -369,116 +350,89 @@ async function main() {
             ]),
           ),
         );
-        const textInk = await browser.evaluate(`(${INK})("--text")`);
-        const drawn = ROWS.map((number) => after.rows[number]).filter(Boolean);
+        const drawn = ROWS.map((id) => after.rows[id]).filter(Boolean);
         check(`${at}: every row checked is drawn`, drawn.length === ROWS.length);
-        const first = drawn[0];
-        // One column on every row, flush or a level in, with a glyph or none.
+        const right = drawn[0]?.head.right;
         check(
-          `${at}: the readiness's column is one width at one edge on every row, and the ages end at one edge`,
-          drawn.every(
-            (r) =>
-              near(r.cell.left, first.cell.left) &&
-              near(r.cell.width, first.cell.width) &&
-              near(r.age.right, first.age.right),
-          ),
-          JSON.stringify(drawn.map((r) => ({ cell: r.cell, age: r.age, level: r.level }))),
+          `${at}: numbers and ages share the right edge, including stack members`,
+          drawn.every((r) => near(r.number.right, right) && near(r.age.right, right)) &&
+            after.rows[INDENTED]?.level === "2" &&
+            after.rows[106]?.level === "1",
+          JSON.stringify(drawn.map((r) => [r.head.right, r.number.right, r.age.right])),
         );
-        check(
-          `${at}: a stack's member, a level in, has the column every row has`,
-          after.rows[INDENTED]?.level === "2" && after.rows[106]?.level === "1",
-          JSON.stringify({ indented: after.rows[INDENTED]?.level, flush: after.rows[106]?.level }),
-        );
-        // Nothing moves when the readiness arrives, and the last line stays one line tall.
-        check(
-          `${at}: nothing in a row moves when its readiness arrives`,
-          ROWS.every((number) => {
-            const was = before.rows[number];
-            const now = after.rows[number];
-            return (
-              was !== null &&
-              now !== null &&
-              ["item", "tail", "cell", "age", "change"].every(
-                (part) =>
-                  near(was[part].top, now[part].top) &&
-                  near(was[part].left, now[part].left) &&
-                  near(was[part].width, now[part].width) &&
-                  near(was[part].height, now[part].height),
-              )
-            );
-          }),
-          JSON.stringify(
-            ROWS.map((number) => [before.rows[number]?.cell, after.rows[number]?.cell]),
-          ),
-        );
-        for (const number of ROWS) {
-          const r = after.rows[number];
-          if (r === null) {
-            continue;
-          }
-          const status = ANSWERS.statuses.rows.find((row) => row.number === number);
-          const tone = status?.readiness?.tone ?? null;
-          check(
-            `${at}: #${number} draws its answer's tone, or none`,
-            r.tone === tone,
-            String(r.tone),
-          );
-          if (tone === null) {
-            check(`${at}: #${number}'s column is empty`, r.glyph === null && r.label === null);
+        for (const id of ROWS) {
+          const r = after.rows[id];
+          const was = before.rows[id];
+          if (!r || !was) {
             continue;
           }
           check(
-            `${at}: #${number}'s glyph is the app's one size, at the column's start, centered on the last line`,
-            near(r.glyph.width, 14) &&
-              near(r.glyph.left, r.cell.left) &&
-              near(r.glyph.top + r.glyph.height / 2, r.tail.top + (r.tail.height - 2) / 2, 1),
-            JSON.stringify({ glyph: r.glyph, cell: r.cell, tail: r.tail }),
+            `${at}: #${id}'s glyph slot precedes the number on the heading's last line`,
+            r.next &&
+              near(r.end.bottom, r.copy.bottom) &&
+              near(r.end.bottom, r.tail.top) &&
+              near(r.cell.width, 14) &&
+              r.cell.right <= r.number.left + TOLERANCE_PX,
+            JSON.stringify({ copy: r.copy, end: r.end, cell: r.cell, number: r.number }),
           );
           check(
-            `${at}: #${number}'s glyph takes the ${tone} tone's ink, and its label the text's`,
-            r.glyphInk === inks[tone] && r.labelInk === textInk,
+            `${at}: #${id} keeps its heading size and number position when readiness arrives`,
+            near(r.head.height, was.head.height) &&
+              near(r.number.right, was.number.right) &&
+              near(r.number.bottom - r.head.top, was.number.bottom - was.head.top),
+          );
+          check(
+            `${at}: #${id} allows wrapping and shows just the avatar`,
+            r.wraps && r.avatar !== null && r.avatar.width > 0 && r.authorHidden,
+          );
+          check(
+            `${at}: #${id}'s avatar is centered on its text line without increasing row height`,
+            r.avatar !== null &&
+              r.authorLine !== null &&
+              near(
+                r.avatar.top + r.avatar.height / 2,
+                r.authorLine.top + r.authorLine.height / 2,
+                1,
+              ) &&
+              near(r.copy.height, Math.round(r.copy.height / r.lineHeight) * r.lineHeight, 1),
             JSON.stringify({
-              glyph: r.glyphInk,
-              label: r.labelInk,
-              ink: inks[tone],
-              text: textInk,
+              avatar: r.avatar,
+              author: r.authorLine,
+              copy: r.copy,
+              lineHeight: r.lineHeight,
             }),
           );
+          if (r.titleLines > 1) {
+            check(
+              `${at}: #${id}'s first title line gets the full text width`,
+              r.firstLineUnchanged,
+            );
+          }
+          const status = ANSWERS.statuses.rows.find((row) => row.number === id);
+          const tone = status?.readiness?.tone ?? null;
           check(
-            `${at}: #${number}'s label, where it is shown, is whole and follows the glyph`,
-            !r.labelShown ||
-              (r.labelWhole &&
-                r.label.left >= r.glyph.right &&
-                r.label.right <= r.cell.right + TOLERANCE_PX),
-            JSON.stringify({ label: r.label, glyph: r.glyph, cell: r.cell }),
+            `${at}: #${id} draws its answer's glyph and color, or leaves the slot empty`,
+            r.tone === tone &&
+              (tone === null
+                ? r.glyph === null
+                : r.ink === inks[tone] &&
+                  near(r.glyph.left, r.cell.left) &&
+                  near(r.glyph.width, 14)),
+            JSON.stringify({ tone, drawn: r.tone, glyph: r.glyph }),
           );
         }
-        check(
-          `${at}: every row shows its label or none alike`,
-          drawn
-            .filter((r) => r.tone !== null)
-            .every((r) => r.labelShown === drawn.find((each) => each.tone !== null).labelShown),
-        );
+        if (width === 180) {
+          check(
+            `${at}: a long heading wraps`,
+            drawn.some((r) => r.copy.height > r.lineHeight),
+          );
+        }
         check(
           `${at}: nothing scrolls sideways`,
           after.scroll[0] <= after.scroll[1],
           JSON.stringify(after.scroll),
         );
-        measured[at] = {
-          list: after.list,
-          listFont: after.listFont,
-          column: first.cell.width,
-          labelShown: drawn.find((r) => r.tone !== null)?.labelShown ?? null,
-        };
-        if (after.rows[106].labelShown) {
-          const widths = await browser.evaluate(`(${LABELS})(${JSON.stringify(labels)})`);
-          check(
-            `${at}: every label the server gives a verdict is whole in the label's room`,
-            Object.values(widths).every((each) => each.natural <= each.room + TOLERANCE_PX),
-            JSON.stringify(widths),
-          );
-          measured[at].labels = widths;
-        }
+        measured[at] = { right, rows: drawn };
         if ((width === 299 || width === 480) && process.env.SHOTS_DIR) {
           await shot(`readiness-${theme}-${width}`, width);
           // The list's end, where the draft with conflicts, #10, and the closed #9 are.
@@ -490,58 +444,6 @@ async function main() {
         lap(at);
       }
     }
-
-    // The bound: a pane set a pixel at a time, read where the label shows and where a row a
-    // level in has its lines' room beside the column with its widest label and the age.
-    await browser.evaluate(`(${MOUNT})(300, "light")`);
-    await browser.waitFor(`window.__asked.length > 0`);
-    await browser.waitFor(
-      `(window.__release(), document.querySelector('a.github-pulls-row[data-number="106"] .github-pull-readiness-icon') !== null)`,
-    );
-    await frames();
-    const linesRoom = await browser.evaluate(`(${LENGTH})("--github-pulls-lines-room")`);
-    const labelRoom = await browser.evaluate(`(${LENGTH})("--github-pulls-readiness-label-room")`);
-    const gap = await browser.evaluate(`(${LENGTH})("--github-pulls-readiness-gap")`);
-    const sweep = [];
-    for (let width = 300; width <= 600; width += 1) {
-      await browser.evaluate(`document.getElementById("pane").style.width = "${width}px"`);
-      await frames();
-      const read = await browser.evaluate(READ);
-      const r = read.rows[INDENTED];
-      const [, column, age] = r.columns;
-      const full = 14 + gap + labelRoom;
-      // The first column's width with the column at its widest, on the row a level in.
-      const room = r.content - full - age - 2 * r.gap;
-      sweep.push({
-        width,
-        list: read.list,
-        shown: r.labelShown,
-        fits: room >= linesRoom + r.toggleRoom - TOLERANCE_PX,
-        room,
-        column,
-      });
-    }
-    const shownFrom = sweep.find((each) => each.shown)?.width ?? null;
-    const fitsFrom = sweep.find((each) => each.fits)?.width ?? null;
-    check(
-      "the label is shown from the width at which a stack's member has its lines' room beside the widest column, and not before it",
-      shownFrom !== null &&
-        fitsFrom !== null &&
-        shownFrom >= fitsFrom &&
-        shownFrom - fitsFrom <= 1 &&
-        sweep.every((each) => each.shown === each.width >= shownFrom),
-      JSON.stringify({ shownFrom, fitsFrom }),
-    );
-    measured.bound = {
-      shownFrom,
-      fitsFrom,
-      listFont: sweep[0] ? (await browser.evaluate(READ)).listFont : null,
-      linesRoom,
-      labelRoom,
-      gap,
-      atFit: sweep.find((each) => each.width === fitsFrom) ?? null,
-    };
-    lap(`the bound: shown from ${shownFrom} px, fits from ${fitsFrom} px`);
   } finally {
     if (process.env.MEASURE_OUT) {
       fs.writeFileSync(process.env.MEASURE_OUT, `${JSON.stringify(measured, null, 2)}\n`);

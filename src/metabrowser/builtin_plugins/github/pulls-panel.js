@@ -358,7 +358,7 @@ export function describeRow(row) {
     author,
     avatar: avatarUrl(row.author_avatar_url),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
-    meta: `#${row.number} · ${author}`,
+    meta: `${author} · #${row.number}`,
     // The head commit the catalog reported, which the row's change line (row-lines.js) and
     // its stack's (stack-lines.js) are read again for when it moves; it is not shown.
     head: typeof row.head_oid === "string" ? row.head_oid : null,
@@ -4641,8 +4641,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The author, its avatar and its name, which ends the row's run, after the number (mb-rb3n;
-   * github/styles.css, `.github-pulls-by`).
+   * The sidebar shows the avatar. The row’s accessible name includes the login.
    *
    * @param {string} login
    * @param {string | null} avatar
@@ -4651,11 +4650,9 @@ export function mountPullsPanel(container, ctx, mb) {
     // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this asks
     // for no avatar outside that window, and a row the window mounts again as the list scrolls
     // back draws its avatar at once: WebKit fetches a new lazy image again
-    // (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row draws no box for an
-    // author with no avatar: its avatar comes with the row.
+    // (docs/design-system.md, "A Repaint Keeps Its Images").
     return authorLabel(mb, login, avatar, "github-pulls-author", {
       loading: "eager",
-      placeholder: false,
     });
   }
 
@@ -4682,10 +4679,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The number, the author, and the age said in words for the row's link, "#455 · jlevy ·
-   * 3d", in the order the row shows them: the run's own number and author and the last line's
-   * age are hidden from assistive technology, so the link's name says them once, after its
-   * title and place.
+   * Say the author, PR number, and age once, after the title and stack position.
    *
    * @param {PullRow} row
    * @param {string} age
@@ -4748,31 +4742,18 @@ export function mountPullsPanel(container, ctx, mb) {
     const updated = mb.ageLabel(at, { className: "github-pulls-age" });
     updated.setAttribute("aria-hidden", "true");
     const label = updated.textContent ?? "";
-    // The row's run: the state icon, then the title, the place, the number, and the author,
-    // in the one order every row of a pull request's fields has, drawn by the one builder that
-    // draws a stack's members too (stack-member-row.js), a dot before each field after the
-    // title; one flow that wraps with every line after the first in the text column, past the
-    // icon, as a tree's title does (github/styles.css, `.github-pulls-heading`). The title's
-    // conventional-commit prefix is regular and the rest bold (docs/design-system.md,
-    // "Titles"). The place is the list's to draw (`paintPlace`), hidden while the row is in no
-    // stack. The number and the author are hidden from assistive technology: the link's name
-    // says them (`rowSaid`).
+    // The shared heading wraps its title and keeps readiness beside the number at the right.
     const heading = h("span", { class: "github-pulls-heading" });
     const run = stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN);
     const line = runLine(row, null);
     run.show(line);
-    // The row's last line, the lines and the chevron in the text column under the run, then the
-    // readiness's column, its glyph and its label, hidden, since the run says the verdict after
-    // the state (stack-member-row.js), and the age at its end: one line tall whether the lines
-    // are shown, waited for, or cannot be had, so nothing moves when they or the readiness
-    // arrive (github/styles.css, `.github-pulls-tail`).
-    const tail = h("span", { class: "github-pulls-tail" }, [change, run.readiness, updated]);
+    const tail = h("span", { class: "github-pulls-tail" }, [change, updated]);
     const said = h("span", { class: "sr-only" }, [rowSaid(row, label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
     // are its children, as a folder's are, closed until the reader opens them; the tree that
     // draws them owns them from it (pull-files-view.js, `attach`). Its name is the state, the
-    // title, the place, and the number, the author, and the age in words (`rowSaid`); its
+    // title, the place, the author, the number, and the age in words (`rowSaid`); its
     // lines' words describe it, so they are read with it, as its toggle is no stop and no node
     // of the tree.
     const anchor = /** @type {HTMLAnchorElement} */ (
@@ -4828,11 +4809,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A row's readiness as it is now (row-readiness.js): the verdict's glyph in its tone in the
-   * last line's readiness column, its label after it where the list is wide enough, and its
-   * words after the state in the link's name; or the column empty, at its width, for a closed
-   * or merged pull request, one the server has no status of, and one not read yet, so the
-   * glyphs and the ages down the list stay in their columns.
+   * Update the heading’s readiness in place. An empty glyph slot keeps the number still.
    *
    * @param {PaintedRow} entry
    */

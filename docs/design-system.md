@@ -3929,6 +3929,8 @@ The full form is a chip unless the row says otherwise: the header’s chip, the 
 status section’s chip for its verdict, a requirement’s row, or a check’s row.
 The compact form is the glyph alone: a Pulls row’s readiness column, a stack member’s
 cell, and the header’s narrow form.
+A draft with no other blockers explains in Merge status and the header tooltip that it
+must be marked ready for review on GitHub before merging.
 The state’s badge is the one chip without its glyph, because the state’s glyph leads the
 title on the line above it, at the title’s size: the header draws the state’s glyph
 once, as GitHub’s header does in its state label, and a second copy in the badge would
@@ -4121,31 +4123,16 @@ its state: the glyph in the list, the word on the page.
 draws (`GET pull-statuses`), and `stackMemberRow` in `stack-member-row.js` draws it, so
 a Pulls row and a stack’s member draw one thing one way.
 
-- **A Pulls row** has a column of its own on its last line, between the toggle and the
-  age, as wide as the glyph on every row, flush or a level in, so the glyphs down the
-  list start at one edge and a glyph that arrives moves nothing.
-  A closed or merged row keeps the column empty, and so does an open one the server has
-  no status of for the head the list names: not read yet, not scanned, or pushed since.
-  Where the list is wide enough the label follows the glyph, in the text’s ink: a
-  container query on the list (`@container github-pulls` in the plugin’s `styles.css`)
-  widens the column to the widest label exactly where a stack’s member, a level in,
-  keeps the room its lines need beside it; the comment beside the rule records the bound
-  and its measurement.
-  The tone is the glyph’s alone, so a hundred rows are not a hundred colored words, and
-  the label reads at the text’s contrast on the open row’s tint, where the success ink
-  would not.
-- **A stack’s member**, in the stack menu and on the stack’s page, ends its line with
-  the glyph, after the author, in a cell as wide as the glyph, empty for a member with
-  no readiness, so the members’ places, numbers, and authors end at one edge.
-  The page’s own member draws the readiness its header shows, by the header’s rule;
-  every other member the server’s, on the head the server judged, the catalog’s,
-  whatever head the member’s record has.
-  A guide’s pull request row shows none, and has no cell.
+The readiness glyph sits immediately before the PR number, at the right edge of the
+heading’s last line.
+Pulls rows, stack menu members, and the Pulls list on Stack Overview use the same
+placement. An unread, closed, or merged PR keeps the glyph’s slot empty, so its number
+stays put when readiness arrives.
+A Guided Review reference uses the same field order and has no readiness slot.
 
-The glyph and the label are hidden from assistive technology on both: the row says the
-label out of view after the state icon, so its name reads “Open Checks pending Fix the
-reader …”, the readiness after the state, as the state icon says the state.
-The Pulls column has no tooltips, and nor does the glyph.
+The row’s accessible name includes the verdict after the state icon.
+In the sidebar, the separate last line retains the changed-files toggle and the
+right-aligned age.
 
 A row is read in one request for the rows a surface draws, when the browser is idle and
 behind any comparison a page is reading, from the cache alone, as a row’s change line
@@ -4178,7 +4165,7 @@ that shows a number takes it:
 | Surface | Class |
 | --- | --- |
 | The pull request page’s title | `.github-pull-number`, after the title |
-| A Pulls row | `.github-pulls-number`, in its run after the title and the place, after a muted dot |
+| A Pulls row | `.github-pulls-number`, at the right edge of the heading after the readiness glyph |
 | A stack menu’s member | `.github-pull-stack-member-number`, after its title, its place, and a muted dot, before its author, in the Pulls row’s ink |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
@@ -4197,64 +4184,21 @@ to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 
 ### One Order for a Pull Request’s Fields
 
-Wherever a row names a pull request by more than its title, its fields keep one order:
-the state icon, the title, its place in its stack, its number, and its author, “title ·
-14/15 · #455 · jlevy”.
-A reader who learns the order once reads every such row the same way.
-A surface that leaves a field out keeps the order of the rest: a pull request in no
-stack reads “title · #455 · jlevy”, and a row with no room for an author ends with its
-number.
+A PR row shows the state icon, the title, its stack position when applicable, the
+author, the readiness glyph, and the PR number.
+The title wraps. The readiness glyph and bold PR number align to the right on the
+heading’s last line, like the number on a PR page.
+The state icon aligns with the first line.
 
-One builder draws the fields on every row of the GitHub plugin that shows them,
-`stackMemberRow` in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a
-stack’s member in the stack menu and on the stack’s own page and a guide’s pull request
-row (`MEMBER_LINE`). The order, and the muted dots that part the fields, are its; a
-surface chooses only its layout, a run that wraps in the text column or one line whose
-title is cut short before the rest.
-A field that is absent draws neither itself nor the dot before it, in either layout and
-whether the row was drawn without it or lost it later, so no row shows a stray dot.
-
-The shell cannot import the GitHub plugin, so its own rows keep the order in their own
-code: Quick Search’s pull request results, “title #N · Merged”, and a ref selector row’s
-pull request line, its state icon, title, and number.
-An accessible name or a tooltip says the fields in the order the row shows them, “title,
-pull request #455”, never the number first.
+`stackMemberRow` in `stack-member-row.js` draws this order in the Pulls sidebar, the
+stack menu, the expanded Pulls list on Stack Overview, and Guided Review PR references.
+The sidebar shows the author’s avatar and includes their login in its accessible name.
+Stack lists and Guided Review references can show the avatar and login.
 
 ### Authors Follow Pull Requests
 
-Wherever a row names a pull request by its number or its stack place, its author
-follows, after a muted dot, in the shell’s [actor identity](#actor-identity): the bold
-name, and the avatar at `--github-pull-row-avatar-size`, where it has one.
-A reader tells whose work a number is without opening it.
-The name is cut short only past its share of the line, and a screen reader hears the
-author after the number.
-
-| Surface | The author |
-| --- | --- |
-| A Pulls row | `.github-pulls-by`, ending the run after the number, cut short only where it is wider than a line |
-| A stack menu’s member | `.github-pull-stack-member-by`, ending the line after the number, at most a third of it |
-| A member on a stack’s page | The stack menu’s member row itself, drawn by its builder, `stackMemberRow` |
-| A guide’s pull request row | `.github-pull-stack-member-by`, as a stack menu’s member has it |
-| The pull request page’s title | The header’s sentence, “jlevy wants to merge 3 commits”, which names the merger once the pull request is merged, as github.com’s does |
-
-Two surfaces show no author:
-
-- **The stack button**, “⧉3/4”, at the end of the header’s row of ages, has no room for
-  one. An author there, a dot, an avatar, and a short login, is 58 px wide, 64 px with
-  its gap. Measured in Chrome on 2026-11-25, it took 64 px of the 89 px a 360 px pane’s
-  row left its ages, leaving 25, and all of a merged pull request’s; at 560 px it cut a
-  closed pull request’s ages from 284 px to 232. Its pull request is the page’s own,
-  whose header names its author already.
-- **Plain text** cannot draw an identity: a tooltip, an accessible name, a message such
-  as “#455 is not in this list.”, or a sentence that links “Pull request #12”. A row’s
-  accessible name says its author in words where the row shows one (`rowSaid` in
-  `pulls-panel.js`).
-
-A stack’s own number, in “Stack #286”, names the stack, not a pull request, and has no
-author. `tests/dom/github-pulls-row-lines-chrome.mjs` holds a Pulls row’s author,
-`tests/dom/github-pulls-stacks-chrome.mjs` a stack menu member’s, its third, and its
-baseline, and `tests/dom/github-guided-review-mount-behavior.js` and
-`tests/dom/github-guided-review-kinds-chrome.mjs` a guide row’s.
+The sidebar shows the author’s avatar and includes their login in its accessible name.
+Stack lists and Guided Review references can show the avatar and login.
 
 ### Titles
 
@@ -4313,12 +4257,12 @@ holds the one helper and the one rule in source.
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | The item, `.github-pulls-entry`, around its link, the run and the last line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under it all, the -2px focus ring round it, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, in the run’s start padding, centered on its first line, so every line of the run starts in the text column past it | [One Glyph Size](#one-glyph-size) |
-| Readiness | The row’s last line’s middle column, `.github-pulls-readiness` in `.github-pulls-tail`, between the toggle and the age: the verdict’s glyph (`readinessIcon`) in its tone, and, where the list is at least the container query’s bound, its label after it in text ink; one width on every row, empty on a closed or merged row and one with no status, and hidden from assistive technology, its words after the state icon in the run | [In the Pulls Tab and on Stacks](#in-the-pulls-tab-and-on-stacks) |
+| Readiness | The verdict glyph immediately before the right-aligned PR number in the heading’s last line. The row’s accessible name includes the verdict. | [In the Pulls Tab and on Stacks](#in-the-pulls-tab-and-on-stacks) |
 | Lines and chevron | The row’s last line, `.github-pulls-change` in `.github-pulls-tail`, from the text column, before the age, and one line tall whatever it holds: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on; with no lines, the chevron alone; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.ageLabel`, in its freshness ink, at the row’s end on its last line, in a column of one width, `--github-pulls-age-column`, after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), in the run after the title and the place, after a muted dot, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
-| Username | `--nav-font-size`; `.actor-name`, in the run after the number and a muted dot, ending it, never breaking. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and a row’s username ellipsizes only where it is wider than a line ([Authors Follow Pull Requests](#authors-follow-pull-requests)) |
+| Author | The avatar in the wrapping heading, after the stack position. The accessible name includes the login. | [Authors Follow Pull Requests](#authors-follow-pull-requests) |
 | Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s Stack Overview row above it has the icon |
 | Stack group | A row of the tree: the chevron, then “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no icon, the stack’s size as a count summary, “· 4 pulls” ([Heading Tallies](#heading-tallies)), and its age at the row’s end; its Stack Overview row and its pull requests one icon slot and gap in, that row’s Layers glyph and each state icon under the label’s start, and each title under “Stack Overview” | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
@@ -4330,22 +4274,15 @@ holds the one helper and the one rule in source.
 
 A pull request is a run and a last line, one item, and two targets, because a pane is
 narrower than its parts.
-Its run is one flow: the state icon, then the title, a stack member’s place, the number,
-and the author, a dot before each part after the title, every line of it in the text
-column, past the icon, and never cut short, so it always ends with the author.
-The run’s start padding is the text column, and the icon is out of its flow, so no
-line’s start rests on `text-indent`, which WebKit drops on a `-webkit-box`: in the app’s
-web view a place or a title that a first line’s indent made room for was drawn over the
-state icon, and the run is no `-webkit-box`. The last line is the brief change line with
-the chevron after it, from the text column, and the age at the row’s end, at one size
-and centered on the line ([Rows and Disclosures](#rows-and-disclosures)). A plain click
-on the lines or the chevron opens and closes the files and opens no page, a modified or
-middle click on them toggles nothing and opens no tab, and a click anywhere else on the
-item opens the pull request.
+The state icon aligns with the first line of the wrapping heading.
+The readiness glyph and PR number align to the right of the heading’s last line.
+Under the heading, the diff summary and chevron toggle the changed files and the age
+sits at the right edge.
+A click elsewhere opens the PR. The keyboard treats the entire item as one row.
 The keys see the item as one row of the list.
 The title is the link’s first shown text, so the row’s accessible name gives the state,
 from the state icon’s label, and the readiness’s label after it, out of view, then the
-title and the place, before the number, the author, and the age in words.
+title, stack position, author, PR number, and age in words.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
 text is text: GitHub’s users write it, and none of it reaches markup or a style.
 A closed row is one height whatever its lines hold, so nothing moves when they arrive:
@@ -4433,7 +4370,7 @@ copy of either.
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages; a Pulls row’s place, after its title and a muted dot, before the number, as a stack menu’s member line has it, with no icon |
-| Member row | One line: the pull request’s state icon, `.github-pull-state-icon`; its title, bold in normal text ink, cut short before its place; and at the line’s end, together, its position, bold, a muted dot, `.github-pull-stack-dot`, its number, `.github-pull-stack-member-number`, and, where it is known, another dot and its author, `.github-pull-stack-member-by`, the shell’s actor identity, “14/15 · #N · jlevy”, a Pulls row’s order, the title, the place, the number, and the author; and last, for an open pull request, its readiness’s glyph in a cell as wide as the glyph, `.github-pull-stack-member-readiness`, empty for one with none ([In the Pulls Tab and on Stacks](#in-the-pulls-tab-and-on-stacks)). On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu; the stack’s page, in a card |
+| Member row | The PR state icon, wrapping title, stack position, author avatar and login, readiness glyph, and bold PR number. The readiness glyph and number align to the right on the last line of the heading. The current PR has `aria-current="page"` and the same highlight and bar as a Pulls row. | The stack menu and the Pulls list on Stack Overview |
 | Stack Overview row | The stack’s Layers glyph, `.github-pull-stack-icon`, in normal text ink, in the state icon’s slot, and “Stack Overview” where a member’s title starts, in a member row’s gap. In the Pulls tab, `.github-pulls-whole-row`, after its words and a muted dot is the stack’s [brief change line](#brief-change-line) and then the registry’s chevron, the two the toggle of the stack’s changed files (`.github-pulls-whole-change`), as a pull request’s row’s last line ends | The first of a stack’s rows, above its members, in the stack menu and under an open stack in the Pulls tab; each opens the stack’s page |
 | Stack group row | The registry’s chevron and the label, with no icon, the Stack Overview row under it being the stack’s own; then, after a muted dot, the stack’s size, a count summary with its number bold, “· 4 pulls” ([Heading Tallies](#heading-tallies)); and at the row’s end the age of the stack’s newest update ([Ages End the Row](#ages-end-the-row)) | The Pulls tab |
 
@@ -4465,30 +4402,11 @@ copy of either.
   A member row is a link, so its position and title each set their own ink, and no link,
   visited, hover, focus, or current state changes them; a part that set none would take
   the link’s blue.
-- **Member row.** A stack’s member reads in one order wherever it appears: its title,
-  its place, its number, and its author, “Fix the reader 14/15 · #455 · jlevy”.
-  A Pulls row’s run has all four, its age at the row’s end on the line below
-  ([The Pulls Tab](#the-pulls-tab)); the stack menu’s member row has all four on one
-  line, and so does a guide’s pull request row, drawn by the same builder
-  (`stackMemberRow` in `stack-member-row.js`), whose place says its stack in its tip and
-  its accessible name, and which, for a pull request in no stack, has no place and keeps
-  the rest in order; and the stack button shows the place alone, “⧉14/15”, with no
-  author, since the row it ends has no room for one
-  ([Authors Follow Pull Requests](#authors-follow-pull-requests)). Every member in the
-  menu has one layout, one line tall, so the members line up and every row of the menu
-  is as tall as the others: the state icon in the tree’s icon slot, a tree row’s gap,
-  then the title, and at the line’s end, together, the position, the dot, the pull
-  request’s number, and another dot and its author, “14/15 · #455 · jlevy”, the menu
-  with them right-aligned.
-  The number follows the place, “#455” as a Pulls row shows it, in the text’s ink at the
-  number’s weight ([Pull Request Numbers](#pull-request-numbers)), so a reader tells two
-  members of one title apart, and the author ends the line, as a Pulls row draws it, the
-  shell’s [actor identity](#actor-identity) with its avatar where it has one and no box
-  where it has none; a screen reader hears the number and the author last in the
-  member’s name. The place and the number never give way, and the author takes at most a
-  third of the line, its name cut short past that; the title gives way first, cut short
-  before the place, and the row’s tip holds the whole of it, which the shell shows only
-  while the title is cut short ([Tooltips Add Information](#tooltips-add-information)).
+- **Member row.** Stack members use the shared
+  [PR field order](#one-order-for-a-pull-requests-fields).
+  The title wraps beside the state icon.
+  The author follows the stack position, and the readiness glyph and PR number stay
+  together at the right of the last line.
   The icon is the state the page shows for its own pull request, and for each other
   member the state the Pulls list last read for it (`stackMemberState` in
   `pull-page.js`); a member the list has not reached keeps the icon’s slot empty.

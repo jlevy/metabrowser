@@ -607,64 +607,27 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
 
 
 def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
-    """A pull request's row is a run and a last line, all of it the row's link (mb-lkkt,
-    mb-d0a3, mb-85op, mb-lqkb, mb-pw8t, mb-rb3n). The run is one flow of the state icon, then
-    the title, a stack member's place, the number, and the author, "title · 5/12 · #N · jlevy",
-    every line of it in the text column, past the icon, as a tree's title wraps; the last line
-    is the lines with the chevron after them, "+12 −3 ›", the readiness column (mb-3n21), and
-    the age at the row's end. The lines and the chevron are the toggle of its changed files,
-    and the rest of the row opens it. Before, the lines and the chevron ended the run, and the author and the age were the
-    last line (mb-pw8t); before that, the title alone held two lines, cut short at the second,
-    and a third line held the number, the author, and the lines. The DOM keeps the title the link's first
-    text, so its accessible name gives the state icon's label, the title, and the place, before
-    the number, the author, and the age in words (`rowSaid`). github-pulls-stacks-chrome.mjs,
-    github-pull-header-chrome.mjs, and github-pulls-row-lines-chrome.mjs measure it."""
+    """The PR heading wraps with an anchored suffix. The diff toggle stays below."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
-    assert "[heading, tail, said]," in panel, "the title leads the name"
+    assert "[heading, tail, said]," in panel
     build = _function(panel, "buildRow")
-    # The run's order is the one every row of a pull request's fields has, the builder's
-    # (stack-member-row.js); the last line is the toggle, whose lines come before its chevron,
-    # the readiness column, and the age.
-    assert 'h("span", { class: "github-pulls-tail" }, [change, run.readiness, updated])' in build
+    assert 'h("span", { class: "github-pulls-tail" }, [change, updated])' in build
     toggle = build[build.index('{ class: "github-pulls-change disclosure-toggle collapsed"') :]
-    assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"'), (
-        "the chevron comes after the lines it expands"
-    )
+    assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"')
     css = _github_css()
-    heading = _rule(css, ".github-pulls-row > .github-pulls-heading")
-    for declaration in (
-        "position: relative;",
-        "display: block;",
-        "padding-inline-start: var(--github-pull-row-text-column);",
-    ):
-        assert declaration in heading, declaration
-    # Every line of the run starts in the text column: its start padding, not the first line's
-    # indent, which WebKit drops on a -webkit-box, where in the app's WKWebView the place or the
-    # title was drawn over the state icon (mb-ma3f). The run is no -webkit-box and is never cut
-    # short, so it always ends with its chevron; no rule of the sheet indents a line.
-    assert "-webkit-box" not in heading and "line-clamp" not in heading
-    assert not re.search(r"(?<![-\w])(?:min-|max-)?height\s*:", heading), heading
-    assert ".github-pulls-row > .github-pulls-heading::before" not in css
-    assert not re.search(r"(?m)^\s*text-indent\s*:", css)
-    # Only the title breaks anywhere; the number never breaks, and the author is one box,
-    # its name cut short only where it is wider than a line.
-    assert "overflow-wrap" not in heading
-    assert "overflow-wrap: anywhere;" in _rule(css, ".github-pulls-title")
-    assert "white-space: nowrap;" in _rule(css, ".github-pulls-number")
-    assert "max-width: 100%;" in _rule(css, ".github-pulls-by > .github-pull-identity")
-    assert "--github-pulls-age-room" not in css
-    # The icon is out of the text's flow, in the run's start padding, one line of the row's
-    # type tall: inline, it was a break, and a title of one long word left the first line the
-    # icon alone.
-    icon = _rule(css, ".github-pulls-heading > .github-pull-state-icon")
-    for declaration in (
-        "position: absolute;",
-        "inset-block-start: 0;",
-        "inset-inline-start: 0;",
-        "height: 1lh;",
-    ):
-        assert declaration in icon, declaration
+    assert re.search(
+        r"\.github-pulls-row > \.github-pulls-heading,\s*\.github-pull-stack-member\s*"
+        r"\{[^}]*grid-template-columns: var\(--tree-icon-slot\) minmax\(0, 1fr\);",
+        css,
+    )
+    copy = _rule(css, ".github-pull-row-copy")
+    assert "overflow-wrap: anywhere;" in copy and "white-space: normal;" in copy
+    assert "line-clamp" not in copy
+    end = _rule(css, ".github-pull-row-end")
+    assert "float: inline-end;" in end and "white-space: nowrap;" in end
+    author = _rule(css, ".github-pulls-by .github-pulls-author")
+    assert "visibility: hidden;" in author and "inline-size: 0;" in author
     assert ".github-pulls-heading > .github-pulls-tail" not in css
     assert "--github-pulls-lines-room: 5.6em;" in _rule(css, ".github-pulls-row")
     assert "width: var(--github-pulls-lines-room);" in _rule(css, ".github-pulls-change-pending")

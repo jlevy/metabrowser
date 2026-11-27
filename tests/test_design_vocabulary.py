@@ -2652,22 +2652,6 @@ def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> 
             assert distance >= MIN_TONE_DISTANCE, (
                 f"{first} and {second} are {distance:.3f} apart in the {theme} theme"
             )
-        # The label after it is text, in an ink no tone sets, and reads at a text's contrast
-        # on every ground a row has.
-        label = next(
-            declarations["color"]
-            for selector, declarations in rules
-            if selector == ".github-pulls-readiness-label" and "color" in declarations
-        )
-        assert label not in inks.values(), "a row's label takes no tone's ink"
-        label_alias = re.fullmatch(r"var\((--[\w-]+)\)", label)
-        assert label_alias is not None, f"the label's ink is a token: {label}"
-        label_luminance = _srgb_luminance(_srgb(_resolved(tokens, label_alias[1])))
-        for ground in ("--sidebar-bg", "--hover-bg", "--highlight-bg"):
-            ratio = _ratio(label_luminance, _srgb_luminance(_ground(tokens, ground)))
-            assert ratio >= _AA_TEXT, (
-                f"a row's label on {ground} in the {theme} theme reads at {ratio:.2f}:1"
-            )
         warning = _oklch_channels(_resolved(tokens, "--status-warning-text"))[2]
         assert _hue_gap(_oklch_channels(colors["attention"])[2], warning) > 15, (
             f"attention is the shell's warning ink in the {theme} theme"
@@ -3142,10 +3126,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert github[".github-pulls-by"]["--actor-avatar-size"] == (
         "var(--github-pull-row-avatar-size)"
     ), "a list row's avatar"
-    assert github[".github-pulls-by > .github-pull-identity"]["max-width"] == "100%"
-    assert ".github-pulls-by:has(.actor-avatar)" not in github
     author = github[".github-pulls-by .github-pulls-author"]
-    assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
+    assert (author["inline-size"], author["visibility"]) == ("0", "hidden")
     assert ".github-pulls-who" not in github
     # The header's details may be narrower than its merge, whose chips then ellipsize.
     assert github[".github-pull-meta-details"]["min-width"] == "0"

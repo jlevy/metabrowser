@@ -315,25 +315,22 @@ async function mountStory() {
     const classOf = (node) => node.className?.split(" ")[0];
     const titleLine = (row) => {
       const heading = find(row, "github-pulls-heading");
-      assert.deepEqual(
-        heading.childNodes.map(classOf).slice(0, 6),
-        [
-          "github-pull-state-icon",
-          "sr-only",
-          "github-pulls-title",
-          "github-pulls-place",
-          "github-pulls-sep",
-          "github-pulls-number",
-        ],
-        "the state icon, its readiness's words, then the title, the place, and the number, one flow",
-      );
-      const place = heading.childNodes[3];
-      const number = heading.childNodes[5];
-      // The no-break space before each dot is written as a space.
-      const text = [heading.childNodes[2], place, heading.childNodes[4], number.firstChild]
-        .map(textOf)
-        .join("")
-        .replaceAll("\u00a0", " ");
+      const copy = find(heading, "github-pull-row-copy");
+      const end = find(copy, "github-pull-row-end");
+      assert.deepEqual(copy.childNodes.map(classOf).filter(Boolean), [
+        "github-pulls-title",
+        "github-pulls-place",
+        "github-pulls-by",
+        "github-pull-row-end",
+      ]);
+      assert.deepEqual(end.childNodes.map(classOf).filter(Boolean), [
+        "github-pulls-readiness",
+        "github-pulls-number",
+      ]);
+      const place = find(copy, "github-pulls-place");
+      const label = find(copy, "github-pulls-title");
+      const number = find(end, "github-pulls-number");
+      const text = `${textOf(label)}${textOf(place)} ${textOf(number)}`.replaceAll("\u00a0", " ");
       return { heading, place, text };
     };
     const memberLines = drawnRows()

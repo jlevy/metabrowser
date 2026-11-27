@@ -5311,7 +5311,7 @@ export function createStackMenu(initial, number, deps) {
         h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
           deps.icon === null ? null : document.importNode(deps.icon, true),
         ]),
-        h("span", { class: "github-pull-stack-member-copy" }, [
+        h("span", { class: "github-pull-row-copy" }, [
           h("span", { class: "github-pull-stack-member-title" }, [STACK_OVERVIEW]),
         ]),
       );
@@ -5381,11 +5381,7 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The member row the stack's page draws too (stack-member-row.js): the state icon, the
-        // title, and at the line's end the place, the number, and the author, "14/15 · #N ·
-        // jlevy" (mb-1kzu, mb-pw8t, mb-x0z1); the place, the dot, and the number never give
-        // way, the author gives way only past its share of the line, and the title is cut
-        // short before them.
+        // Use the same member row as the stack page.
         row = stackMemberRow(link, deps.titleNodes, deps.identity);
         rows.set(target, row);
       }
