@@ -223,11 +223,14 @@ def probe_a_test_that_logs_a_name_that_is_not_utf8() -> None:
 def _session(tmp_path: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     run = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:sugar"]
     basetemp = tmp_path / f"nested-{len(list(tmp_path.glob('nested-*')))}"
+    # The probes' expected failures must all run, even if the outer session uses -x.
+    env = {**os.environ, "CHROME_BIN": "/bin/true"}
+    env.pop("PYTEST_ADDOPTS", None)
     return subprocess.run(
         [*run, "-o", "python_functions=probe_*", f"--basetemp={basetemp}", *arguments, THIS],
         cwd=ROOT,
         # The probe that asks for Chrome finds one, so that only the gate can fail it.
-        env={**os.environ, "CHROME_BIN": "/bin/true"},
+        env=env,
         capture_output=True,
         text=True,
         # A probe logs a name that is not UTF-8, which pytest prints as its bytes.
