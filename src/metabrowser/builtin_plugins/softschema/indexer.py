@@ -41,6 +41,7 @@ class CollectionVersion:
     indexing: bool = True
     cache_available: bool | None = None
     failed: bool = False
+    paths_checked: int = 0
 
 
 class CollectionIndex:
@@ -51,6 +52,7 @@ class CollectionIndex:
         self._ready = threading.Event()
         self._stop = threading.Event()
         self._started = 0.0
+        self._paths_checked = 0
         self._view = CollectionVersion()
 
     def request(self, *, wait: float | None = None) -> CollectionVersion:
@@ -62,12 +64,13 @@ class CollectionIndex:
             ):
                 self._started = now
                 self._ready.clear()
-                self._view = replace(self._view, indexing=True)
+                self._paths_checked = 0
+                self._view = replace(self._view, indexing=True, failed=False)
                 _WORKERS.submit(self._refresh)
         if wait is not None:
             self._ready.wait(wait)
         with self._lock:
-            return self._view
+            return replace(self._view, paths_checked=self._paths_checked)
 
     def stop(self) -> None:
         self._stop.set()
@@ -91,7 +94,13 @@ class CollectionIndex:
             prefix = self.root.relative_to(self.served_root)
 
             def ignored(path: str, is_directory: bool) -> bool:
-                return self._stop.is_set() or ignore(prefix / path, is_dir=is_directory)
+                if self._stop.is_set():
+                    return True
+                skip = ignore(prefix / path, is_dir=is_directory)
+                # The public callback observes discovery, before artifact reads and validation.
+                with self._lock:
+                    self._paths_checked += 1
+                return skip
 
             if self._stop.is_set():
                 return

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
+from softschema import collection
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
@@ -45,6 +47,50 @@ def _record(root: Path, folder: str, name: str, key: str, values: dict[str, Any]
             }
         )
     )
+
+
+def test_collection_reports_discovery_before_the_index_is_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server._set_root_dir(tmp_path)
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    _schema(contracts, "Person", {"name": {"type": "string"}})
+    _record(tmp_path, "people", "Person", "ada", {"name": "Ada Lovelace"})
+    reached_record = threading.Event()
+    resume = threading.Event()
+    scan_collection = collection.scan_collection
+
+    def paused_scan(root: Path, **kwargs: Any) -> collection.CollectionScan:
+        ignore = kwargs.pop("ignore")
+
+        def pause_after_record(path: str, is_directory: bool) -> bool:
+            skipped = ignore(path, is_directory)
+            if path == "people/ada.json":
+                reached_record.set()
+                assert resume.wait(10), "test did not release the scanner"
+            return skipped
+
+        return scan_collection(root, ignore=pause_after_record, **kwargs)
+
+    monkeypatch.setattr(collection, "scan_collection", paused_scan)
+    plugins = [p for p in server._LOADED_PLUGINS if p.name == "softschema"]
+    route = "/api/plugin/softschema/collection"
+    with TestClient(Starlette(routes=build_plugin_routes(plugins))) as client:
+        try:
+            started = client.get(route, params={"path": "people"})
+            assert started.json()["state"] == "indexing"
+            assert reached_record.wait(10), "scanner did not reach the record"
+            progress = client.get(route, params={"path": "people"}).json()
+            assert progress["state"] == "indexing"
+            assert progress["paths_checked"] > 0
+            assert progress["tables"] == []
+        finally:
+            resume.set()
+        ready = client.get(route, params={"path": "people", "wait": "1"}).json()
+        assert ready["state"] == "ready"
+        assert ready["paths_checked"] >= progress["paths_checked"]
+        assert ready["tables"][0]["count"] == 1
 
 
 def test_folder_tables_link_across_scopes_and_keep_current_generation(

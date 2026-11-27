@@ -38,8 +38,8 @@ $ metab library --api '/api/plugin/softschema/collection?path=people&wait=1' --f
 ```
 
 ```console
-$ jq -c '{root,state,complete,tables}' summary.json
-{"root":"","state":"ready","complete":true,"tables":[{"id":"example:Person/v1","label":"Person/v1","count":1}]}
+$ jq -c '{root,state,complete,paths_checked,tables}' summary.json
+{"root":"","state":"ready","complete":true,"paths_checked":5,"tables":[{"id":"example:Person/v1","label":"Person/v1","count":1}]}
 ? 0
 ```
 

@@ -27,6 +27,27 @@ All generations returned 4,971 valid records, 18 tables, 18 schemas, and zero pr
 The read counter covers SoftSchema’s content reader.
 Folder discovery samples and filesystem metadata calls are outside that counter.
 
+## Published SoftSchema cold build and refresh
+
+On 2026-11-27, a filesystem preview of the pinned Universe knowledge base had 577 People
+records. The index read 4,992 candidate files across the root and returned 4,971 records
+and 18 schemas. It needs that scope to resolve sibling schemas and cross-folder
+references.
+
+With published SoftSchema 0.10.0 and the pure Python YAML parser, a cold scan took 48.7
+s. Artifact inspection and parsing took 41.8 s, reading took 3.1 s, binding took 2.8 s,
+and discovery took 0.24 s. An unchanged scan reused the in-memory snapshot in 0.45 s
+with zero content reads.
+These timings instrumented the scanner on the external drive and exclude SQLite and
+HTTP.
+
+A separate cold worker run with the locked `yaml-accelerator` extra took 21.6 s and
+published the same record and schema counts.
+SoftSchema doctor reported C-first parsing.
+This run also included the progress counter and snapshot serialization.
+The progress counter checked 5,472 paths, which includes directories and paths tested by
+the ignore policy.
+
 ## Where the edit spent time
 
 - The scan took 570 ms, including 159 ms walking the tree and 48 ms checking bindings

@@ -37,6 +37,7 @@ async function main() {
     state: "indexing",
     generation: "indexing",
     complete: false,
+    paths_checked: 0,
     tables: [],
     summary: null,
   };
@@ -109,6 +110,12 @@ async function main() {
     const cold = progress.textContent;
     assert.equal(sdk.MetabrowserSourceLineAnchors.preferredView(current), "table");
 
+    answer = { ...answer, paths_checked: 512 };
+    poll();
+    await turn();
+    assert.equal(progress.querySelector(".index-progress-spinner"), indicator);
+    const discovery = progress.textContent;
+
     answer = {
       ...answer,
       state: "ready",
@@ -163,6 +170,7 @@ async function main() {
       JSON.stringify(
         {
           "cold index": cold,
+          "collection discovery": discovery,
           "published table": { label: link.textContent, count, href: link.getAttribute("href") },
           "background refresh": "the catalog stays visible without its indexing spinner",
           "return before the renderer arrives": "the catalog keeps the same links",

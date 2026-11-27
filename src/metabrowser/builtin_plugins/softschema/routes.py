@@ -34,6 +34,7 @@ def _collection(path: str, *, wait: bool) -> dict[str, Any] | None:
         else "",
         "generation": version.generation,
         "state": "failed" if version.failed else "indexing" if version.indexing else "ready",
+        "paths_checked": version.paths_checked,
         "cache_available": version.cache_available,
         "complete": snapshot.complete if snapshot is not None else False,
         "tables": [

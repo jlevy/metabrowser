@@ -7,10 +7,11 @@ if (!mb) {
 }
 
 /** @typedef {{id: string, label: string, count: number}} CollectionTable */
-/** @typedef {{root: string, state: string, generation: string, complete: boolean, summary: object | null, tables: CollectionTable[]}} CollectionAnswer */
+/** @typedef {{root: string, state: string, generation: string, complete: boolean, paths_checked: number, summary: object | null, tables: CollectionTable[]}} CollectionAnswer */
 /** @typedef {typeof import("../table/index.js")} TableExports */
 /** @typedef {(host: HTMLElement, value: unknown) => ({dispose?: () => void} | undefined)} RenderRecordValue */
 
+const INDEXING = "Indexing collection…";
 const INDEX_POLL_MS = 350;
 const REFRESH_POLL_MS = 3000;
 
@@ -35,7 +36,7 @@ mb.registerView("folder", "table", {
     let revision = 0;
     const progress = document.createElement("div");
     progress.className = "mb-delayed-loading";
-    mb.renderIndexProgress(progress, "Indexing collection…");
+    mb.renderIndexProgress(progress, INDEXING);
     const status = document.createElement("p");
     status.className = "table-status";
     status.setAttribute("role", "status");
@@ -173,6 +174,12 @@ mb.registerView("folder", "table", {
         if (answer.state === "failed") {
           setStatus("The collection index could not be refreshed.", "error");
         } else if (cold) {
+          const checked = answer.paths_checked;
+          const paths = checked === 1 ? "path" : "paths";
+          mb.renderIndexProgress(
+            progress,
+            checked > 0 ? `${INDEXING} ${mb.formatInteger(checked)} ${paths} checked` : INDEXING,
+          );
           setStatus("");
         } else if (!answer.complete) {
           setStatus("The collection was only partly indexed.", "warning");

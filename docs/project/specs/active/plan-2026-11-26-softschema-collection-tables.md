@@ -556,20 +556,21 @@ need their own measurements before their limits are set.
 
 ### Phase 2: The Collection API (SoftSchema)
 
-Planned and built in SoftSchema’s repository, under its own spec and parity process.
-What Metabrowser needs from it:
+SoftSchema released the filesystem collection API in
+[0.10.0](https://github.com/jlevy/softschema/releases/tag/v0.10.0). The integration has
+these acceptance requirements.
 
-- [ ] A scan of a tree that sniffs before parsing, honours caller ignore rules and a
+- A scan of a tree that sniffs before parsing, honours caller ignore rules and a
   boundary the schema pointers may not leave, and returns per-file results.
-- [ ] Schema binding by the record’s pointer, then by a contract index of compiled
-  schemas under the root, as a caller-chosen fallback order.
-- [ ] Batch validation with validators prepared once per schema digest, and record
-  states with errors, in-memory repairs, and conform results.
-- [ ] The field model: `SchemaView` fields with title, list-ness, `format`, `pattern`,
-  and `$def` names.
-- [ ] A serializable index and a refresh that rereads only changed files and revalidates
+- Schema binding by the record’s pointer, then by a contract index of compiled schemas
+  under the root, as a caller-chosen fallback order.
+- Batch validation with validators prepared once per schema digest, and record states
+  with errors, in-memory repairs, and conform results.
+- The field model: `SchemaView` fields with title, list-ness, `format`, `pattern`, and
+  `$def` names.
+- A serializable index and a refresh that rereads only changed files and revalidates
   only records whose schema changed, reporting what changed.
-- [ ] A command over a folder (for example `softschema scan kb/ --json`) that prints the
+- A command over a folder (for example `softschema scan kb/ --json`) that prints the
   collection’s tables, counts, and problems, with goldens in SoftSchema.
 
 ### Phase 3: The Plugin, Its Table, Overview, and Record View (Metabrowser)
@@ -583,7 +584,12 @@ grid opened nine contract tables covering 132 records on Patch the Conference an
 contract tables covering 4,971 records on Universe.
 The first Universe scan under concurrent test load exceeded the CLI request deadline.
 The background index subsequently supplied all 18 cached tables while another refresh
-ran.
+ran. During a cold build, the shared file-scan status reports paths checked by the
+collection discovery walk.
+The same index resolves schemas and record links across sibling folders.
+The count includes directory and ignored entries checked by the walker.
+Artifact reads, parsing, and validation continue after discovery.
+A refresh keeps the last published generation visible.
 The preview tests pin cross-folder links, exact inbound relationship filters, source
 links, and stable generations.
 The preview uses the

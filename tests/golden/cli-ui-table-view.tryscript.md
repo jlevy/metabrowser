@@ -12,6 +12,7 @@ env:
 $ node tests/dom/softschema-collection-session.js
 {
   "cold index": "Indexing collection…",
+  "collection discovery": "Indexing collection… 512 paths checked",
   "published table": {
     "label": "Person",
     "count": "577 records",
