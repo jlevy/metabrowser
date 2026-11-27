@@ -448,6 +448,83 @@ function outsideLink(value) {
 }
 
 /**
+ * The links `sanitizeBlock` kept at a `/view/` address (`markdownTargets`): the server's
+ * spelling of a link to a file of the head, which a plain click opens in place
+ * (`openHeadLinks`) and `closeHeadLinks` points elsewhere when the pin changes. A `/view/`
+ * link the repository's resolver made of a github.com address
+ * (`enhanceLinks`) is not one of them: the resolver keeps that link as it was written, and
+ * reads it again itself.
+ * @type {WeakSet<Element>}
+ */
+const headLinks = new WeakSet();
+/**
+ * The links `openHeadLinks` has given their one click listener, so a later read of the
+ * same body gives none of them another.
+ * @type {WeakSet<Element>}
+ */
+const headListening = new WeakSet();
+
+/**
+ * Open each link to a file of the head in *root* (`headLinks`) in place on a plain click,
+ * as the repository's resolver opens its own `/view/` targets beside it
+ * (static/repository-links.js, `enhance`), so a plain click on neither loads the page
+ * again: through *navigation*, while *linksOpen* says the page shows the head and the link
+ * still holds the server's spelling. A pin's navigation target names a path in the GitPath
+ * wire, as that address does, and its fragment decoded. Any other click is the browser's,
+ * which follows the same `href`, and so is every click once `closeHeadLinks` has pointed
+ * the link at github.com or taken its address. It may read the same body again, and
+ * gives each link one listener.
+ *
+ * Each such link also has its link card while the page shows the head (*preview*), as the
+ * resolver's own links do, which `closeHeadLinks` takes away with the head.
+ *
+ * @param {Element} root
+ * @param {{
+ *   navigation: Pick<MetabrowserPublicSdk["navigation"], "open">,
+ *   linksOpen: () => boolean,
+ *   isPlainClick: (event: Event) => boolean,
+ *   preview?: (link: Element, target: Readonly<{kind: "view-head", href: string}>) => void,
+ * }} how *isPlainClick* is the resolver's own test of a plain click. *preview* gives a link
+ *   of *root* that opens a file of the head its card.
+ */
+export function openHeadLinks(root, how) {
+  for (const link of root.querySelectorAll('a[href^="/view/"]')) {
+    if (!headLinks.has(link)) {
+      continue;
+    }
+    const written = link.getAttribute("href") ?? "";
+    if (how.preview && HEAD_LINK.test(written) && how.linksOpen()) {
+      how.preview(link, Object.freeze({ kind: "view-head", href: written }));
+    }
+    if (headListening.has(link)) {
+      continue;
+    }
+    headListening.add(link);
+    link.addEventListener("click", (event) => {
+      const href = link.getAttribute("href") ?? "";
+      if (!HEAD_LINK.test(href) || !how.linksOpen() || !how.isPlainClick(event)) {
+        return;
+      }
+      const [path, written] = href.slice("/view/".length).split("#", 2);
+      let fragment;
+      try {
+        fragment = written === undefined ? undefined : decodeURIComponent(written);
+      } catch {
+        // An escape that decodes to nothing: no target spells this address, so the
+        // browser follows it.
+        return;
+      }
+      event.preventDefault();
+      void how.navigation
+        .open(fragment ? { path, fragment } : { path })
+        .catch((/** @type {unknown} */ error) => {
+          console.warn("metabrowser diff: could not open the link", error);
+        });
+    });
+  }
+}
+
+/**
  * The shared sanitizer discards reserved application URLs. Preserve only
  * the addresses *isTarget* keeps (`markdownTargets`) through it, as it keeps them, and
  * discard other local targets before the detached nodes can load any resource. A link kept
@@ -493,6 +570,9 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
       leaveFor(element, scoped);
     } else if (scoped !== undefined) {
       element.setAttribute(attribute, scoped);
+      if (!image) {
+        headLinks.add(element);
+      }
     }
   }
   return prose;
@@ -1147,6 +1227,7 @@ export function kpressStylesheets(assets, base) {
  *   mutate: (change: () => void) => void,
  *   isTarget?: (value: string, image: boolean) => string | null,
  *   enhanceLinks?: (prose: HTMLElement) => void,
+ *   disposeLinks?: (root: Element) => void,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
@@ -1155,7 +1236,10 @@ export function kpressStylesheets(assets, base) {
  *   waitMs?: number,
  *   show?: "diff" | "current" | "full"
  * }} deps
- *   *show* is the comparison's initial presentation.
+ *   *show* is the comparison's initial presentation. *enhanceLinks* reads a drawn block's
+ *   links into the repository as the page's link resolver does, and reads a file's whole
+ *   body again when the pin changes (`closeHeadLinks`). *disposeLinks* puts away the link
+ *   cards *enhanceLinks* gave the links of one element it read (`disposeFileLinks`).
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
@@ -1732,9 +1816,29 @@ export function createMarkdownViews(deps) {
       });
   }
 
-  // Forget what a file's article draws: its chunks still to draw and its folds.
+  /**
+   * Put away the link cards of what *file*'s article draws: each block's, which *build* read
+   * (`enhanceLinks`), and the article's own, which `closeHeadLinks` read, so no card stays on
+   * a link the article no longer holds or that no longer opens here.
+   *
+   * @param {FileView} file
+   */
+  function disposeFileLinks(file) {
+    const dispose = deps.disposeLinks;
+    if (dispose === undefined) {
+      return;
+    }
+    dispose(file.rendered);
+    for (const prose of file.rendered.querySelectorAll(".kpress-prose")) {
+      dispose(prose);
+    }
+  }
+
+  // Forget what a file's article draws: its chunks still to draw, its folds, and its links'
+  // cards.
   /** @param {FileView} file */
   function clearDrawn(file) {
+    disposeFileLinks(file);
     for (const [spacer, entry] of spacers) {
       if (entry.region.file === file) {
         chunkObserver?.unobserve(spacer);
@@ -2438,14 +2542,20 @@ export function createMarkdownViews(deps) {
       pump();
     },
     /**
-     * Point every link to a file of the head, in what is drawn, where *isTarget* now keeps
-     * it: the page learned that the server serves another pin, at which those addresses
-     * open other files, so each opens that file at the head on github.com, or is plain text
-     * where it cannot. What is drawn later asks *isTarget*, which says so itself.
+     * Point every `/view/` link in what is drawn elsewhere: the page learned that the
+     * server serves another pin, at which those addresses open other files. Each link to a
+     * file of the head the server spelled goes where *isTarget* now keeps it, that file at
+     * the head on github.com, or is plain text where it cannot; each one the resolver made
+     * of a github.com address is read again by *enhanceLinks*, which keeps it as written
+     * now. What is drawn later asks both, which say so themselves. Every card the file's
+     * links had goes, and *enhanceLinks* gives the links that still open here theirs again.
      */
     closeHeadLinks() {
       for (const file of files.values()) {
         for (const link of file.rendered.querySelectorAll('a[href^="/view/"]')) {
+          if (!headLinks.has(link)) {
+            continue;
+          }
           const kept = isTarget(link.getAttribute("href") ?? "", false);
           if (kept !== null && outsideLink(kept)) {
             leaveFor(link, kept);
@@ -2453,7 +2563,9 @@ export function createMarkdownViews(deps) {
             link.removeAttribute("href");
           }
         }
-        // Marked as the outside links it now holds, as one drawn after the change is.
+        disposeFileLinks(file);
+        // The resolver's own links, and the outside links the file now holds marked, as
+        // in one drawn after the change.
         deps.enhanceLinks?.(file.rendered);
       }
     },
@@ -2483,6 +2595,7 @@ export function createMarkdownViews(deps) {
         file.asking.clear();
         file.tree?.dispose();
         file.tree = null;
+        disposeFileLinks(file);
       }
       spacers.clear();
       files.clear();

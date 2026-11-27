@@ -1571,3 +1571,233 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
 }
 ? 0
 ```
+
+## A Link’s Address
+
+The part `links` opens, by a plain click on a link in a text, an address that Pulls or
+Commits holds, through the SDK’s `navigation.openRoute` (`static/navigation.js`) and the
+tab controller’s `openRoute` (`static/main-tabs.js`), both loaded whole.
+Each open pushes one entry, the link’s own address, and lands as a tab’s destination
+lands: a switch of tab gives up the pane, the pane shows the address, its tab comes to
+the front, and its panel reveals the item.
+A commit is the Commits panel’s to select, and a pull request’s page that holds the pane
+writes its place into its own entry first.
+Another tab of the pull request shown reveals no row, and another pull request reveals
+its own. A link to the address shown, the same stack’s page, the list, or a changed file
+of a pull request, opens it again where it is: it pushes no entry and the pane shows
+nothing anew, so the reader keeps their place, and the panel reveals the item again.
+An address the shell cannot show in place answers false and moves, writes, and tells
+nothing, so the browser follows the link: before the shell tools have loaded, a commit
+before Git discovery has registered Commits, a file’s address (`navigation.open` opens
+those), another origin, an address the pull-request routes do not read, and one no tab
+holds.
+
+```console
+$ node tests/dom/nav-reveal-session.js links
+{
+  "a link's address": {
+    "opened": [
+      {
+        "step": "a Markdown file links a commit: Commits comes to the front and its panel selects it",
+        "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "address": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "tab": "git",
+        "told": [
+          "the pane given up",
+          "the pane shows /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Commits: selects bbbbbbb and reveals its row"
+        ]
+      },
+      {
+        "step": "the commit's message links another commit: Commits stays, and its panel claims the pane",
+        "href": "/commit/cccccccccccccccccccccccccccccccccccccccc",
+        "address": "/commit/cccccccccccccccccccccccccccccccccccccccc",
+        "tab": "git",
+        "told": [
+          "the pane shows /commit/cccccccccccccccccccccccccccccccccccccccc",
+          "Commits: selects ccccccc and reveals its row"
+        ]
+      },
+      {
+        "step": "the message links a pull request: Pulls comes to the front and reveals it",
+        "href": "/pull/8",
+        "address": "/pull/8",
+        "tab": "pulls",
+        "told": [
+          "the pane given up",
+          "the pane shows /pull/8",
+          "Pulls view mounted at current 8",
+          "Pulls: #8 revealed",
+          "Pulls: current 8"
+        ]
+      },
+      {
+        "step": "a document drawn in #8's Changes links #8's Changes: a step within it, nothing revealed",
+        "href": "/pull/8/files",
+        "address": "/pull/8/files",
+        "tab": "pulls",
+        "told": [
+          "#8's page writes its place into its entry",
+          "the pane shows /pull/8/files",
+          "Pulls: current 8"
+        ]
+      },
+      {
+        "step": "the same document links #7: its row is revealed",
+        "href": "/pull/7",
+        "address": "/pull/7",
+        "tab": "pulls",
+        "told": [
+          "#8's page writes its place into its entry",
+          "the pane shows /pull/7",
+          "Pulls: #7 revealed",
+          "Pulls: current 7"
+        ]
+      },
+      {
+        "step": "#7's description links a commit: its page writes its place, and Commits comes to the front",
+        "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#diff",
+        "address": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "tab": "git",
+        "told": [
+          "#7's page writes its place into its entry",
+          "the pane given up",
+          "the pane shows /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Commits: selects bbbbbbb and reveals its row",
+          "Pulls: current null"
+        ]
+      },
+      {
+        "step": "the commit's message links the list: Pulls comes to the front, and the pane shows it",
+        "href": "/pulls",
+        "address": "/pulls",
+        "tab": "pulls",
+        "told": [
+          "the pane given up",
+          "the pane shows /pulls",
+          "Pulls: current null"
+        ]
+      },
+      {
+        "step": "a link opens a stack's page",
+        "href": "/stack/3",
+        "address": "/stack/3",
+        "tab": "pulls",
+        "told": [
+          "the pane shows /stack/3",
+          "Pulls: current null"
+        ]
+      },
+      {
+        "step": "a link to the stack's page shown opens it again, pushing nothing",
+        "href": "/stack/3",
+        "address": "/stack/3",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current null (again)"
+        ]
+      },
+      {
+        "step": "a link opens the list",
+        "href": "/pulls",
+        "address": "/pulls",
+        "tab": "pulls",
+        "told": [
+          "the pane shows /pulls",
+          "Pulls: current null"
+        ]
+      },
+      {
+        "step": "a link to the list shown opens it again, pushing nothing",
+        "href": "/pulls",
+        "address": "/pulls",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current null (again)"
+        ]
+      },
+      {
+        "step": "a link opens a changed file of #8",
+        "href": "/pull/8/files/docs/a%20b.md",
+        "address": "/pull/8/files/docs/a%20b.md",
+        "tab": "pulls",
+        "told": [
+          "the pane shows /pull/8/files/docs/a%20b.md",
+          "Pulls: #8 revealed",
+          "Pulls: current 8, file docs/a b.md"
+        ]
+      },
+      {
+        "step": "a link to the changed file shown opens it again, pushing nothing",
+        "href": "/pull/8/files/docs/a%20b.md",
+        "address": "/pull/8/files/docs/a%20b.md",
+        "tab": "pulls",
+        "told": [
+          "Pulls: #8 revealed",
+          "Pulls: current 8, file docs/a b.md (again)"
+        ]
+      }
+    ],
+    "the browser follows": [
+      {
+        "link": "the list, before the shell tools have loaded: no controller opens it",
+        "href": "/pulls"
+      },
+      {
+        "link": "a commit, before Git discovery has registered the Commits tab",
+        "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        "link": "a file's address, which navigation.open opens",
+        "href": "/view/docs/guide.md"
+      },
+      {
+        "link": "the served root's",
+        "href": "/view/"
+      },
+      {
+        "link": "an address on another origin",
+        "href": "https://example.com/pulls"
+      },
+      {
+        "link": "a protocol-relative address, on another origin",
+        "href": "//example.com/pull/8"
+      },
+      {
+        "link": "a backslash the URL parser reads as a second slash",
+        "href": "/\\example.com/pulls"
+      },
+      {
+        "link": "GitHub's page that opens a pull request, which the routes do not read",
+        "href": "/pull/new/topic"
+      },
+      {
+        "link": "a pull request numbered 0",
+        "href": "/pull/0"
+      },
+      {
+        "link": "a tab a stack's page does not have",
+        "href": "/stack/3/checks"
+      },
+      {
+        "link": "a commit's address with no revision",
+        "href": "/commit/"
+      },
+      {
+        "link": "an address no tab holds",
+        "href": "/raw/notes.md"
+      },
+      {
+        "link": "no URL at all",
+        "href": "http://["
+      }
+    ]
+  },
+  "invariants": {
+    "an open pushes one entry, the link's own address, and none for the address shown": true,
+    "an address the shell cannot open in place moves, writes, and tells nothing": true,
+    "no link moves focus": true
+  }
+}
+? 0
+```

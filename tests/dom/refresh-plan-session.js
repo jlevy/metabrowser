@@ -287,8 +287,13 @@ async function feedbackStep() {
   class HTMLElement {}
   const button = Object.assign(Object.create(HTMLElement.prototype), stub());
   const tab = stub({ "data-tab": "pulls" });
+  const freshness = stub();
+  const preview = stub();
+  const updates = [];
   const document = {
-    getElementById: (id) => (id === "nav-refresh" ? button : null),
+    getElementById: (id) =>
+      ({ "nav-refresh": button, "source-freshness": freshness, "preview-pane": preview })[id] ??
+      null,
     querySelector: () => tab,
   };
   let now = 0;
@@ -302,6 +307,24 @@ async function feedbackStep() {
     document,
     HTMLElement,
     MetabrowserShell: { sourceFreshness: () => sourceReady, rereadFiles() {} },
+    MetabrowserTooltip: {
+      hide() {},
+      updateText: (element) => updates.push(element.dataset.tipText),
+    },
+    MetabrowserFormatters: {
+      formatInteger: String,
+      formatBytes: (bytes) => `${bytes} B`,
+      age(at) {
+        if (at === 0) {
+          return { label: "" };
+        }
+        if (at === Date.parse("2026-11-26T12:03:00Z") / 1000) {
+          return { label: "just now" };
+        }
+        assert.equal(at, Date.parse("2026-11-26T12:00:00Z") / 1000);
+        return { label: "3m ago" };
+      },
+    },
     performance: { now: () => now },
     setTimeout: (finish, delay) => {
       const timer = nextTimer++;
@@ -320,8 +343,37 @@ async function feedbackStep() {
   button.dispatch("pointerover");
   const filesHint = button.dataset.tipText;
   assert.equal(filesHint, "Refresh");
+  freshness.dataset.lastFetchAt = "2026-11-26T12:00:00Z";
+  button.dispatch("pointerover");
+  const sourceHint = button.dataset.tipText;
+  assert.equal(sourceHint, "Last fetched 3m ago");
+  tab.setAttribute("data-tab", "git");
+  button.dispatch("focus");
+  assert.equal(button.dataset.tipText, sourceHint);
+  assert.equal(button.getAttribute("aria-description"), sourceHint);
   tab.setAttribute("data-tab", "pulls");
   button.dispatch("focus");
+  assert.equal(button.dataset.tipText, pullsHint);
+
+  const page = {
+    finished_at: "2026-11-26T12:03:00Z",
+    duration_ms: 1250,
+    provider: "github_cli",
+    request_count: 2,
+    response_body_bytes: 500,
+  };
+  const releasePage = plan.provideTooltip("page", () => page);
+  assert.equal(button.dataset.tipText, pullsHint, "an offscreen PR cannot replace the catalog");
+  preview.dataset.previewOwner = "pull-request";
+  plan.updateTooltip();
+  const pageHint = "Refreshed just now\n2 requests · 500 B · 1.3s · GitHub CLI";
+  assert.equal(button.dataset.tipText, pageHint);
+  assert.equal(button.getAttribute("aria-description"), pageHint.replace("\n", ". "));
+  page.request_count = 1;
+  page.response_body_bytes = 0;
+  plan.updateTooltip();
+  assert.equal(updates.at(-1), "Refreshed just now\n1 request · 0 B · 1.3s · GitHub CLI");
+  releasePage();
   assert.equal(button.dataset.tipText, pullsHint);
 
   plan.provide("pulls", () => {});
@@ -346,13 +398,23 @@ async function feedbackStep() {
   const ended = button.dataset.refreshing === undefined;
   assert(ended);
   release();
-  assert.equal(button.dataset.tipText, filesHint);
+  assert.equal(button.dataset.tipText, sourceHint);
+  assert.equal(button.getAttribute("aria-description"), sourceHint);
+  freshness.dataset.lastFetchAt = "2026-11-26T12:03:00Z";
+  button.dispatch("focus");
+  const newerSourceHint = button.dataset.tipText;
+  assert.equal(newerSourceHint, "Last fetched just now");
+  freshness.dataset.lastFetchAt = "1970-01-01T00:00:00Z";
+  button.dispatch("pointerover");
+  assert.equal(button.dataset.tipText, "Refresh");
   assert.equal(button.getAttribute("aria-description"), null);
   return {
     step: "the Refresh tooltip follows the tab and a quick press shows a spinner",
     pullsHint,
     spokenHint,
     filesHint,
+    sourceHint,
+    newerSourceHint,
     waitingForSource,
     spinner: { immediate, briefly, ended },
   };

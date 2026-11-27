@@ -165,10 +165,11 @@ A plugin draws an age with `metabrowser.ageLabel` and puts the exact time in its
 its `data-tip-text`, on a surface that has tooltips
 ([Tooltips Add Information](#tooltips-add-information)). `metabrowser.formatAge` gives
 the label alone, for words: an accessible name, or a sentence.
-Freshness sentences such as “Fetched 2 min ago via GitHub CLI” retain their sentence
-formatter. When a summary shows created or opened and updated ages, omit the updated age
-when its displayed label matches the closed or merged age beside it, or else the created
-or opened age, and add the exact updated time to the tooltip of the age it repeats.
+Offline notices such as “Offline · fetched 2 min ago via GitHub CLI” retain their
+sentence formatter. When a summary shows created or opened and updated ages, omit the
+updated age when its displayed label matches the closed or merged age beside it, or else
+the created or opened age, and add the exact updated time to the tooltip of the age it
+repeats.
 
 ### Ages End the Row
 
@@ -185,8 +186,7 @@ A table, such as the agents Sessions table or an event log’s rows, gives its t
 column of their own, so they read as one wherever its columns put it.
 An age that is not in a list row stays where its words put it:
 
-- inline prose, such as a freshness sentence, “Fetched 2 min ago via GitHub CLI”, or a
-  card’s head, “jlevy commented 3d ago”;
+- inline prose, such as a card’s head, “jlevy commented 3d ago”;
 - a page header’s metadata line, “Opened 3d ago · updated 2h ago”, which reads as a
   sentence;
 - a single-line item with no column under it, such as a tally, “3,310 commits begun 4mo
@@ -312,9 +312,9 @@ Never inline a font-size literal at a use site.
 accompanies.** An age, an update or fetch time, a count, a size, a row’s second line, a
 note, or a caption is never set a step smaller than the text beside it: it steps back by
 its ink, muted, not by its size.
-So “Fetched just now via GitHub CLI” at the end of a pull request’s author’s row reads
-at the body size of the sentence before it, and the repository count in the Pulls tab
-reads at the list size of the rows under it.
+So “Refreshing…” at the end of a pull request’s author’s row reads at the body size of
+the sentence before it, and the repository count in the Pulls tab reads at the list size
+of the rows under it.
 
 The chrome has two text sizes, and the one region set apart is the navigation column,
 which takes the smaller one throughout, its metadata and its header path included: it is
@@ -652,7 +652,7 @@ themselves, under a toggle above its Diff summary.
 | Author | The [actor identity](#actor-identity) | The actor identity and its sentence, “wants to merge 2 commits” | Every member’s author, each once, and the sentence, “want to merge 12 commits”, or every merger’s once all are merged |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base | The top member’s head → the stack’s base |
 | Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot | A state badge for each state a member is in, “2 Pulls Open”, then “Last opened 3d ago · Last update 1h ago” |
-| Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say | Every member’s labels, each once; the freshness note of its stalest record; the status line, while it has something to say; the members, top first, the stack menu’s rows in a card under a “**2** Pulls” toggle |
+| Its own | None | The labels, a row of chips; progress or connectivity at the end of the author’s row; the status line, while it has something to say | Every member’s labels, each once; an offline note when a member needs refreshing; the status line, while it has something to say; the members, top first, the stack menu’s rows in a card under a “**2** Pulls” toggle |
 | Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” | “12 commits · 4 files changed · 2.1 MB compressed (7.0 MB raw diff)”, the commits and sizes of the members the top contains, and the files of the stack’s combined comparison |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison | The last line, drawn from the stack’s comparison |
 | Under the header | The description, a card | The tab bar | The tab bar |
@@ -1421,9 +1421,9 @@ the control does, not from where the answer comes from:
   A quick press shows the spinner briefly, including when the data was already fresh.
 - **One Refresh for the page.** The Refresh at the top of the navigation refreshes
   everything the page holds that can be read again, each part through the path it
-  already had: the mirror’s or origin’s fetch, the pull request page in the main pane,
-  the Files tree with the file or folder the pane shows, the Pulls list, the Commits
-  history, which follows the revision the server serves, and the branch and tag
+  already had: the mirror’s or origin’s fetch, the pull request or Stack Overview in the
+  main pane, the Files tree with the file or folder the pane shows, the Pulls list, the
+  Commits history, which follows the revision the server serves, and the branch and tag
   chooser’s list while it is open.
   A checkout’s working tree has no fetch its page waits for, so there the origin is
   fetched last, in the background, after the disk and the history are read again
@@ -1433,12 +1433,21 @@ the control does, not from where the answer comes from:
   Within each half the fetch comes first, since every other part reads what it brings.
   The button waits while the parts on screen refresh.
   Each part keeps its own busy state while it runs.
-  With Pulls in front, the tooltip gives the time and duration of the last completed
-  list refresh when both are available.
+  The Refresh tooltip reports the most specific available completed read.
+  A pull request shown in the main pane takes precedence.
+  Stack Overview gives the oldest known member fetch time.
+  The next fallbacks are the Pulls catalog when in front and the source’s last fetch or
+  checkout observation.
+  When a GitHub CLI receipt includes measurements, a second line gives the number of
+  answered requests, response body size, elapsed time, and provider.
+  The measurements describe that read, while Git, inventory, and other work keep their
+  own event log spans.
+  Older cached data can give its time without a measured receipt.
   `static/refresh-plan.js` holds the one order, and `cli-ui-refresh-plan.tryscript.md`
   shows it for each screen.
-  A pull request’s page has no Refresh of its own, and a mirror’s freshness row says
-  when it was fetched as text, not as a second Refresh.
+  A pull request’s page has no Refresh of its own.
+  The freshness row below the navigation appears for fetch progress, source issues, and
+  actions tied to a revision.
   The page offers Fetch or Retry only beside a sentence that says what it lacks or what
   failed, so the reader still has a remedy with the navigation pane hidden; the Commits
   tab’s Refresh after its two notices is the same kind of remedy.
@@ -1474,10 +1483,12 @@ including when its destination is a PR. Other PR references retain their entity/
 icon. Icons preserve text, wrapping, focus and safe external-navigation attributes.
 
 Use the shared `decorateExternalLink` view helper after source-link localization and
-sanitization. A link localized to a served file stays internal.
-The decorator adds no metadata request, remote image or SVG fetch, observer, or
-document-wide scan. It uses the existing on-demand SDK view bundle and app-owned icon
-markup; document sanitization keeps its allowlist.
+sanitization.
+A link localized to a served file stays internal: it takes no mark, and its
+tooltip is the link card ([Tooltips on Links](#tooltips-on-links)). The decorator adds
+no metadata request, remote image or SVG fetch, observer, or document-wide scan.
+It uses the existing on-demand SDK view bundle and app-owned icon markup; document
+sanitization keeps its allowlist.
 Rendered Markdown retains its existing enhancement budget; links beyond the admitted
 prefix keep their authored form.
 
@@ -1499,8 +1510,11 @@ every image from the web with that box ticked, is its alt text in a small chip:
 `--radius-tag` corners, an image mark before the text
 ([Icon Catalog](design-system-icons.md#ui-chrome-and-actions)), and the address the
 image would have loaded in its tooltip (`data-tip-text`, as every tooltip is).
-The chip is the content of the link the image was in, so a badge keeps its destination,
-and an image that was in no link is in a link to the image, in the same chip.
+Inside a link with a card, as every link in rendered text has, that address is in the
+link’s card, “Image from” it, and the chip has no tooltip of its own, so the reader sees
+one ([Tooltips on Links](#tooltips-on-links)). The chip is the content of the link the
+image was in, so a badge keeps its destination, and an image that was in no link is in a
+link to the image, in the same chip.
 So it is always a [clickable chip](#clickable-and-static-chips), in the link’s ink,
 which a document’s lighter hover ink does not reach.
 It is a badge’s height, so a row of chips lies on one line as a row of badges does, and
@@ -3126,17 +3140,16 @@ tests named beside each primitive.
 The page is a header, a [tab bar](#the-tab-bar), and a body, in that order; native stack
 navigation is part of the header.
 The header is a [page header](#page-headers), as a commit’s summary is: the title, then
-the row of ages, which ends in the stack chip, the author’s row, which ends in the
-freshness note, the branches, the labels, the status line while it has something to say,
-and the Diff summary, every line under the title at the body size and one gap under the
-one before. It shares the title, the author, the age, and the Diff summary with a
-commit’s page, in that order, and keeps the state, the branches, the labels, the stack
-chip, and the status line, which a commit does not have; the table there says where the
-two diverge and why.
-The author is the shell’s [actor identity](#actor-identity), its avatar’s box holding
-the person glyph where GitHub gave no usable avatar, as a commit’s author’s does.
-The header, tabs, Conversation, and Checks use `.page-reading-column` and start at the
-same pane gutter as the commit summary.
+the row of ages, which ends in the stack chip, the author’s row, the branches, the
+labels, the status line while it has something to say, and the Diff summary, every line
+under the title at the body size and one gap under the one before.
+It shares the title, the author, the age, and the Diff summary with a commit’s page, in
+that order, and keeps the state, the branches, the labels, the stack chip, and the
+status line, which a commit does not have; the table there says where the two diverge
+and why. The author is the shell’s [actor identity](#actor-identity), its avatar’s box
+holding the person glyph where GitHub gave no usable avatar, as a commit’s author’s
+does. The header, tabs, Conversation, and Checks use `.page-reading-column` and start at
+the same pane gutter as the commit summary.
 The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
@@ -3173,18 +3186,20 @@ widest verdict, or its glyph alone in a narrow row
 Browse code, and ends in the stack chip’s slot (see native stack navigation below), one
 line at a chip’s height whose ages are cut short at their end, the links after them
 whole down to 420 px, or 560 px beside two stacks’ chips, below which they are clipped
-at the row’s end; the author’s row is one line, the author and the sentence, then the
-freshness note; where that row has no room left, the note leaves it first, whole, and
-then the sentence is cut short at its end, the action first and then the author, never
-moved or wrapped; the branches have the line under it to themselves, one line in every
-state, their names cut short rather than wrapping it; a pull request with labels has a
-row of them, one line at a label’s height, and one with none has no labels row and no
-gap for it; and a cold page keeps every row, empty, at its height.
-The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
-its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
-now via GitHub CLI”, never a second time for a check that found nothing changed, since
-that makes what is shown no newer.
-A rate limit’s hold is said in its place, “GitHub rate limit reached.
+at the row’s end; the author’s row is one line with the author and the sentence,
+followed by a progress or connectivity note when needed; where that row has no room
+left, the note leaves it first, whole, and then the sentence is cut short at its end,
+the action first and then the author, never moved or wrapped; the branches have the line
+under it to themselves, one line in every state, their names cut short rather than
+wrapping it; a pull request with labels has a row of them, one line at a label’s height,
+and one with none has no labels row and no gap for it; and a cold page keeps every row,
+empty, at its height.
+The notice is muted after a muted dot, at the sentence’s size.
+In steady state the author’s row ends with the author’s sentence.
+The navigation’s Refresh tooltip reports when the displayed record was fetched and shows
+the provider and measurements when available.
+A later verification of an unchanged record leaves its fetch timestamp intact.
+A rate limit’s hold reads “GitHub rate limit reached.
 Next attempt after 2:05 PM.”, in the failure’s ink: it begins and lifts by itself and
 asks nothing of the reader, so it adds no line.
 It names a time of day, in the reader’s short form, when the limit lifts today, and a
@@ -3279,11 +3294,9 @@ A cold page uses the same gray pulsing row skeleton as other known text layouts,
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
-A cached page stays readable and still during refresh: nothing spins over it, and only
-its age line breathes ([Refreshing Content](#refreshing-content)). Its freshness copy
-names GitHub CLI and the plain fetch age, with no prefix while a refresh runs and no
-suffix while the record is stale, since a stale page is refreshing.
-It names a problem only when no refresh can run: `Offline`,
+A cached page stays readable and still during refresh.
+The muted “Refreshing…” notice breathes ([Refreshing Content](#refreshing-content)).
+When a refresh cannot run, the page can show `Offline`,
 `GitHub rate limit reached. Next attempt after` a time, or the last failure with Retry.
 The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every GitHub
 surface uses. The Checks tab uses the same heading and status chips for check runs and
@@ -4538,15 +4551,15 @@ It shows the stack’s combined comparison, from the bottom member’s merge bas
 member’s head (`GET stack`, `pull_stack.py`), and is reached from the stack menu’s Stack
 Overview row. `builtin_plugins/github/stack-page.js` draws it with the pull request
 page’s own builders, exported from `pull-page.js`: `pageHeaderParts`, `titleHeading`,
-`stateBadge`, `agesLine`, `rowStrut`, `actorSentence`, `actionWords`, `fetchedNote`,
-`showNote`, `labelChip`, `statusLine`, `summaryPlaceholders`, and `holdDiff`; and
-`builtin_plugins/github/stack-member-row.js`, the stack menu’s builder, draws its
-members.
+`stateBadge`, `agesLine`, `rowStrut`, `actorSentence`, `actionWords`,
+`offlineFetchNote`, `showNote`, `labelChip`, `statusLine`, `summaryPlaceholders`, and
+`holdDiff`; and `builtin_plugins/github/stack-member-row.js`, the stack menu’s builder,
+draws its members.
 
 ```text
  [Layers] Stack Overview  #70                              ( [GitHub] View on GitHub | v )
  [1 Pull Draft] [1 Pull Merged] · Last opened 2mo ago · Last update 2mo ago
- (o) maintainer wants to merge 2 commits · Fetched 3d ago via GitHub CLI
+ (o) maintainer wants to merge 2 commits
  wip -> main
  [enhancement]
  #8 joined the stack.  Show the new comparison
@@ -4595,7 +4608,7 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   No one branch holds a stack, the page reads the stack on its own poll, and the page is
   the stack the chip would open; the row ends in the chip’s hidden strut (`rowStrut`),
   so it is as tall as a pull request’s.
-- **Author’s row and its freshness note:** adapted.
+- **Author’s row and its offline notice:** adapted.
   The pull request’s sentence (`actorSentence`), said of the stack (`stackSentence`):
   every member’s author, top first, each once and a comma between, then “wants to merge”
   or, for several, “want to merge” the commits the top contains, “maintainer, forker
@@ -4607,12 +4620,9 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   sentence names no commits (`actionWords`). In a narrow pane a sentence of several
   names gives way in its names and its action together, each name down to a pull
   request’s author’s floor, so neither is cut to nothing while the other is whole, and a
-  name cut short says itself in its tooltip (`sentenceActor`). The freshness note says
-  the oldest of the members’ records’ fetches, “Fetched 3d ago via GitHub CLI”
-  (`fetched_at`), so the stack is said to be no fresher than its stalest record, its
-  slot as wide as its widest age’s words, as a pull request’s is (`showNote`). Offline,
-  while a member’s record is behind and no refresh can run, it says so, “Offline ·
-  fetched 3d ago via GitHub CLI”, as a pull request’s does (`fetchedNote`).
+  name cut short says itself in its tooltip (`sentenceActor`). If a member needs
+  refreshing while offline, the notice names the oldest cached record’s fetch as
+  “Offline · fetched 3d ago via GitHub CLI” (`offlineFetchNote`).
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.
@@ -7251,12 +7261,14 @@ the rule is enforced rather than remembered.
 anywhere the app owns the markup**: browser sources, built-in plugins, and the HTML the
 server renders. `devtools/check_tooltips.py` fails the build on one, and runs in
 `make lint`. Its exemption list names each exception and why: an iframe’s accessible
-name, and a rendered document’s own links and embeds.
+name, a rendered document’s own links and embeds, and a link whose card’s code did not
+load, which gets back the title its author wrote.
 
 | Need | Use |
 | --- | --- |
 | A short string | `data-tip-text="…"` |
 | Rich content: counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+| A link in authored text, in-app or to another site | The link card: register the link through the SDK, `metabrowser.previewLink` ([Tooltips on Links](#tooltips-on-links)) |
 
 **A tooltip reads at body size**, `--tooltip-font-size`, and so do its subordinate
 lines, which set no size and read at the tooltip’s: a file’s size and age under its name
@@ -7372,8 +7384,27 @@ and small, that is the only question the tooltip exists to answer.
 `mb.tooltip.show(html, anchor)` takes the element, and there is deliberately no
 `move()`. The controller centers the tooltip under its anchor, flips above when there is
 no room below, and clamps to the viewport.
-Calling `show` again with the same anchor is how a surface says “still here”: it cancels
-a pending hide and leaves the tooltip exactly where it is.
+Calling `show` again with the element whose tooltip is up is how a surface says “still
+here”: it cancels a pending hide and leaves the tooltip exactly as and where it is.
+Calling it again for an element whose tooltip still waits out its delay gives that
+tooltip the newer markup and keeps its time, so what a surface learns during the delay,
+such as a link card’s title, appears on schedule with it.
+Only the element whose markup is up is still here: a pointer that moves straight from
+one element onto the next, within the first one’s fade, gets the next one’s tooltip at
+the next one’s place, however often the next is announced again, and never the first
+one’s (`tooltipShown` in `static/app.js`). `tests/dom/tooltip-anchor-session.js` holds
+this on the shell’s own code, for a link card and for `data-tip-text`, and
+`tests/test_link_card_chrome.py` holds it in Chrome on a document’s links.
+
+**A tooltip that is up does not take new markup.** What a surface learns once its
+tooltip is up waits for the tooltip’s next appearance.
+New markup in place would not move the box, but it would change the box’s size: one that
+grows wider from where it was placed is no longer centered on its anchor, and one
+flipped above its anchor grows down over it, while placing it again moves it.
+Either breaks this rule, and the lines the reader is partway through would shift with
+it. A link card’s title that arrives after the card is up is its provider’s to keep, and
+the next rest’s card says it from the pointer’s arrival
+([Tooltips on Links](#tooltips-on-links)).
 
 ### A Surface Puts Away Only Its Own Tooltip
 
@@ -7405,6 +7436,153 @@ redraw and the filter bar rebuilds.
 `tests/dom/folder-totals-view-behavior.js`, `tests/dom/folder-plugin-behavior.js`,
 `tests/dom/treemap-not-indexed-session.js` and `tests/dom/git-panel-behavior.js` check
 that each of those surfaces passes its own element.
+
+### Tooltips on Links
+
+**Every link follows one rule for its tooltip, by where it goes and what its words say,
+on every page.** A link’s words in authored text are the author’s, and say nothing of
+whether it leaves the app; the app’s own chrome names what it opens.
+A page with no GitHub identity, a plain folder’s or a checkout with no github.com
+remote, keeps the rule too: its documents’ links to files and folders, and its links to
+other sites, have their cards.
+A pull request’s, a stack’s, or a commit’s card exists only where a repository identity
+makes such a link open here.
+
+| Link | Tooltip |
+| --- | --- |
+| Opens a page in Metabrowser, in text whose words say nothing about what it opens (rendered Markdown, a pull request’s text, a Guided Review note, a commit’s message, a rendered diff) | The **link card**: what it opens, its title where known, and that it opens here |
+| Leaves for another site, in the same texts | The link card’s one line saying where it goes, “Opens example.com in a new tab”, with “in a new tab” only where the link opens one |
+| The app’s own chrome, whose text names what it opens (a Pulls row’s title, a crumb, a Files row) | None, as [Tooltips Add Information](#tooltips-add-information) says |
+
+An outside link has a card because its words do not say where it goes, and nothing else
+there does: the macOS app’s web view has no status bar to show its address, and the
+[External GitHub Links](#external-github-links) mark is only a GitHub address’s. The
+card names the host the address goes to, as the browser follows it from the page, so a
+link whose words or user name name another site still says which one it opens, and an
+in-app card’s “Opens here in Metabrowser” reads against it.
+An address the browser reads as one of the page’s own, such as `http:example.com` on an
+`http` page, leaves for no other site and has no such card.
+
+The card is the app’s one tooltip
+([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)), so it keeps every rule
+above: it appears on pointer rest and never on focus or a touch
+([Tooltip Input Modality](#tooltip-input-modality)), and a press or a focus while the
+pointer rests on the link ends that rest, so nothing it asked for brings the card back
+(`endOnInput` in `static/link-previews.js`); placed on its link and holding still
+([A Tooltip Holds Still](#a-tooltip-holds-still)), and the surface that drew the link
+puts it away
+([A Surface Puts Away Only Its Own Tooltip](#a-surface-puts-away-only-its-own-tooltip)).
+
+**Its lines**, in order, using the tooltip’s own content classes, as a Files row’s
+tooltip does:
+
+1. **What it is**, in `.tip-name`: “Pull request #12”, “Stack #3”, “Commit a1b2c3d” (the
+   short commit ID, [Short Commit IDs](#short-commit-ids)), the path of a file or
+   folder, a folder’s ending in `/`, the root by the name its
+   [view header](#view-headers)’s title gives it, the served folder’s own, with or
+   without a repository identity and whatever the repository is called, from the one
+   function both read (`servedRootName` in `static/app.js`), or “Pull requests”.
+   A link to a tab or a changed file names it after the identity: “Pull request #12 ·
+   Changes · docs/guide.md”.
+2. **Its title**, when the app knows it: a pull request’s title, a commit’s subject, a
+   stack’s top member’s title, drawn as every title is ([Titles](#titles)).
+3. **The author’s title**, when the author gave the link one, in quotation marks, as the
+   author’s words and never the app’s.
+4. **A detail**, in `.tip-detail`, when its data has one, and for each image inside the
+   link that the page did not load, “Image from” the address it would have loaded.
+5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, or, for a
+   link to a branch, which opens whatever the page serves rather than what it named,
+   what that is: “Opens in the served working tree” on a folder’s page and “Opens at the
+   served revision” on a pin’s or a mirror’s; or, for a commit the Commits panel found
+   the repository lacks, “Not in this repository”.
+   The words are `OPENS` in `static/link-previews.js`. Only a commit is ever called
+   missing. A file’s or folder’s card says where it opens whether or not the page lists
+   it, since nothing the page holds is every path a link can open: a served folder’s
+   Quick File catalog leaves out hidden, gitignored, and symlinked files that the folder
+   still opens, and a pin’s lists no folder, though a link with no closing slash can
+   name one (`knownPath` in `static/link-preview-providers.js`).
+
+A line that is the link’s own text, in any case and spacing, or a line above it, is left
+out: a card never says its link’s words again, as a Files row’s tooltip leaves out the
+row’s name. The first line the card keeps leads with the object’s mark, so a card whose
+identity is its link’s text still shows its state.
+A card that quotes its author keeps its identity first even then, so the author’s words
+never stand where the app says what the link opens.
+
+**An outside link’s card** is one line in the tooltip’s own ink, where it goes, then its
+author’s title, quoted, and no mark: its object is another site’s, of which the app
+knows nothing more.
+
+**The mark** is the [icon catalog](design-system-icons.md#git-and-github-objects)’s for
+the object: a pull request’s state glyph only where its data gives the state, and the
+neutral pull request mark where only its address is known, the two marks
+`decorateExternalLink` gives a pull request’s address, since the address alone never
+establishes a state; a stack’s `layers`; a file’s type, from `fileTypeIcon`. A folder
+ends in `/` and a commit is its ID, as the catalog draws neither.
+
+**An author’s title is folded in.** A trusted Markdown link can carry its author’s
+`title`, an in-app link’s or an outside link’s, and so can an image inside it, as
+`[![d](d.png "Its title")](x.md)` writes one.
+The surface that registers the link takes every title off the link and what it holds,
+and hands the link’s own, or else the image’s, to the card, which quotes it on its own
+line after the identity and the object’s title, and never twice.
+A title is also what assistive technology reads of a link, its name where nothing else
+names it and otherwise its description, so the titles leave through the SDK alone
+(`takeAuthorTitles` in `static/plugin-sdk-views.js`), which keeps the card’s for it: as
+the link’s `aria-label` where it has no words, `aria-label`, or image `alt` of its own,
+and otherwise as its `aria-description`, unless that says its name again, never in place
+of one the link already has.
+When an image’s title supplies its accessible name, that name stays on the image as
+`aria-label`. Wherever the link’s card ends, when it is forgotten, its text disposed, a
+later registration gives it none, or the card’s code does not load, the SDK gives back
+exactly the titles it took and takes off only what it added (`giveAuthorTitlesBack`), so
+the link is as its author wrote it.
+An image the page does not load is a chip whose own tooltip says its address
+([Images the Page Does Not Load](#images-the-page-does-not-load)); inside a link with a
+card, the card takes that tooltip off the chip as the link is registered, gives it back
+if the link loses its card, and says the address itself.
+So the reader never sees two tooltips, and moving from a link’s words onto its image
+changes nothing.
+
+**Its timing.** The card is asked for as soon as the pointer arrives and appears on the
+tooltip’s own appear delay, `TOOLTIP_APPEAR_DELAY` in `static/app.js`. Once the pointer
+has rested for the tree’s own hover delay (`INTENT_MS` in `static/link-previews.js`,
+equal to app.js’s `FILE_PREFETCH_HOVER_DELAY_MS`), the card’s data is read and what the
+link opens is prefetched, from reads the app already makes for that object, all from its
+caches.
+A title that arrives while the tooltip still waits is shown with it, on the delay
+the rest began; one that arrives after the card is up is its provider’s to keep
+([A Tooltip Holds Still](#a-tooltip-holds-still)). The card’s registry keeps no answer:
+each provider keeps what it reads for as long as that stays true, reads again what
+failed or was not yet known, and says what it keeps as the pointer arrives, so a card
+never says what the page knew once and no longer does.
+At most one read and one prefetch are in flight, and a newer rest waits for them rather
+than aborting them, since an aborted request counts against the page’s `fetch_aborts`
+budget
+([performance budgets](../explorations/performance-loop/performance-budgets.toml)).
+
+**One renderer draws every card.** A surface registers each link it draws through the
+SDK, `metabrowser.previewLink`, and puts its links away with `disposePreviews`
+([docs/plugins.md](plugins.md)), never through the module’s window global; it never
+draws a card. `card` in `static/link-previews.js` draws every one from data, escaping
+every value, and each kind’s provider gives that data as plain text, never markup.
+The card’s code loads only at a page’s first rest on a link it registered, so a page
+whose pointer rests on none fetches none of it, and that first rest still shows its
+card, its appear delay counted from the code’s arrival (`previewLink` in
+`static/plugin-sdk-views.js`, and `server.py`’s `link-previews` bundle, which has the
+measurement). `devtools/check_tooltips.py` fails any other browser source or stylesheet
+that writes the card’s classes or its words for where a link opens.
+`tests/dom/link-previews-session.js` holds the lines, the timing, and the input modality
+on the module’s own code and app.js’s tooltip, and `tests/test_link_previews_js.py`
+holds its invariants; `tests/dom/link-card-integration-session.js` runs app.js’s tooltip
+and its delegated listeners, the resolver, the registry, and the providers on recorded
+answers together, and `tests/test_link_card_integration_session.py` holds the rules
+across those boundaries.
+`tests/dom/link-preview-loader-session.js` holds what a link registered before the
+card’s code loads does, on pages with no GitHub identity among them, and what assistive
+technology reads of a titled link while it has its card and after, by the rules Chrome’s
+accessibility tree follows for the same markup, and
+`tests/test_link_preview_loader_session.py` its invariants.
 
 ### Shared Overlay Lifecycle
 

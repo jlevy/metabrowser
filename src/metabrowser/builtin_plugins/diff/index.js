@@ -415,11 +415,13 @@ async function viewFileOpener(comparison) {
 }
 
 /**
- * Whether a link in rendered Markdown to a file of the head may open at its `/view/`
- * address: only while this page shows that head, the one commit at which the address
- * names that file. The rendered answer is the same for every page (its cache key names no
- * pin), so the page decides, and a link it does not keep opens the file on github.com
- * (`headFile`).
+ * Whether a link in rendered Markdown may open at a `/view/` address: only while this page
+ * shows the comparison's head, the one commit at which such an address opens what the link
+ * names there. The rendered answer is the same for every page (its cache key names no
+ * pin), so the page decides, for both kinds of such link: a link to a file of the head,
+ * which the server spells, opens the file on github.com where the page does not keep it
+ * (`headFile`); and a github.com link to the served branch or commit, which
+ * static/repository-links.js would open in place, stays as written.
  *
  * @param {Comparison | undefined} comparison
  * @returns {() => boolean}
@@ -781,6 +783,8 @@ const diffView = {
     // itself and asks for none (`summary: false`). Direct diff documents and other
     // comparisons lead their toolbar with it.
     const summaryHost = ctx.summaryHost ?? null;
+    // One rule for both kinds of `/view/` link a rendered file can hold.
+    const linksOpen = headLinksOpen(ctx.comparison);
     /** @type {Parameters<typeof mountDiffView>[3]} */
     const options = {
       showSummary: ctx.summary !== false && (summaryHost !== null || !ctx.revision),
@@ -805,9 +809,10 @@ const diffView = {
             renderMarkdown: (fileId, signal, ask) => markdown.load(fileId, signal, ask),
             markdownTargets: markdownViews.markdownTargets(
               ctx.comparison?.image_route,
-              headLinksOpen(ctx.comparison),
+              linksOpen,
               headFile(ctx.comparison),
             ),
+            headLinksOpen: linksOpen,
             ...(typeof ctx.markdownHoldMs === "number"
               ? { markdownHoldMs: ctx.markdownHoldMs }
               : {}),

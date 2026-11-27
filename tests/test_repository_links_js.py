@@ -41,10 +41,16 @@ TEXT_HEADS = {
 
 
 @functools.cache
-def _session() -> dict[str, Any]:
+def _session(part: str | None = None) -> dict[str, Any]:
+    """The session's transcript: with *part* ``localized``, the table ``localize`` reads."""
+
     require_node()
     result = subprocess.run(
-        ["node", str(SESSION_JS)], capture_output=True, text=True, timeout=30, check=False
+        ["node", str(SESSION_JS), *([] if part is None else [part])],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     assert result.returncode == 0, f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     return json.loads(result.stdout)
@@ -53,7 +59,7 @@ def _session() -> dict[str, Any]:
 def _rows(kind: str) -> list[tuple[str, dict[str, Any]]]:
     return [
         (context, row)
-        for context, rows in _session()["localized"].items()
+        for context, rows in _session("localized")["localized"].items()
         for row in rows
         if row["result"] is not None and row["result"]["kind"] == kind
     ]
@@ -92,7 +98,7 @@ def test_an_in_app_page_is_the_one_the_server_opens_the_link_at() -> None:
 
 
 def test_pr_and_diff_links_preserve_authored_destinations() -> None:
-    localized = _session()["localized"]
+    localized = _session("localized")["localized"]
     checkout = {row["label"]: row["result"] for row in localized["checkout"]}
     away = {row["label"]: row["result"] for row in localized["text away from its head"]}
     assert checkout["its Changes, at one file and line"] is None
@@ -185,10 +191,12 @@ def test_a_rendered_diffs_head_link_on_github_is_the_file_its_wire_names() -> No
 
 
 def test_an_in_app_link_opens_what_its_address_says() -> None:
-    """A plain click on a ``/view/`` link opens its target; any other click is the browser's.
+    """A plain click on an in-app link opens it in place; any other click is the browser's.
 
-    So a new tab or a copied address opens what the click opens, and a route the page does
-    not open itself is followed as the link it is.
+    So a new tab or a copied address opens what the click opens. A ``/view/`` link opens
+    its target, and a route opens by the page's own opener when it takes it and otherwise
+    by the shell's, which is asked only for what the page declined; a route neither opens,
+    as before the shell's tabs have loaded, is followed as the link it is.
     """
 
     for name, run in _session()["enhanced"].items():
@@ -196,8 +204,11 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
             in_app = "data-metabrowser-github-localization" in attributes
             assert ("target" in attributes) is not in_app, (name, link)
             assert not run["clicks"][link]["withMeta"], (name, link)
-            # One click handler a link, however many times its text is read.
-            assert run["clicks"][link]["listeners"] == (1 if in_app else 0), (name, link)
+            # One click handler a link, however many times its text is read; a link restored
+            # to what the text wrote keeps its handler, which leaves every click to the browser.
+            listeners = run["clicks"][link]["listeners"]
+            assert listeners == 1 if in_app else listeners in (0, 1), (name, link)
+            assert in_app or not run["clicks"][link]["plain"], (name, link)
         opened = [f"/view/{target['path']}" for target in run["opened"]]
         followed = [
             attributes["href"]
@@ -205,9 +216,53 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
             if run["clicks"][link]["plain"] and attributes["href"].startswith("/view/")
         ]
         assert opened == followed, name
+        routes = [
+            attributes["href"]
+            for attributes in run["anchors"].values()
+            if "data-metabrowser-github-localization" in attributes
+            and not attributes["href"].startswith("/view/")
+        ]
         routed = [
             attributes["href"]
             for link, attributes in run["anchors"].items()
             if run["clicks"][link]["plain"] and not attributes["href"].startswith("/view/")
         ]
-        assert [entry.split(" ", 1)[0] for entry in run["routed"]] == routed, name
+        page = [entry.split(" ", 1)[0] for entry in run["routed"]]
+        shell = run["shell"]["asked"]
+        # Each route's plain click asks the page, then the shell for what the page declined.
+        assert sorted(page + shell) == sorted(routes), name
+        assert not set(page) & set(shell), name
+        opened_in_place = page + (shell if run["shell"]["opens"] else [])
+        assert sorted(opened_in_place) == sorted(routed), name
+
+
+def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
+    """A link ``enhance`` leaves in-app has its link card, for what its address opens, with
+    the text it was given as the root; a link it restores or makes an outside one has the
+    card that says where its address goes, and no link carries a tooltip of its own."""
+
+    runs = _session()["enhanced"]
+    for name, run in runs.items():
+        cards: dict[str, str] = {}
+        for call in run["previews"]:
+            verb, rest = call.split(" ", 1)
+            if verb == "register":
+                link, target = rest.split(" in the text: ", 1)
+                cards[link] = target
+            else:
+                assert verb == "forget", (name, call)
+                cards.pop(rest, None)
+        for link, attributes in run["anchors"].items():
+            assert "data-tip-text" not in attributes, (name, link)
+            localization = attributes.get("data-metabrowser-github-localization")
+            # On a page with no repository identity, which `enhance` leaves as written, no
+            # link has one of its giving.
+            if not any(call.startswith("register ") for call in run["previews"]):
+                assert link not in cards, (name, link)
+                continue
+            href = attributes["href"]
+            if localization is None:
+                assert cards[link] == f"external {href}", (name, link)
+                continue
+            kind = f"view {localization}" if href.startswith("/view/") else "route"
+            assert cards[link] == f"{kind} {href}", (name, link)

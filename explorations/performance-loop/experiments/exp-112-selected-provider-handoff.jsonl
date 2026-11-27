@@ -1,0 +1,4 @@
+{"condition":"fifo","selection":"new_selection","queued_optional_admitted_first":2}
+{"condition":"fifo","selection":"promoted_queued_prefetch","queued_optional_admitted_first":2}
+{"condition":"selected_first","selection":"new_selection","queued_optional_admitted_first":0,"viewer_checked":true,"exact_description":true,"core_queries":1,"exact_changes":true,"optional_completion_order":[1,2],"slot_cap":2}
+{"condition":"selected_first","selection":"promoted_queued_prefetch","queued_optional_admitted_first":0,"viewer_checked":true,"exact_description":true,"core_queries":1,"exact_changes":true,"optional_completion_order":[1,2],"slot_cap":2}

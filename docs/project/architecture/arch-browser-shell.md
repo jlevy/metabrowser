@@ -155,6 +155,18 @@ plugin relies on.
 `folderOverview`. A plugin’s helpers for other plugins are its module’s exports, which
 `plugins.load` answers, never a property of this object.
 [Plugin Authoring](../../plugins.md#browser-sdk) documents it.
+
+Its `navigation` is `navigation.js`’s facade.
+`open` applies a `/view/` target through the shell’s navigation controller, and
+`openRoute` opens any other in-app page a link names, a pull request’s, a stack’s, the
+list’s, or a commit’s, in place: the tab controller (`openRoute` in `main-tabs.js`)
+pushes the link’s address and lands it as a tab’s button lands its destination, the pane
+showing what the address names, the tab that holds it in front, and its panel revealing
+the item. The facade is one eager line that asks the controller, which arrives with the
+shell tools; until then it answers false and the browser follows the link.
+`enhance` in `repository-links.js` falls back to it for every route a page does not open
+itself, so no surface’s link to such a page loads the page again.
+
 It is also the one console entry point, so diagnostics extend it instead of adding
 globals:
 
@@ -336,6 +348,9 @@ them; the note beside the budget says why.
 | The watch on a revision’s file ages, and the clause it adds to a filtered count | On demand, the first time a response says the ages are not all in (`dating`, `partial`, `failed`); not offered to a page whose Git cannot read them | `revision-ages` in `on_demand_script_bundles`, when the pin’s Git can date files | The comment beside the bundle in `server.py`: it was a startup script of every pin’s shell, 4,940 bytes (1,896 gzipped) |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it; elsewhere it comes with the repository links | `PIN_STARTUP_SCRIPTS`; the first script of `repository-links` | exp-037; the comment beside the bundle in `server.py` |
 | What a link in authored text opens | On demand, on a page with a GitHub repository’s identity, beside the text that holds one: a Markdown render, a pull request’s text, a commit’s message, or a rendered diff | `repository-links` in `on_demand_script_bundles`, reached through `metabrowser.loadRepositoryLinks()` | The comment beside the bundle in `server.py` |
+| Registering a link for its card, on every page, and loading the card at the first rest ([Tooltips on Links](../../design-system.md#tooltips-on-links)) | On demand, with the SDK view helpers every view already loads; it keeps each registration, while the page keeps its root, until a pointer rests on one, and reads where an outside link goes for itself and for the card | `previewLink`, `forgetPreview`, `disposePreviews`, and `outsideAddress` in `plugin-sdk-views.js` (`sdk-views`) | The comment beside them; `server.py`’s `link-previews` bundle has the measurement |
+| The link card: the registry of in-app links, the pointer listener, the intent timer, the providers, and the renderer | On demand, at a page’s first pointer rest on a registered link, and never with the resolver, whose wait every surface’s first render shares: measured, a first rest’s card still comes up in every rest’s window, and preloading it in idle time would cost every page with a link its bytes | `link-previews` in `on_demand_script_bundles`: `link-previews.js`, as `window.MetabrowserLinkPreviews`, then `link-preview-providers.js`, which registers with it | The comment beside the bundle in `server.py` |
+| Opening a pull request’s, the list’s, or a commit’s page in place from a link | Eager only as `metabrowser.navigation.openRoute`, one line that asks the tab controller; the opener arrives with the shell tools | `openRoute` in `navigation.js` and `main-tabs.js` (`shell-tools`) | The 2026-11-26 note on `startup_script_transfer_kb` in `performance-budgets.toml` |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
 | Mermaid, and KPress’s modules that draw its diagrams | On demand, at the first rendered document or `.mmd` file with a diagram; Mermaid then fetches only the chunks of the diagram types drawn | `mermaid`, `kpress-diagrams`, and `kpress-diagram-controls` (module bundles), and `drawDiagrams` in `builtin_plugins/markdown/place-rendered.js` | The comment beside the bundle in `server.py`, and `TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` |

@@ -50,7 +50,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from functools import partial
+from functools import cached_property, partial
 from pathlib import Path
 from typing import Any, Final, Literal, NotRequired, TypedDict
 from urllib.parse import urlencode
@@ -61,6 +61,7 @@ from metabrowser.builtin_plugins.github.checkout import (
     checkout_pulls,
     checkout_store_turn,
     comparison_preparing,
+    prefetch_waits_for_acquisition,
     served_checkout,
     start_pull_refresh,
 )
@@ -84,7 +85,9 @@ from metabrowser.builtin_plugins.github.pull_readiness import DisplayState, life
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
+    pull_observation_key,
     read_pull_record,
+    read_pull_refresh_timing,
 )
 from metabrowser.builtin_plugins.github.pull_status import PullStatus, describes
 from metabrowser.builtin_plugins.github.pull_status_store import (
@@ -92,6 +95,7 @@ from metabrowser.builtin_plugins.github.pull_status_store import (
     KeptStatus,
     kept_status,
 )
+from metabrowser.builtin_plugins.github.refresh_metrics import RefreshTiming
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
     PullCorePreview,
@@ -155,11 +159,13 @@ class PullEnvelope(TypedDict):
     probe_every_s: float | None
     refreshing: bool
     preparing_comparison: NotRequired[Literal[True]]
+    promotable_prefetch: NotRequired[Literal[True]]
     # The server has no Git store to compare in, as a checkout has none until a reader's
     # Changes asks for one, so no read brings a comparison until then: the page holds no
     # placeholder for one (mb-30dz).
     no_store: NotRequired[Literal[True]]
     last_refresh: PullRefreshOutcome | None
+    refresh_timing: NotRequired[RefreshTiming]
     comparison_route: str | None
     image_route: str | None
     rendered_route: str | None
@@ -348,12 +354,16 @@ def comparison_route(record: PullRecord, *, store: str) -> str | None:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _Parsed:
-    stamp: tuple[int, int, int]
+    stamp: tuple[int, int, int] | None
     record: PullRecord
     dumped: dict[str, Any]
     revision: str
+
+    @cached_property
+    def observation(self) -> str:
+        return pull_observation_key(self.record)
 
 
 # Records parsed for this route, keyed by home, slug, and number, each kept with the
@@ -380,15 +390,22 @@ def cached_pull_record(
 ) -> tuple[PullRecord | RecordAbsence, dict[str, Any] | None, str | None]:
     """One parsed record, its JSON and content revision, reused while the file is unchanged."""
 
+    parsed = _parsed_pull_record(home, slug, number)
+    if isinstance(parsed, _Parsed):
+        return parsed.record, parsed.dumped, parsed.revision
+    return parsed, None, None
+
+
+def _parsed_pull_record(home: Path, slug: str, number: int) -> _Parsed | RecordAbsence:
     key = (str(home), slug, number)
     stamp = _file_stamp(home, slug, number)
     with _PARSED_LOCK:
         hit = _PARSED.get(key)
     if hit is not None and stamp is not None and hit.stamp == stamp:
-        return hit.record, hit.dumped, hit.revision
+        return hit
     record = read_pull_record(home, slug, number)
     if not isinstance(record, PullRecord):
-        return record, None, None
+        return record
     dumped = record.model_dump(mode="json")
     revision = _record_revision(dumped)
     # JSON numbers above JavaScript's safe integer range still need exact part IDs.
@@ -396,12 +413,13 @@ def cached_pull_record(
         for item in dumped[kind]:
             if abs(item["id"]) > (1 << 53) - 1:
                 item["timeline_id"] = str(item["id"])
+    parsed = _Parsed(stamp, record, dumped, revision)
     if stamp is not None:
         with _PARSED_LOCK:
             if key not in _PARSED and len(_PARSED) >= MAX_PARSED_RECORDS:
                 _PARSED.pop(next(iter(_PARSED)))
-            _PARSED[key] = _Parsed(stamp, record, dumped, revision)
-    return record, dumped, revision
+            _PARSED[key] = parsed
+    return parsed
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +448,7 @@ class PullHost:
     # On a mirror: told the head a record read from disk names, so a pin on that pull
     # request's head follows one another process fetched (:func:`follow_adopted_head`).
     observe_head: Callable[[int, str], None] | None = None
+    prefetch_waiting: Callable[[int], bool] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -459,6 +478,7 @@ def pull_host(app: Any) -> PullHost | None:
             partial(start_pull_refresh, coordinator, checkout, ask="due", background=True),
             partial(checkout_job_key, checkout),
             partial(checkout_store_turn, checkout),
+            prefetch_waiting=partial(prefetch_waits_for_acquisition, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -494,6 +514,7 @@ class PullView:
     core_window: CoreWindow | None = None
     core_admission: CoreAdmission | None = None
     preparing_comparison: bool = False
+    prefetch_waiting: bool = False
     catalog_scanning: bool = False
     # When a list probe last found the catalog unchanged (:mod:`.pull_list_probe`).
     catalog_checked_at: str | None = None
@@ -542,6 +563,10 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         preparing_comparison=host is not None
         and host.preparing is not None
         and host.preparing(number),
+        prefetch_waiting=refreshing
+        and host is not None
+        and host.prefetch_waiting is not None
+        and host.prefetch_waiting(number),
         catalog_scanning=catalog_scanning(host),
         catalog_checked_at=catalog_checked_at(host),
         labels_running=host is not None
@@ -598,7 +623,11 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         )
         return none, None
     served = host.pulls
-    record, dumped, revision = cached_pull_record(served.home, served.slug, view.number)
+    parsed = _parsed_pull_record(served.home, served.slug, view.number)
+    if isinstance(parsed, _Parsed):
+        record, dumped, revision = parsed.record, parsed.dumped, parsed.revision
+    else:
+        record, dumped, revision = parsed, None, None
     has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
     now = pulls.utc_now()
@@ -690,10 +719,18 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         checks=shown_checks(shown, operational),
         status_unavailable=operational.unavailable,
     )
+    if isinstance(parsed, _Parsed):
+        timing = read_pull_refresh_timing(
+            served.home, served.slug, parsed.record, observation=parsed.observation
+        )
+        if timing is not None:
+            envelope["refresh_timing"] = timing.wire()
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True
     if not has_store:
         envelope["no_store"] = True
+        if state == "pending" and view.prefetch_waiting:
+            envelope["promotable_prefetch"] = True
     return envelope, freshness
 
 
@@ -825,7 +862,7 @@ def core_preview_current(view: PullView, preview: PullCorePreview | None) -> boo
     if kept is None or not view.host.running(view.number):
         return False
     if kept.core_preview is not None:
-        return kept.core_preview is preview
+        return kept.core_preview is preview and view.host.pulls.observed_reader == preview["reader"]
     adopted = kept.display_core
     return adopted is not None and adopted[0] is preview and adopted[1] is view.core_admission
 

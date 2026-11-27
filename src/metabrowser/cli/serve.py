@@ -522,6 +522,7 @@ def _serve_on(
                 timeout_graceful_shutdown=0,
             )
         )
+        server.app.state.prepare_initial_history = True
         if _run_until_interrupted(uvicorn_server, listener):
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
         # Uvicorn returns normally when the application's startup fails, so an
@@ -534,6 +535,7 @@ def _serve_on(
                 else "the server did not start; the log above says why"
             )
     finally:
+        server.app.state.prepare_initial_history = False
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
         uvicorn_logger.removeFilter(_subject_open_failure_filter)
         uvicorn_logger.setLevel(original_uvicorn_log_level)

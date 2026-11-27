@@ -368,18 +368,15 @@ cost alone
   `follows`, and is still a folder’s, named and placed as the folder is.
 - **The origin’s default branch** appears among the primary branches in Remotes and is
   marked `default`, as a mirror’s is, from the store’s record of it.
-- **The freshness row** is on every page of a folder that keeps a store, its working
-  tree’s too: the status of the working tree, and of one of the checkout’s own
-  revisions, has the store’s last fetch and is `refreshable`, with nothing of the
-  store’s followed or probed (`MirrorSession.unpinned_fields`); one of the checkout’s
-  own branches follows the checkout’s ref, which is read and never fetched
+- **The freshness row** on a revision’s page shows progress, source issues, and actions,
+  with the reload offer handled by the ref selector (`describe` with `checkout` in
+  `static/source-freshness.js`). The Refresh tooltip reads the store’s last fetch time
+  from the status. A checkout’s own branch follows the local ref
   ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
-  The row says what was fetched is Metabrowser’s store of the origin and never the
-  checkout, and leaves the reload offer to the ref selector (`describe` with `checkout`
-  in `static/source-freshness.js`). A page that shows nothing of the store, the working
-  tree’s or one of the checkout’s own revisions, has a store grown old fetched by its
-  own ask, `{"for": "page"}`: once each time it is shown, and on one of the checkout’s
-  own branches each time that page asks while it is visible.
+  A page that shows nothing of the store, the working tree’s or one of the checkout’s
+  own revisions, has a store grown old fetched by its own ask, `{"for": "page"}`: once
+  each time it is shown, and on one of the checkout’s own branches each time that page
+  asks while it is visible.
   That fetch is quiet: nothing on the page can change when it ends.
   The row says “Refreshing…” for the reader’s own Refresh, and on a page of one of the
   origin’s branches, which a fetch can move.

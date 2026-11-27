@@ -72,6 +72,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Link preview tooltips](specs/active/plan-2026-11-26-link-preview-tooltips.md): a plan
+  for a concise tooltip on a link that opens a page in Metabrowser, naming the object,
+  its title where known, and that it opens here, with prefetch on rest, and one
+  documented rule for tooltips on links
 - [SoftSchema collection tables](specs/active/plan-2026-11-26-softschema-collection-tables.md):
   a draft for opening a folder of SoftSchema records as linked tables, one per contract,
   from a cached collection index that a SoftSchema collection API builds and a
@@ -135,6 +139,14 @@ It links each document below and the contributor standards in `docs/`.
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
+- [Plugin sources, process isolation, and out-of-process plugin environments](specs/active/plan-2026-11-12-plugin-sources.md):
+  registered directories and environments, and a repository’s own and its libraries’
+  plugins picked up automatically once the repository is trusted; Python plugins in
+  workers on their own interpreters, running a runtime package the host ships; one core
+  isolation facility for every child process, extracted from the PDF preview’s sandbox,
+  with a repository’s plugins confined by default; one plugin API version under a caret
+  gate; and the macOS app’s plugin settings, with the key decisions awaiting the owner,
+  tracked under epic `mb-xbw3`
 - [Fast CI](specs/active/plan-2026-11-16-fast-ci.md): bringing a pull request’s CI from
   20 minutes to about 5 with the same checks, by running the suite on every processor,
   splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
@@ -146,6 +158,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps
+- [Post-load navigation and fetch performance](specs/active/plan-2026-11-26-post-load-performance.md):
+  startup preparation, real HTTP timing of golden-backed API routes, and first-useful
+  paint after repository load
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md):
   retained surfaces, fixed boxes at first paint, and prediction behind admission
   control, each a measured performance-loop round
@@ -251,8 +266,16 @@ A research record stays here while it informs open work, and moves to
 - [What eager startup JavaScript costs](research/research-2026-11-12-eager-startup-script-cost.md):
   measured cost of the scripts a folder page loads before `DOMContentLoaded`
 
+- [Loading plugins from any source](research/research-2026-11-12-plugin-sources.md): how
+  a system-installed Metabrowser could use plugins from directories, environments, and
+  packages without being reinstalled, with a 2026-11-26 addendum on confining a child
+  process and on what identifies a clone
+
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md):
   the CLI-first and app-first install paths
+
+- [Post-load performance survey](research/research-2026-11-26-post-load-performance.md):
+  startup, golden-backed HTTP and Chrome diagnostics, and live GitHub observations
 
 - [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md):
   what makes the app feel instant, and the evidence behind the stable-layout plan

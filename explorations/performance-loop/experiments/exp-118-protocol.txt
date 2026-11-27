@@ -1,0 +1,10 @@
+Exp-118 — integrated fresh Pulls readiness and provider queue smoke
+Diagnostic protocol for the final guard replay.
+
+Reuse the exp-111 public corpus and the same four public pull subjects. Exercise
+the exact first-visit Chrome flow with the additional readiness regime flag and
+visible Changes-hunk milestone. This build includes the provider handoff and
+upstream provider report. Record convergence, visible placeholders, useful
+content, the job queue delay, and Git origin availability separately. Report any
+refusal. Do not compare this changed readiness definition with exp-111 as a
+paired trial. Local full verification overlaps this run and timing is diagnostic.

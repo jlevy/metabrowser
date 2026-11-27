@@ -18,17 +18,19 @@ below, on public pull requests read with ``gh api`` on 2026-09-23.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
 import stat
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -40,11 +42,13 @@ from pydantic import (
 
 from metabrowser import event_log
 from metabrowser.builtin_plugins.github.avatars import AvatarUrl
+from metabrowser.builtin_plugins.github.refresh_metrics import GitHubAnswers, RefreshTiming
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
     source_pull_record,
     source_pull_refresh,
+    source_pull_timing,
     source_pulls_directory,
     source_record,
 )
@@ -782,6 +786,50 @@ def same_observation(current: PullRecord, observed: PullRecord | RecordAbsence |
     return bare(current) == bare(observed)
 
 
+class PullRefreshTiming(_Model):
+    """The successful metadata read for a particular cached full observation."""
+
+    observation: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
+    finished_at: AwareDatetime
+    duration_ms: int = Field(ge=0)
+    github: GitHubAnswers
+
+    def wire(self) -> RefreshTiming:
+        timing: RefreshTiming = {
+            "finished_at": self.finished_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            "duration_ms": self.duration_ms,
+        }
+        self.github.add_to(timing)
+        return timing
+
+
+def pull_observation_key(record: PullRecord) -> str:
+    """Identify the read without Git-only changes to the comparison it names."""
+
+    data = record.model_dump_json(exclude={"comparison": True, "unavailable": {"comparison"}})
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def _read_pull_timing(home: Path, relative: str) -> PullRefreshTiming | None:
+    try:
+        data = read_bytes_bounded(home, relative, max_bytes=MAX_PULL_REFRESH_BYTES)
+        return PullRefreshTiming.model_validate_json(data)
+    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
+        return None
+
+
+def read_pull_refresh_timing(
+    home: Path, slug: str, record: PullRecord, *, observation: str | None = None
+) -> PullRefreshTiming | None:
+    """Read the last-success receipt only if it still names the current observation."""
+
+    timing = _read_pull_timing(home, source_pull_timing(slug, record.number))
+    if timing is None:
+        return None
+    identity = observation if observation is not None else pull_observation_key(record)
+    return timing if timing.observation == identity else None
+
+
 def write_pull_refresh(
     home: Path,
     slug: str,
@@ -789,6 +837,7 @@ def write_pull_refresh(
     stamp: PullRefreshStamp,
     *,
     expected: PullRecord | RecordAbsence,
+    timing: PullRefreshTiming | None = None,
 ) -> bool:
     """Keep the outcome only while the observation it describes is current.
 
@@ -805,6 +854,15 @@ def write_pull_refresh(
         if isinstance(current, PullRecord) and not same_observation(current, observed):
             return False
         write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+        if timing is not None and stamp.outcome == "succeeded":
+            relative = source_pull_timing(slug, number)
+            previous = _read_pull_timing(home, relative)
+            if (
+                previous is None
+                or previous.observation != timing.observation
+                or previous.finished_at <= timing.finished_at
+            ):
+                write_private_file_atomic(home, relative, timing.model_dump_json().encode())
         return True
 
 

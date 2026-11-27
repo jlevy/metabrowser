@@ -282,7 +282,14 @@ status: 200
     ],
     "truncated": false
   },
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 2585
+  }
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -360,7 +367,14 @@ status: 202
     "status": "<STATUS 7>",
     "readiness": "<READINESS 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a>",
     "checks": "<CHECKS 7>",
-    "status_unavailable": null
+    "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 49
+    }
   },
   "status_route": "/api/plugin/github/pull?number=7"
 }
@@ -399,7 +413,14 @@ status: 200
   "status": "<STATUS 7>",
   "readiness": "<READINESS 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a>",
   "checks": "<CHECKS 7>",
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 49
+  }
 }
 --- stderr ---
 selection: pull_request
@@ -498,7 +519,14 @@ status: 200
   "status": "<STATUS 7>",
   "readiness": "<READINESS 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a>",
   "checks": "<CHECKS 7>",
-  "status_unavailable": "network_error"
+  "status_unavailable": "network_error",
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 49
+  }
 }
 --- stderr ---
 selection: pull_request
@@ -790,7 +818,14 @@ status: 200
     "items": [],
     "truncated": false
   },
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 693
+  }
 }
 --- stderr ---
 --- gh ---
@@ -841,7 +876,14 @@ status: 200
     "status": "<STATUS 10>",
     "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
     "checks": "<CHECKS 10>",
-    "status_unavailable": null
+    "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 693
+    }
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -889,6 +931,13 @@ status: 200
     "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
     "checks": "<CHECKS 10>",
     "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 693
+    },
     "record_held": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
@@ -1136,7 +1185,14 @@ status: 200
     ],
     "truncated": false
   },
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 773
+  }
 }
 --- stderr ---
 selection: pull_request
@@ -1401,7 +1457,14 @@ status: 200
   "status": "<STATUS 7>",
   "readiness": "<READINESS 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a>",
   "checks": "<CHECKS 7>",
-  "status_unavailable": "network_error"
+  "status_unavailable": "network_error",
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 49
+  }
 }
 --- stderr ---
 selection: pull_request

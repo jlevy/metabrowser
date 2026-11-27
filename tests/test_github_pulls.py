@@ -55,12 +55,14 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PULL_RECORD_PROJECTION,
     PullRecord,
     PullRefreshStamp,
+    PullRefreshTiming,
     PullRequest,
     apply_text_budget,
     cut_text,
     escaped_size,
     read_pull_record,
     read_pull_refresh,
+    read_pull_refresh_timing,
     serialize_pull_record,
     write_pull_record,
     write_pull_refresh,
@@ -1532,11 +1534,11 @@ def test_a_git_failure_is_reported_without_gits_own_text(
 
 
 def test_the_route_parses_a_record_again_only_when_it_changed(
-    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from metabrowser.builtin_plugins.github import pull_route
 
-    stand.refresh(7)
+    stand, client = pinned_pull
     reads: list[int] = []
     original = pull_route.read_pull_record
 
@@ -1545,13 +1547,28 @@ def test_the_route_parses_a_record_again_only_when_it_changed(
         return original(home, slug, number)
 
     monkeypatch.setattr(pull_route, "read_pull_record", counting)
+    observed: list[int] = []
+    observation_key = pull_route.pull_observation_key
+
+    def count_observation(record: PullRecord) -> str:
+        observed.append(record.number)
+        return observation_key(record)
+
+    monkeypatch.setattr(pull_route, "pull_observation_key", count_observation)
     home, slug = stand.published.home, stand.published.slug
     first, _, first_revision = pull_route.cached_pull_record(home, slug, 7)
     again, _, again_revision = pull_route.cached_pull_record(home, slug, 7)
     assert again is first and reads == [7] and again_revision == first_revision
+    assert observed == []
+    for _ in range(2):
+        assert _read(client, 7).json()["refresh_timing"]["provider"] == "github_cli"
+    assert observed == [7]
     stand.refresh(7)
     pull_route.cached_pull_record(home, slug, 7)
     assert reads == [7, 7]
+    assert observed == [7]
+    assert _read(client, 7).json()["refresh_timing"]["provider"] == "github_cli"
+    assert observed == [7, 7]
 
 
 # ── served beside the mirror: the fetch lock, the refresh route, and serve mode ──
@@ -4121,6 +4138,31 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
     asyncio.run(run())
 
 
+def test_selected_core_is_revoked_when_the_source_observes_another_reader(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        repository = ServedPulls(stand.published)
+        held = await repository.companion(7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh({"record"}))
+        try:
+            await held.wait_for_core()
+            preview = held.core_preview
+            assert preview is not None
+            waiter = asyncio.create_task(held.wait_for_full(preview))
+            await asyncio.sleep(0)
+            repository.observe_reader(stand.published, "gh:another-reader")
+            assert await asyncio.wait_for(waiter, timeout=2)
+            assert held.core_preview is None and not job.done()
+        finally:
+            gate.release.set()
+            await asyncio.wait_for(job, timeout=5)
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("end_wait", ["cancel", "rebind"])
 def test_selected_full_wait_does_not_own_the_refresh(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch, end_wait: str
@@ -5661,11 +5703,17 @@ def test_visible_core_revokes_staged_reader_while_failure_stamp_is_held(
     async def graph(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         return graph_core_data(rest[8])
 
-    def held_stamp(published: Any, number: int, fields: dict[str, Any], expected: Any) -> None:
+    def held_stamp(
+        published: Any,
+        number: int,
+        fields: dict[str, Any],
+        expected: Any,
+        timing: PullRefreshTiming | None = None,
+    ) -> None:
         if number == 8 and fields["outcome"] == "account_changed":
             stamp_entered.set()
             assert stamp_release.wait(5)
-        actual_keep_stamp(published, number, fields, expected)
+        actual_keep_stamp(published, number, fields, expected, timing)
 
     monkeypatch.setattr(pulls, "active_account", account)
     monkeypatch.setattr(pulls, "gh_graphql", graph)
@@ -6952,6 +7000,40 @@ def test_same_window_admitted_during_preflight_is_joined_without_revocation(
         waiting.join(5)
     _drain_visible_cores(client)
     assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "ready"
+
+
+def test_full_pull_refresh_timing_stays_with_the_observation_on_failure(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    times = iter((100_000_000, 525_000_000, 600_000_000, 800_000_000))
+    monkeypatch.setattr(pulls, "monotonic_ns", times.__next__)
+    record = stand.refresh(7)
+    home, slug = stand.published.home, stand.published.slug
+    timing = read_pull_refresh_timing(home, slug, record)
+    assert timing is not None and timing.duration_ms == 425
+    assert timing.github.request_count == 6
+    assert timing.github.response_body_bytes > 0
+
+    last = read_pull_refresh(home, slug, 7)
+    assert last is not None
+    write_pull_refresh(
+        home, slug, 7, last.model_copy(update={"outcome": "failed"}), expected=record
+    )
+    assert read_pull_refresh_timing(home, slug, record) == timing
+    earlier = timing.model_copy(update={"finished_at": timing.finished_at - timedelta(seconds=1)})
+    assert write_pull_refresh(home, slug, 7, last, expected=record, timing=earlier)
+    assert read_pull_refresh_timing(home, slug, record) == timing
+
+    # Preparing or removing its comparison changes no GitHub observation.
+    without_comparison = record.model_copy(update={"comparison": None})
+    assert read_pull_refresh_timing(home, slug, without_comparison) == timing
+
+    edited = record.model_copy(update={"pull": record.pull.model_copy(update={"title": "Edited"})})
+    # Even a same-second replacement must never inherit another record's metrics.
+    write_pull_record(home, slug, edited)
+    assert read_pull_refresh_timing(home, slug, edited) is None
+    assert not write_pull_refresh(home, slug, 7, last, expected=record, timing=timing)
+    assert read_pull_refresh_timing(home, slug, edited) is None
 
 
 def test_obsolete_observation_cannot_replace_the_current_record_or_stamp(stand: _Stand) -> None:

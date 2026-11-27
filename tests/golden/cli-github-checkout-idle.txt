@@ -188,6 +188,13 @@ status: 200
     "truncated": false
   },
   "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 693
+  },
   "no_store": true
 }
 --- stderr ---
@@ -299,6 +306,13 @@ status: 200
     "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
     "checks": "<CHECKS 10>",
     "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 693
+    },
     "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
@@ -513,6 +527,13 @@ status: 200
     "truncated": false
   },
   "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 702
+  },
   "no_store": true
 }
 --- stderr ---
@@ -624,6 +645,13 @@ status: 202
     "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
     "checks": "<CHECKS 10>",
     "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 693
+    },
     "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
@@ -723,7 +751,14 @@ status: 200
   "status": "<STATUS 10>",
   "readiness": "<READINESS 7a7d6596e515735d244dc1d942463c95851e139c>",
   "checks": "<CHECKS 10>",
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 693
+  }
 }
 --- stderr ---
 --- body ---
@@ -833,7 +868,14 @@ status: 200
     "status": "<STATUS 9>",
     "readiness": null,
     "checks": "<CHECKS 9>",
-    "status_unavailable": null
+    "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 702
+    }
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -945,6 +987,13 @@ status: 202
     "readiness": null,
     "checks": "<CHECKS 9>",
     "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 702
+    },
     "preparing_comparison": true
   },
   "status_route": "/api/plugin/github/pull?number=9"
@@ -1050,7 +1099,14 @@ status: 200
   "status": "<STATUS 9>",
   "readiness": null,
   "checks": "<CHECKS 9>",
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 702
+  }
 }
 --- stderr ---
 --- body ---
@@ -1162,7 +1218,14 @@ status: 200
     "status": "<STATUS 9>",
     "readiness": null,
     "checks": "<CHECKS 9>",
-    "status_unavailable": null
+    "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 702
+    }
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -1277,7 +1340,14 @@ status: 202
     "status": "<STATUS 9>",
     "readiness": null,
     "checks": "<CHECKS 9>",
-    "status_unavailable": null
+    "status_unavailable": null,
+    "refresh_timing": {
+      "finished_at": "2026-09-17T12:00:00Z",
+      "duration_ms": "<ELAPSED_MS>",
+      "provider": "github_cli",
+      "request_count": 6,
+      "response_body_bytes": 702
+    }
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -1382,7 +1452,14 @@ status: 200
   "status": "<STATUS 9>",
   "readiness": null,
   "checks": "<CHECKS 9>",
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": "<ELAPSED_MS>",
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 702
+  }
 }
 --- stderr ---
 --- body ---

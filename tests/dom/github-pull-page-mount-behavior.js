@@ -4,10 +4,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 const root = path.resolve(__dirname, "../..");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(root, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
-);
+const recorded = {
+  ...require("../fixtures/github-pull-page-responses.json"),
+  ...require("../fixtures/github-pull-page-followed-head.json"),
+};
 // A status whose checks were listed when it was observed is recorded without the time they
 // were listed, which is its own `observed_at`, and one whose checks were never seen
 // otherwise without `moved_at`, which is none; any other value is as recorded.
@@ -303,8 +305,24 @@ const comparisonPrefetchUrl = pathToFileURL(
 ).href;
 
 /**
+ * The SDK's registration of a text's links for their cards (`previewLink`, `forgetPreview`,
+ * `disposePreviews` in plugin-sdk-views.js), which the view helpers give every page, for a
+ * mount whose SDK does not record its own: the SDK's own, as a page has it before a rest
+ * loads the card.
+ *
+ * @param {Record<string, unknown> | undefined} sdk
+ */
+function withLinkCards(sdk) {
+  if (sdk && typeof sdk.disposePreviews !== "function") {
+    Object.assign(sdk, linkCardRegistration());
+  }
+  return sdk;
+}
+
+/**
  * The pull page module at *url*, whose `mountPullPage` mounts a fresh load of the page, its
- * document's keep empty, and whose `revisitPullPage` mounts it again in the same document.
+ * document's keep empty, and whose `revisitPullPage` mounts it again in the same document,
+ * each with the SDK's link card registration where the mount gives none (`withLinkCards`).
  *
  * @param {string} url
  * @returns {Promise<Record<string, any>>}
@@ -314,11 +332,12 @@ async function importPage(url) {
   const { documentComparisons } = await import(comparisonPrefetchUrl);
   return {
     ...page,
-    mountPullPage(...args) {
+    mountPullPage(container, options, sdk, ...rest) {
       documentComparisons.clear();
-      return page.mountPullPage(...args);
+      return page.mountPullPage(container, options, withLinkCards(sdk), ...rest);
     },
-    revisitPullPage: page.mountPullPage,
+    revisitPullPage: (container, options, sdk, ...rest) =>
+      page.mountPullPage(container, options, withLinkCards(sdk), ...rest),
   };
 }
 
@@ -834,8 +853,11 @@ async function textRefusal() {
 // `/pull/` as github.com resolves it. At the served head, such a link opens the head's file
 // in place. Away from it, it opens github.com at the head until the comparison is read, and
 // then, for a file the comparison changes on either side, that file in Changes, in place
-// and through the page's own `open`; an unchanged file stays on github.com. The read lands
-// while Checks shows, so the description's section kept for a return to Conversation is read
+// and through the page's own `open`; an unchanged file stays on github.com. Another pull
+// request opens in place through the page's own `open` too, and a commit's page and the
+// list through the shell's (`navigation.openRoute`), which is asked only for what the
+// page declined; a modified click on any of them is the browser's. The read lands while
+// Checks shows, so the description's section kept for a return to Conversation is read
 // again too, once, and its link keeps its one click listener. Returns each step's links, as
 // "text → href", and what each click did.
 async function textLinks() {
@@ -850,6 +872,27 @@ async function textLinks() {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
+  // The link cards, which the page and the resolver register each link for through the SDK
+  // (`metabrowser.previewLink`, static/plugin-sdk-views.js): a recording stand-in, spread
+  // into the SDK the page is mounted with. A card is its link's, by identity, with its root
+  // and target; a disposal forgets its root's.
+  const cards = new Map();
+  const cardSdk = {
+    previewLink(root, anchor, target) {
+      cards.set(anchor, { root, target });
+      return true;
+    },
+    forgetPreview(anchor) {
+      cards.delete(anchor);
+    },
+    disposePreviews(root) {
+      for (const [anchor, card] of cards) {
+        if (card.root === root) {
+          cards.delete(anchor);
+        }
+      }
+    },
+  };
   const comparison = recorded.current.body.record.comparison;
   // Each pass of the links over a text, which the steps count.
   let passes = 0;
@@ -891,6 +934,9 @@ async function textLinks() {
       '<a href="https://github.com/octo/demo/pull/docs/changed.md" data-metabrowser-path-relative="">the changed guide</a>',
       '<a href="https://github.com/octo/demo/pull/docs/same.md" data-metabrowser-path-relative="">an unchanged file</a>',
       '<a href="https://github.com/octo/demo/pull/7/files">the Changes tab</a>',
+      `<a href="https://github.com/octo/demo/commit/${"d".repeat(40)}">a commit</a>`,
+      '<a href="https://github.com/octo/demo/pulls">the pull requests</a>',
+      '<a href="https://github.com/octo/demo/pull/8">another pull request</a>',
     ].join(""),
     [`issue_comment/${COMMENT}`]:
       '<a href="https://github.com/octo/demo/pull/docs/before.md" data-metabrowser-path-relative="">the renamed file</a>',
@@ -918,13 +964,14 @@ async function textLinks() {
     },
   };
   const steps = [];
-  const plain = () => ({
+  const plain = (modifiers = {}) => ({
     altKey: false,
     button: 0,
     ctrlKey: false,
     defaultPrevented: false,
     metaKey: false,
     shiftKey: false,
+    ...modifiers,
     preventDefault() {
       this.defaultPrevented = true;
     },
@@ -982,6 +1029,8 @@ async function textLinks() {
     };
     const opened = [];
     const viewed = [];
+    // What the shell was asked to open in place: a route the page's own `open` declined.
+    const shell = [];
     const diffView = {
       prefetch: async (asked) => (asked.right === comparison.head ? raw : null),
       summary: async () => ({ dispose() {} }),
@@ -1007,6 +1056,7 @@ async function textLinks() {
         },
         // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
         loadRepositoryLinks: async () => links,
+        ...cardSdk,
         loadKpressAssets: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
@@ -1032,6 +1082,10 @@ async function textLinks() {
           async open(target) {
             viewed.push(`/view/${target.path}`);
           },
+          openRoute(href) {
+            shell.push(href);
+            return true;
+          },
         },
         sourceKind: () => "git_revision",
         icons: { toggle: "" },
@@ -1045,39 +1099,82 @@ async function textLinks() {
       await settle();
     };
     const movePin = () => listeners.dispatchEvent(new Event("metabrowser:pin-changed"));
-    return { container, handle, opened, viewed, idle, movePin };
+    return { container, handle, opened, viewed, shell, idle, movePin };
   }
   const anchors = (holder) => holder.querySelectorAll("a[href]");
   const told = (holder) =>
     anchors(holder)
       .map((link) => `${link.textContent} → ${link.getAttribute("href")}`)
       .join("; ");
-  /** Click *text*'s link: what it opened in place, or that the browser follows it. */
-  const click = (holder, text, mounted) => {
+  /**
+   * Click *text*'s link, plainly or with *modifiers*: what it opened in place, the shell's
+   * opens named so, or that the browser follows it.
+   */
+  const click = (holder, text, mounted, modifiers = {}) => {
     const link = anchors(holder).find((anchor) => anchor.textContent === text);
-    const event = plain();
+    const event = plain(modifiers);
     link.events.get("click")?.(event);
     const routes = mounted.opened.splice(0);
     const viewed = mounted.viewed.splice(0);
+    const shell = mounted.shell.splice(0);
     // What a plain click opens in place is the address the link holds, as pull-route.js
     // spells a route, so a new tab and a copied link open the same.
     const spelled = routes.map(
-      (route) => `/pull/${route.number}/${route.tab}${route.file ? `/${route.file}` : ""}`,
+      (route) =>
+        `/pull/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`,
     );
-    for (const address of [...spelled, ...viewed]) {
+    for (const address of [...spelled, ...viewed, ...shell]) {
       assert.equal(address, link.getAttribute("href"), "a click opens the link's own address");
     }
-    assert.equal(routes.length + viewed.length > 0, event.defaultPrevented, "opened in place");
-    const opened = [...routes.map((route) => JSON.stringify(route)), ...viewed];
+    const inPlace = routes.length + viewed.length + shell.length;
+    assert.ok(inPlace <= 1, "one click opens one thing");
+    assert.equal(inPlace > 0, event.defaultPrevented, "opened in place");
+    const opened = [
+      ...routes.map((route) => JSON.stringify(route)),
+      ...viewed,
+      ...shell.map((href) => `the shell opens ${href}`),
+    ];
     return `${text}: ${event.defaultPrevented ? opened.join(", ") : "the browser follows it"}`;
   };
   const proses = (container) => container.querySelectorAll(".kpress-prose");
+  /**
+   * What each link of *holder*, a text's prose, has for its card: the kind of page it opens,
+   * at the link's own address, with the text as its root, or none; and no tooltip of its own.
+   */
+  const carded = (holder) =>
+    anchors(holder)
+      .map((link) => {
+        assert.equal(link.getAttribute("data-tip-text"), null, "a link has no tooltip of its own");
+        const card = cards.get(link);
+        if (card === undefined) {
+          return `${link.textContent} none`;
+        }
+        const { root, target } = card;
+        assert.equal(root, holder, "a link's card has its text as its root");
+        let address = target.href;
+        if (target.kind === "view") {
+          address = `/view/${target.target.path}`;
+        } else if (target.kind === "external") {
+          address = target.url;
+        }
+        assert.equal(
+          address,
+          link.getAttribute("href"),
+          "a link's card is for what its address opens",
+        );
+        return `${link.textContent} ${target.kind}${target.kind === "view" ? ` ${target.localization}` : ""}`;
+      })
+      .join(", ");
+  /** How many of the links of *holders* still have a card. */
+  const cardsLeft = (holders) =>
+    holders.flatMap((holder) => anchors(holder)).filter((link) => cards.has(link)).length;
 
   // Served at the head the text describes: the head's file opens in place, before the
   // comparison is read and after.
   const atHead = await mount(comparison.head);
   const [headBody] = proses(atHead.container);
   steps.push(`served at the head: ${told(headBody)}`);
+  steps.push(`  cards: ${carded(headBody)}`);
   steps.push(`  click ${click(headBody, "the changed guide", atHead)}`);
   await atHead.idle();
   steps.push(`  the comparison read: ${told(headBody)}`);
@@ -1088,7 +1185,10 @@ async function textLinks() {
     "a stale pin drops view links and keeps the PR head",
   );
   steps.push(`  after the served revision moves: ${told(headBody)}`);
+  steps.push(`  cards: ${carded(headBody)}`);
+  const headTexts = proses(atHead.container);
   atHead.handle.dispose();
+  steps.push(`  the page ends: ${cardsLeft(headTexts)} cards left`);
 
   // Served away from it: github.com at the head, then Changes for a changed file.
   const away = await mount(comparison.base_commit);
@@ -1114,13 +1214,20 @@ async function textLinks() {
   await away.idle();
   assert.equal(description.isConnected, true, "Conversation shows the same description again");
   steps.push(`  back on Conversation, ${passes} texts read again: ${told(description)}`);
+  steps.push(`  cards: ${carded(description)}; ${carded(comment)}`);
   for (const [text, holder] of [
     ["the changed guide", description],
     ["an unchanged file", description],
     ["the Changes tab", description],
+    ["a commit", description],
+    ["the pull requests", description],
+    ["another pull request", description],
     ["the renamed file", comment],
   ]) {
     steps.push(`  click ${click(holder, text, away)}`);
+  }
+  for (const text of ["a commit", "the pull requests", "another pull request"]) {
+    steps.push(`  Command-click ${click(description, text, away, { metaKey: true })}`);
   }
   assert.equal(
     anchors(comment)[0].getAttribute("href"),
@@ -1136,6 +1243,7 @@ async function textLinks() {
     assert.equal(listeners.get(link) ?? 0, inApp ? 1 : 0, "an in-app link has one listener");
   }
   away.handle.dispose();
+  steps.push(`  the page ends: ${cardsLeft([description, comment])} cards left`);
   Element.prototype.addEventListener = addEventListener;
   return steps;
 }
@@ -2039,8 +2147,7 @@ async function tabKeys(page) {
   steps.push(await pullsRefresh());
   steps.push(`while that refresh runs, the page can refresh: ${handle.canRefresh()}`);
   steps.push(await pullsRefresh());
-  // The refresh ends. On Changes the page offers a refresh again; on Conversation nothing is
-  // left to refresh.
+  // A healthy record remains eligible for an explicit press on every tab.
   answer = atHead;
   for (const callback of [...timers.values()]) {
     callback();
@@ -2052,6 +2159,19 @@ async function tabKeys(page) {
   await settle();
   steps.push(`on Conversation once the refresh ends, the page can refresh: ${handle.canRefresh()}`);
   steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
+  const receipt = {
+    finished_at: atHead.fetched_at,
+    provider: "github_cli",
+    duration_ms: 562,
+    request_count: 3,
+    response_body_bytes: 988,
+  };
+  const changes = [];
+  const stopWatching = handle.onRefreshDetail(() => changes.push(handle.refreshDetail()));
+  answer = { ...atHead, refresh_timing: receipt };
+  assert.match(await pullsRefresh(), /pull-refresh \{"number":7,"retry":true\}$/);
+  assert.deepEqual(changes, [receipt], "the new measurement is published exactly once");
+  assert.deepEqual(handle.refreshDetail(), receipt);
   arrive("files");
   await settle();
   steps.push(await numberResult("2"));
@@ -2059,6 +2179,9 @@ async function tabKeys(page) {
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
   arrive("checks");
+  assert.match(await pullsRefresh(), /pull-refresh \{"number":7,"retry":true\}$/);
+  assert.deepEqual(changes, [receipt], "another read of the same receipt stays quiet");
+  stopWatching();
   steps.push(result("C", { shiftKey: true }));
   arrive("");
   steps.push(result("g", { ctrlKey: true }));
@@ -2726,9 +2849,9 @@ async function headerShape(page) {
   const REMEDY = {
     "failed, still current": "Retry",
   };
-  /** What each variant's note says where it is not the record's fetch, null where none. */
+  /** What each variant's note says when there is progress or an issue. */
   const NOTE = {
-    "on its way, its last refresh failed": null,
+    stale: /^Refreshing…$/,
     "held by a rate limit": /^GitHub rate limit reached\. Next attempt after /,
     "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
     "no GitHub repository": /^This server serves no GitHub repository\.$/,
@@ -2827,8 +2950,7 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      // The note ends the author's row's lead: the record's one time, or what is said in its
-      // place (mb-ne91).
+      // A notice ends the author's row when there is progress or an issue.
       const note = container.querySelector(".github-pull-note");
       const noteText = container.querySelector(".github-pull-freshness").textContent;
       assert.equal(
@@ -2836,15 +2958,11 @@ async function headerShape(page) {
         meta,
         `${name} ${tab}: the note is on the author's row`,
       );
-      if (NOTE[name] === null) {
+      if (NOTE[name] === undefined) {
         assert.equal(note.hidden, true, `${name} ${tab}: no note`);
       } else {
         assert.ok(note.hidden !== true, `${name} ${tab}: the note says something`);
-        assert.match(
-          noteText,
-          NOTE[name] ?? /^Fetched .+ via GitHub CLI$/,
-          `${name} ${tab}: the note`,
-        );
+        assert.match(noteText, NOTE[name], `${name} ${tab}: the note`);
       }
       // The status line is there exactly while it has something to say, and says it.
       assert.equal(
@@ -4921,16 +5039,14 @@ async function run() {
   await mergeStatusSection(page);
   await headerAges(page);
   await headerShape(page);
-  // The freshness note's slot is as wide as its widest age: each age the page says is put at
-  // "59 min ago", the widest `relativeAge` says, for the hidden copy that sizes the slot, and
-  // a note wider still, as an unknown age is, sizes its own (mb-ne91).
+  // An offline note holds the width of its widest age. Other notices use their own width.
   const widestNotes = Object.fromEntries(
     [
-      "Fetched just now via GitHub CLI",
-      "Fetched 3 h ago via GitHub CLI",
+      "Refreshing…",
+      "Offline · fetched just now via GitHub CLI",
       "Offline · fetched 12 d ago via GitHub CLI",
-      "Description fetched 7 min ago via GitHub CLI",
-      "Fetched at an unknown time via GitHub CLI",
+      "Offline · description fetched 7 min ago via GitHub CLI",
+      "Offline · fetched at an unknown time via GitHub CLI",
     ].map((note) => [note, page.widestNote(note)]),
   );
   // A rate limit's hold says when it lifts in the reader's short form: a time of day when it

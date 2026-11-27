@@ -143,6 +143,7 @@ type MetabrowserPullsNavHost = Readonly<{
   stackFileHref(stack: number, path: string): string | null;
   /** The page of that pull request while it holds the pane, else null. */
   pageFor(number: number): unknown;
+  stackFor?(number: number): unknown;
   onPageChange(listener: () => void): () => void;
   filterChanged(state: string): void;
 }>;
@@ -378,6 +379,16 @@ type MetabrowserNavigationApi = Readonly<{
     target: MetabrowserNavigationTarget,
     options?: MetabrowserNavigationOpenOptions,
   ): Promise<void>;
+  /**
+   * Open an in-app page other than a file's in place, by the address a link carries: a
+   * pull request's page and its tabs and changed files (`/pull/`), a stack's (`/stack/`),
+   * the list (`/pulls`), or a commit (`/commit/`); the address shown is opened again
+   * where it is, pushing no history entry. Answers whether the shell opened it:
+   * false for any other address, one the shell cannot show yet, or before its tabs have
+   * loaded, and the caller then lets the browser follow the link. The shell's tab
+   * controller opens it (static/main-tabs.js, `openRoute`).
+   */
+  openRoute(href: string): boolean;
 }>;
 
 type MetabrowserNavigationTarget = Readonly<{
@@ -989,6 +1000,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     page(): Handle | null;
     /** The page of that pull request when it holds the pane, else null. */
     pageFor(number: number): Handle | null;
+    stackFor?(number: number): Handle | null;
     shown(): number | "list" | `stack:${number}` | null;
   }>;
   createViewMount(shell: {
@@ -1012,7 +1024,10 @@ type MetabrowserPullRouteRuntime = Readonly<{
     dispose(): void;
   } | null>;
   /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
-  attachedHost(): { pageFor(number: number): unknown } | null;
+  attachedHost(): {
+    pageFor(number: number): unknown;
+    stackFor?(number: number): unknown;
+  } | null;
   onPageChange(listener: () => void): () => void;
   parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
@@ -1957,8 +1972,8 @@ type MetabrowserSdk = {
    *  a header's `.view-header-end`; resolves to the button, or null when there is none. */
   mountCounterpart(corner: Element, page: string): Promise<HTMLElement | null>;
   /** Start asking for `page`'s counterpart before its header is drawn; `mountCounterpart`
-   *  waits for this request rather than making another. */
-  prefetchCounterpart(page: string): void;
+   *  waits for this request rather than making another. Resolves when the request finishes. */
+  prefetchCounterpart(page: string): Promise<void>;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,
@@ -2083,6 +2098,29 @@ type MetabrowserSdk = {
    * Later calls can use the resolver after it arrives (static/plugin-sdk-views.js).
    */
   loadRepositoryLinks(): Promise<MetabrowserRepositoryLinksRuntime | null>;
+  /**
+   * Give a link of *root* that opens *target*, a page here or one on another site, its link
+   * card (static/link-previews.js, loaded at the page's first rest on a link registered
+   * here); *authorTitle* is the title its author gave it, which the surface takes off the link
+   * when this answers true. Whether it has one (static/plugin-sdk-views.js).
+   */
+  previewLink(
+    root: Element,
+    anchor: Element,
+    target: MetabrowserLinkPreviewTarget,
+    options?: { authorTitle?: string | null },
+  ): boolean;
+  /** The link has no card any more. */
+  forgetPreview(anchor: Element): void;
+  /** Forget every card of *root*'s links, and put away the one it shows. */
+  disposePreviews(root: Element): void;
+  /**
+   * Take every title off a link `previewLink` gave a card, and off what it holds, keeping
+   * *authorTitle*, which the card says, for assistive technology (static/plugin-sdk-views.js).
+   */
+  takeAuthorTitles(anchor: Element, authorTitle: string | null | undefined): void;
+  /** Give a link with no card any more back what `takeAuthorTitles` took and added. */
+  giveAuthorTitlesBack(anchor: Element): void;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   /**
@@ -3690,7 +3728,8 @@ declare global {
     esc(value: unknown): string;
     /** The served root, absolute. */
     servedRoot(): string;
-    pathBaseName(path: string): string;
+    /** The served root's name, "" for none (`MetabrowserShellRuntime.servedRootName`). */
+    servedRootName(): string;
     /** The SDK's owner mark for the shell's delegated controls. */
     ownedControlAttr(): string;
     /** What a served mirror's page adds to its headings (mirror-heading.js). */
@@ -3986,8 +4025,6 @@ declare global {
   };
 
   type MetabrowserRepositoryLinksRuntime = Readonly<{
-    /** The tooltip of a link that opens whatever revision is served. */
-    WORKING_TREE_TITLE: string;
     localize(
       url: string,
       context: MetabrowserRepositoryContext | null | undefined,
@@ -3998,9 +4035,10 @@ declare global {
         views?: boolean;
       },
     ): MetabrowserRepositoryLinkTarget | null;
+    /** Each link it reads has its link card, registered with *root* through *mb*. */
     enhance(
-      root: ParentNode,
-      mb: Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">,
+      root: Element,
+      mb: MetabrowserRepositoryLinksSdk,
       options?: {
         text?: MetabrowserRepositoryTextContext;
         open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
@@ -4014,11 +4052,149 @@ declare global {
       directory?: boolean,
       suffix?: string,
     ): string | null;
+    /** Whether a click is a plain primary one, which a link it made in-app opens in place. */
+    isPlainClick(event: Event): boolean;
     viewFileUrl(
       context: MetabrowserRepositoryContext | null | undefined,
       revision: string,
       href: string,
     ): string | null;
+  }>;
+
+  /**
+   * What a link with a link card opens (static/link-previews.js): a resolver's in-app
+   * answer, a rendered diff's link to a file of its head, a pin's `/view/<GitPath
+   * wire>[#fragment]` address, or a page on another site, by its address.
+   */
+  /**
+   * What the resolver's `enhance` reads a text's links with, opens them through, and gives
+   * each its card through, which the surface that drew the text passes.
+   */
+  type MetabrowserRepositoryLinksSdk = Pick<
+    MetabrowserPublicSdk,
+    "forgetPreview" | "navigation" | "previewLink" | "repository" | "sourceKind"
+  >;
+
+  /**
+   * What a link's card is read and drawn with: the SDK members the card's registry and its
+   * providers call, the page's own SDK, which registered the link (`previewLink`).
+   */
+  type MetabrowserLinkCardSdk = Pick<
+    MetabrowserPublicSdk,
+    | "directoryTotals"
+    | "ensureKindAssets"
+    | "fetchPluginData"
+    | "fileCatalog"
+    | "formatAge"
+    | "formatFileCount"
+    | "formatSize"
+    | "navigation"
+    | "plugins"
+    | "repository"
+    | "sourceKind"
+    | "tooltip"
+  > &
+    /** The view helpers bring these, so a page that has drawn no view has none yet. */
+    Partial<Pick<MetabrowserPublicSdk, "giveAuthorTitlesBack" | "prefetchCounterpart">>;
+
+  type MetabrowserLinkPreviewTarget =
+    | Extract<MetabrowserRepositoryLinkTarget, { kind: "view" | "route" }>
+    | Readonly<{ kind: "view-head"; href: string }>
+    | Readonly<{ kind: "external"; url: string }>;
+
+  /** What a link card is about, as `MetabrowserLinkPreviews.subject` reads a target. */
+  type MetabrowserLinkPreviewSubject =
+    | Readonly<{ kind: "pull"; number: number; tab: "" | "files" | "checks"; file: string }>
+    | Readonly<{ kind: "stack"; number: number; file: string }>
+    | Readonly<{ kind: "commit"; revision: string }>
+    | Readonly<{
+        kind: "file" | "folder";
+        /** The path from the served root, decoded for display; "" for the root. */
+        path: string;
+        /** For a link to a branch, which opens whatever is served: "working-tree" on a
+         *  folder's page, "served-revision" on a pin's or a mirror's. */
+        opens: "here" | "working-tree" | "served-revision";
+        /** The navigation target as the address spelled it: a view target's own, or a head
+         *  link's GitPath wire path and decoded fragment. `card` does not read it. */
+        target: MetabrowserNavigationTarget;
+      }>
+    | Readonly<{ kind: "pulls" }>
+    /** A page on another site: its `http` or `https` address, and the host it goes to. */
+    | Readonly<{ kind: "external"; url: string; host: string }>;
+
+  /** A provider's answer for a subject: plain text only, never markup. */
+  type MetabrowserLinkPreview = Readonly<{
+    title?: string;
+    /** A pull request's state, which only its metadata can say. */
+    state?: "open" | "closed" | "merged" | "draft";
+    detail?: string;
+    /** Said in place of where the link opens, as "Not in this repository". */
+    missing?: string;
+  }>;
+
+  /**
+   * One kind's data for its link cards (`MetabrowserLinkPreviews.provide`). The provider
+   * keeps what it reads, for as long as that stays true, and retries what failed; the
+   * registry keeps nothing. `summary` may read, and answers what it keeps at once; `known`
+   * answers what it keeps now with no read, or null.
+   */
+  type MetabrowserLinkPreviewProvider = Readonly<{
+    summary(
+      subject: MetabrowserLinkPreviewSubject,
+      context: { mb: MetabrowserLinkCardSdk },
+    ): Promise<MetabrowserLinkPreview | null> | MetabrowserLinkPreview | null;
+    known?(
+      subject: MetabrowserLinkPreviewSubject,
+      context: { mb: MetabrowserLinkCardSdk },
+    ): MetabrowserLinkPreview | null;
+    prefetch?(
+      subject: MetabrowserLinkPreviewSubject,
+      context: { mb: MetabrowserLinkCardSdk },
+    ): unknown;
+  }>;
+
+  /**
+   * static/link-previews.js, the first script of the `link-previews` on-demand bundle, which
+   * the SDK loads at a page's first rest on a link it registered (static/plugin-sdk-views.js).
+   */
+  type MetabrowserLinkPreviewsRuntime = Readonly<{
+    /** How long the pointer rests on a link before its summary and prefetch start. */
+    INTENT_MS: number;
+    /** A card's words for where its link opens, by its subject's `opens`. */
+    OPENS: Readonly<Record<"here" | "working-tree" | "served-revision", string>>;
+    register(
+      root: Element,
+      anchor: Element,
+      target: MetabrowserLinkPreviewTarget,
+      mb: MetabrowserLinkCardSdk,
+      options?: { authorTitle?: string | null },
+    ): boolean;
+    /**
+     * The pointer has rested on a registered link for *elapsed* ms since before the module
+     * loaded; *ended*, the reader's press or a focus ended that rest meanwhile.
+     */
+    rest(anchor: Element, options?: { elapsed?: number; ended?: boolean }): void;
+    forget(anchor: Element): void;
+    dispose(root: Element): void;
+    provide(
+      kind: MetabrowserLinkPreviewSubject["kind"],
+      provider: MetabrowserLinkPreviewProvider,
+    ): void;
+    subject(
+      target: MetabrowserLinkPreviewTarget | null | undefined,
+      sourceKind?: "filesystem" | "git_revision",
+    ): MetabrowserLinkPreviewSubject | null;
+    card(
+      subject: MetabrowserLinkPreviewSubject,
+      preview: MetabrowserLinkPreview | null | undefined,
+      options?: {
+        linkText?: string | null;
+        authorTitle?: string | null;
+        newTab?: boolean;
+        /** The addresses of images inside the link the page did not load. */
+        images?: ReadonlyArray<string>;
+      },
+    ): string;
   }>;
 
   /** What the freshness label says and offers; see static/source-freshness.js. */
@@ -4663,11 +4839,25 @@ declare global {
   /** A part of the page the navigation's Refresh refreshes (static/refresh-plan.js). */
   type MetabrowserRefreshPart = "source" | "refs" | "page" | "files" | "pulls" | "git" | "origin";
 
+  /** A completed read, with provider measurements only when observed. */
+  type MetabrowserRefreshTooltipTiming = {
+    finished_at: string;
+    duration_ms?: number;
+    provider?: "github_cli";
+    request_count?: number;
+    response_body_bytes?: number;
+    label?: string;
+  };
+
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
     provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
-    /** The refresh detail shown while this tab is in front, until released. */
-    provideTooltip?(tab: string, detail: () => string | null): () => void;
+    /** The refresh detail for a foreground tab or the current PR page, until released. */
+    provideTooltip?(
+      tab: string,
+      detail: () => string | MetabrowserRefreshTooltipTiming | null,
+    ): () => void;
+    updateTooltip?(): void;
   }>;
 
   type MetabrowserRefreshPlan = MetabrowserRefreshParts &
@@ -4696,6 +4886,12 @@ declare global {
     plan(): MetabrowserRefreshPlan | null;
   }>;
 
+  /** A commit as a link's card names it (`MetabrowserGitPanel.commitSummary`): its subject,
+   *  author, and commit time in seconds, or that the repository lacks it. */
+  type MetabrowserGitCommitSummary =
+    | { subject: string; author: string | null; committedAt: number | null; missing: false }
+    | { subject: null; author: null; committedAt: null; missing: true };
+
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
     /** Read the history again once it has been read; settles when it is drawn. */
@@ -4703,6 +4899,16 @@ declare global {
     /** Stops the panel's work for another owner; returns what disposes its shown commit diff. */
     cancelPending(): (() => void) | null;
     restoreCommitLanding(): Promise<void>;
+    /** A commit's summary from the panel's own detail cache and missing set, null for a
+     *  revision that is not a full commit ID or a read that failed. It never fetches from
+     *  origin. */
+    commitSummary(revision: string): Promise<MetabrowserGitCommitSummary | null>;
+    /** What `commitSummary` would answer from what the panel holds now, with no read: null
+     *  where it holds nothing of the commit. */
+    keptCommitSummary(revision: string): MetabrowserGitCommitSummary | null;
+    /** Prepare a commit as a rest on its row does, for a rest on a link to it: nothing for a
+     *  commit the repository lacks, and never in place of work still on its way. */
+    prefetchCommit(revision: string): Promise<void>;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;
   };
@@ -4783,6 +4989,8 @@ declare global {
     landingRoute(source: "startup" | "user" | "popstate"): MetabrowserRevealRoute;
     onHistory(): void;
     open(id: string): void;
+    /** Open an address Pulls or Commits holds in place, as a link names it; see the SDK's. */
+    openRoute(href: string): boolean;
     register(panel: MetabrowserNavPanel): void;
     remember(): void;
     remove(id: string): void;
@@ -4796,9 +5004,11 @@ declare global {
   type MetabrowserPreviewClaim = number;
 
   /**
-   * The internal seam between the shell and core modules that are not file
-   * renderers. Deliberately not `window.metabrowser`, which is the
-   * documented plugin SDK and carries a compatibility contract.
+   * The internal seam between the shell (static/app.js) and core modules that are not
+   * file renderers. Deliberately narrow, and deliberately not `window.metabrowser`, which
+   * is the documented plugin SDK and carries a compatibility contract: this is an internal
+   * boundary that core modules loaded by the shell may use. Exposing it at all is what
+   * lets git-panel.js stay out of app.js instead of adding a thousand lines to it.
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
@@ -4816,6 +5026,12 @@ declare global {
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
     /** Read the tree and the file or folder the pane holds again; settles when drawn. */
     rereadFiles(): Promise<unknown>;
+    /**
+     * The served root's name: the last part of its address, or "" for none. The view
+     * header's title for the root and a link card's name for it (static/view-header.js,
+     * static/link-previews.js) both read it here, so they agree.
+     */
+    servedRootName(): string;
     stagePreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): (() => void) | null;
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
@@ -5204,6 +5420,8 @@ declare global {
     MetabrowserRefreshPlan?: MetabrowserRefreshPlanRuntime;
     MetabrowserMainTabs?: Readonly<{
       create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+      /** The shell's controller's `openRoute`, false before the shell has made one. */
+      openRoute(href: string): boolean;
       REVEAL_ROUTES: readonly MetabrowserRevealRoute[];
       landingRoute(
         source: "startup" | "user" | "popstate",
@@ -5284,6 +5502,14 @@ declare global {
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     MetabrowserRepositoryLinks?: MetabrowserRepositoryLinksRuntime;
+    /** static/link-previews.js, the link card, in the `repository-links` on-demand bundle. */
+    MetabrowserLinkPreviews?: MetabrowserLinkPreviewsRuntime;
+    /**
+     * Where a link to another site goes, as the browser follows it, or null for one a card
+     * names no site for (`outsideAddress` in static/plugin-sdk-views.js): the one reading
+     * the SDK answers `previewLink` with before the card loads and the card reads after.
+     */
+    MetabrowserOutsideLinks?: Readonly<{ address(url: unknown): URL | null }>;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
     MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{
@@ -5377,6 +5603,7 @@ declare global {
     MetabrowserTooltip?: {
       hide(within?: Element | null): void;
       show(html: string, anchor: Element | null): void;
+      updateText?(anchor: HTMLElement): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";

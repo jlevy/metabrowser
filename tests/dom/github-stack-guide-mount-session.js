@@ -30,6 +30,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 const { Element, root, settle } = require("./github-pull-page-mount-behavior.js");
 
 const recorded = JSON.parse(
@@ -415,6 +416,8 @@ async function run() {
     })),
     formatTimestamp: () => "now",
     formatInteger: (value) => String(value),
+    // The SDK's own registration of a note's links for their cards.
+    ...linkCardRegistration(),
     // A count summary's parts as its text: each number, word, and separator.
     countPartsNodes: (parts) =>
       parts.map((part) =>
@@ -1052,6 +1055,9 @@ async function run() {
  * The step's note is drawn before the comparison is read: its links open github.com at the
  * head of the comparison drawn, and once the read says what it changes, a changed file's
  * link opens it in the stack's Changes, in place, and an unchanged one stays on github.com.
+ * A member's page opens in place through the page's own `open` too, and a commit's page and
+ * the list through the shell's (`navigation.openRoute`), which is asked only for what the
+ * page declined; a modified click on any of them is the browser's.
  *
  * @param {Record<string, any>} page
  * @param {Record<string, any>} mb The session's SDK, with what this story adds.
@@ -1064,6 +1070,25 @@ async function noteLinks(page, mb) {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
+  // The link cards, which the page and the resolver register a note's links for through the
+  // SDK (`metabrowser.previewLink`, static/plugin-sdk-views.js): a recording stand-in.
+  const cards = new Map();
+  const cardSdk = {
+    previewLink(cardRoot, anchor, target) {
+      cards.set(anchor, { root: cardRoot, target });
+      return true;
+    },
+    forgetPreview(anchor) {
+      cards.delete(anchor);
+    },
+    disposePreviews(cardRoot) {
+      for (const [anchor, card] of cards) {
+        if (card.root === cardRoot) {
+          cards.delete(anchor);
+        }
+      }
+    },
+  };
   const allowlist = window.MetabrowserInertHtml;
   window.MetabrowserInertHtml = {
     sanitizeHtml(html, base, keepPathRelative) {
@@ -1112,6 +1137,8 @@ async function noteLinks(page, mb) {
     render: async () => ({ dispose() {} }),
   };
   const opened = [];
+  // What the shell was asked to open in place: a route the page's own `open` declined.
+  const shell = [];
   const container = new Element("main");
   const handle = page.mountStackPage(
     container,
@@ -1125,6 +1152,7 @@ async function noteLinks(page, mb) {
     },
     {
       ...mb,
+      ...cardSdk,
       // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
       loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
       getRegisteredView: () => view,
@@ -1136,15 +1164,29 @@ async function noteLinks(page, mb) {
         revision: "a".repeat(40),
         served_prefix: "",
       },
-      navigation: { href: (target) => `/view/${target.path}`, open: async () => {} },
+      navigation: {
+        href: (target) => `/view/${target.path}`,
+        open: async () => {},
+        openRoute(href) {
+          shell.push(`the shell opens ${href}`);
+          return true;
+        },
+      },
       sourceKind: () => "git_revision",
     },
   );
   await settle();
   reads.at(-1).answer({
     ...step(revision(4), 1, pinsOf(drawn)),
-    note_html:
-      '<p><a href="https://github.com/octo/demo/pull/docs/draft.md" data-metabrowser-path-relative="">the draft</a><a href="https://github.com/octo/demo/pull/src/same.txt" data-metabrowser-path-relative="">an unchanged file</a></p>',
+    note_html: [
+      "<p>",
+      '<a href="https://github.com/octo/demo/pull/docs/draft.md" data-metabrowser-path-relative="">the draft</a>',
+      '<a href="https://github.com/octo/demo/pull/src/same.txt" data-metabrowser-path-relative="">an unchanged file</a>',
+      `<a href="https://github.com/octo/demo/commit/${"e".repeat(40)}">a commit</a>`,
+      '<a href="https://github.com/octo/demo/pulls">the pull requests</a>',
+      '<a href="https://github.com/octo/demo/pull/72">a member</a>',
+      "</p>",
+    ].join(""),
   });
   await settle();
   const note = () => container.querySelector(".kpress-prose");
@@ -1159,18 +1201,62 @@ async function noteLinks(page, mb) {
   assert.equal(note(), drawnFirstNote, "the note drawn is read again, not drawn again");
   said.once_read = told();
   const clicks = [];
-  for (const link of note().querySelectorAll("a[href]")) {
-    const event = { button: 0, defaultPrevented: false };
+  const click = (link, modifiers = {}) => {
+    const event = { button: 0, defaultPrevented: false, ...modifiers };
     event.preventDefault = () => {
       event.defaultPrevented = true;
     };
     link.events.get("click")?.(event);
-    clicks.push(
-      `${link.textContent}: ${event.defaultPrevented ? opened.splice(0).join(", ") : "the browser follows it"}`,
-    );
+    const inPlace = [...opened.splice(0), ...shell.splice(0)];
+    assert.ok(inPlace.length <= 1, "one click opens one thing");
+    assert.equal(inPlace.length > 0, event.defaultPrevented, "opened in place");
+    return event.defaultPrevented ? inPlace.join(", ") : "the browser follows it";
+  };
+  for (const link of note().querySelectorAll("a[href]")) {
+    clicks.push(`${link.textContent}: ${click(link)}`);
+  }
+  for (const link of note().querySelectorAll("a[href]")) {
+    if (link.getAttribute("href").startsWith("/")) {
+      clicks.push(`Command-click ${link.textContent}: ${click(link, { metaKey: true })}`);
+    }
   }
   said.clicks = clicks;
+  // Each link's card is for its own address, with the note as its root: an in-app link's
+  // says what it opens, and one that leaves for github.com where it goes. No link has a
+  // tooltip of its own.
+  const drawnLinks = note().querySelectorAll("a[href]");
+  said.cards = drawnLinks.map((link) => {
+    assert.equal(link.getAttribute("data-tip-text"), null, "a link has no tooltip of its own");
+    const card = cards.get(link);
+    if (card === undefined) {
+      return `${link.textContent}: none`;
+    }
+    assert.equal(card.root, note(), "a link's card has its note as its root");
+    assert.equal(
+      card.target.kind === "external" ? card.target.url : card.target.href,
+      link.getAttribute("href"),
+      "a card is for the link's address",
+    );
+    return `${link.textContent}: ${card.target.kind}`;
+  });
+  // The next step replaces the note: the first note's links take their cards with them.
+  [...container.descendants()]
+    .find((node) => node.tag === "button" && node.getAttribute("aria-label") === "Next step")
+    .events.get("click")();
+  await settle();
+  reads.at(-1).answer({
+    ...step(revision(4), 2, pinsOf(drawn)),
+    note_html: '<p><a href="https://github.com/octo/demo/pulls">the pull requests</a></p>',
+  });
+  await settle();
+  assert.notEqual(note(), drawnFirstNote, "the next step draws its own note");
+  said.cards_left_once_the_step_changes = drawnLinks.filter((link) => cards.has(link)).length;
+  assert.equal(said.cards_left_once_the_step_changes, 0, "a note the guide let go kept cards");
+  const nextLinks = note().querySelectorAll("a[href]");
   handle.dispose?.();
+  said.cards_left_once_the_page_ends = [...drawnLinks, ...nextLinks].filter((link) =>
+    cards.has(link),
+  ).length;
   window.MetabrowserInertHtml = allowlist;
   return said;
 }

@@ -281,6 +281,17 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # formatters.js, sharing the count summary's painter; `retellAge`, which only a view that
 # keeps its ages calls, moved to static/plugin-sdk-views.js, and the builders' comments and
 # the change line's moved to types.d.ts. The shell is at 225,682 bytes, 109 under.
+# Measured with it on 2026-11-26: the SDK's `navigation.openRoute` (mb-0uzt) put the folder's
+# shell at 225,808 bytes, 17 over, against main's 225,769 at 1c42bf81, 22 under. The method is
+# one line of navigation.js that asks the tab controller, whose opener is main-tabs.js's, in
+# the on-demand `shell-tools` bundle. app.js's comment on `window.MetabrowserShell`, which
+# types.d.ts held in part, moved there whole, and with plugin-sdk.js's line for the method
+# the shell is at 225,716 bytes, 75 under.
+# Measured with it on 2026-11-26: the tooltip's handover from one element to the next
+# (app.js's `tooltipShown` and `tooltipWaiting`, changelog.d/mb-tooltip-handover.md) put the
+# folder's shell at 225,754 bytes, 37 under, against 225,716 at 7005d8f1, 75 under. Its
+# comments were cut to what the code needs beside it, and the reasons are in
+# docs/design-system.md, "A Tooltip Holds Still".
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220

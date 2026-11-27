@@ -127,10 +127,9 @@ try {
   await waitFor(
     "document.querySelector('.github-pull-header .page-header-line') !== null && document.querySelector('#tab-pulls .github-pulls-row') !== null",
   );
-  // The list's count is visible without a redundant freshness line. The page still
-  // identifies how the opened PR record was fetched.
+  // The list's count and the PR's settled author row have no routine freshness line.
   await waitFor(
-    "document.querySelector('.github-pulls-status .github-pulls-total-line .summary-number') !== null && /Fetched/.test(document.querySelector('.github-pull-freshness')?.textContent ?? '')",
+    "document.querySelector('.github-pulls-status .github-pulls-total-line .summary-number') !== null && document.querySelector('.github-pull-header .github-pull-action')?.textContent && document.querySelector('.github-pull-note')?.hidden",
   );
   phase("pull request");
   const pulls = "the Pulls panel";
@@ -178,7 +177,7 @@ try {
     document.getElementById("tree-pane").append(element);
     const label = document.createElement("span");
     label.className = "source-freshness-label";
-    label.textContent = "Fetched just now";
+    label.textContent = "Refreshing…";
     element.replaceChildren(label);
     const size = (node) => Number.parseFloat(getComputedStyle(node).fontSize);
     const row = [...document.querySelectorAll("#tab-pulls .github-pulls-title")].find((e) => e.getClientRects().length);
@@ -196,15 +195,20 @@ try {
   await role(header, "page title", ".github-pull-header .github-pull-title-text");
   await role(header, "reading text", ".github-pull-header .github-pull-action");
   await role(header, "reading text", ".github-pull-opened .github-pull-age");
-  await role(header, "reading text", ".github-pull-freshness");
   await role(header, "control", ".github-pull-header .github-pull-state");
   await role(header, "control", ".github-pull-label");
   await role(header, "label", "#preview-pane .tab-bar .tab-btn");
-  await accompanies(header, ".github-pull-freshness", ".github-pull-header .github-pull-action");
   await accompanies(header, ".github-pull-opened .github-pull-quiet", ".github-pull-action");
+  await waitFor(
+    "/^(Refreshed|Last fetched) /.test(document.querySelector('#nav-refresh')?.getAttribute('aria-description') ?? '')",
+  );
+  await hover("#nav-refresh");
+  await role("the Refresh receipt", "tooltip", ".custom-tooltip.visible");
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1, y: 1 });
+  await evaluate("window.MetabrowserTooltip.hide()");
   // The full record's conversation paints once its description's Markdown arrives, or its
-  // hold's bound passes (DESCRIPTION_HOLD_MS in pull-page.js): its review comments' cards
-  // are drawn then, which can be after the freshness line says Fetched.
+  // hold's bound passes (DESCRIPTION_HOLD_MS in pull-page.js). Its review comment cards
+  // are drawn then.
   await waitFor("document.querySelector('.github-pull-card-head .github-pull-file') !== null");
   const conversation = "a pull request's Conversation";
   await role(conversation, "reading text", ".github-pull-card-head");

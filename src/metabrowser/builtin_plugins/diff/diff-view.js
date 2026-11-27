@@ -47,7 +47,33 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
  * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
  * @property {MetabrowserPublicSdk["loadRepositoryLinks"]} [loadRepositoryLinks]
+ * @property {MetabrowserPublicSdk["previewLink"]} [previewLink] A rendered file's links'
+ *   cards, registered with the block or article that holds them (static/plugin-sdk-views.js).
+ * @property {MetabrowserPublicSdk["forgetPreview"]} [forgetPreview]
+ * @property {MetabrowserPublicSdk["disposePreviews"]} [disposePreviews]
  */
+
+/**
+ * *api* as what a rendered file's links are read with and given their cards through, or
+ * null where the view was mounted without it, as a diff drawn with the plain syntax api is:
+ * the SDK the plugin mounts the view with has every member (index.js).
+ *
+ * @param {DiffViewApi | undefined} api
+ * @returns {MetabrowserRepositoryLinksSdk | null}
+ */
+function repositoryLinksSdk(api) {
+  if (
+    !api?.repository ||
+    !api.sourceKind ||
+    !api.navigation ||
+    !api.previewLink ||
+    !api.forgetPreview
+  ) {
+    return null;
+  }
+  const { repository, sourceKind, navigation, previewLink, forgetPreview } = api;
+  return { repository, sourceKind, navigation, previewLink, forgetPreview };
+}
 
 /**
  * @typedef {object} FileViewState
@@ -5404,9 +5430,10 @@ export function mountDiffSummary(slot, document_, api, options) {
  *     signal: AbortSignal,
  *     ask?: import("./diff-markdown.js").RenderedAsk,
  *   ) => Promise<unknown>,
- *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
+ *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "openHeadLinks" | "renderedFormat">,
  *   onPinChanged?: (changed: () => void) => () => void,
  *   markdownTargets?: (value: string, image: boolean, links?: MetabrowserRepositoryLinksRuntime | null) => string | null,
+ *   headLinksOpen?: () => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void,
@@ -5425,6 +5452,11 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   page alone, so this module names it only in types.
  *   *markdownHoldMs* is how long the first screen's Markdown files wait for Rendered
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
+ *   *headLinksOpen* says whether the page shows the comparison's head, the one commit at
+ *   which a `/view/` address names the head's file (builtin_plugins/diff/index.js); while
+ *   it does, a rendered file's link to a file of the head, or to a file or folder on the
+ *   served branch or commit, opens in place, and without it every such github.com link
+ *   stays as written and a plain click on any of them is the browser's.
  *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
  *   it a multi-file diff has no summary. *openFile* is the host's way to a changed file's own
  *   address, which the summary's file rows take where the host has one. *summaryHost* is
@@ -5528,9 +5560,11 @@ export function mountDiffView(container, document_, api, options = {}) {
     let repositoryLinks = null;
     // A bundle that arrives after the first file's deadline can also serve a later pin event.
     const loadedLinks = () => repositoryLinks ?? window.MetabrowserRepositoryLinks ?? null;
+    const markdownViews = options.markdownViews;
+    const headLinksOpen = options.headLinksOpen;
     view.markdown = {
-      format: options.markdownViews.renderedFormat,
-      controller: options.markdownViews.createMarkdownViews({
+      format: markdownViews.renderedFormat,
+      controller: markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
         isTarget: (value, image) => options.markdownTargets?.(value, image, loadedLinks()) ?? null,
@@ -5552,24 +5586,34 @@ export function mountDiffView(container, document_, api, options = {}) {
           repositoryLinks = (await api?.loadRepositoryLinks?.()) ?? null;
         },
         // A rendered file's link into the repository opens its page here, a pull request or
-        // a commit, which names no revision (static/repository-links.js); a `/view/` target
-        // would open whatever the server serves once the pin moves, so it stays a link to
-        // github.com, marked as an outside link is everywhere else.
+        // a commit, which names no revision (static/repository-links.js). A `/view/` target
+        // opens whatever the server serves, so only while the page shows the head; once the
+        // pin moves, `closeHeadLinks` reads every link again, and each such target is the
+        // github.com link the text wrote, marked as an outside link is everywhere else. A
+        // link to a file of the head the server spelled opens in place on the same rule,
+        // its click read as the resolver reads one, so neither kind loads the page again.
+        // Each link that opens here has its link card, registered with *prose*, the block
+        // or the file's article read, and put away with it (`disposeLinks`).
         enhanceLinks(prose) {
           const navigation = api?.navigation;
-          const sourceKind = api?.sourceKind;
           const links = loadedLinks();
-          if (links && navigation && sourceKind && api?.repository) {
-            links.enhance(
-              prose,
-              { navigation, repository: api.repository, sourceKind },
-              { views: false },
-            );
+          const mb = repositoryLinksSdk(api);
+          if (links && mb) {
+            links.enhance(prose, mb, { views: headLinksOpen?.() === true });
+          }
+          if (navigation && headLinksOpen) {
+            markdownViews.openHeadLinks(prose, {
+              navigation,
+              linksOpen: headLinksOpen,
+              isPlainClick: (event) => loadedLinks()?.isPlainClick(event) === true,
+              preview: (link, target) => api?.previewLink?.(prose, link, target),
+            });
           }
           for (const link of prose.querySelectorAll('a[target="_blank"]')) {
             api?.decorateExternalLink?.(/** @type {HTMLElement} */ (link));
           }
         },
+        disposeLinks: (root) => api?.disposePreviews?.(root),
         // The structured plugin draws a YAML or JSON file's tree, as in the file view
         // (`requires` in manifest.toml).
         async ensureStructured() {

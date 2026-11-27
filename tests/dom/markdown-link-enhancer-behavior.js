@@ -3,7 +3,9 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
-const sdk = require("./sdk-sandbox.js").createSdkSandbox();
+const { createSdkSandbox, linkCardRegistration } = require("./sdk-sandbox.js");
+
+const sdk = createSdkSandbox();
 const linkDocument = { createElement: (tag) => new FakeElement(tag) };
 sdk.document = linkDocument;
 
@@ -66,6 +68,30 @@ class FakeElement extends ElementShim {
 
   scrollIntoView() {
     this.scrolled = true;
+  }
+
+  /**
+   * The descendants that carry a title, or all images whose names the SDK can read.
+   */
+  querySelectorAll(selector) {
+    const wanted = {
+      "[title]": (child) => child.hasAttribute("title"),
+      img: (child) => child.tagName === "IMG",
+    }[selector];
+    if (wanted === undefined) {
+      throw new Error(`the stand-in does not read ${selector}`);
+    }
+    const found = [];
+    const walk = (node) => {
+      for (const child of node.children) {
+        if (wanted(child)) {
+          found.push(child);
+        }
+        walk(child);
+      }
+    };
+    walk(this);
+    return found;
   }
 
   matches(selector) {
@@ -287,9 +313,55 @@ async function loadModule() {
 
 (async () => {
   const module = await loadModule();
+  // The link cards, which the enhancer registers each link for through the SDK
+  // (`metabrowser.previewLink`, static/plugin-sdk-views.js): the SDK's own registration, as
+  // a page has it before a rest loads the card, which answers whether the card is about a
+  // link, and so tells the enhancer to take its title, recorded here as it is asked.
+  const registration = linkCardRegistration();
+  const cards = { calls: [], registered: new Map() };
+  const cardSdk = {
+    previewLink(root, anchor, target, options = {}) {
+      const card = registration.previewLink(root, anchor, target, options);
+      cards.calls.push([card ? "register" : "forget", anchor]);
+      if (card) {
+        cards.registered.set(anchor, { root, target, authorTitle: options.authorTitle ?? null });
+      } else {
+        cards.registered.delete(anchor);
+      }
+      return card;
+    },
+    forgetPreview(anchor) {
+      registration.forgetPreview(anchor);
+      cards.calls.push(["forget", anchor]);
+      cards.registered.delete(anchor);
+    },
+    takeAuthorTitles: registration.takeAuthorTitles,
+    disposePreviews(root) {
+      registration.disposePreviews(root);
+      cards.calls.push(["dispose", root]);
+      for (const [anchor, entry] of cards.registered) {
+        if (entry.root === root) {
+          cards.registered.delete(anchor);
+        }
+      }
+    },
+  };
   const sameDocument = new FakeElement("a", { href: "#Install" });
   const internal = new FakeElement("a", { href: "guide.md#Install" });
   const published = new FakeElement("a", { href: "/published/", title: "Published guide" });
+  // An author's title on a link the document opens here, and on an outside link: each moves
+  // into the link's card.
+  const titled = new FakeElement("a", { href: "setup.md", title: "How to set it up" });
+  const githubTitled = new FakeElement("a", {
+    href: "https://github.com/example/docs/blob/main/docs/guide.md",
+    title: "The guide on main",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
+  const externalTitled = new FakeElement("a", {
+    href: "https://example.com/elsewhere",
+    title: "Somewhere else",
+  });
   const external = new FakeElement("a", { href: "https://example.com/docs" });
   const revision = "a".repeat(40);
   const github = new FakeElement("a", {
@@ -312,9 +384,29 @@ async function loadModule() {
     target: "_blank",
     rel: "noopener noreferrer",
   });
+  // A commit's page and the list, which the shell opens in place as it opens a pull request.
+  const githubCommit = new FakeElement("a", {
+    href: `https://github.com/example/docs/commit/${"b".repeat(40)}`,
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
+  const githubPulls = new FakeElement("a", {
+    href: "https://github.com/example/docs/pulls",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
   const newTab = new FakeElement("a", { href: "other.md", target: "_blank" });
+  // `[![d](img/d.png "The image title")](setup.md)`: the image's title is the link's only
+  // title, and a second tooltip inside the card's link; it moves into the card.
+  const imageLink = new FakeElement("a", { href: "setup.md" });
+  const titledImage = new FakeElement("img", { src: "img/d.png", title: "The image title" });
+  imageLink.append(titledImage);
+  // A link with its own title around an image with another: the link's is the card's.
+  const bothTitled = new FakeElement("a", { href: "setup.md", title: "The link's title" });
+  const innerTitled = new FakeElement("img", { src: "img/e.png", title: "An inner title" });
+  bothTitled.append(innerTitled);
   const image = new FakeElement("img", { src: "../images/map 1.svg#layer" });
   const remoteImage = new FakeElement("img", { src: "https://example.com/map.svg" });
   const unsafeImage = new FakeElement("img", { src: "data:image/png;base64,AA" });
@@ -325,15 +417,22 @@ async function loadModule() {
     sameDocument,
     internal,
     published,
+    titled,
+    githubTitled,
+    externalTitled,
     external,
     externalIssue,
     github,
     githubPull,
     githubBranch,
     githubOtherBranch,
+    githubCommit,
+    githubPulls,
     unsafe,
     download,
     newTab,
+    imageLink,
+    bothTitled,
     image,
     remoteImage,
     unsafeImage,
@@ -345,9 +444,14 @@ async function loadModule() {
   let frameSequence = 0;
   let catalogSnapshotCalls = 0;
   const opened = [];
+  // What the shell was asked to open in place (`navigation.openRoute`), and whether it can:
+  // false before its tabs have loaded.
+  const routed = [];
+  let routeOpens = true;
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
     decorateExternalLink: sdk.metabrowser.decorateExternalLink,
+    ...cardSdk,
     repository: {
       branch: "main",
       host: "github.com",
@@ -373,6 +477,7 @@ async function loadModule() {
       current: () => current,
       href: (target) => `/view/${target.path}${target.fragment ? `#${target.fragment}` : ""}`,
       open: async (target) => opened.push(target),
+      openRoute: (href) => routed.push(href) > 0 && routeOpens,
     },
   };
   const handle = module.enhanceRenderedLinks(container, "docs/readme.md", mb, {
@@ -467,16 +572,119 @@ async function loadModule() {
     "configured published route href",
     published.getAttribute("href") === "/view/docs/published.md",
   );
+  /** @param {FakeElement} anchor */
+  const cardOf = (anchor) => {
+    const entry = cards.registered.get(anchor);
+    if (entry === undefined) {
+      return null;
+    }
+    const { kind } = entry.target;
+    let opens = entry.target.href;
+    if (kind === "view") {
+      opens = `${entry.target.localization} ${entry.target.target.path}${entry.target.target.fragment ? `#${entry.target.target.fragment}` : ""}`;
+    } else if (kind === "external") {
+      opens = entry.target.url;
+    }
+    return `${entry.root === container ? "" : "not the rendered root: "}${kind} ${opens}`;
+  };
   check(
-    "a resolved published route keeps its authored title",
-    published.getAttribute("title") === "Published guide" &&
-      !published.hasAttribute("data-metabrowser-authored-title"),
-    String(published.getAttribute("title")),
+    "a resolved published route's authored title moves into its card",
+    !published.hasAttribute("title") &&
+      !published.hasAttribute("data-metabrowser-authored-title") &&
+      cards.registered.get(published)?.authorTitle === "Published guide",
+    JSON.stringify([published.getAttribute("title"), cardOf(published)]),
   );
   check(
     "configured adapter disclosed",
     published.getAttribute("data-metabrowser-link-adapter") === "mkdocs" &&
       catalogSnapshotCalls === 1,
+  );
+
+  // Each link the document opens in Metabrowser has its card, registered with the rendered
+  // root, for what it opens: a file by its path opens here, as a link to the served commit
+  // does, and a github.com link what the resolver answered, the served branch's working
+  // tree among them. An outside link has the card of the site it goes to, by its address. A
+  // link to a place in the document, a disabled link, and a download have none, and no link
+  // has a tooltip of the app's own.
+  const expectedCards = new Map([
+    [internal, "view revision docs/guide.md#Install"],
+    [published, "view revision docs/published.md"],
+    [titled, "view revision docs/setup.md"],
+    [githubTitled, "view working-tree docs/guide.md"],
+    [github, "view revision docs/guide.md#Install"],
+    [githubPull, "route /pull/12/files"],
+    [githubBranch, "view working-tree "],
+    [githubCommit, `route /commit/${"b".repeat(40)}`],
+    [githubPulls, "route /pulls"],
+    [newTab, "view revision docs/other.md"],
+    [imageLink, "view revision docs/setup.md"],
+    [bothTitled, "view revision docs/setup.md"],
+    [externalTitled, "external https://example.com/elsewhere"],
+    [external, "external https://example.com/docs"],
+    [externalIssue, "external //github.com/another/repo/issues/23"],
+    [githubOtherBranch, "external https://github.com/example/docs/blob/release/docs/guide.md"],
+  ]);
+  const drawnCards = container.elements
+    .filter((element) => element.tagName === "A")
+    .map((anchor) => [anchor.getAttribute("href") ?? "(none)", cardOf(anchor)]);
+  check(
+    "each link the document opens here has the card of what it opens, with the rendered root",
+    container.elements.every((element) => cardOf(element) === (expectedCards.get(element) ?? null)),
+    JSON.stringify(drawnCards),
+  );
+  check(
+    "no link of the document has a tooltip of the app's own",
+    container.elements.every((element) => !element.hasAttribute("data-tip-text")),
+    JSON.stringify(container.elements.map((element) => element.getAttribute("data-tip-text"))),
+  );
+  check(
+    "an authored title on a link the document opens here moves into its card",
+    [titled, githubTitled].every((anchor) => !anchor.hasAttribute("title")) &&
+      cards.registered.get(titled)?.authorTitle === "How to set it up" &&
+      cards.registered.get(githubTitled)?.authorTitle === "The guide on main" &&
+      cards.registered.get(internal)?.authorTitle === null,
+    JSON.stringify([...cards.registered.values()].map((entry) => entry.authorTitle)),
+  );
+  check(
+    "an image's title inside a link moves into the link's card, so one tooltip shows",
+    !titledImage.hasAttribute("title") &&
+      cards.registered.get(imageLink)?.authorTitle === "The image title" &&
+      !bothTitled.hasAttribute("title") &&
+      !innerTitled.hasAttribute("title") &&
+      cards.registered.get(bothTitled)?.authorTitle === "The link's title",
+    JSON.stringify([
+      titledImage.getAttribute("title"),
+      innerTitled.getAttribute("title"),
+      cards.registered.get(imageLink)?.authorTitle,
+      cards.registered.get(bothTitled)?.authorTitle,
+    ]),
+  );
+  // Keep an image's name on the image and the link's own description on the link.
+  const titledElements = [titled, imageLink, titledImage, bothTitled, innerTitled, externalTitled];
+  check(
+    "accessible link and image names survive title handover",
+    titled.getAttribute("aria-label") === "How to set it up" &&
+      !imageLink.hasAttribute("aria-label") &&
+      titledImage.getAttribute("aria-label") === "The image title" &&
+      !bothTitled.hasAttribute("aria-label") &&
+      bothTitled.getAttribute("aria-description") === "The link's title" &&
+      innerTitled.getAttribute("aria-label") === "An inner title" &&
+      externalTitled.getAttribute("aria-label") === "Somewhere else",
+    JSON.stringify(titledElements.map((element) => [...element.attributes])),
+  );
+  check(
+    "an outside link's title moves into its card, and a disabled one keeps its explanation",
+    !externalTitled.hasAttribute("title") &&
+      cards.registered.get(externalTitled)?.authorTitle === "Somewhere else" &&
+      unsafe.getAttribute("title")?.startsWith("Metabrowser ") === true,
+    JSON.stringify([externalTitled.getAttribute("title"), unsafe.getAttribute("title")]),
+  );
+  check(
+    "a published route has no card while it waits for its catalog pass, and has one after",
+    JSON.stringify(
+      cards.calls.filter(([, anchor]) => anchor === published).map(([verb]) => verb),
+    ) === JSON.stringify(["forget", "register"]),
+    JSON.stringify(cards.calls.filter(([, anchor]) => anchor === published).map(([verb]) => verb)),
   );
 
   const internalClick = click(internal);
@@ -495,12 +703,55 @@ async function loadModule() {
     JSON.stringify(opened),
   );
   opened.pop();
-  const pullClick = click(githubPull);
-  container.listeners.get("click")(pullClick);
   check(
-    "a plain click on a pull request's page is followed as a link",
-    !pullClick.defaultPrevented && opened.length === 1,
+    "a commit's page and the list are in-app links",
+    githubCommit.getAttribute("href") === `/commit/${"b".repeat(40)}` &&
+      githubCommit.getAttribute("data-metabrowser-github-localization") === "commit" &&
+      !githubCommit.hasAttribute("target") &&
+      githubPulls.getAttribute("href") === "/pulls" &&
+      githubPulls.getAttribute("data-metabrowser-github-localization") === "pulls" &&
+      !githubPulls.hasAttribute("target"),
+    JSON.stringify([[...githubCommit.attributes], [...githubPulls.attributes]]),
   );
+  for (const [name, anchor] of [
+    ["a pull request's page", githubPull],
+    ["a commit's page", githubCommit],
+    ["the list", githubPulls],
+  ]) {
+    const routeClick = click(anchor);
+    container.listeners.get("click")(routeClick);
+    check(
+      `a plain click on ${name} has the shell open it in place`,
+      routeClick.defaultPrevented &&
+        routed.length === 1 &&
+        routed[0] === anchor.getAttribute("href") &&
+        opened.length === 1,
+      JSON.stringify(routed),
+    );
+    routed.length = 0;
+    for (const [how, overrides] of [
+      ["a modified", { metaKey: true }],
+      ["a middle", { button: 1 }],
+    ]) {
+      const nativeClick = click(anchor, overrides);
+      container.listeners.get("click")(nativeClick);
+      check(
+        `${how} click on ${name} is the browser's`,
+        !nativeClick.defaultPrevented && routed.length === 0,
+        JSON.stringify(routed),
+      );
+    }
+  }
+  routeOpens = false;
+  const notReadyClick = click(githubCommit);
+  container.listeners.get("click")(notReadyClick);
+  check(
+    "a route the shell cannot open yet is followed as a link",
+    !notReadyClick.defaultPrevented && routed.length === 1 && opened.length === 1,
+    JSON.stringify(routed),
+  );
+  routed.length = 0;
+  routeOpens = true;
 
   const sameDocumentClick = click(sameDocument);
   container.listeners.get("click")(sameDocumentClick);
@@ -897,6 +1148,90 @@ async function loadModule() {
     !eventTarget.listeners.has("metabrowser:navigation-fragment"),
   );
   check("dispose cancels pending scroll", frames.size === 0);
+  check(
+    "dispose gives each link back the titles its card took, and takes off what it added",
+    titled.getAttribute("title") === "How to set it up" &&
+      titledImage.getAttribute("title") === "The image title" &&
+      bothTitled.getAttribute("title") === "The link's title" &&
+      innerTitled.getAttribute("title") === "An inner title" &&
+      titledElements.every(
+        (element) =>
+          !element.hasAttribute("aria-label") && !element.hasAttribute("aria-description"),
+      ),
+    JSON.stringify(titledElements.map((element) => [...element.attributes])),
+  );
+  check(
+    "dispose puts away the rendered root's cards",
+    cards.calls.some(([verb, root]) => verb === "dispose" && root === container) &&
+      [...cards.registered.values()].every((entry) => entry.root !== container),
+    JSON.stringify(cards.calls.filter(([verb]) => verb === "dispose").length),
+  );
+
+  // On a page with no GitHub identity, which loads no resolver, a link the document opens
+  // here and one to another site have their cards all the same, each with its author's
+  // title; a mail link names no site, has none, and keeps its title.
+  const plainTitled = new FakeElement("a", { href: "setup.md", title: "How to set it up" });
+  const plainOutside = new FakeElement("a", {
+    href: "https://example.com/elsewhere",
+    title: "Somewhere else",
+  });
+  const plainMail = new FakeElement("a", { href: "mailto:team@example.com", title: "The team" });
+  const plainContainer = new FakeContainer([plainTitled, plainOutside, plainMail]);
+  const plainHandle = module.enhanceRenderedLinks(
+    plainContainer,
+    "docs/readme.md",
+    { ...mb, repository: null },
+    {
+      repositoryLinks: null,
+      cancel: () => {},
+      eventTarget: new FakeEventTarget(),
+      schedule: () => 0,
+    },
+  );
+  const plainCard = (anchor) => cards.registered.get(anchor);
+  check(
+    "with no GitHub identity, a document's own and outside links have cards with their titles",
+    plainTitled.getAttribute("href") === "/view/docs/setup.md" &&
+      plainCard(plainTitled)?.root === plainContainer &&
+      plainCard(plainTitled)?.target.target.path === "docs/setup.md" &&
+      plainCard(plainTitled)?.authorTitle === "How to set it up" &&
+      !plainTitled.hasAttribute("title") &&
+      plainCard(plainOutside)?.target.url === "https://example.com/elsewhere" &&
+      plainCard(plainOutside)?.authorTitle === "Somewhere else" &&
+      !plainOutside.hasAttribute("title") &&
+      plainCard(plainMail) === undefined &&
+      plainMail.getAttribute("title") === "The team",
+    JSON.stringify(
+      [plainTitled, plainOutside, plainMail].map((anchor) => {
+        const entry = plainCard(anchor);
+        return entry && { target: entry.target, authorTitle: entry.authorTitle };
+      }),
+    ),
+  );
+  plainHandle.dispose();
+
+  // Where the SDK gives a link no card, as on a page whose card did not load, an author's
+  // title stays on the link it was written on.
+  const uncardedTitled = new FakeElement("a", { href: "setup.md", title: "How to set it up" });
+  const uncardedContainer = new FakeContainer([uncardedTitled]);
+  const uncardedHandle = module.enhanceRenderedLinks(
+    uncardedContainer,
+    "docs/readme.md",
+    { ...mb, previewLink: () => false },
+    {
+      repositoryLinks: global.MetabrowserRepositoryLinks,
+      cancel: () => {},
+      eventTarget: new FakeEventTarget(),
+      schedule: () => 0,
+    },
+  );
+  check(
+    "a link the SDK gives no card keeps its author's title",
+    uncardedTitled.getAttribute("href") === "/view/docs/setup.md" &&
+      uncardedTitled.getAttribute("title") === "How to set it up",
+    JSON.stringify([...uncardedTitled.attributes]),
+  );
+  uncardedHandle.dispose();
 
   // On a pinned GitHub mirror the served tree is addressed by GitPath wire, so a
   // localized github.com link is too, and a tree link keeps its trailing slash.

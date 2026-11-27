@@ -1103,10 +1103,15 @@ def test_background_freshness_asks_only_while_visible_and_names_one_fetch_age() 
         "GET /api/plugin/github/pull?number=7",
     ]
     assert facts["withinWindow"] == ["GET /api/plugin/github/pull?number=7"]
-    # One time, never two (mb-ne91): a record the catalog checked since still says its fetch.
-    assert facts["checked"] == "Fetched 3 h ago via GitHub CLI"
+    # Verification leaves the actual record fetch as the Refresh receipt.
+    assert facts["checked"] == {
+        "finished_at": "2026-09-17T09:00:00Z",
+        "label": "Last fetched",
+        "provider": "github_cli",
+    }
+    assert facts["checkedAfter304"] == facts["checked"]
     assert facts["pendingChecks"][-1] == "POST /api/plugin/github/pull-refresh"
-    assert facts["pendingFreshness"].startswith("Fetched ")
+    assert facts["pendingFreshness"] is None
     assert facts["headMoved"] == "New commits were pushed; updating."
     assert facts["headStill"] is None
     assert facts["breathingWhileRead"] == [111] and facts["breathingAfter"] == []

@@ -2,6 +2,7 @@
 // to a step, and what one step's probe output and requests make of a scenario, with its
 // refusals. No top-level effects, so tests/dom/wkprobe-run-behavior.mjs drives every
 // refusal from synthetic probe output; wkprobe.mjs is the command line.
+import { versionIdentity } from "./provenance.mjs";
 import { requestCounts } from "./wkprobe-stats.mjs";
 
 export const VISIBLE = new Set(["cold", "reload", "relaunch"]);
@@ -107,7 +108,7 @@ export function scenarioRow(name, stepOut, entries, ctx) {
       rafHidden: stepOut.rafHidden,
     });
   }
-  if (facts.version !== ctx.version) {
+  if (versionIdentity(facts.version) !== versionIdentity(ctx.version)) {
     refusals.push(["build_identity", `page reports ${facts.version}, expected ${ctx.version}`]);
   }
   if (facts.w !== ctx.viewport[0] || facts.h !== ctx.viewport[1]) {

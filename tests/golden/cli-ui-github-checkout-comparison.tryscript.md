@@ -41,7 +41,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "changesPending": false,
     "canRetryChanges": false,
     "canFetchChanges": false,
-    "canRefresh": false,
+    "canRefresh": true,
     "files": null,
     "message": null,
     "failure": null,

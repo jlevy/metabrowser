@@ -75,6 +75,15 @@ page’s glue between them.
   file on github.com at the head of the comparison drawn; once the read says what the
   comparison changes, the same note’s link to a changed file opens it in the stack’s
   Changes, in place, and a link to an unchanged file stays on github.com.
+  A member’s page opens in place through the page’s own `open` too, and a commit’s page
+  and the list of pull requests through the shell’s, `navigation.openRoute`, which is
+  asked only for what the page declined; a modified click on any of them is the
+  browser’s. Each link that opens in place has its link card, the tooltip that says what
+  it opens (`static/link-previews.js`, a recording stand-in here), for its own address
+  and with the note as its root, and no tooltip of its own; a link that leaves for
+  github.com has the card that says where it goes.
+  The next step’s note takes the first note’s place and its links’ cards with it, and
+  the page’s end puts the note’s cards away.
 - `cold_without_labels` and `unknown_stack`: two more stacks’ headers from first paint
   to their answers.
 - `members_readiness`: each member’s line ends with its readiness’s glyph in a cell, as
@@ -133,7 +142,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·"
       },
       {
         "merge": "wip → topic"
@@ -323,7 +332,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·"
       },
       {
         "merge": "wip → topic"
@@ -385,7 +394,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·"
       },
       {
         "merge": "wip → topic"
@@ -419,16 +428,38 @@ $ node tests/dom/github-stack-guide-mount-session.js
   "note_links": {
     "before_the_read": [
       "the draft → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/docs/draft.md",
-      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt"
+      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt",
+      "a commit → /commit/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "the pull requests → /pulls",
+      "a member → /pull/72"
     ],
     "once_read": [
       "the draft → /stack/70/changes/docs/draft.md",
-      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt"
+      "an unchanged file → https://github.com/octo/demo/blob/5555555555555555555555555555555555555555/src/same.txt",
+      "a commit → /commit/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "the pull requests → /pulls",
+      "a member → /pull/72"
     ],
     "clicks": [
       "the draft: {\"number\":70,\"tab\":\"changes\",\"file\":\"docs/draft.md\",\"stack\":true}",
-      "an unchanged file: the browser follows it"
-    ]
+      "an unchanged file: the browser follows it",
+      "a commit: the shell opens /commit/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "the pull requests: the shell opens /pulls",
+      "a member: {\"number\":72,\"tab\":\"\"}",
+      "Command-click the draft: the browser follows it",
+      "Command-click a commit: the browser follows it",
+      "Command-click the pull requests: the browser follows it",
+      "Command-click a member: the browser follows it"
+    ],
+    "cards": [
+      "the draft: route",
+      "an unchanged file: external",
+      "a commit: route",
+      "the pull requests: route",
+      "a member: route"
+    ],
+    "cards_left_once_the_step_changes": 0,
+    "cards_left_once_the_page_ends": 0
   },
   "members_readiness": {
     "before_idle": [

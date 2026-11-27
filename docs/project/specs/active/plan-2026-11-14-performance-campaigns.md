@@ -33,6 +33,11 @@ still needs before its first timed run, and gives the order to work them in.
 The registry stays the one place each hypothesis is defined.
 This plan only orders them and names what blocks each one.
 
+The [post-load navigation and fetch plan](plan-2026-11-26-post-load-performance.md)
+tests first visits on current builds and the provider work behind them.
+Use that plan for the new baseline.
+This plan retains the dependencies and control for older rounds.
+
 ## Goals
 
 - Every open hypothesis meets the readiness standard below before its first timed run,

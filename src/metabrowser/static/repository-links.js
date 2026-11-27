@@ -40,7 +40,16 @@
 //
 // The answers are in-app addresses, spelled in one place each (In-app addresses, below),
 // or a github.com address, spelled by `fileUrl`. `enhance` applies them to every link of
-// an inert text, already reduced to the allowlist (static/inert-html.js).
+// an inert text, already reduced to the allowlist (static/inert-html.js). `isPlainClick` is
+// what a click must be for a link it made in-app to open in place, and a rendered diff's
+// links to files of its head read it too (builtin_plugins/diff/diff-markdown.js,
+// `openHeadLinks`), so the links of one text open alike.
+//
+// Each link `enhance` makes in-app has its link card, the tooltip that says what it opens,
+// and so has each link it leaves for another site, whose card says where it goes: it
+// registers each through the SDK it is given (`previewLink`, static/plugin-sdk-views.js),
+// as every surface registers its links, so this module needs nothing of the card's, which
+// loads in a bundle of its own at the first rest on a link (static/link-previews.js).
 //
 // Loaded on demand (`ensureAsset("repository-links")`) by the views that show authored text
 // from a GitHub repository: only a page with a repository identity uses it, and the startup
@@ -601,8 +610,6 @@
   // changes. Keeping the original lets a later pass undo an earlier rewrite.
   /** @type {WeakMap<Element, {href: string, target: string | null, rel: string | null}>} */
   const authoredLinks = new WeakMap();
-  // The tooltip of a link that opens whatever revision is served, not the one it named.
-  const WORKING_TREE_TITLE = "Open the corresponding path in the currently served working tree.";
   /**
    * What a plain click on each link `enhance` made in-app opens, read at the click, so a
    * later pass changes it without a second listener.
@@ -621,25 +628,38 @@
   /**
    * Make every link of *root*, an inert text already reduced to the allowlist, open what
    * `localize` says. An in-app link loses `target` and `rel`, since it does not leave the
-   * page, and a plain click on a `/view/` target opens it through
-   * `metabrowser.navigation.open`, as a Markdown file's links do; a modified click, a new
-   * tab, and a copied address use the same `href`. Returns how many links it changed.
+   * page, and a plain click opens it in place, as a Markdown file's links do: a `/view/`
+   * target through `metabrowser.navigation.open`, and any other in-app page, a pull
+   * request's, the list's, or a commit's, through `metabrowser.navigation.openRoute`. A
+   * modified click, a new tab, and a copied address use the same `href`, and so does a
+   * plain click the shell cannot open in place. Returns how many links it changed.
+   *
+   * Each link it reads is registered for its link card with *root*, through *mb*
+   * (`mb.previewLink`), so *root* is the text's own element, the boundary whose card its page
+   * puts away when the text goes (`mb.disposePreviews`): an in-app link's card says what it
+   * opens, and that a link
+   * to the served branch opens whatever the page serves, and a link it leaves for another
+   * site, or restores to one, says where it goes. It shows no tooltip of its own.
    *
    * It may run again over the same text with more context, and then reads each link as the
-   * text wrote it and moves its one click handler to the new answer.
+   * text wrote it and moves its one click handler and its card to the new answer.
    *
-   * @param {ParentNode} root
-   * @param {Pick<MetabrowserPublicSdk, "navigation" | "repository" | "sourceKind">} mb
+   * @param {Element} root
+   * @param {MetabrowserRepositoryLinksSdk} mb The page's SDK, which a link opens and is
+   *   given its card through.
    * @param {{
    *   text?: TextContext,
    *   open?: (route: RouteTarget) => boolean,
    *   views?: boolean,
    * }} [options]
    *   `text` as `localize` takes it. `open` may open an in-app route other than `/view/`
-   *   in place, as a pull request's page opens another's, answering whether it did;
-   *   otherwise the browser follows the link. `views: false` leaves every `/view/` target
+   *   in place itself, as a pull request's page opens another's, answering whether it did;
+   *   otherwise the shell opens it (`navigation.openRoute`), so no text's route link is a
+   *   page load while the shell can show it. `views: false` leaves every `/view/` target
    *   as written, for a text whose page keeps it while the served pin can change under it,
-   *   as a rendered diff does: a route names no revision, a `/view/` address the served one.
+   *   as a rendered diff does away from its head: a route names no revision, a `/view/`
+   *   address the served one. A later pass with `views: false` restores each `/view/`
+   *   target an earlier one made to the link the text wrote, whose click is the browser's.
    * @returns {number}
    */
   function enhance(root, mb, options = {}) {
@@ -659,8 +679,9 @@
       });
       if (resolved === null) {
         if (original) {
-          restoreAuthoredLink(anchor, original);
+          restoreAuthoredLink(anchor, original, mb);
         }
+        previewOutside(root, anchor, mb);
         continue;
       }
       let href;
@@ -676,8 +697,9 @@
         // other links are still read.
         console.warn("metabrowser: a link was left as written", error);
         if (original) {
-          restoreAuthoredLink(anchor, original);
+          restoreAuthoredLink(anchor, original, mb);
         }
+        previewOutside(root, anchor, mb);
         continue;
       }
       changed += 1;
@@ -688,7 +710,6 @@
           rel: anchor.getAttribute("rel"),
         });
       }
-      anchor.removeAttribute("data-tip-text");
       anchor.setAttribute("href", href);
       if (resolved.kind === "external") {
         // It leaves the page, as the allowlist's outside links do.
@@ -696,17 +717,14 @@
         anchor.setAttribute("rel", "noopener noreferrer");
         anchor.removeAttribute("data-metabrowser-github-localization");
         opens.delete(anchor);
+        previewOutside(root, anchor, mb);
         continue;
       }
       anchor.removeAttribute("target");
       anchor.removeAttribute("rel");
       anchor.setAttribute("data-metabrowser-github-localization", resolved.localization);
-      if (resolved.kind === "view" && resolved.localization === "working-tree") {
-        // The app's own tooltip (devtools/check_tooltips.py), which an inert text, keeping no
-        // attribute of its own, cannot have set.
-        anchor.setAttribute("data-tip-text", WORKING_TREE_TITLE);
-      }
       opens.set(anchor, { resolved, mb, open: options.open });
+      mb.previewLink(root, anchor, resolved);
       if (!listening.has(anchor)) {
         listening.add(anchor);
         anchor.addEventListener("click", (event) => openOnPlainClick(anchor, event));
@@ -718,8 +736,9 @@
   /**
    * @param {Element} anchor
    * @param {{href: string, target: string | null, rel: string | null}} original
+   * @param {MetabrowserRepositoryLinksSdk} mb
    */
-  function restoreAuthoredLink(anchor, original) {
+  function restoreAuthoredLink(anchor, original, mb) {
     for (const [name, value] of Object.entries(original)) {
       if (value === null) {
         anchor.removeAttribute(name);
@@ -728,39 +747,68 @@
       }
     }
     anchor.removeAttribute("data-metabrowser-github-localization");
-    anchor.removeAttribute("data-tip-text");
     authoredLinks.delete(anchor);
     opens.delete(anchor);
+    mb.forgetPreview(anchor);
   }
 
   /**
-   * Open what `enhance` last made of *anchor* on a plain primary click; any other click is
-   * the browser's, which follows the same `href`.
+   * Give *anchor*, a link of *root* that leaves for another site, the card that says where
+   * it goes, by the address it now has; a link whose address names no site, such as a mail
+   * link's or a place in the text, has none.
    *
+   * @param {Element} root
    * @param {Element} anchor
-   * @param {Event} event
+   * @param {MetabrowserRepositoryLinksSdk} mb
    */
-  function openOnPlainClick(anchor, event) {
+  function previewOutside(root, anchor, mb) {
+    mb.previewLink(root, anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" });
+  }
+
+  /**
+   * Whether a click on a link is the page's to open in place: a primary click with no
+   * modifier that nothing has kept from the browser yet. A modified or middle click opens
+   * the link's own `href` the browser's way, in a new tab or window.
+   *
+   * @param {Event} event
+   * @returns {boolean}
+   */
+  function isPlainClick(event) {
     const mouse = /** @type {MouseEvent} */ (event);
-    const opened = opens.get(anchor);
-    if (
-      !opened ||
+    return !(
       mouse.defaultPrevented ||
       mouse.button !== 0 ||
       mouse.altKey ||
       mouse.ctrlKey ||
       mouse.metaKey ||
       mouse.shiftKey
-    ) {
+    );
+  }
+
+  /**
+   * Open what `enhance` last made of *anchor* on a plain primary click: a route by the
+   * page's own `open` first, then by the shell's. Any other click is the browser's, which
+   * follows the same `href`, as it does a route neither opened.
+   *
+   * @param {Element} anchor
+   * @param {Event} event
+   */
+  function openOnPlainClick(anchor, event) {
+    const opened = opens.get(anchor);
+    if (!opened || !isPlainClick(event)) {
       return;
     }
+    const mouse = /** @type {MouseEvent} */ (event);
     const { resolved, mb, open } = opened;
     if (resolved.kind === "view") {
       mouse.preventDefault();
       void mb.navigation.open(resolved.target).catch((error) => {
         console.warn("Could not open the link", error);
       });
-    } else if (resolved.kind === "route" && open?.(resolved) === true) {
+    } else if (
+      resolved.kind === "route" &&
+      (open?.(resolved) === true || mb.navigation.openRoute(resolved.href))
+    ) {
       mouse.preventDefault();
     }
   }
@@ -878,9 +926,9 @@
   }
 
   window.MetabrowserRepositoryLinks = Object.freeze({
-    WORKING_TREE_TITLE,
     enhance,
     fileUrl,
+    isPlainClick,
     localize,
     viewFileUrl,
   });

@@ -3417,8 +3417,8 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 }
 
 /* A served mirror's freshness, at the foot of the navigation pane where a
-   folder shows crawl progress: when it was last fetched, and an offer when a
-   refresh moved the pinned ref. Quiet unless a refresh failed. A checkout's page
+   folder shows crawl progress: fetch status and offers when a revision moves.
+   A checkout's page
    offers its reload in the same row (.source-ref-selector-stale), so every tab
    shows it. */
 .source-freshness[hidden] {
@@ -6930,6 +6930,31 @@ pre.code-block.metabrowser-source-lines > code {
 .tip-detail {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
+}
+/* A link card's first line (static/link-previews.js): the object's mark, then its words,
+   which wrap with the mark beside their first line, as a tree row's icon sits off its
+   name (--tree-icon-gap). The mark's box is a line tall, so its glyph centers on the first
+   line however many the words take (docs/design-system.md, "Tooltips on Links"). */
+.link-card-name {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tree-icon-gap);
+}
+.link-card-name > span:last-child {
+  min-width: 0;
+}
+.link-card-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-box);
+  height: 1lh;
+  color: var(--viz-text-muted);
+}
+.link-card-mark svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
 }
 /* A label in a tooltip, as a File Overview segment names its category: the label type
    in the tooltip's muted ink. Measured in Chrome on 2026-11-23, light theme, on the

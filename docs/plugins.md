@@ -1006,8 +1006,41 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   A late load can serve future views.
   A view that shows Markdown or other authored text passes each rendered element to the
   runtime’s `enhance`, which makes a link into the served repository open its page in
-  Metabrowser; `static/repository-links.js` documents which GitHub URLs open which
-  pages.
+  Metabrowser, in place on a plain click; `static/repository-links.js` documents which
+  GitHub URLs open which pages.
+  Each link `enhance` reads also has its link card, registered through the SDK it is
+  given (`previewLink`, below) with the element it was given, so pass the text’s own
+  element: the one whose links the view puts away together.
+- `previewLink(root, anchor, target, { authorTitle })` gives one link in authored text
+  its link card, the tooltip that says what it opens
+  ([Tooltips on Links](design-system.md#tooltips-on-links)), on any page, with or
+  without a repository identity or the resolver.
+  A view that opens a link in the app itself, or draws links to other sites, registers
+  each this way, never through a window global.
+  `target` is the resolver’s answer of kind `view` or `route`, a file’s or folder’s
+  `{ kind: "view", target, localization: "revision" }` by its navigation target, a
+  rendered diff’s link to a file of its head, `{ kind: "view-head", href }` by its
+  `/view/` address in the GitPath wire, or a link to another site,
+  `{ kind: "external", url }` by its address as the link spells it, whose card says the
+  host it goes to, read against the page’s address as the browser follows the link, and
+  whether it opens a new tab; an address the browser reads as one on the page’s own
+  origin, or one with another scheme than `http` or `https`, has no card.
+  *root* is the element whose links the view puts away together.
+  When `previewLink` answers `true`, the link has a card, and the view calls
+  `takeAuthorTitles(anchor, authorTitle)`, which takes off the link and what it holds
+  every `title` its author wrote, so the reader sees one tooltip, and keeps
+  `authorTitle` for assistive technology, which read the title there
+  ([Tooltips on Links](design-system.md#tooltips-on-links)); it answers `false` for a
+  target the card says nothing of, such as a mail link’s, which keeps its title.
+  The card’s code loads at the page’s first rest on a link registered this way
+  (`static/plugin-sdk-views.js`); where it cannot load, each link shows no card.
+  `forgetPreview(anchor)` takes a card from a link that no longer has one, and
+  `disposePreviews(root)` forgets every card of *root*’s links, and puts away the one it
+  shows, when the view replaces that text or is disposed.
+  However a link’s card ends, by either of those, by a later `previewLink` that gives it
+  none, or by a card that cannot load, the SDK gives the link back what
+  `takeAuthorTitles` took and takes off what it added (`giveAuthorTitlesBack(anchor)`),
+  so a view never does.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
   event log what the page waits for
@@ -1032,6 +1065,19 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   another view of the same file.
   `{ replace: true }` replaces the current history entry instead of pushing one, for a
   step Back should not stop at, such as the text typed into a search field.
+- `navigation.openRoute(href)` opens an in-app page other than a file’s in place, by the
+  address a link to it carries: a pull request’s page, one of its tabs or changed files,
+  a stack’s page, the list of pull requests, or a commit (`/pull/…`, `/stack/…`,
+  `/pulls`, `/commit/…`). The shell pushes a history entry, brings the tab that holds
+  the page to the front, and shows the page, and the call returns `true`; for the
+  address already shown it pushes nothing and keeps the page where it is.
+  It returns `false` for an address the shell cannot show in place, or cannot show yet:
+  any other address, a file’s among them; any address before the shell’s tabs have
+  loaded; a pull request’s, a stack’s, or the list’s before the Pulls tab’s routes
+  (`static/pull-route.js`) have loaded, or on a page with no Pulls tab; and a commit’s
+  before Git discovery has registered the Commits tab.
+  Leave the click to the browser then, which follows the link’s `href`. The links
+  `loadRepositoryLinks()`’s `enhance` makes already open this way.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length
@@ -1049,7 +1095,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
 
 Use `navigation.href()` for real anchor `href` values so status previews, copy-link,
 modifier clicks, new tabs, and reloads keep native behavior, and call
-`navigation.open()` only for an unmodified in-app activation:
+`navigation.open()` only for an unmodified in-app activation that nothing has handled
+yet:
 
 ```javascript
 const target = { path: "docs/guide.md", fragment: "setup" };
@@ -1057,11 +1104,35 @@ const link = document.createElement("a");
 link.href = mb.navigation.href(target);
 link.textContent = "Setup guide";
 link.addEventListener("click", (event) => {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
     return;
   }
   event.preventDefault();
   void mb.navigation.open(target);
+});
+```
+
+A link to another in-app page is the same, with the page’s address as its `href`, and
+cancels the click only when the shell opened it:
+
+```javascript
+const revision = "8f3c2a9d1b7e4f6a0c5d2e8b9a1f3c7d6e4b2a90"; // a full commit ID
+const commit = document.createElement("a");
+commit.href = `/commit/${revision}`;
+commit.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  if (mb.navigation.openRoute(commit.getAttribute("href"))) {
+    event.preventDefault();
+  }
 });
 ```
 

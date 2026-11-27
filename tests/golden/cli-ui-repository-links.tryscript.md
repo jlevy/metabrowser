@@ -18,10 +18,10 @@ is the design.
 
 This session loads the exact production module whole, beside `static/git-path.js`, the
 GitPath codec a pinned revision’s shell loads first.
-`localized` reads one table of URLs in each context a page can have and prints what
-`localize` answers: a `view` target, a `/view/` address of the served tree; a `route`, a
-pull request’s page or tab, a commit’s, or the list’s; an `external` replacement; or
-null, for a link left as written.
+`localized`, the part the first command names, reads one table of URLs in each context a
+page can have and prints what `localize` answers: a `view` target, a `/view/` address of
+the served tree; a `route`, a pull request’s page or tab, a commit’s, or the list’s; an
+`external` replacement; or null, for a link left as written.
 
 - `checkout` is a folder on the branch `feature/navigation`, whose name holds a slash.
   A file or folder on that branch or at its commit opens in place, and so does the
@@ -46,26 +46,8 @@ null, for a link left as written.
   or one of a pull request’s pages, are pull requests’ addresses; a folder named with
   digits is a folder.
 
-`viewFiles` is what a rendered diff’s link to a file of the head, a pin’s
-`/view/<GitPath wire>` address, opens on github.com at the head when the page does not
-show it (`viewFileUrl`): the file the wire names, and nothing for a name that is not
-text or an address that is not a pin’s.
-
-`enhanced` runs `enhance` over four links of an inert text, as a pull request’s page and
-a commit’s page call it, and clicks each plainly and with a modifier.
-An in-app link loses the new tab the allowlist gave it; a plain click on a `/view/`
-target opens it through `metabrowser.navigation.open`, a pull request’s page opens
-another in place through the page’s own router, and every other click is the browser’s.
-A text read again once the page knows the files its pull request changes reads each link
-as the text wrote it, which the first pass kept, and moves the link’s one click handler
-to the new answer, so each in-app link has one listener (`listeners`), even one that
-goes outside while its head moves past its files and comes back when the new files
-arrive. A commit’s message has no text context, so its path-relative reference stays as
-written. `tests/test_repository_links_js.py` holds these answers to the server’s own
-reading of the same URLs.
-
 ```console
-$ node tests/dom/repository-links-session.js
+$ node tests/dom/repository-links-session.js localized
 {
   "localized": {
     "checkout": [
@@ -784,7 +766,48 @@ $ node tests/dom/repository-links-session.js
         "result": null
       }
     ]
-  },
+  }
+}
+? 0
+```
+
+## A Rendered Diff’s Files and a Text’s Clicks
+
+`viewFiles` is what a rendered diff’s link to a file of the head, a pin’s
+`/view/<GitPath wire>` address, opens on github.com at the head when the page does not
+show it (`viewFileUrl`): the file the wire names, and nothing for a name that is not
+text or an address that is not a pin’s.
+
+`enhanced` runs `enhance` over six links of an inert text, as a pull request’s page and
+a commit’s page call it, and clicks each plainly and with a modifier.
+An in-app link loses the new tab the allowlist gave it; a plain click on a `/view/`
+target opens it through `metabrowser.navigation.open`, a pull request’s page opens
+another in place through the page’s own router (`routed`), and any other route, a
+commit’s or the list’s, and a pull request’s where the page has no router, is the
+shell’s to open in place through `metabrowser.navigation.openRoute` (`shell.asked`),
+which is asked only for what the page declined.
+Before the shell’s tabs have loaded it opens nothing (`shell.opens` false), and the
+browser follows the link, as it follows every modified click.
+A text read again once the page knows the files its pull request changes reads each link
+as the text wrote it, which the first pass kept, and moves the link’s one click handler
+to the new answer, so each in-app link has one listener (`listeners`), even one that
+goes outside while its head moves past its files and comes back when the new files
+arrive. A commit’s message has no text context, so its path-relative reference stays as
+written. `tests/test_repository_links_js.py` holds these answers to the server’s own
+reading of the same URLs.
+
+`previews` is what the link cards heard through the SDK `enhance` is given
+(`metabrowser.previewLink` and `forgetPreview`, a recording stand-in here): each link
+`enhance` makes in-app is registered with the text it was given, for what its address
+opens, a link to the served branch among them, whose card says it opens the served
+working tree, so no link carries a tooltip of its own.
+A link it leaves for another site, makes an outside one, as a path-relative reference
+away from its head, or restores, as a rendered diff’s link to the branch once the served
+pin moves, has the card that says where its address goes (`external`).
+
+```console
+$ node tests/dom/repository-links-session.js
+{
   "viewFiles": {
     "a file": {
       "href": "/view/g1-ZG9jcw/g1-6ZuqLm1k",
@@ -830,13 +853,18 @@ $ node tests/dom/repository-links-session.js
   "enhanced": {
     "a text at its served head": {
       "changed": [
-        3
+        4
       ],
       "anchors": {
         "file": {
           "data-metabrowser-github-localization": "revision",
           "data-metabrowser-path-relative": "",
           "href": "/view/g1-ZG9jcw/g1-bmV3Lm1k"
+        },
+        "branch": {
+          "href": "https://github.com/example/docs/blob/main/README.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
         },
         "pull": {
           "data-metabrowser-github-localization": "pull",
@@ -845,6 +873,10 @@ $ node tests/dom/repository-links-session.js
         "commit": {
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
         },
         "other": {
           "href": "https://example.com/",
@@ -858,13 +890,23 @@ $ node tests/dom/repository-links-session.js
           "withMeta": false,
           "listeners": 1
         },
-        "pull": {
+        "branch": {
           "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
+        "pull": {
+          "plain": true,
           "withMeta": false,
           "listeners": 1
         },
         "commit": {
-          "plain": false,
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
+          "plain": true,
           "withMeta": false,
           "listeners": 1
         },
@@ -879,11 +921,27 @@ $ node tests/dom/repository-links-session.js
           "path": "g1-ZG9jcw/g1-bmV3Lm1k"
         }
       ],
-      "routed": []
+      "routed": [],
+      "shell": {
+        "opens": true,
+        "asked": [
+          "/pull/12/files",
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: view revision /view/g1-ZG9jcw/g1-bmV3Lm1k",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
+      ]
     },
     "a text away from its head, with the page's own router": {
       "changed": [
-        3
+        5
       ],
       "anchors": {
         "file": {
@@ -892,6 +950,10 @@ $ node tests/dom/repository-links-session.js
           "rel": "noopener noreferrer",
           "target": "_blank"
         },
+        "branch": {
+          "data-metabrowser-github-localization": "working-tree",
+          "href": "/view/g1-UkVBRE1FLm1k"
+        },
         "pull": {
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
@@ -899,6 +961,10 @@ $ node tests/dom/repository-links-session.js
         "commit": {
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
         },
         "other": {
           "href": "https://example.com/",
@@ -912,13 +978,23 @@ $ node tests/dom/repository-links-session.js
           "withMeta": false,
           "listeners": 0
         },
+        "branch": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
         "pull": {
           "plain": true,
           "withMeta": false,
           "listeners": 1
         },
         "commit": {
-          "plain": false,
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
+          "plain": true,
           "withMeta": false,
           "listeners": 1
         },
@@ -928,21 +1004,44 @@ $ node tests/dom/repository-links-session.js
           "listeners": 0
         }
       },
-      "opened": [],
+      "opened": [
+        {
+          "path": "g1-UkVBRE1FLm1k"
+        }
+      ],
       "routed": [
         "/pull/12/files {\"number\":12,\"tab\":\"files\",\"file\":\"\",\"stack\":false}"
+      ],
+      "shell": {
+        "opens": true,
+        "asked": [
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: external https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
       ]
     },
     "a text whose pull request's changed files arrive after it is drawn": {
       "changed": [
-        3,
-        3
+        5,
+        5
       ],
       "anchors": {
         "file": {
           "data-metabrowser-github-localization": "pull",
           "data-metabrowser-path-relative": "",
           "href": "/pull/7/files/docs/new.md"
+        },
+        "branch": {
+          "data-metabrowser-github-localization": "working-tree",
+          "href": "/view/g1-UkVBRE1FLm1k"
         },
         "pull": {
           "data-metabrowser-github-localization": "pull",
@@ -951,6 +1050,10 @@ $ node tests/dom/repository-links-session.js
         "commit": {
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
         },
         "other": {
           "href": "https://example.com/",
@@ -964,13 +1067,23 @@ $ node tests/dom/repository-links-session.js
           "withMeta": false,
           "listeners": 1
         },
+        "branch": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
         "pull": {
           "plain": true,
           "withMeta": false,
           "listeners": 1
         },
         "commit": {
-          "plain": false,
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
+          "plain": true,
           "withMeta": false,
           "listeners": 1
         },
@@ -980,23 +1093,52 @@ $ node tests/dom/repository-links-session.js
           "listeners": 0
         }
       },
-      "opened": [],
+      "opened": [
+        {
+          "path": "g1-UkVBRE1FLm1k"
+        }
+      ],
       "routed": [
         "/pull/7/files/docs/new.md {\"number\":7,\"tab\":\"files\",\"file\":\"docs/new.md\",\"stack\":false}",
         "/pull/12/files {\"number\":12,\"tab\":\"files\",\"file\":\"\",\"stack\":false}"
+      ],
+      "shell": {
+        "opens": true,
+        "asked": [
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: external https://github.com/example/docs/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
+        "register file in the text: route /pull/7/files/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
       ]
     },
     "a text whose head moves past its files, and whose new files then arrive": {
       "changed": [
-        3,
-        3,
-        3
+        5,
+        5,
+        5
       ],
       "anchors": {
         "file": {
           "data-metabrowser-github-localization": "pull",
           "data-metabrowser-path-relative": "",
           "href": "/pull/7/files/docs/new.md"
+        },
+        "branch": {
+          "data-metabrowser-github-localization": "working-tree",
+          "href": "/view/g1-UkVBRE1FLm1k"
         },
         "pull": {
           "data-metabrowser-github-localization": "pull",
@@ -1005,6 +1147,10 @@ $ node tests/dom/repository-links-session.js
         "commit": {
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
         },
         "other": {
           "href": "https://example.com/",
@@ -1018,13 +1164,23 @@ $ node tests/dom/repository-links-session.js
           "withMeta": false,
           "listeners": 1
         },
+        "branch": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
         "pull": {
           "plain": true,
           "withMeta": false,
           "listeners": 1
         },
         "commit": {
-          "plain": false,
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
+          "plain": true,
           "withMeta": false,
           "listeners": 1
         },
@@ -1034,15 +1190,47 @@ $ node tests/dom/repository-links-session.js
           "listeners": 0
         }
       },
-      "opened": [],
+      "opened": [
+        {
+          "path": "g1-UkVBRE1FLm1k"
+        }
+      ],
       "routed": [
         "/pull/7/files/docs/new.md {\"number\":7,\"tab\":\"files\",\"file\":\"docs/new.md\",\"stack\":false}",
         "/pull/12/files {\"number\":12,\"tab\":\"files\",\"file\":\"\",\"stack\":false}"
+      ],
+      "shell": {
+        "opens": true,
+        "asked": [
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: route /pull/7/files/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
+        "register file in the text: external https://github.com/example/docs/blob/dddddddddddddddddddddddddddddddddddddddd/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
+        "register file in the text: route /pull/7/files/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
       ]
     },
-    "a commit's message, which has no text context": {
+    "a rendered diff's text, read again once the served pin moves": {
       "changed": [
-        2
+        4,
+        3
       ],
       "anchors": {
         "file": {
@@ -1051,6 +1239,11 @@ $ node tests/dom/repository-links-session.js
           "rel": "noopener noreferrer",
           "target": "_blank"
         },
+        "branch": {
+          "href": "https://github.com/example/docs/blob/main/README.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
         "pull": {
           "data-metabrowser-github-localization": "pull",
           "href": "/pull/12/files"
@@ -1058,6 +1251,10 @@ $ node tests/dom/repository-links-session.js
         "commit": {
           "data-metabrowser-github-localization": "commit",
           "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
         },
         "other": {
           "href": "https://example.com/",
@@ -1071,12 +1268,199 @@ $ node tests/dom/repository-links-session.js
           "withMeta": false,
           "listeners": 0
         },
+        "branch": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "pull": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "commit": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "other": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        }
+      },
+      "opened": [],
+      "routed": [],
+      "shell": {
+        "opens": true,
+        "asked": [
+          "/pull/12/files",
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
+        "register branch in the text: view working-tree /view/g1-UkVBRE1FLm1k",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/",
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
+        "forget branch",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
+      ]
+    },
+    "a commit's message, which has no text context": {
+      "changed": [
+        3
+      ],
+      "anchors": {
+        "file": {
+          "data-metabrowser-path-relative": "",
+          "href": "https://github.com/example/docs/pull/docs/new.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
+        "branch": {
+          "href": "https://github.com/example/docs/blob/main/README.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
+        "pull": {
+          "data-metabrowser-github-localization": "pull",
+          "href": "/pull/12/files"
+        },
+        "commit": {
+          "data-metabrowser-github-localization": "commit",
+          "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
+        },
+        "other": {
+          "href": "https://example.com/",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        }
+      },
+      "clicks": {
+        "file": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
+        "branch": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
+        "pull": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "commit": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
+          "plain": true,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "other": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        }
+      },
+      "opened": [],
+      "routed": [],
+      "shell": {
+        "opens": true,
+        "asked": [
+          "/pull/12/files",
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
+      ]
+    },
+    "a commit's message before the shell's tabs have loaded": {
+      "changed": [
+        3
+      ],
+      "anchors": {
+        "file": {
+          "data-metabrowser-path-relative": "",
+          "href": "https://github.com/example/docs/pull/docs/new.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
+        "branch": {
+          "href": "https://github.com/example/docs/blob/main/README.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
+        "pull": {
+          "data-metabrowser-github-localization": "pull",
+          "href": "/pull/12/files"
+        },
+        "commit": {
+          "data-metabrowser-github-localization": "commit",
+          "href": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "list": {
+          "data-metabrowser-github-localization": "pulls",
+          "href": "/pulls"
+        },
+        "other": {
+          "href": "https://example.com/",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        }
+      },
+      "clicks": {
+        "file": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
+        "branch": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
         "pull": {
           "plain": false,
           "withMeta": false,
           "listeners": 1
         },
         "commit": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 1
+        },
+        "list": {
           "plain": false,
           "withMeta": false,
           "listeners": 1
@@ -1088,7 +1472,23 @@ $ node tests/dom/repository-links-session.js
         }
       },
       "opened": [],
-      "routed": []
+      "routed": [],
+      "shell": {
+        "opens": false,
+        "asked": [
+          "/pull/12/files",
+          "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "/pulls"
+        ]
+      },
+      "previews": [
+        "register file in the text: external https://github.com/example/docs/pull/docs/new.md",
+        "register branch in the text: external https://github.com/example/docs/blob/main/README.md",
+        "register pull in the text: route /pull/12/files",
+        "register commit in the text: route /commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "register list in the text: route /pulls",
+        "register other in the text: external https://example.com/"
+      ]
     },
     "a page with no repository": {
       "changed": [
@@ -1098,6 +1498,11 @@ $ node tests/dom/repository-links-session.js
         "file": {
           "data-metabrowser-path-relative": "",
           "href": "https://github.com/example/docs/pull/docs/new.md",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
+        "branch": {
+          "href": "https://github.com/example/docs/blob/main/README.md",
           "rel": "noopener noreferrer",
           "target": "_blank"
         },
@@ -1111,6 +1516,11 @@ $ node tests/dom/repository-links-session.js
           "rel": "noopener noreferrer",
           "target": "_blank"
         },
+        "list": {
+          "href": "https://github.com/example/docs/pulls",
+          "rel": "noopener noreferrer",
+          "target": "_blank"
+        },
         "other": {
           "href": "https://example.com/",
           "rel": "noopener noreferrer",
@@ -1119,6 +1529,11 @@ $ node tests/dom/repository-links-session.js
       },
       "clicks": {
         "file": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
+        "branch": {
           "plain": false,
           "withMeta": false,
           "listeners": 0
@@ -1133,6 +1548,11 @@ $ node tests/dom/repository-links-session.js
           "withMeta": false,
           "listeners": 0
         },
+        "list": {
+          "plain": false,
+          "withMeta": false,
+          "listeners": 0
+        },
         "other": {
           "plain": false,
           "withMeta": false,
@@ -1140,7 +1560,12 @@ $ node tests/dom/repository-links-session.js
         }
       },
       "opened": [],
-      "routed": []
+      "routed": [],
+      "shell": {
+        "opens": true,
+        "asked": []
+      },
+      "previews": []
     }
   }
 }

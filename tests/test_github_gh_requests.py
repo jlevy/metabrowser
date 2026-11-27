@@ -34,6 +34,7 @@ from metabrowser.builtin_plugins.github.gh_requests import (
     parse_query,
     report,
 )
+from metabrowser.builtin_plugins.github.refresh_metrics import count_answers
 from metabrowser.event_log_route import QueryError
 from metabrowser.mirror_refresh import RefreshCoordinator
 
@@ -206,8 +207,18 @@ def test_an_unchanged_answer_ends_its_span_answered_and_a_refusal_ends_it_failed
         with pytest.raises(gh.GhError):
             await gh.gh_api("repos/octo/demo/pulls/404", now=NOW)
 
-    asyncio.run(reads())
+    with count_answers() as counter:
+        asyncio.run(reads())
+    measured = counter.snapshot()
+    assert measured is not None
+    assert measured.request_count == 3
+    assert measured.response_body_bytes == len(b'{"number": 7}') + len(b'{"message": "Not Found"}')
     ends = {r["attrs"]["http_status"]: r for r in _gh_ends(sink)}
+    assert [ends[status]["attrs"]["response_body_bytes"] for status in (200, 304, 404)] == [
+        len(b'{"number": 7}'),
+        0,
+        len(b'{"message": "Not Found"}'),
+    ]
     assert {status: end["attrs"]["exit"] for status, end in ends.items()} == {
         200: 0,
         304: 1,

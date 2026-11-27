@@ -1,0 +1,20 @@
+Exp-113 — can an exact Changes fetch finish before broad origin warm-up?
+Registered 2026-11-26 before the isolated public Git fetches.
+
+Use the Metabrowser corpus at 7a02fed4b131 as the admitted object lender.
+Use the exact base and head already observed in the exp-111 public pull request
+888. In a separate bare staging store per run, reuse repository acquisition's
+Git policy, overlay config, and negotiation hints. The broad fetch uses the
+application's exact wildcard heads/tags refspec. The narrow fetch asks for the
+public pull head and the observed base commit. Neither operation writes the
+checkout.
+
+Compare one broad-first then narrow pair and the reverse, repeated in reverse
+condition order for two runs per condition. In each run, stop at the first point
+where the two exact commits and expected merge base can be read. Measure time to
+that point and time until the complete ordinary refs are also available. Finish
+both fetches, compare the final origin ref set, SHA-256 of the exact diff, and
+bytes held in the staging store. Refuse moved heads or inconsistent output.
+Do not treat a timing win as a reason to publish a partially ready origin store.
+This isolates transport order only, under a busy host, and holds no local CI
+probe or browser run in parallel.

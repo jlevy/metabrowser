@@ -1,0 +1,1055 @@
+---
+cwd: ../..
+sandbox: false
+env:
+  TZ: "UTC"
+---
+# Golden Test: A Link’s Card Before Its Code Loads
+
+Every link in authored text has the link card
+([Tooltips on Links](../../docs/design-system.md#tooltips-on-links)), on every page,
+whatever repository it serves.
+A surface registers each link through the SDK (`metabrowser.previewLink` in
+`static/plugin-sdk-views.js`), which keeps it until a pointer first rests on one, then
+loads the card’s own bundle, `link-previews`, and hands its registry every link and that
+rest.
+This session runs the SDK’s view helpers whole, app.js’s own tooltip, and the exact
+bundle, run when the SDK asks for it after the time the session gives the load, or
+refused. Most pages are a plain folder’s, with no GitHub identity, whose Markdown
+document links a file, a folder, another site, and a mail address, registered as the
+Markdown enhancer registers them; one is a GitHub checkout’s, whose pull request’s text
+the resolver reads.
+
+Each log entry says when, in milliseconds, a link was registered and whether the SDK
+answered that it has a card (`registered`, `card`), the pointer arrived on something
+(`pointer`), the reader pressed (`press`), the SDK asked for the bundle (`load`) and it
+ran (`loaded`) or failed, a provider read the server (`read`), the page warned
+(`warned`), and what the reader sees (`sees`), with the element the tooltip is placed on
+(`on`).
+
+- `registered before the bundle`: four links registered, three with a card and the mail
+  link without one, and nothing loaded with no pointer anywhere.
+- `the first rest loads it`: the first rest loads the bundle, 30 ms, and the file’s card
+  comes up on its link for that rest, the tooltip’s own delay after the bundle ran; the
+  outside link’s and the folder’s follow, and the mail link shows none.
+- `the first rest keeps its time`: on a GitHub checkout’s page, with a 100 ms load, the
+  pull request’s title is read the intent delay after the pointer arrived and is in the
+  card when it comes up.
+- `left during the load`: the pointer leaves before the bundle runs, and no card comes
+  up until the next rest, which loads nothing again.
+- `pressed during the load`: a press ends the rest, as it ends one the card’s registry
+  sees.
+- `forgotten and disposed before the load`: a rest on a disposed document’s link loads
+  nothing, and the forgotten link has no card once the bundle has run.
+- `a failed load`: no card, one warning, no second load, and a link registered after has
+  none.
+- `a touch`: a tap loads nothing; the pointer’s rest after it does.
+- `outside addresses`: outside links, each read where the browser follows it against the
+  page’s address (`titles` is each link’s title once the bundle has run): the SDK’s
+  answer before the load is the card’s after it, so the hand-over gives no title back;
+  on this `http` page `http:example.com` and an address on the page’s own origin have no
+  card, nor has an address longer than the SDK reads, and one at that length has its
+  card.
+- `a document no surface disposed`: a document let go of without `disposePreviews` is
+  the collector’s before the bundle loads (`collected`), and the next document’s first
+  rest still loads the card.
+- `registered during and after the load`: a link registered while the bundle loads and
+  one registered after it each have a card, and the first document keeps one pair of
+  pointer listeners through the hand-over (`listeners`).
+- `an author's title, for assistive technology`: what assistive technology reads of each
+  titled link (`reads`, its `name` and `description`, by the rules Chrome’s
+  accessibility tree follows) as written, once registered before the card’s code loads,
+  and once registered again after; the build badge, which nothing named, is named by the
+  title its card says.
+  Once the link is forgotten, and then its document disposed, each link is as its author
+  wrote it (`asWritten`).
+
+```console
+$ node tests/dom/link-preview-loader-session.js
+{
+ "registered before the bundle": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "write to us",
+   "card": false
+  },
+  {
+   "at": 5000,
+   "sees": null
+  }
+ ],
+ "the first rest loads it": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "write to us",
+   "card": false
+  },
+  {
+   "at": 1000,
+   "pointer": "the guide"
+  },
+  {
+   "at": 1000,
+   "load": "link-previews"
+  },
+  {
+   "at": 1030,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1329,
+   "sees": null
+  },
+  {
+   "at": 1350,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  },
+  {
+   "at": 1600,
+   "pointer": "the body"
+  },
+  {
+   "at": 1800,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 2200,
+   "sees": "Opens example.com | “A page elsewhere”",
+   "on": "elsewhere"
+  },
+  {
+   "at": 2400,
+   "pointer": "the body"
+  },
+  {
+   "at": 2600,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 3000,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs folder"
+  },
+  {
+   "at": 3200,
+   "pointer": "write to us"
+  },
+  {
+   "at": 3600,
+   "sees": null
+  }
+ ],
+ "the first rest keeps its time": [
+  {
+   "at": 0,
+   "pointer": "#12"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 100,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 250,
+   "read": "github/pulls?q=12"
+  },
+  {
+   "at": 250,
+   "read": "github/pull?number=12&warm=1"
+  },
+  {
+   "at": 399,
+   "sees": null
+  },
+  {
+   "at": 420,
+   "sees": "Pull request #12 | feat(links): preview what a link opens | Opens here in Metabrowser",
+   "on": "#12"
+  }
+ ],
+ "left during the load": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "the guide"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 10,
+   "pointer": "the body"
+  },
+  {
+   "at": 30,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 800,
+   "sees": null
+  },
+  {
+   "at": 1000,
+   "pointer": "the guide"
+  },
+  {
+   "at": 1400,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  }
+ ],
+ "pressed during the load": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "the guide"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 10,
+   "press": "the guide"
+  },
+  {
+   "at": 30,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 800,
+   "sees": null
+  },
+  {
+   "at": 1000,
+   "pointer": "the body"
+  },
+  {
+   "at": 1200,
+   "pointer": "the guide"
+  },
+  {
+   "at": 1600,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  }
+ ],
+ "forgotten and disposed before the load": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 0,
+   "forgot": "elsewhere",
+   "disposed": "the changelog"
+  },
+  {
+   "at": 0,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 800,
+   "sees": null
+  },
+  {
+   "at": 1000,
+   "pointer": "the guide"
+  },
+  {
+   "at": 1000,
+   "load": "link-previews"
+  },
+  {
+   "at": 1030,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1400,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  },
+  {
+   "at": 1600,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 2000,
+   "sees": null
+  },
+  {
+   "at": 2200,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 2600,
+   "sees": null
+  }
+ ],
+ "a failed load": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "the guide"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 30,
+   "loaded": "link-previews",
+   "failed": true
+  },
+  {
+   "at": 30,
+   "warned": "metabrowser: link cards are unavailable"
+  },
+  {
+   "at": 800,
+   "sees": null
+  },
+  {
+   "at": 1000,
+   "pointer": "the body"
+  },
+  {
+   "at": 1200,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 1600,
+   "sees": null
+  },
+  {
+   "at": 1600,
+   "registered": "the docs folder",
+   "card": false
+  },
+  {
+   "at": 1800,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 2200,
+   "sees": null
+  }
+ ],
+ "a touch": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "the guide",
+   "pointerType": "touch"
+  },
+  {
+   "at": 800,
+   "sees": null
+  },
+  {
+   "at": 1000,
+   "pointer": "the body",
+   "pointerType": "touch"
+  },
+  {
+   "at": 1200,
+   "pointer": "the guide"
+  },
+  {
+   "at": 1200,
+   "load": "link-previews"
+  },
+  {
+   "at": 1230,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1600,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  }
+ ],
+ "outside addresses": [
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "a scheme-relative address",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "another scheme and no slashes",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the page's scheme and no host",
+   "card": false
+  },
+  {
+   "at": 0,
+   "registered": "the page's own origin",
+   "card": false
+  },
+  {
+   "at": 0,
+   "registered": "an address at the bound",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "an address past the bound",
+   "card": false
+  },
+  {
+   "at": 0,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 30,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 350,
+   "sees": "Opens example.com | “About elsewhere”",
+   "on": "elsewhere"
+  },
+  {
+   "at": 350,
+   "titles": {
+    "elsewhere": null,
+    "a scheme-relative address": null,
+    "another scheme and no slashes": null,
+    "the page's scheme and no host": "About the page's scheme and no host",
+    "the page's own origin": "About the page's own origin",
+    "an address at the bound": null,
+    "an address past the bound": "About an address past the bound"
+   }
+  },
+  {
+   "at": 350,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "a scheme-relative address",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "another scheme and no slashes",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "the page's scheme and no host",
+   "card": false
+  },
+  {
+   "at": 350,
+   "registered": "the page's own origin",
+   "card": false
+  },
+  {
+   "at": 350,
+   "registered": "an address at the bound",
+   "card": true
+  },
+  {
+   "at": 350,
+   "registered": "an address past the bound",
+   "card": false
+  },
+  {
+   "at": 1000,
+   "pointer": "the body"
+  },
+  {
+   "at": 1200,
+   "pointer": "a scheme-relative address"
+  },
+  {
+   "at": 1600,
+   "sees": "Opens example.com | “About a scheme-relative address”",
+   "on": "a scheme-relative address"
+  },
+  {
+   "at": 2000,
+   "pointer": "the body"
+  },
+  {
+   "at": 2200,
+   "pointer": "another scheme and no slashes"
+  },
+  {
+   "at": 2600,
+   "sees": "Opens example.com | “About another scheme and no slashes”",
+   "on": "another scheme and no slashes"
+  }
+ ],
+ "a document no surface disposed": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "collected": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 1000,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 1000,
+   "load": "link-previews"
+  },
+  {
+   "at": 1030,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1350,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs folder"
+  }
+ ],
+ "registered during and after the load": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "listeners": 2
+  },
+  {
+   "at": 0,
+   "pointer": "the guide"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 20,
+   "registered": "the docs folder",
+   "card": true
+  },
+  {
+   "at": 50,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 400,
+   "sees": "docs/guide.md | “How to start” | Opens here in Metabrowser",
+   "on": "the guide"
+  },
+  {
+   "at": 400,
+   "listeners": 2
+  },
+  {
+   "at": 400,
+   "registered": "elsewhere",
+   "card": true
+  },
+  {
+   "at": 400,
+   "listeners": 2
+  },
+  {
+   "at": 600,
+   "pointer": "the body"
+  },
+  {
+   "at": 800,
+   "pointer": "the docs folder"
+  },
+  {
+   "at": 1200,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs folder"
+  },
+  {
+   "at": 1400,
+   "pointer": "elsewhere"
+  },
+  {
+   "at": 1800,
+   "sees": "Opens example.com",
+   "on": "elsewhere"
+  }
+ ],
+ "an author's title, for assistive technology": [
+  {
+   "at": 0,
+   "reads": "Setup",
+   "stage": "as written",
+   "name": "Setup",
+   "description": "How to set it up"
+  },
+  {
+   "at": 0,
+   "reads": "the CI badge",
+   "stage": "as written",
+   "name": "CI status",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the docs diagram",
+   "stage": "as written",
+   "name": "The docs, drawn",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "setup with build status",
+   "stage": "as written",
+   "name": "Setup Build status",
+   "description": "Open the setup guide"
+  },
+  {
+   "at": 0,
+   "reads": "the build badge",
+   "stage": "as written",
+   "name": "",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the labelled link",
+   "stage": "as written",
+   "name": "The guide",
+   "description": "Start here"
+  },
+  {
+   "at": 0,
+   "reads": "the described link",
+   "stage": "as written",
+   "name": "the described link",
+   "description": "Ours"
+  },
+  {
+   "at": 0,
+   "reads": "Elsewhere",
+   "stage": "as written",
+   "name": "Elsewhere",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "write to us",
+   "stage": "as written",
+   "name": "write to us",
+   "description": "The team's address"
+  },
+  {
+   "at": 0,
+   "registered": "Setup",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the CI badge",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs diagram",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "setup with build status",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the build badge",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the labelled link",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the described link",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "Elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "write to us",
+   "card": false
+  },
+  {
+   "at": 0,
+   "reads": "Setup",
+   "stage": "registered",
+   "name": "Setup",
+   "description": "How to set it up"
+  },
+  {
+   "at": 0,
+   "reads": "the CI badge",
+   "stage": "registered",
+   "name": "CI status",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the docs diagram",
+   "stage": "registered",
+   "name": "The docs, drawn",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "setup with build status",
+   "stage": "registered",
+   "name": "Setup Build status",
+   "description": "Open the setup guide"
+  },
+  {
+   "at": 0,
+   "reads": "the build badge",
+   "stage": "registered",
+   "name": "Build status",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the labelled link",
+   "stage": "registered",
+   "name": "The guide",
+   "description": "Start here"
+  },
+  {
+   "at": 0,
+   "reads": "the described link",
+   "stage": "registered",
+   "name": "the described link",
+   "description": "Ours"
+  },
+  {
+   "at": 0,
+   "reads": "Elsewhere",
+   "stage": "registered",
+   "name": "Elsewhere",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "write to us",
+   "stage": "registered",
+   "name": "write to us",
+   "description": "The team's address"
+  },
+  {
+   "at": 1000,
+   "pointer": "Setup"
+  },
+  {
+   "at": 1000,
+   "load": "link-previews"
+  },
+  {
+   "at": 1030,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1600,
+   "sees": "docs/guide.md | “How to set it up” | Opens here in Metabrowser",
+   "on": "Setup"
+  },
+  {
+   "at": 1600,
+   "registered": "Setup",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the CI badge",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the docs diagram",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "setup with build status",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the build badge",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the labelled link",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the described link",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "Elsewhere",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "write to us",
+   "card": false
+  },
+  {
+   "at": 1600,
+   "reads": "Setup",
+   "stage": "registered again",
+   "name": "Setup",
+   "description": "How to set it up"
+  },
+  {
+   "at": 1600,
+   "reads": "the CI badge",
+   "stage": "registered again",
+   "name": "CI status",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "the docs diagram",
+   "stage": "registered again",
+   "name": "The docs, drawn",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "setup with build status",
+   "stage": "registered again",
+   "name": "Setup Build status",
+   "description": "Open the setup guide"
+  },
+  {
+   "at": 1600,
+   "reads": "the build badge",
+   "stage": "registered again",
+   "name": "Build status",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "the labelled link",
+   "stage": "registered again",
+   "name": "The guide",
+   "description": "Start here"
+  },
+  {
+   "at": 1600,
+   "reads": "the described link",
+   "stage": "registered again",
+   "name": "the described link",
+   "description": "Ours"
+  },
+  {
+   "at": 1600,
+   "reads": "Elsewhere",
+   "stage": "registered again",
+   "name": "Elsewhere",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "write to us",
+   "stage": "registered again",
+   "name": "write to us",
+   "description": "The team's address"
+  },
+  {
+   "at": 1600,
+   "reads": "Setup",
+   "stage": "forgotten",
+   "name": "Setup",
+   "description": "How to set it up",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "Setup",
+   "stage": "disposed",
+   "name": "Setup",
+   "description": "How to set it up",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the CI badge",
+   "stage": "disposed",
+   "name": "CI status",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the docs diagram",
+   "stage": "disposed",
+   "name": "The docs, drawn",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "setup with build status",
+   "stage": "disposed",
+   "name": "Setup Build status",
+   "description": "Open the setup guide",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the build badge",
+   "stage": "disposed",
+   "name": "",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the labelled link",
+   "stage": "disposed",
+   "name": "The guide",
+   "description": "Start here",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the described link",
+   "stage": "disposed",
+   "name": "the described link",
+   "description": "Ours",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "Elsewhere",
+   "stage": "disposed",
+   "name": "Elsewhere",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "write to us",
+   "stage": "disposed",
+   "name": "write to us",
+   "description": "The team's address",
+   "asWritten": true
+  }
+ ]
+}
+```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

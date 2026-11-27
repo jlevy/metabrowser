@@ -92,6 +92,12 @@ def source_pull_refresh(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".refresh.json"
 
 
+def source_pull_timing(slug: str, number: int) -> str:
+    """Return the timing of the full GitHub read underlying this pull request."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".refresh-timing.json"
+
+
 def source_pull_checks(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.checks.json``: its head's checks, as last read."""
 
@@ -215,6 +221,7 @@ __all__ = [
     "source_pull_list_refresh",
     "source_pull_record",
     "source_pull_refresh",
+    "source_pull_timing",
     "source_pull_snapshots",
     "source_pull_status_refresh",
     "source_pull_status_scan",

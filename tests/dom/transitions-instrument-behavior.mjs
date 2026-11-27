@@ -1,7 +1,7 @@
 // The transition-navigation instrument's own logic, browserless: request classes and
 // cache disposition over recorded DevTools event sequences, frame accounting and region
 // movement over recorded frame logs, and compare's refusals and verdicts over fixture
-// rows. Imports the exact modules a series runs; no server, Chrome, or clock is used.
+// rows. Imports the exact modules a series runs without starting the application or Chrome.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -12,6 +12,7 @@ const HERE = import.meta.dirname;
 const LOOP = path.resolve(HERE, "../../explorations/performance-loop");
 const recorder = await import(path.join(LOOP, "transitions-recorder.mjs"));
 const stats = await import(path.join(LOOP, "transitions-stats.mjs"));
+const { waitForOriginStore } = await import(path.join(LOOP, "provenance.mjs"));
 const {
   accountFrames,
   applyNetworkEvent,
@@ -1754,5 +1755,36 @@ catch (error) { console.log("rejected: " + error.message); }`,
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+{
+  const originalFetch = globalThis.fetch;
+  const fetchAt = "2026-11-26T21:00:00Z";
+  const absent = { refreshable: false, refreshing: false, last_fetch_at: null, stale: false };
+  const warming = { refreshable: true, refreshing: true, last_fetch_at: fetchAt, stale: false };
+  const warm = { ...warming, refreshing: false };
+  const statuses = [absent, warming, warm];
+  const urls = [];
+  try {
+    globalThis.fetch = async (url) => {
+      urls.push(url);
+      if (urls.length === 1) {
+        throw new DOMException("a stalled source status poll", "TimeoutError");
+      }
+      return { ok: true, json: async () => statuses.shift() ?? absent };
+    };
+    const result = await waitForOriginStore(B, 5000);
+    const refused = await waitForOriginStore(B, 10);
+    check("origin warm-up observes state and refuses without a fresh completed fetch", () => {
+      assert.equal(result.ready, true);
+      assert.equal(result.last_fetch_at, fetchAt);
+      assert.equal(refused.ready, false);
+      assert.equal(refused.last_fetch_at, null);
+      assert.ok(urls.length >= 5);
+      assert.ok(urls.every((url) => url === `${B}/api/source/status`));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
 console.log(`transitions instrument: ${checks} checks passed`);

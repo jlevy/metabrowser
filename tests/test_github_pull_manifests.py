@@ -26,6 +26,7 @@ from metabrowser.git import process as git_process
 from metabrowser.git.process import GitLocation, RepositoryStoreTarget
 from metabrowser.http_caching import store_tag
 from tests.diff_fixture_repo import git
+from tests.mode_denials import require_mode_denials
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
 from tests.test_github_pulls import stand as stand
@@ -355,6 +356,9 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
     from metabrowser.git.object_failures import observed_object_failures
     from metabrowser.git.process import repository_store_target
 
+    if bank_mode == 0o500:
+        # A bank that refuses writes, which no write of root's meets.
+        require_mode_denials()
     stand, client = pinned_pull
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     expected = client.get(route).json()

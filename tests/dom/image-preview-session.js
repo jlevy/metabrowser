@@ -6,6 +6,7 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "../..");
 let innerHtmlWrites = 0;
+let nextImageDecode = null;
 
 class FakeElement {
   constructor(tagName, ownerDocument) {
@@ -33,6 +34,16 @@ class FakeElement {
 
   getAttribute(name) {
     return this.attributes.get(String(name)) ?? null;
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  decode() {
+    const pending = nextImageDecode;
+    nextImageDecode = null;
+    return pending ?? Promise.resolve();
   }
 
   hasAttribute(name) {
@@ -169,12 +180,21 @@ function assert(condition, message) {
   const firstContainer = document.createElement("section");
   const firstStage = lifecycle.begin();
   const hostilePath = 'images/<unsafe "quoted" & file>.png';
-  const firstStatus = await compositor.mount(
-    firstContainer,
-    renderer,
-    { kind: "image", path: hostilePath },
-    firstStage.disposers,
-  );
+  let finishFirstDecode;
+  nextImageDecode = new Promise((resolve) => {
+    finishFirstDecode = resolve;
+  });
+  let firstMountFinished = false;
+  const pendingFirstMount = compositor
+    .mount(firstContainer, renderer, { kind: "image", path: hostilePath }, firstStage.disposers)
+    .then((status) => {
+      firstMountFinished = true;
+      return status;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert(!firstMountFinished, "image view became ready before decode");
+  finishFirstDecode();
+  const firstStatus = await pendingFirstMount;
   const rendererInnerHtmlWrites = innerHtmlWrites;
   const firstImage = firstContainer.children[0];
   const firstMount = {
@@ -208,6 +228,7 @@ function assert(condition, message) {
     status: gitStatus,
   };
   gitStage.cancel();
+  assert(gitImage.getAttribute("src") === null, "image disposal kept the request source");
 
   const secondContainer = document.createElement("section");
   const secondStage = lifecycle.begin();

@@ -1,5 +1,5 @@
-// Freshness of a served mirror: the quiet fetched label, following a branch to its
-// new commit, and switching the pin.
+// Freshness of a served mirror: fetch status, following a branch to its new commit,
+// and switching the pin.
 //
 // A page on a pinned revision polls /api/source/status while it is visible: quickly
 // while a refresh runs, slowly otherwise, and with If-None-Match so an unchanged
@@ -244,12 +244,8 @@
       (folder ? FOLDER_OUTCOME_DETAIL[code] : undefined) ??
       OUTCOME_DETAIL[code] ??
       OUTCOME_DETAIL.failed;
-    let label = folder ? `Origin fetched ${age}` : `Fetched ${age}`;
-    // One sentence, the label's tooltip (docs/design-system-messages.md). The label already
-    // says when it was fetched; the navigation's Refresh fetches again (static/refresh-plan.js).
-    let detail = folder
-      ? `The origin was last fetched ${age}, without changing the checkout.`
-      : `The mirror was last fetched from its origin ${age}.`;
+    let label = "";
+    let detail = "";
     if (refreshing) {
       tone = "refreshing";
       label = "Refreshing…";
@@ -259,8 +255,10 @@
       label = folder ? `Refresh failed · origin fetched ${age}` : `Refresh failed · fetched ${age}`;
       detail = why(outcome.outcome);
     } else if (outcome !== null && outcome.outcome === "refreshing_elsewhere") {
+      label = "Refreshing elsewhere";
       detail = why("refreshing_elsewhere");
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
+      label = "Default branch unknown";
       detail = why("default_branch_unknown");
     }
     if (gone && !refreshing && !failed) {
@@ -280,6 +278,7 @@
     const selection = status.selection_state ?? null;
     const retrySelection = selection === "fetch_failed" && !refreshing;
     if (selection === "pending") {
+      label ||= "Address pending";
       detail = SELECTION_DETAIL.pending;
     } else if (selection === "not_found") {
       tone = "warning";
@@ -327,9 +326,13 @@
         button: "Switch",
       };
     } else if (status.ref !== null && status.ref_on_origin === false && !refreshing) {
+      label ||= `${refLabel(status, { start: true })} is no longer on the origin`;
       detail = `${refLabel(status, { start: true })} is no longer on the origin; its commits stay readable here.`;
     }
     // The attended pull request's page is one link away from every page on its pin.
+    if (label === "" && offer === null && error === null && pull === null) {
+      return hidden;
+    }
     return { visible: true, tone, label, detail, offer, error, pull, follow: null };
   }
 
@@ -1223,23 +1226,23 @@
       focused instanceof HTMLElement && element.contains(focused)
         ? focused.className.split(" ").find((name) => name.startsWith("source-freshness-"))
         : undefined;
-    // The label is text: the navigation's Refresh is the one way to fetch again
-    // (static/refresh-plan.js), so the age is not a second one. Its detail, a failure's
-    // reason among them, is the pointer's tooltip and also visually hidden text after the
-    // label, since a tooltip cannot be the only source of a state (docs/design-system.md,
-    // "Tooltip Input Modality").
-    const label = document.createElement("span");
-    label.className = "source-freshness-label";
-    label.textContent = model.label;
-    label.dataset.tipText = model.detail;
-    if (model.detail) {
-      const detail = document.createElement("span");
-      detail.className = "sr-only";
-      detail.textContent = `${/[.…!?]$/.test(model.label) ? " " : ". "}${model.detail}`;
-      label.append(detail);
-    }
     /** @type {HTMLElement[]} */
-    const children = [label];
+    const children = [];
+    if (model.label) {
+      // A label's detail is both its tooltip and visually hidden text, so a tooltip
+      // is not the only source of a state (docs/design-system.md, "Tooltip Input Modality").
+      const label = document.createElement("span");
+      label.className = "source-freshness-label";
+      label.textContent = model.label;
+      label.dataset.tipText = model.detail;
+      if (model.detail) {
+        const detail = document.createElement("span");
+        detail.className = "sr-only";
+        detail.textContent = `${/[.…!?]$/.test(model.label) ? " " : ". "}${model.detail}`;
+        label.append(detail);
+      }
+      children.push(label);
+    }
     if (model.pull !== null) {
       const pull = document.createElement("a");
       pull.className = "source-freshness-pull";
@@ -1352,7 +1355,11 @@
         now: () => Date.now(),
         isVisible: () => document.visibilityState === "visible",
         observeStatus(next) {
-          element.dataset.lastFetchAt = next.last_fetch_at ?? "";
+          const fetchedAt = next.last_fetch_at ?? "";
+          if (element.dataset.lastFetchAt !== fetchedAt) {
+            element.dataset.lastFetchAt = fetchedAt;
+            window.MetabrowserRefreshPlan?.plan()?.updateTooltip?.();
+          }
         },
         render: (model) => {
           noteRefresh(model);

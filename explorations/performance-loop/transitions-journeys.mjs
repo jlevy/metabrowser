@@ -147,14 +147,14 @@ const viewConverged = (v, p, folder) => `() => {
 
 // A main tab with nothing selected: its list is the subject and the preview shows the
 // tab's prompt by design.
-const listReady = (tab, rowSelector, promptSelector) => `() => {
+const listReady = (tab, rowSelector, promptSelector, ignored = null) => `() => {
   const panel = document.querySelector('#tree-content > [data-tab-content="${tab}"]');
   if (!panel || !window.__tr.rendered(panel)) { return false; }
   if (panel.querySelectorAll(${J(rowSelector)}).length === 0 || !window.__tr.hasUseful(panel)) { return false; }
   if (${activeNav} !== ${J(tab)}) { return false; }
   const pane = document.getElementById("preview-pane");
   const prompt = pane && pane.querySelector(${J(promptSelector)});
-  return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel);
+  return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel, ${J(ignored)});
 }`;
 
 // A main tab's list on screen, whatever the preview shows.
@@ -165,9 +165,15 @@ const listShown = (tab, rowSelector) => `() => {
   return ${activeNav} === ${J(tab)} && !window.__tr.hasPlaceholder(panel);
 }`;
 
-const listConverged = (tab, rowSelector, promptSelector, subjectSelector) => `() => {
+const listConverged = (
+  tab,
+  rowSelector,
+  promptSelector,
+  subjectSelector,
+  ignored = null,
+) => `() => {
   const issues = [];
-  if (!(${listReady(tab, rowSelector, promptSelector)})()) { issues.push("list or prompt not shown"); }
+  if (!(${listReady(tab, rowSelector, promptSelector, ignored)})()) { issues.push("list or prompt not shown"); }
   const pane = document.getElementById("preview-pane");
   if (pane.querySelector(${J(subjectSelector)})) { issues.push("a subject is still mounted"); }
   return issues.join("; ");
@@ -201,17 +207,23 @@ const commitConverged = (rev) => `() => {
 
 const pullPath = (n, tab) => `/pull/${n}${tab ? `/${tab}` : ""}`;
 
-const pullReady = (n, tab = "") => `() => {
-  if (location.pathname !== ${J(pullPath(n, tab))} || ${activeNav} !== "pulls") { return false; }
+const activePullView = (n, tab) => `() => {
+  if (location.pathname !== ${J(pullPath(n, tab))} || ${activeNav} !== "pulls") { return null; }
   const pane = document.getElementById("preview-pane");
   const host = pane && pane.querySelector(":scope > .pull-request-host");
-  if (!host || host.dataset.corePreview !== "false" || !window.__tr.rendered(host)) { return false; }
+  if (!host || host.dataset.corePreview !== "false" || !window.__tr.rendered(host)) { return null; }
   const title = host.querySelector(".github-pull-title");
-  if (!title || !/#${n}\\b/.test(title.textContent || "")) { return false; }
+  if (!title || !/#${n}\\b/.test(title.textContent || "")) { return null; }
   const active = host.querySelector(".tab-bar .tab-btn.active");
-  if (!active || active.getAttribute("href") !== ${J(pullPath(n, tab))}) { return false; }
+  if (!active || active.getAttribute("href") !== ${J(pullPath(n, tab))}) { return null; }
   const body = host.querySelector(":scope > .github-pull-body");
-  if (!body || body.childElementCount === 0) { return false; }
+  return body?.childElementCount ? { host, body } : null;
+}`;
+
+const pullReady = (n, tab = "") => `() => {
+  const view = (${activePullView(n, tab)})();
+  if (!view) { return false; }
+  const { host, body } = view;
   if (${J(tab)} === "files" && !body.querySelector(".diff-root section.diff-file")) { return false; }
   if (${J(tab)} === "checks" && !body.querySelector(".github-pull-section")) { return false; }
   return !window.__tr.hasPlaceholder(host) && window.__tr.hasUseful(body);
@@ -293,9 +305,23 @@ const prDescription = (n, final) => `() => {
   if (!(${onScreen})(body)) { return false; }
   return !${final} || (!body.querySelector(":scope > .github-pull-plain") && !!body.querySelector(":scope > .metabrowser-kpress-host, :scope > .github-pull-empty"));
 }`;
-const pullMilestones = (n, tab) =>
+// A file card can be ready before its source hydrates. Look for visible hunk text
+// on the active Changes page of the named pull request.
+const prChangesHunk = (n) => `() => {
+  const view = (${activePullView(n, "files")})();
+  if (!view) { return false; }
+  const lines = view.body.querySelectorAll(".diff-root section.diff-file .diff-hunk .diff-line-text");
+  for (const line of lines) {
+    if ((${onScreen})(line) && window.__tr.hasUseful(line)) { return true; }
+  }
+  return false;
+}`;
+const pullMilestones = (n, tab, changesHunks) =>
   tab
-    ? { prHeader: prHeader(n) }
+    ? {
+        prHeader: prHeader(n),
+        ...(tab === "files" && changesHunks ? { prChangesHunk: prChangesHunk(n) } : {}),
+      }
     : {
         prHeader: prHeader(n),
         prDescriptionShown: prDescription(n, false),
@@ -367,8 +393,23 @@ function context(d, base, journey, rows, options) {
     if (!ok) {
       throw new Refusal("setup", `landing on ${p} did not become ready`);
     }
+    if (options.recordStartup) {
+      facts.startup = await d.evaluate(`({
+        timeOrigin: performance.timeOrigin,
+        landingReadyObservedMs: performance.now()
+      })`);
+    }
     await d.park();
     await sleep(settleMs);
+    if (options.recordStartup) {
+      Object.assign(
+        facts.startup,
+        await d.evaluate(`({
+        browsingSetupStartsMs: performance.now(),
+        warmupInFlight: window.metabrowser?.perf?.snapshot()?.fetches_in_flight ?? null,
+      })`),
+      );
+    }
   };
   // A subject row, mounted. A virtualized list mounts only the rows near its viewport, so
   // when `scroller` is given and the row is absent, the list is scrolled from the top one
@@ -414,7 +455,19 @@ function context(d, base, journey, rows, options) {
       };
     }
   };
-  return { d, base, measure, setupClick, land, requireRow, facts, newestCommit };
+  return {
+    d,
+    base,
+    measure,
+    setupClick,
+    land,
+    requireRow,
+    facts,
+    newestCommit,
+    firstVisit: options.recordStartup === true,
+    pullSubjects: options.pullSubjects,
+    changesHunks: options.changesHunks,
+  };
 }
 
 // The scroll container of every navigation panel.
@@ -668,13 +721,28 @@ export const COMMITS_LANDING = {
   subjectConverged: commitSubjectLandingConverged,
   kind: landingKind,
 };
-const pullsList = listReady("pulls", "a.github-pulls-row", ":scope > .pull-request-list-host");
-const pullsListConverged = listConverged(
-  "pulls",
-  "a.github-pulls-row",
-  ":scope > .pull-request-list-host",
-  ".pull-request-host",
-);
+const pullsListReady = (firstVisit) =>
+  listReady(
+    "pulls",
+    "a.github-pulls-row",
+    ":scope > .pull-request-list-host",
+    optionalChangeTally(firstVisit),
+  );
+const pullsListConverged = (firstVisit) =>
+  listConverged(
+    "pulls",
+    "a.github-pulls-row",
+    ":scope > .pull-request-list-host",
+    ".pull-request-host",
+    optionalChangeTally(firstVisit),
+  );
+
+// A visible pull row can be used while its optional changed-lines tally finishes.
+function optionalChangeTally(firstVisit) {
+  return firstVisit ? '.github-pulls-change-pending[aria-hidden="true"]' : null;
+}
+
+export const PULLS_LIST = { ready: pullsListReady, converged: pullsListConverged };
 
 // The filter chips are named by their own container, not by the panel that holds it, so a
 // build that moves them into the navigation's toolbar slot is measured the same way.
@@ -693,7 +761,7 @@ async function closedPulls(ctx, numbers) {
 async function mainTabs(ctx) {
   const file = SUBJECTS.mainTabsFile;
   const rev = SUBJECTS.mainTabsCommit;
-  const pr = SUBJECTS.mainTabsPull;
+  const pr = ctx.pullSubjects?.[0] ?? SUBJECTS.mainTabsPull;
   const newest = ctx.newestCommit;
   await ctx.land(file);
   await ctx.requireRow(navTab("pulls"), "the Pulls tab");
@@ -724,8 +792,8 @@ async function mainTabs(ctx) {
       id,
       subject: "Pulls list",
       input: click(navTab("pulls")),
-      ready: pullsList,
-      converged: pullsListConverged,
+      ready: pullsListReady(ctx.firstVisit),
+      converged: pullsListConverged(ctx.firstVisit),
       emptyState: true,
       settleMs,
       timeoutMs: 30000,
@@ -745,7 +813,7 @@ async function mainTabs(ctx) {
   await ctx.setupClick(navTab("git"), commitsLanding(newest), "Commits");
   await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`, NAV_SCROLLER);
   await ctx.setupClick(commitRow(rev), commitReady(rev), `commit ${rev.slice(0, 8)}`);
-  await ctx.setupClick(navTab("pulls"), pullsList, "Pulls");
+  await ctx.setupClick(navTab("pulls"), pullsListReady(ctx.firstVisit), "Pulls");
   await closedPulls(ctx, [pr]);
   await ctx.setupClick(pullRow(pr), pullReady(pr), `pull request #${pr}`, 60000);
   await sleep(1500);
@@ -829,15 +897,16 @@ async function commits(ctx) {
 }
 
 async function pulls(ctx) {
-  const P = SUBJECTS.pulls;
+  const [first, second, third, fourth] = ctx.pullSubjects ?? Object.values(SUBJECTS.pulls);
+  const P = { first, second, third, fourth };
   await ctx.land(SUBJECTS.landing);
   await ctx.requireRow(navTab("pulls"), "the Pulls tab");
   await ctx.measure({
     id: "pulls.first_show",
     subject: "Pulls list",
     input: click(navTab("pulls")),
-    ready: pullsList,
-    converged: pullsListConverged,
+    ready: pullsListReady(ctx.firstVisit),
+    converged: pullsListConverged(ctx.firstVisit),
     emptyState: true,
     settleMs: 1500,
     timeoutMs: 30000,
@@ -853,7 +922,7 @@ async function pulls(ctx) {
       converged: pullConverged(n, tab),
       subjectRequest: pullRequest(n),
       subjectPull: n,
-      milestones: pullMilestones(n, tab),
+      milestones: pullMilestones(n, tab, ctx.changesHunks),
       settleMs,
       timeoutMs: 60000,
       gapMs: 1500,
@@ -1020,7 +1089,7 @@ export const JOURNEYS = {
 };
 
 /** In-page milestone predicates, for the instrument's own tests. */
-export const MILESTONES = { sourceHighlighted };
+export const MILESTONES = { sourceHighlighted, prChangesHunk };
 
 /** Run one journey on an open browser; transition rows are appended to `rows`. */
 export async function runJourney(name, d, base, rows, options = {}) {

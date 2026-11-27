@@ -246,12 +246,9 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "the page notes its fresher record back",
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
-  // The freshness note ends the author's row (mb-ne91).
+  // The note reports actual refresh progress.
   const refreshing = warm.querySelector(".github-pull-note");
-  assert.match(
-    refreshing.querySelector(".github-pull-freshness").textContent,
-    /^Fetched .+ via GitHub CLI$/,
-  );
+  assert.equal(refreshing.querySelector(".github-pull-freshness").textContent, "Refreshing…");
   // The stack's slot ends the row of ages: the page has no Refresh of its own (mb-ablv).
   assert.ok(
     warm.querySelector(".github-pull-opened").children.at(-1).classes.has("github-pull-stacks"),
@@ -263,7 +260,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     age.classes.has("mb-refreshing") &&
       age.getAttribute("aria-busy") === "true" &&
       refreshing.getAttribute("aria-busy") === null,
-    "the cached page's age breathes, and is the one thing busy, while it refreshes",
+    "the cached page's progress breathes, and is the one thing busy, while it refreshes",
   );
   // The header's rows and the row of ages' parts before the stack arrives: its chip lands in
   // the slot that ends that row (mb-646g), so it adds, takes, and reorders no row or part. tests/dom/github-pull-header-chrome.mjs measures that nothing moves.

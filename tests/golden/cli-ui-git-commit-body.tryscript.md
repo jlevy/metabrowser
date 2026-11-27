@@ -22,11 +22,21 @@ panel does not keep, such as a busy renderer, the open asks again and shows its 
 answer. A preparation given up before its detail comes asks for no body.
 A body of only trailers has no article.
 On a page with the served repository’s identity, `static/repository-links.js` decides
-what the body’s links open: a same-repository pull request’s link becomes its in-app
-page, `/pull/<n>`, which the browser follows in this tab, and a file on the served
-branch its `/view/` address, which a plain click opens through the navigation; a
-relative reference stays text, as on github.com, where a commit’s message is not
-Markdown, and another site stays an outside link.
+what the body’s links open: a same-repository pull request’s, commit’s, and pull request
+list’s link becomes its in-app page, `/pull/<n>`, `/commit/<id>`, or `/pulls`, which a
+plain click has the shell open in place (`navigation.openRoute`), and a file on the
+served branch its `/view/` address, which a plain click opens through the navigation; a
+modified click on any of them is the browser’s. A relative reference stays text, as on
+github.com, where a commit’s message is not Markdown, and another site stays an outside
+link. Each link that opens in place has its link card, the tooltip that says what it
+opens (`static/link-previews.js`, a recording stand-in here), for its own address and
+with the body’s article as its root, the link to the served branch’s file saying it
+opens the served working tree, and the link to another site has the card that says where
+it goes; no link has a tooltip of its own (`cards`), and when another page has the pane,
+the panel puts the body’s cards away.
+In a repository with no GitHub identity, whose page asks for no resolver, the same
+body’s links stay as written, and each, the ones to github.com among them, has the card
+that says where it goes, registered through the SDK (`metabrowser.previewLink`).
 
 A body the route will not render shows as written: one too long, with a notice that is
 not asked for again, and one past the renderer’s deadline, with a notice that is.
@@ -458,14 +468,13 @@ $ node tests/dom/git-commit-body-session.js
       "ccccccc"
     ]
   },
-  "a body's links into the served repository": {
+  "a body's links in a repository with no GitHub identity": {
     "waiting": true,
     "requests": [
-      "/api/git/commit-markdown/7777777777777777777777777777777777777777"
+      "/api/git/commit-markdown/8888888888888888888888888888888888888880"
     ],
     "assets": [
-      "inert-html",
-      "repository-links"
+      "inert-html"
     ],
     "box": {
       "div.git-commit-body.page-card.chrome-prose": [
@@ -479,11 +488,19 @@ $ node tests/dom/git-commit-body-session.js
                       "p": [
                         "See ",
                         {
-                          "a[href=/pull/12 data-metabrowser-github-localization=pull]": "the pull request"
+                          "a[href=https://github.com/acme/widgets/pull/12 target=_blank rel=noopener noreferrer data-decorated=external]": "the pull request"
                         },
                         ", ",
                         {
-                          "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree data-tip-text=Open the corresponding path in the currently served working tree.]": "the guide"
+                          "a[href=https://github.com/acme/widgets/commit/9999999999999999999999999999999999999999 target=_blank rel=noopener noreferrer data-decorated=external]": "a commit"
+                        },
+                        ", ",
+                        {
+                          "a[href=https://github.com/acme/widgets/pulls target=_blank rel=noopener noreferrer data-decorated=external]": "the pull requests"
+                        },
+                        ", ",
+                        {
+                          "a[href=https://github.com/acme/widgets/blob/main/docs/guide.md target=_blank rel=noopener noreferrer data-decorated=external]": "the guide"
                         },
                         ", ",
                         {
@@ -512,13 +529,102 @@ $ node tests/dom/git-commit-body-session.js
       "5555555",
       "bbbbbbb",
       "ccccccc",
+      "8888888"
+    ],
+    "cards": [
+      "the pull request: external",
+      "a commit: external",
+      "the pull requests: external",
+      "the guide: external",
+      "a relative one: none",
+      "another site: external"
+    ]
+  },
+  "a body's links into the served repository": {
+    "waiting": true,
+    "requests": [
+      "/api/git/commit-markdown/7777777777777777777777777777777777777777"
+    ],
+    "assets": [
+      "inert-html",
+      "repository-links"
+    ],
+    "box": {
+      "div.git-commit-body.page-card.chrome-prose": [
+        {
+          "div.metabrowser-kpress-host": [
+            {
+              "article.kpress.kpress-inert": [
+                {
+                  "div.kpress-prose": [
+                    {
+                      "p": [
+                        "See ",
+                        {
+                          "a[href=/pull/12 data-metabrowser-github-localization=pull]": "the pull request"
+                        },
+                        ", ",
+                        {
+                          "a[href=/commit/9999999999999999999999999999999999999999 data-metabrowser-github-localization=commit]": "a commit"
+                        },
+                        ", ",
+                        {
+                          "a[href=/pulls data-metabrowser-github-localization=pulls]": "the pull requests"
+                        },
+                        ", ",
+                        {
+                          "a[href=/view/docs/guide.md data-metabrowser-github-localization=working-tree]": "the guide"
+                        },
+                        ", ",
+                        {
+                          "a": "a relative one"
+                        },
+                        ", and ",
+                        {
+                          "a[href=https://example.com/doc target=_blank rel=noopener noreferrer data-decorated=external]": "another site"
+                        },
+                        "."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "warnings": [],
+    "kept": [
+      "aaaaaaa",
+      "3333333",
+      "4444444",
+      "5555555",
+      "bbbbbbb",
+      "ccccccc",
+      "8888888",
       "7777777"
     ],
     "clicks": [
-      "the pull request: the browser follows it",
+      "the pull request: the shell opens /pull/12",
+      "a commit: the shell opens /commit/9999999999999999999999999999999999999999",
+      "the pull requests: the shell opens /pulls",
       "the guide: /view/docs/guide.md",
-      "another site: the browser follows it"
-    ]
+      "another site: the browser follows it",
+      "Command-click the pull request: the browser follows it",
+      "Command-click a commit: the browser follows it",
+      "Command-click the pull requests: the browser follows it",
+      "Command-click the guide: the browser follows it",
+      "Command-click another site: the browser follows it"
+    ],
+    "cards": [
+      "the pull request: route",
+      "a commit: route",
+      "the pull requests: route",
+      "the guide: view working-tree",
+      "another site: external"
+    ],
+    "cards left once another page has the pane": 0
   },
   "a commit with no body": {
     "waiting": false,
@@ -533,6 +639,7 @@ $ node tests/dom/git-commit-body-session.js
       "5555555",
       "bbbbbbb",
       "ccccccc",
+      "8888888",
       "7777777"
     ]
   },

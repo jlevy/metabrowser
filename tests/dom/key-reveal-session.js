@@ -99,7 +99,7 @@ const viewHeader = (() => {
   return page.MetabrowserViewHeader.create({
     esc,
     servedRoot: notDrawnHere,
-    pathBaseName: notDrawnHere,
+    servedRootName: notDrawnHere,
     ownedControlAttr: () => "",
     mirrorHeading: notDrawnHere,
     getFileIcon: notDrawnHere,

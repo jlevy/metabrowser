@@ -461,7 +461,10 @@ async function oneLoop(page, current) {
     { number: 70 },
   );
   void controller.start();
-  void controller.start(); // the page coming back into sight while the first read is out
+  let refreshed = false;
+  const refresh = controller.retry().then(() => {
+    refreshed = true;
+  });
   await settle();
   const during = { gets, timers: timers.size };
   for (const answer of waiting.splice(0)) {
@@ -469,10 +472,11 @@ async function oneLoop(page, current) {
   }
   await settle();
   const afterFirst = { gets, timers: timers.size };
+  assert.equal(refreshed, false, "Refresh waits for the queued stack read, not the earlier poll");
   for (const answer of waiting.splice(0)) {
     answer();
   }
-  await settle();
+  await refresh;
   const afterSecond = { gets, timers: timers.size };
   controller.dispose();
   return { during, after_first: afterFirst, after_second: afterSecond };

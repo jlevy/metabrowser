@@ -1,0 +1,11 @@
+Exp-110 — admission to prepare Changes after checkout acquisition
+Registered 2026-11-26 before the API replay.
+
+H127: a checkout's origin store can be ready while the GitHub plugin still sees
+its earlier unbound publication. Replay one selected PR with deterministic
+provider replies and hold the initial acquisition until the record is available.
+After acquisition finishes, issue the exact idle prepare request against the
+record's revision. Attach the already-built local store by the existing optional
+path, then issue the same request. Compare admission, exact comparison head and
+provider calls. This tests a preparation dependency. It does not time first
+visible hunk hydration or isolate the separate upstream status provider tail.

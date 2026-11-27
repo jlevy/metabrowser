@@ -746,7 +746,8 @@ function recorderMain(config) {
     return cache.get(root);
   };
   R.hasUseful = hasUseful;
-  R.hasPlaceholder = (root) => placeholders(root).length > 0;
+  R.hasPlaceholder = (root, ignored) =>
+    placeholders(root).some((item) => !ignored || !item.matches(ignored));
   R.rendered = (el) => !!el && rendered(el);
 
   // What the reader can see in the preview pane this frame. Letters: U useful content,
@@ -2367,6 +2368,7 @@ export function driver(browser) {
         armedAt: R.armedAt, observers: R.observers, kept, spans, state0: R.state0 ?? "",
         dom0: R.dom0 ?? null, dom1: document.getElementsByTagName("*").length,
         w: innerWidth, h: innerHeight, vis: document.visibilityState, path: location.pathname,
+        timeOrigin: performance.timeOrigin,
         listLog: R.listLog, readyBranch: R.readyBranch ?? null,
       };
     })()`);
@@ -2564,6 +2566,9 @@ export function driver(browser) {
       refusals,
       ...(spec.landing ? { landing: landingSeen, landingAtReady: raw.readyBranch } : {}),
       ...frameAccount,
+      // Local correlation with server and subprocess records. The transition durations
+      // still use the browser's monotonic clock.
+      inputEpochMs: t0 === null ? null : round1(raw.timeOrigin + t0),
       // The ready-before-input guard read the arm check and the frames before the input;
       // when a content search in any of them stopped at its bound, a false "not ready"
       // there can have hidden a subject shown before the input (revision 6).

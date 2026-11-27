@@ -120,9 +120,8 @@ async function heldPostCadence(page, full) {
     await settle();
     if (!waitCore) {
       // A stale cached record is already refreshing itself, so it offers no Refresh and
-      // the reader's press sends nothing; the automatic ask, held below, is the POST. The
-      // record keeps its plain age meanwhile.
-      assert.match(shown.freshness, /^Fetched .+ via GitHub CLI$/);
+      // the reader's press sends nothing; the automatic ask, held below, is the POST.
+      assert.equal(shown.freshness, "Refreshing…");
       assert.equal(shown.revalidating, true);
       assert.equal(shown.canRefresh, false);
     }
@@ -516,7 +515,15 @@ async function run() {
     refreshing: false,
     core_preview: null,
   };
-  let current = absent,
+  const pendingPrefetch = { ...absent, state: "pending", reason: null, refreshing: true };
+  const promotable = { ...pendingPrefetch, promotable_prefetch: true };
+  const latePrefetch = process.argv.includes("late-prefetch");
+  const initial = latePrefetch
+    ? pendingPrefetch
+    : process.argv.includes("prefetch")
+      ? promotable
+      : absent;
+  let current = initial,
     releasePost,
     settlementSignal,
     markdownRequests = 0;
@@ -600,11 +607,20 @@ async function run() {
     ready = true;
   });
   await settle();
-  assert.equal(
-    ready,
-    false,
-    "initial absence does not replace useful content before selected fetch",
-  );
+  assert.equal(ready, false, "an unresolved selection holds the previous useful content");
+  if (latePrefetch) {
+    assert.deepEqual(posts, [], "an ordinary pending refresh does not ask to promote");
+    assert.equal(
+      [...timers].some(([, task]) => task.delay === 0),
+      false,
+    );
+    current = promotable;
+    const poll = [...timers].find(([, task]) => task.delay > 0 && task.delay <= 1000);
+    assert.ok(poll, "the page keeps polling while the ordinary refresh is pending");
+    timers.delete(poll[0]);
+    poll[1].callback();
+    await settle();
+  }
   const ask = [...timers].find(([, task]) => task.delay === 0);
   assert.ok(ask);
   timers.delete(ask[0]);
@@ -642,13 +658,12 @@ async function run() {
   assert.equal(pendingReveal.length, 1, "revealed after the quiet period");
   assert.equal(pendingReveal[0].getAttribute("role"), "status");
   assert.equal(pendingReveal[0].getAttribute("aria-label"), "Loading comments and reviews");
-  // The header keeps the description's plain age, breathing while its details are fetched,
-  // in the note that ends the author's row (mb-ne91).
+  // The header shows progress while the full record is fetched.
   const statusLine = container.querySelector(".github-pull-note");
   const age = statusLine.querySelector(".github-pull-freshness");
-  assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
+  assert.equal(age.textContent, "Refreshing…");
   assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
-  // Busy is the age's, never the note's or the header's, whose controls stay usable.
+  // Busy belongs to the progress text; the header controls stay usable.
   assert.equal(age.getAttribute("aria-busy"), "true");
   assert.equal(statusLine.getAttribute("aria-busy"), null);
   function land(tab) {
@@ -808,6 +823,7 @@ async function run() {
   assert.equal(container.dataset.corePreview, "false");
   assert.equal(container.querySelector(".github-pull-section-loading"), null);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
+  assert.equal(statusLine.hidden, true, "the settled record has no routine header note");
   const settledAge = container.querySelector(".github-pull-freshness");
   assert.ok(!settledAge.classes.has("mb-refreshing"), "and the age stops breathing");
   assert.equal(settledAge.getAttribute("aria-busy"), null, "with no busy attribute left behind");

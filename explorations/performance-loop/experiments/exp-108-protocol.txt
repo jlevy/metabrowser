@@ -1,0 +1,12 @@
+Exp-108 — integrated Chrome and native startup diagnostics
+Recorded 2026-11-26 from the existing first-visit and WKWebView probe protocols.
+
+One fresh headless Chrome Commits journey on the public Metabrowser corpus
+7a02fed4b131, using integrated build 7eac04324971. Verify the newest commit and
+record the Files landing, first click, subsequent commit reads and revisits
+separately. Origin acquisition was off and external gh was disabled.
+
+One native WKWebView cold startup of the same integrated server and corpus,
+using the fixed README landing. The probe's unrecorded setup launch stays
+outside the recorded cold result. No paired native result is judged. Host load
+exceeded the standard acceptance guard in both instruments.
