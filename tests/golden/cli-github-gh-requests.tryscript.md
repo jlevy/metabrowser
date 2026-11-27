@@ -24,8 +24,10 @@ before: >-
 `/api/plugin/github/gh-requests` reads the `gh` spans of the structured event log over a
 window and says what they add up to: the calls, by the lane each served, the budget each
 was charged to, and the job each ran in, what GitHub charged for them, the share it
-answered `304`, how long gh took, how many ran at once, and how long their jobs waited
-for a network slot. The GitHub plugin’s `gh_requests.py` names every field.
+answered `304`, how long gh took, how long each waited for a network slot, how many ran
+at once, whether a less urgent lane’s call started ahead of a more urgent one asked
+before it, and which reads repeated.
+The GitHub plugin’s `gh_requests.py` names every field.
 
 The fixture is one minute of a synthetic server, process 4242: the source’s refresh
 reads #7, the pull request the server attends, and checks the account twice a moment
@@ -98,11 +100,11 @@ status: 200
     },
     "peak_in_flight": 3,
     "queued": {
-      "spans": 4,
-      "p50_ms": 0.3,
+      "waits": 3,
+      "p50_ms": 810.4,
       "p95_ms": 1503.1,
       "max_ms": 1503.1,
-      "total_ms": 2314.0
+      "total_ms": 2313.7
     }
   },
   "lanes": {
@@ -139,11 +141,11 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 2,
-        "p50_ms": 810.4,
+        "waits": 1,
+        "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
-        "total_ms": 2313.5
+        "total_ms": 1503.1
       }
     },
     "attended": {
@@ -179,11 +181,11 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
-        "p50_ms": 0.3,
-        "p95_ms": 0.3,
-        "max_ms": 0.3,
-        "total_ms": 0.3
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
       }
     },
     "prefetch": {
@@ -219,7 +221,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -258,7 +260,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 2,
+        "waits": 2,
         "p50_ms": 0.2,
         "p95_ms": 810.4,
         "max_ms": 810.4,
@@ -295,7 +297,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -336,7 +338,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -376,11 +378,11 @@ status: 200
       },
       "peak_in_flight": 3,
       "queued": {
-        "spans": 4,
-        "p50_ms": 0.3,
+        "waits": 2,
+        "p50_ms": 0.2,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
-        "total_ms": 2314.0
+        "total_ms": 1503.3
       }
     },
     "speculative": {
@@ -416,7 +418,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 810.4,
         "p95_ms": 810.4,
         "max_ms": 810.4,
@@ -455,7 +457,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -492,7 +494,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -536,11 +538,11 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
-        "p50_ms": 0.3,
-        "p95_ms": 0.3,
-        "max_ms": 0.3,
-        "total_ms": 0.3
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
       }
     },
     {
@@ -577,7 +579,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -618,7 +620,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 810.4,
         "p95_ms": 810.4,
         "max_ms": 810.4,
@@ -659,7 +661,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -698,7 +700,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -737,7 +739,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -778,7 +780,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 0.2,
         "p95_ms": 0.2,
         "max_ms": 0.2,
@@ -817,7 +819,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -856,7 +858,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -877,6 +879,8 @@ status: 200
       "3": 908.0
     },
     "bucket_ms": 7083.5,
+    "spans_peak": 3,
+    "slotted_peak": 2,
     "series": [
       {
         "at_ms": 0.0,
@@ -910,6 +914,52 @@ status: 200
       }
     ]
   },
+  "order": {
+    "visible": {
+      "attended": {
+        "overtook": 0,
+        "beside": 1
+      },
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 1
+      }
+    },
+    "attended": {
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 1
+      }
+    },
+    "prefetch": {
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    }
+  },
+  "repeats": [
+    {
+      "asks": "gh api user",
+      "fingerprint": "eb500829d7df0806",
+      "in_flight": 0,
+      "repeated": 2
+    },
+    {
+      "asks": "gh api graphql",
+      "fingerprint": "c38e2696fb73af9a",
+      "in_flight": 1,
+      "repeated": 0
+    }
+  ],
   "unrecorded": {
     "first_answer_seen": "when a page first showed GitHub's answer: a page reports a wait only once it is late, so the time to a first answer is not in the log",
     "local_cache_hits": "reads the server answered from its own store: those make no gh call, so cache_hits counts only the 304s GitHub answered",
@@ -977,7 +1027,7 @@ status: 200
     },
     "peak_in_flight": 2,
     "queued": {
-      "spans": 1,
+      "waits": 1,
       "p50_ms": 1503.1,
       "p95_ms": 1503.1,
       "max_ms": 1503.1,
@@ -1017,7 +1067,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -1054,7 +1104,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1091,7 +1141,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1128,7 +1178,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1165,7 +1215,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1204,7 +1254,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1243,7 +1293,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -1280,7 +1330,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1317,7 +1367,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1354,7 +1404,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1397,7 +1447,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1436,7 +1486,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -1475,7 +1525,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1494,6 +1544,8 @@ status: 200
       "2": 1500.0
     },
     "bucket_ms": 15003.0,
+    "spans_peak": 2,
+    "slotted_peak": 1,
     "series": [
       {
         "at_ms": 0.0,
@@ -1507,6 +1559,39 @@ status: 200
       }
     ]
   },
+  "order": {
+    "visible": {
+      "attended": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    },
+    "attended": {
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    },
+    "prefetch": {
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    }
+  },
+  "repeats": [],
   "unrecorded": {
     "first_answer_seen": "when a page first showed GitHub's answer: a page reports a wait only once it is late, so the time to a first answer is not in the log",
     "local_cache_hits": "reads the server answered from its own store: those make no gh call, so cache_hits counts only the 304s GitHub answered",

@@ -6,7 +6,7 @@ event log of its own, and yields a :class:`Browsing`: the in-process application
 the session's clock, the coordinator's drain, every ``gh`` call the log holds, each named by
 the key the stand-in answered it by, and the request report over the session
 (``GET /api/plugin/github/gh-requests``). ``tests/test_github_gh_lanes.py`` reads each call's
-lane.
+lane, and ``tests/test_github_browsing_benchmark.py`` the report.
 
 **One clock.** The pull-request data's clock (``pulls.utc_now`` and ``pull_list.utc_now``)
 stands still between a session's steps and moves only when the session says so
@@ -173,14 +173,17 @@ class Browsing:
             for record in fresh
         ]
 
-    def report(self, *, since: float | None = None, buckets: int = 1) -> dict[str, Any]:
-        """The request report over the session so far, or from *since*, as the route answers."""
+    def report(
+        self, *, since: float | None = None, until: float | None = None, buckets: int = 1
+    ) -> dict[str, Any]:
+        """The request report over the session so far, or from *since* to *until*, as the
+        route answers it. The route takes whole seconds, so windows a session reads apart
+        are a dwell apart."""
 
-        until = self.clock.event_time() + 1
         response = self.get(
             REPORT_ROUTE,
             since=stamp(self.started_at if since is None else since),
-            until=stamp(until),
+            until=stamp(self.clock.event_time() + 1 if until is None else until),
             buckets=str(buckets),
         )
         assert response.status_code == 200, response.text

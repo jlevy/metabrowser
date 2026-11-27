@@ -24,6 +24,7 @@ import pytest
 
 from metabrowser import event_log, home
 from metabrowser.builtin_plugins.github import gh, gh_budget, gh_lanes
+from metabrowser.builtin_plugins.github.gh_lanes import LANES
 from metabrowser.builtin_plugins.github.gh_requests import (
     DUPLICATE_WINDOW_S,
     MAX_BUCKETS,
@@ -347,6 +348,7 @@ def _call(
     status: int | None = 200,
     graphql: bool = False,
     conditional: bool = False,
+    parent_queued: float | None = None,
 ) -> dict[str, Any]:
     args = ["api", "graphql"] if graphql else ["api", "--hostname", "github.com"]
     if conditional:
@@ -354,6 +356,8 @@ def _call(
     attrs: dict[str, Any] = {"args": args, "budget": budget, "fingerprint": fingerprint}
     if lane is not None:
         attrs["lane"] = lane
+    if parent_queued is not None:
+        attrs["parent_queued_ms"] = parent_queued
     if status is not None:
         attrs |= {"http_status": status, "cost": 1 if graphql or status != 304 else 0}
     # gh exits 1 on a 304 too, and its span still ends answered (gh._run).
@@ -409,6 +413,9 @@ def _random_log(
                     status=chance.choice([*_STATUSES, None]) if not graphql else 200,
                     graphql=graphql,
                     conditional=chance.random() < 0.5,
+                    parent_queued=round(chance.uniform(0, 900), 1)
+                    if chance.random() < 0.5
+                    else None,
                 )
             )
         log[pid] = sorted(records, key=lambda r: r["ts"])
@@ -474,6 +481,77 @@ def test_each_row_holds_its_bounds(tmp_path: Path, seed: int) -> None:
                 assert figures["p50_ms"] <= figures["p95_ms"] <= figures["max_ms"]
                 assert figures["max_ms"] <= figures["total_ms"]
         assert row["peak_in_flight"] <= answer["requests"]["peak_in_flight"]
+    flight = answer["in_flight"]
+    assert flight["slotted_peak"] <= flight["spans_peak"] <= flight["peak"]
+    # Each less urgent call meets the urgent ones in one way at most.
+    for first, others in answer["order"].items():
+        assert LANES.index(first) < min(LANES.index(later) for later in others)
+        for later, met in others.items():
+            assert met["overtook"] + met["beside"] <= answer["lanes"][later]["requests"]
+    repeats = answer["requests"]["duplicates"]
+    listed = answer["repeats"]
+    assert sum(r["in_flight"] for r in listed) <= repeats["in_flight"]
+    assert sum(r["repeated"] for r in listed) <= repeats["repeated"]
+
+
+def test_a_call_waits_for_what_its_span_waited_since_the_call_before_it(
+    tmp_path: Path,
+) -> None:
+    """A span that takes a slot for each page records each wait on the call after it, so a
+    lane's queue time is its own calls', and a less urgent call that starts while a more
+    urgent one asked before it still waits has overtaken it."""
+
+    job = _end(4242, 1, start=0, dur_ms=9000, kind="job", name="test.pages")
+    # Two pages, the first in a slot at once and the second asked at 2 s, after a wait of 1 s.
+    first = _call(4242, 2, start=0, dur_ms=1000, parent=1, fingerprint="a", parent_queued=0.0)
+    second = _call(
+        4242,
+        3,
+        start=3,
+        dur_ms=1000,
+        parent=1,
+        fingerprint="b",
+        lane="background",
+        parent_queued=1000.0,
+    )
+    # A visible call asked at 1.5 s, which waited until 4.5 s, overtaken by the second page.
+    visible = _call(4242, 5, start=4.5, dur_ms=500, parent=4, fingerprint="c", parent_queued=3000.0)
+    owner = _end(4242, 4, start=1.5, dur_ms=4000, kind="request", name="POST /test")
+    answer = _report(tmp_path, {4242: [job, first, second, owner, visible]})
+    assert answer["lanes"]["visible"]["queued"]["total_ms"] == 3000.0
+    assert answer["lanes"]["background"]["queued"]["total_ms"] == 1000.0
+    assert answer["order"]["visible"]["background"] == {"overtook": 1, "beside": 0}
+    assert answer["in_flight"]["slotted_peak"] == 1
+    # A log of a build from before calls recorded their wait counts each span's whole wait.
+    legacy = {
+        **job,
+        "attrs": {"queued_ms": 2000.0},
+    }
+    unrecorded = [
+        {**call, "attrs": {k: v for k, v in call["attrs"].items() if k != "parent_queued_ms"}}
+        for call in (first, second)
+    ]
+    old = _report(tmp_path, {4242: [legacy, *unrecorded]})
+    assert old["requests"]["queued"] == {
+        "waits": 1,
+        "p50_ms": 2000.0,
+        "p95_ms": 2000.0,
+        "max_ms": 2000.0,
+        "total_ms": 2000.0,
+    }
+
+
+def test_a_read_that_repeats_is_named_by_what_it_asked(tmp_path: Path) -> None:
+    calls = [
+        _call(4242, 10 + index, start=index * 2, dur_ms=500, parent=None, fingerprint="same")
+        for index in range(3)
+    ]
+    for call in calls:
+        call["attrs"]["args"] = ["api", "--hostname", "github.com", "--method", "GET", "user"]
+    answer = _report(tmp_path, {4242: calls})
+    assert answer["repeats"] == [
+        {"asks": "gh api user", "fingerprint": "same", "in_flight": 0, "repeated": 2}
+    ]
 
 
 @pytest.mark.parametrize("buckets", [1, 7, 60])

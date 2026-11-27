@@ -28,7 +28,9 @@ Pull requests other than those four appear in a list and have no record.
 ``install_fake_gh`` writes a ``gh`` that replays a scenario and logs each call; it is a
 Python script run by this interpreter. With ``FAKE_GH_ANSWERED`` set, each read is logged
 there with the key the scenario answers it by (``graphql:statuses:start``,
-``repos/octo/demo/issues/7``, ``auth``, ``stack``) and the status answered.
+``repos/octo/demo/issues/7``, ``auth``, ``stack``) and the status answered. A scenario's
+``latency_ms``, pairs of a pattern and milliseconds, makes each read take as long as GitHub
+took to answer its kind: the first pattern its key fully matches.
 
 Run as a script, it builds ``<directory>/home``, an application home holding the
 mirror and the records of all four pull requests, fetched through the production CLI
@@ -83,7 +85,7 @@ DEFAULT_BRANCH: Final = "topic"
 _WHEN: Final = 1788000000
 
 _FAKE_GH: Final = """#!{python}
-import hashlib, json, os, re, sys
+import hashlib, json, os, re, sys, time
 
 args = sys.argv[1:]
 log = os.environ.get("FAKE_GH_LOG")
@@ -118,7 +120,13 @@ if log:
 
 
 def answered(key, status):
-    # The answered log, when a test asks for one, names each read by its key.
+    # How long GitHub takes to answer this read, as the scenario records it: the first of
+    # its ``latency_ms`` patterns that the read's key matches, and none when none does. The
+    # answered log, when a test asks for one, names each read by that key.
+    for pattern, delay_ms in scenario.get("latency_ms", []):
+        if re.fullmatch(pattern, key):
+            time.sleep(delay_ms / 1000)
+            break
     if answered_log:
         with open(answered_log, "a", encoding="utf-8") as handle:
             handle.write(json.dumps({{"args": args, "key": key, "status": status}}) + "\\n")

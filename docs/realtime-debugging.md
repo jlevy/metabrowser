@@ -301,9 +301,11 @@ charged to (a reader’s own action, automatic work, speculative work, and the w
 prepares rows’ cores), and for each job the calls ran in: the calls by command, the
 statuses GitHub answered, the `core` calls and GraphQL points they spent, the share
 answered `304`, how long `gh` took at the median and the 95th percentile, the calls that
-repeated an identical one, and how long their jobs waited for a network slot.
+repeated an identical one, and how long each call waited for a network slot.
 `in_flight` says how many calls ran at once, cut into `buckets` equal parts of the time
-they ran, and `pid` keeps one server’s calls when several share the log.
+they ran, `order` whether a less urgent lane’s calls started ahead of more urgent ones
+asked before them, `repeats` which reads repeated, and `pid` keeps one server’s calls
+when several share the log.
 `unrecorded` names what the log does not hold, such as when a page first showed GitHub’s
 answer.
 [The Request Report](project/architecture/arch-github-pull-requests.md#the-request-report)

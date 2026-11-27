@@ -312,6 +312,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_pulls_readiness_session.py \
 	tests/test_github_gh_lanes.py \
+	tests/test_github_browsing_benchmark.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \
@@ -420,7 +421,8 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_present_golden.py \
 	tests/test_app_contract_golden.py \
 	tests/test_diff_comparison_cache.py \
-	tests/test_agents_mapping_golden.py
+	tests/test_agents_mapping_golden.py \
+	tests/test_github_browsing_benchmark.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)

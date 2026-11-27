@@ -1003,14 +1003,29 @@ It absorbs `mb-mg37`, the hour of real browsing that `AUTOMATIC_CORE_PER_HOUR` a
   on the reader’s pages and the background on a scan due by age and the backfill, and a
   pull request page’s ask for the list behind it names the attended lane.
   The lanes are recorded, not yet scheduled by, which is the tuning below.
-- [ ] **A browsing benchmark** (`mb-ulvg`): one scripted session (open the Pulls tab,
+- [x] **A browsing benchmark** (`mb-ulvg`): one scripted session (open the Pulls tab,
   scroll, open several pull requests, switch tabs, come back) run two ways.
   Against the fake `gh` with recorded latencies it is deterministic, and its test holds
   invariants: visible work is read before background work, requests in flight stay
   within their bounds, nothing is read twice in a window, a revisit is answered from the
   cache, and the session spends under a stated bound.
-  Live, against this repository and a large public one, its numbers are recorded in the
-  performance loop under its durable storage rules, with `mb-mg37`’s hour.
+  Live, against this repository, its numbers are recorded in the performance loop under
+  its durable storage rules.
+  Built as `explorations/performance-loop/github_browsing.py`, the session and its live
+  driver, and `tests/test_github_browsing_benchmark.py`, which runs it against the
+  stand-in with the latencies of a live run on 2026-11-27
+  ([GitHub Requests While Browsing](../../../../explorations/performance-loop/github-requests/README.md)).
+  The report gained what the invariants read: each call’s own wait for a slot, `order`
+  (a less urgent lane’s calls that started while a more urgent one asked before them
+  waited, or ran), `repeats`, and the spans in flight holding a slot.
+  “Read before” holds as no overtaking: the slots are first come, first served, so a
+  visible read never waits behind a less urgent one asked after it, but does wait behind
+  one asked before it, and a less urgent read runs beside it in the other slot.
+  The account check, which every pull request’s job asks twice, is the one read that
+  repeats. The record lists these as findings for the tuning.
+- [ ] **The same session against a large public repository, and `mb-mg37`’s hour of real
+  browsing**, which `AUTOMATIC_CORE_PER_HOUR` and `SPECULATIVE_CORE_PER_HOUR` still wait
+  on: left for the owner; `github_browsing.py live` drives the first.
 - [ ] **Tuning** (`mb-3i1s`): each change the measurements justify, measured before and
   after with the report and the benchmark, its constant documented beside its definition
   with the measurement.

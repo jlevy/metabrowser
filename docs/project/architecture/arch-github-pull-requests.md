@@ -189,7 +189,10 @@ the probes’ cap whatever the lane.
 A job, or a request, that waits for one of the refresh coordinator’s network slots
 records the wait as `queued_ms`, summed over every slot it takes
 (`mirror_refresh.NetworkSlots`), so a scan that takes a slot for each page says how long
-it queued in all. A wait for the store’s turn is not recorded.
+it queued in all; and each `gh` call in a span that has taken a slot records the span’s
+`queued_ms` as it starts (`parent_queued_ms`), so the wait just before a call is its
+growth since the call before, and a call without it ran outside a slot.
+A wait for the store’s turn is not recorded.
 
 `GET gh-requests` reads those records over a window, `since` an hour ago by default, as
 `/api/event-log/failures` reads its window (`event_log_route.window_segments`), and adds
@@ -198,13 +201,27 @@ command, the statuses GitHub answered, the calls with no status and why, `core` 
 GraphQL points spent, the share answered `304`, the conditional reads GitHub answered
 `304`, gh’s median and 95th percentile time, the calls that repeat an identical one
 still in flight or answered within `DUPLICATE_WINDOW_S`, the most in flight together,
-and how long the spans the calls ran in queued; and, for every call together, how many
-ran at once over the window.
-`gh_requests.py` names each field.
-`unrecorded` lists what such a report would want that the log does not hold: when a page
-first showed GitHub’s answer, since a page reports a wait only once it is late; reads
-the server answered from its own store, which make no `gh` call; and waits for the
+and how long the calls waited for a slot just before they started; and, for every call
+together, how many ran at once over the window, and how many spans, and how many of
+those holding a slot, which the coordinator’s `MAX_CONCURRENT_REFRESHES` bounds.
+`order` says, for each lane and each less urgent one, how many of the less urgent lane’s
+calls started while a more urgent call asked before them still waited for a slot
+(`overtook`) or ran (`beside`), a call being asked when it started less that wait; and
+`repeats` names each read that repeated, as `gh api user`. `gh_requests.py` names each
+field. `unrecorded` lists what such a report would want that the log does not hold: when
+a page first showed GitHub’s answer, since a page reports a wait only once it is late;
+reads the server answered from its own store, which make no `gh` call; and waits for the
 store’s turn. `cli-github-gh-requests.tryscript.md` pins it over a synthetic event log.
+
+`tests/test_github_browsing_benchmark.py` runs one scripted session of browsing, from
+`explorations/performance-loop/github_browsing.py`, against the in-process stand-in with
+latencies a live run against this repository recorded, and holds the session’s report to
+the merge readiness plan’s invariants: no visible call is overtaken, the spans holding a
+slot stay within `MAX_CONCURRENT_REFRESHES`, nothing but the account check is read twice
+in a window, a revisit is answered `304`, and the session spends at most its priced
+`SPEND_BOUND`. `github-browsing-benchmark.txt` pins the calls by lane, and
+[GitHub Requests While Browsing](../../../explorations/performance-loop/github-requests/README.md)
+records the live runs.
 
 ## Files Beside a Source
 
@@ -1237,7 +1254,7 @@ and the [Parity Registry](arch-parity-registry.md) names each route’s golden.
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
 | `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
-| `gh-requests` | `GET` | [What was asked of GitHub](#the-request-report), from the event log: the calls by budget and job, their cost, latency, and concurrency, and how long their jobs queued |
+| `gh-requests` | `GET` | [What was asked of GitHub](#the-request-report), from the event log: the calls by lane, budget, and job, their cost, latency, and concurrency, how long each waited for a slot, which lanes went ahead of which, and which reads repeated |
 
 The plugin registers three views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks`
