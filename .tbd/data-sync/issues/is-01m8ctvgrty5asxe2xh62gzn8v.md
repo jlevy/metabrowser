@@ -5,8 +5,12 @@ title: Shared YAML and JSON views in Metabrowser
 kind: epic
 status: in_progress
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/913
+    at: 2026-11-27T09:59:05.323Z
 delegate: codex@spud10.local
 labels:
   - linear
@@ -21,7 +25,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T21:05:47.799Z
-updated_at: 2026-11-26T21:23:16.772Z
+updated_at: 2026-11-27T09:59:05.324Z
 started_at: 2026-11-26T21:12:15.641Z
 extensions:
   linear:

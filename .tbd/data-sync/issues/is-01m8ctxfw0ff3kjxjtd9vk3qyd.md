@@ -5,8 +5,12 @@ title: Use the core renderer for Markdown frontmatter and code excerpts
 kind: task
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/913
+    at: 2026-11-27T09:59:03.579Z
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -14,7 +18,7 @@ parent_id: is-01m8ctvgrty5asxe2xh62gzn8v
 hold: null
 hold_until: null
 created_at: 2026-11-26T21:06:52.415Z
-updated_at: 2026-11-26T23:37:58.140Z
+updated_at: 2026-11-27T09:59:03.580Z
 started_at: 2026-11-26T21:40:41.544Z
 ---
 Recognize fenced JSON and YAML frontmatter in KPress, preserve original bytes and placement, and lazily mount the same controls for both formats and their code fences.
