@@ -337,13 +337,26 @@ def test_a_live_group_is_stopped_without_reading_the_process_table(
     """The stop's looks at the table were what failed a Chrome test at 3 s beside heavy
     load; on macOS signal 0 answers whether the group has a live member."""
 
-    _no_table(monkeypatch)
-    pid_file = tmp_path / "child.pid"
-    run = run_in_own_group(
-        _parent(STUBBORN, tmp_path, pid_file, "hang"), timeout_s=1.0, env=os.environ
+    # The child reports readiness after installing its SIGTERM handler.
+    ready = tmp_path / "ready.pid"
+    stubborn = STUBBORN + (
+        f" require('node:fs').writeFileSync({json.dumps(str(ready))}, String(process.pid));"
     )
-    assert run.timed_out
-    assert _gone(_wait_for(pid_file))
+    process = subprocess.Popen(
+        _parent(stubborn, tmp_path, tmp_path / "child.pid", "hang"),
+        start_new_session=True,
+        text=True,
+    )
+    try:
+        child = _wait_for(ready)
+        _no_table(monkeypatch)
+        stop_group(process)
+        assert _gone(child)
+    finally:
+        # macOS refuses signals to groups that have only zombies left.
+        with suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=DEADLINE_S)
 
 
 def test_a_group_that_already_ended_gets_no_signal(monkeypatch: pytest.MonkeyPatch) -> None:

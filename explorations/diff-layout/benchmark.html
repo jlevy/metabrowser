@@ -26,6 +26,7 @@
         DIFF_FOLD_VISIBLE: 20,
       };
     </script>
+    <script src="/src/metabrowser/static/formatters.js"></script>
     <script type="module">
       import { mountDiffView } from "/src/metabrowser/builtin_plugins/diff/diff-view.js";
 
@@ -70,7 +71,11 @@
         document_.manifest.totals.deletions = FILE_COUNT;
 
         let selectLayout = null;
+        const formatters = window.MetabrowserFormatters;
         const api = {
+          countPartsNodes: (parts) => formatters.countPartsNodes(document, parts),
+          changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
+          changeLineNodes: (line, options) => formatters.changeLineNodes(document, line, options),
           filterControls: {
             bind(_control, handlers) {
               selectLayout = (layout) => handlers.onChange("diff-layout", layout, "one");

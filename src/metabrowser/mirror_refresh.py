@@ -62,7 +62,8 @@ import contextlib
 import logging
 import re
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from collections import deque
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
 from collections.abc import Set as AbstractSet
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -830,6 +831,7 @@ class _TurnWaiter:
     turn: asyncio.Future[None]
     background: Callable[[], bool] = _never
     preempt: Callable[[], object] | None = None
+    acquisition: bool = False
 
 
 class StoreTurn:
@@ -862,6 +864,30 @@ class StoreTurn:
         self._taken = False
         self._holder: _TurnWaiter | None = None
         self._first_in_a_row = 0
+        self._reading_acquisition_metadata = False
+
+    @property
+    def acquiring(self) -> bool:
+        """Whether the current holder is making the checkout's first Git store."""
+        return self._holder is not None and self._holder.acquisition
+
+    @contextlib.contextmanager
+    def read_during_acquisition(self) -> Generator[bool]:
+        """Lend the acquisition's turn to one selected read that uses no Git store.
+
+        If Git finishes first, the next turn waits for this read. That keeps provider
+        reads serialized and prevents a store attachment from invalidating its preview.
+        """
+        if not self.acquiring or self._reading_acquisition_metadata:
+            yield False
+            return
+        self._reading_acquisition_metadata = True
+        try:
+            yield True
+        finally:
+            self._reading_acquisition_metadata = False
+            if not self._taken:
+                self._give()
 
     @asynccontextmanager
     async def __call__(
@@ -870,11 +896,12 @@ class StoreTurn:
         *,
         background: Callable[[], bool] = _never,
         preempt: Callable[[], object] | None = None,
+        acquisition: bool = False,
     ) -> AsyncGenerator[None]:
         """Hold the turn for the block, once it comes."""
 
         waiter = _TurnWaiter(
-            goes_first, asyncio.get_running_loop().create_future(), background, preempt
+            goes_first, asyncio.get_running_loop().create_future(), background, preempt, acquisition
         )
         self._waiting.append(waiter)
         if not self._taken:
@@ -917,6 +944,8 @@ class StoreTurn:
         self._give()
 
     def _give(self) -> None:
+        if self._reading_acquisition_metadata:
+            return
         # One that was cancelled and has not run yet is still listed.
         waiting = [waiter for waiter in self._waiting if not waiter.turn.done()]
         foreground = [waiter for waiter in waiting if not waiter.background()]
@@ -941,26 +970,69 @@ class StoreTurn:
         chosen.turn.set_result(None)
 
 
-class NetworkSlots(asyncio.Semaphore):
-    """The coordinator's network slots, each wait for one recorded by the span that waited.
+class NetworkSlots:
+    """Record waits for a shared provider slot, with bounded priority at handoff."""
 
-    A job started with ``network=True`` waits for a slot before its work starts, and one
-    that takes a slot itself (:meth:`RefreshCoordinator.slot`) waits before each page it
-    reads; either wait is time queued, not slow work. Each is added to the waiting span's
-    ``queued_ms`` in the event log, so a job's record says how long it queued however it
-    took its slots, and the request report (``builtin_plugins/github/gh_requests.py``)
-    reads it. A slot taken at once adds nothing but says one was taken.
-    """
+    def __init__(self, value: int = 1) -> None:
+        if value < 0:
+            raise ValueError("the refresh concurrency limit must be nonnegative")
+        self._value = value
+        self._ordinary: deque[asyncio.Future[None]] = deque()
+        self._selected: deque[asyncio.Future[None]] = deque()
+        self._selected_ahead = 0
 
-    async def acquire(self) -> Literal[True]:
+    def locked(self) -> bool:
+        return self._value == 0
+
+    async def acquire(self, *, selected: bool = False) -> Literal[True]:
         asked = time.perf_counter()
-        await super().acquire()
+        await self._take(selected=selected)
+        # The request report totals time queued on both automatic and explicit jobs.
         waiting = event_log.current()
         waited_ms = (time.perf_counter() - asked) * 1000
         before = waiting.attrs.get("queued_ms")
         total = (before if isinstance(before, int | float) else 0.0) + waited_ms
         waiting.set(queued_ms=round(total, 1))
         return True
+
+    async def _take(self, *, selected: bool) -> None:
+        if not self.locked():
+            self._value -= 1
+            return
+        granted = asyncio.get_running_loop().create_future()
+        waiting = self._selected if selected else self._ordinary
+        waiting.append(granted)
+        try:
+            await granted
+        except asyncio.CancelledError:
+            if granted.cancelled():
+                # A concurrent release can have skipped this cancelled waiter already.
+                with contextlib.suppress(ValueError):
+                    waiting.remove(granted)
+            else:
+                # Cancellation after a handoff returns the reserved slot.
+                self.release()
+            raise
+
+    def release(self) -> None:
+        for waiting in (self._selected, self._ordinary):
+            while waiting and waiting[0].cancelled():
+                waiting.popleft()
+        preferred = bool(self._selected) and (
+            not self._ordinary or self._selected_ahead < MAX_FIRST_IN_A_ROW
+        )
+        waiting = self._selected if preferred else self._ordinary
+        self._selected_ahead = self._selected_ahead + 1 if preferred and self._ordinary else 0
+        if waiting:
+            waiting.popleft().set_result(None)
+        else:
+            self._value += 1
+
+    async def __aenter__(self) -> None:
+        await self.acquire()
+
+    async def __aexit__(self, *exc: object) -> None:
+        self.release()
 
 
 class RefreshCoordinator:
@@ -1125,13 +1197,23 @@ class RefreshCoordinator:
 
         return key in self._restarts and not self._closed
 
-    def slot(self) -> asyncio.Semaphore:
+    def slot(self) -> NetworkSlots:
         """One of the limited slots, for a job started with ``network=False`` to hold.
 
         Each wait for it is on the record of the span that waited (:class:`NetworkSlots`).
         """
 
         return self._semaphore
+
+    @asynccontextmanager
+    async def selected_slot(self) -> AsyncGenerator[None]:
+        """Give one selected checkout read the next available provider slot when due."""
+
+        await self._semaphore.acquire(selected=True)
+        try:
+            yield
+        finally:
+            self._semaphore.release()
 
     async def drain(self, *, timeout_s: float) -> None:
         """Wait until no job is left, at most *timeout_s* in all, for a one-shot command.

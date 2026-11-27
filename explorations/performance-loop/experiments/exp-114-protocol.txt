@@ -1,0 +1,13 @@
+Exp-114 — negotiate the broad fetch with commits just obtained by the exact fetch
+Registered 2026-11-26 after exp-113 and before running this variant.
+
+Reuse the exp-113 public corpus, exact pull head and base, stores, process
+policy and final ref/diff checks. Keep exact-first order and add the newly
+verified exact head and base to the negotiation tips of the following
+wildcard fetch. The narrow fetch keeps the original checkout hints.
+
+Run the candidate twice. Compare with the retained exact-first exp-113
+control. Look first at final overlay bytes and identity, then at exact
+readiness and total elapsed time. Do not promote busy-host timing to a
+product verdict. Even if this saves bytes, the running acquisition has
+not been redesigned and the product cannot yet serve from staging.

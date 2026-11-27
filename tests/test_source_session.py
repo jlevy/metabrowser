@@ -224,6 +224,15 @@ def test_coordinator_open_subject_accepts_a_git_pin_without_a_walk(
     asyncio.run(_run())
 
 
+def test_history_preparation_skips_a_source_without_git_or_filesystem(tmp_path: Path) -> None:
+    from metabrowser.git.routes import prepare_initial_history
+
+    _set_root_dir(tmp_path)
+    attach_subject(_MemorySubject())
+
+    asyncio.run(prepare_initial_history())
+
+
 def test_recent_and_activity_routes_report_unsupported_capabilities(
     tmp_path: Path,
 ) -> None:

@@ -5,8 +5,9 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Implemented in [#874](https://github.com/jlevy/metabrowser/pull/874), after
-an engineering review, a security review, and a technical and design review; the beads
-linked to this spec track it
+an engineering review, a security review, and a technical and design review, and
+[Phase 2](#phase-2-routes-in-place) opens every in-app page a link names in place; the
+beads linked to this spec track it
 (`tbd list --spec plan-2026-11-26-in-app-link-resolution.md`), and
 [Follow-ups](#follow-ups) names what it leaves.
 
@@ -120,13 +121,16 @@ transfer budget (`performance-budgets.toml`).
   target, a replacement external URL, or `null` for “leave it as it is”.
 - `enhance(root, mb, options)` applies `localize` to every `a[href]` of an inert text
   already reduced to the allowlist, rewrites each in-app link’s `href`, drops its
-  `target` and `rel`, opens a `/view/` target through `mb.navigation.open` on a plain
-  click, and returns how many links it changed.
-  A link whose address the navigation codec will not spell is left as written, and the
-  text’s other links are still read.
+  `target` and `rel`, and returns how many links it changed.
+  A plain click opens a `/view/` target through `mb.navigation.open`, and a route
+  through the page’s own `options.open` when it takes it, as a pull request’s page takes
+  another’s, and otherwise through the shell’s `mb.navigation.openRoute`
+  ([Phase 2](#phase-2-routes-in-place)). A link whose address the navigation codec will
+  not spell is left as written, and the text’s other links are still read.
   It keeps the sanitized link attributes in a weak map so a later pass can update the
   address and its click handler, or restore the original link.
-  The Markdown link enhancer keeps its own DOM pass and calls only `localize`.
+  The Markdown link enhancer keeps its own DOM pass and calls only `localize`, and a
+  plain click on a route it localized asks `mb.navigation.openRoute` too.
 
 ### Resolution Rules
 
@@ -206,15 +210,38 @@ When a checkout lacks a linked commit object, the commit pane offers that commit
 GitHub.
 
 In rendered Markdown in Changes, Docs, and guided documents, a link to a file of the
-head opens it in place while the served pin is the head, as now; when it is not, or the
-pin changes, it becomes the external link to that file at the head instead of plain
-text. Its repository links are localized as everywhere else, and its external links get
-the external-link mark the other surfaces give them.
+head opens it in place while the served pin is the head: a plain click opens its
+`/view/` address through `mb.navigation.open` (`openHeadLinks` in `diff-markdown.js`,
+reading the click with the resolver’s `isPlainClick`), as the resolver’s own `/view/`
+targets beside it open, where it once loaded the page again; when the pin is not the
+head, or it changes, the link becomes the external link to that file at the head instead
+of plain text, and its click is the browser’s. Its repository links are localized as
+everywhere else, and its external links get the external-link mark the other surfaces
+give them.
+
+A repository link the resolver would open at a `/view/` address follows the same rule
+(`mb-e2lo`): a `blob/` or `tree/` link to the served branch or commit opens in place, as
+in a README, only while the page shows the head (`headLinksOpen` in
+`builtin_plugins/diff/index.js`, the one rule both kinds of link read), and stays as
+written beside a checkout or on a page pinned elsewhere, the head’s branch at an earlier
+commit among them.
+When another tab changes the pin, `closeHeadLinks` points the server’s
+links to a file of the head at github.com and has `enhance` read the rest again with
+`views: false`, which restores each `/view/` target it made to the link the text wrote,
+with its click; so a link drawn before the change reads as one drawn after it, and no
+link opens another pin’s `/view/` address.
+The two kinds are told apart by who made them: `sanitizeBlock` records the links it kept
+at `/view/`, the only ones converted by their address, and the resolver restores its own
+from the link it kept, since its targets include folders and queries, which
+`viewFileUrl` does not read.
 
 ### Invariants
 
 - An in-app link’s `href` is the address a plain click opens, so a new tab, a copied
   address, and the browser’s history open what the click opens.
+- A plain click opens an in-app page in place whenever the shell can show it, on every
+  surface: no link loads the page again once the shell can show its address
+  ([Phase 2](#phase-2-routes-in-place) lists when it cannot yet).
 - No link in authored text switches the served pin, starts a fetch, or posts anything.
 - `localize` is a pure function of the URL, the repository context, and the text
   context: one table of cases pins every surface.
@@ -240,6 +267,33 @@ One pull request.
   notes, architecture documents, the Markdown navigation plan’s pointer, and a changelog
   fragment
 
+### Phase 2: Routes in Place
+
+`mb-0uzt`, from a design review of #874: a `/view/` link opened in place, but a link to
+a commit’s page, to the list, or, outside the pull request’s page, to another pull
+request loaded the page again, which lost the shell’s state.
+
+- [x] One opener in the shell: the tab controller’s `openRoute` (`static/main-tabs.js`)
+  pushes the link’s address and lands it as a tab’s button lands its destination
+  (`openMainTab`, through the same `land`): the tab that holds it in front, its panel
+  revealing the item, and the pane showing what the address names, the Commits panel
+  selecting a commit as Back makes it select one.
+  The address already shown it opens again where it is, as `navigation.open` does: it
+  pushes no entry and lands nothing, so the page keeps its place, and the panel reveals
+  the item again, as Quick Search for the item shown does.
+  It answers false for an address the shell cannot show in place, or cannot show yet,
+  and the browser follows the link: any other address; any before the shell tools have
+  loaded; a pull request’s, a stack’s, or the list’s before `pull-route.js` has loaded,
+  or on a page with no Pulls tab; and a commit’s before Git discovery registers the
+  Commits tab.
+- [x] The SDK’s `metabrowser.navigation.openRoute(href)`, an additive method of the
+  facade, so `PLUGIN_SDK_VERSION` stays; it is one eager line that asks the controller.
+- [x] `enhance` falls back to it for every route a page’s own `open` declines, so the
+  pull request’s and stack’s pages keep switching their own tabs in place and every
+  surface opens a commit’s page and the list in place, a commit’s message and a rendered
+  diff with no change of their own; the Markdown link enhancer asks it for its route
+  links.
+
 ## Testing Strategy
 
 - `tests/dom/repository-links-session.js` runs the exact `repository-links.js` against
@@ -257,7 +311,23 @@ One pull request.
 - The pull request page’s mount behavior, the stack guide session, the commit body
   session, `markdown-link-enhancer-behavior.js`, and the diff Markdown session assert
   each surface’s wiring with the real resolver (parity rows `github.pull-text-links`,
-  `github.stack-note-links`, `git.commit-body-markdown`).
+  `github.stack-note-links`, `git.commit-body-markdown`). Each but the diff Markdown
+  session, which draws without the diff’s view, clicks a link to a commit’s page, to the
+  list, and to another pull request, plainly and with a modifier;
+  `diff-view-behavior.js` does for the production diff view.
+  The diff Markdown session and `diff-view-behavior.js` also click a link to a file of
+  the head the server spelled, at the head and after the pin changes, the second at the
+  target the shell’s own `parse` reads its address as.
+- `tests/dom/nav-reveal-session.js`’s part `links` runs the SDK’s `openRoute` and the
+  tab controller’s whole over the shell’s tabs: each address it opens, what each part of
+  the shell is asked, and the addresses it leaves to the browser;
+  `cli-ui-nav-reveal.tryscript.md` pins it, and parity row `navigation.route-open`
+  credits it. It opens a stack’s page, the list, and a changed file twice each, and the
+  second open pushes nothing.
+- `tests/dom/nav-reveal-chrome.mjs` (step 16, run by `tests/test_nav_reveal_chrome.py`)
+  clicks a document’s links to a commit, a pull request, and the list in a real Chrome,
+  and waits for the tab, the row, the address, and the reading pane, claimed by its
+  owner and showing what the address names, with the page not loaded again.
 - `cli-github-guided-review.tryscript.md` keeps pinning the server’s render, which does
   not change; the browser side is the sessions above.
 - A real-browser check of a fixture checkout and the GitHub pull request fixture: the
@@ -283,9 +353,10 @@ None blocking. Two choices the owner may revisit, each a one-line change in `loc
 
 Beads under the Markdown rendering epic, each from a review of #874:
 
-- `mb-0uzt`: a commit’s or the list’s page, and another pull request outside the pull
-  request page, open in place rather than by a page load.
 - `mb-e2lo`: a rendered diff localizes `/view/` targets while it shows the head.
+  Done: [Commit Messages and Rendered Diffs](#commit-messages-and-rendered-diffs) has
+  the design, and the diff Markdown session (`cli-ui-diff-markdown.tryscript.md`) pins
+  each page’s answer, a click with and without a modifier, and the change of pin.
 - `mb-40en`: a single helper that loads and applies the links; the loader now makes a
   forgotten load impossible, and the bead is whether more is worth it.
 

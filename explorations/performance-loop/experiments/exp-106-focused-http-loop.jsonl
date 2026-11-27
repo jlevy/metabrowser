@@ -1,0 +1,4 @@
+{"phase":"navigation_api","scenario":"diagnostic_driver","condition":"wide","metric":"recorded_requests","unit":"requests","statistic":"sample","sample_count":1,"value":22}
+{"phase":"navigation_api","scenario":"diagnostic_driver","condition":"wide","metric":"harness_invocation","unit":"ms","statistic":"sample","sample_count":1,"value":20000}
+{"phase":"navigation_api","scenario":"diagnostic_driver","condition":"focused","metric":"recorded_requests","unit":"requests","statistic":"sample","sample_count":1,"value":3}
+{"phase":"navigation_api","scenario":"diagnostic_driver","condition":"focused","metric":"harness_invocation","unit":"ms","statistic":"sample","sample_count":1,"value":12000}

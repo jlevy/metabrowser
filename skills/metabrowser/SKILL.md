@@ -9,7 +9,8 @@ description: >-
   browser, show them a file, commit, or diff in the Metabrowser app or a browser,
   inventory a directory, read or review a GitHub pull request or its diff, or inspect
   and validate Metabrowser plugins, and whenever you open or update a GitHub pull
-  request, to add or refresh its guided review.
+  request, to add or refresh its guided review. It also routes performance investigations
+  from a Metabrowser development checkout to its measurement runbook.
 compatibility: >-
   Requires either a local metab command or uv (for the zero-install uvx fallback, which
   needs network access on first use). Recipes that read JSON read it with jq, and a
@@ -91,11 +92,30 @@ handoff, the app needs `metab` 0.13.0 or later.
   [Write a Guided Review](#write-a-guided-review) says
 - Write or refresh the guided review of a whole stack: see
   [Write a Stack Guide](#write-a-stack-guide)
+- Benchmark Metabrowser from a development checkout: see
+  [Measure Performance](#measure-performance)
 - Browse a remote directory through SSH: see
   [Browse a Remote Directory](#browse-a-remote-directory)
 - Inspect or validate plugins: use `--plugins --json` for structured discovery,
   `--plugin <name> --json` for one resolved plugin, and `--doctor --json` for
   machine-readable validation
+
+## Measure Performance
+
+Start with
+[Short HTTP Rounds](https://github.com/jlevy/metabrowser/blob/main/explorations/performance-loop/README.md#short-http-rounds)
+in the checkout under test.
+Register one hypothesis and its deciding metric before changing a build.
+Use a golden-backed request through the server for data and fetch latency.
+Record startup preparation separately.
+Use a browser when measuring useful paint or continuity, and its rendering fixtures to
+isolate the cost of rendering.
+
+Retain each round’s protocol and evidence in the existing Softschema experiment ledger.
+Record failed or refused runs with their limits so they stay visible in the chart
+export.
+The runbook links the acceptance rules and the tbd workflow applies to the owning
+branch and its review.
 
 ## Hand the User a Page
 

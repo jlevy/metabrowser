@@ -4,7 +4,9 @@ Which tab a route brings to the front, what each route asks a panel to reveal, a
 panel says of an item it cannot show are browserless (``tests/dom/nav-reveal-session.js``).
 What only a browser can tell is held here: that after each route the item's row is in the
 tab in front, selected, and inside the navigation pane's scroller, and that focus stays
-where the reader was (docs/design-system.md, "Navigation Reveals the Item").
+where the reader was (docs/design-system.md, "Navigation Reveals the Item"); and that a
+document's link to a commit, a pull request, or the list opens it in place, with the
+reading pane showing what the address names.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers two native stacks, #286 (pull requests 7 to 10) and #300 (5 and 10), and whose
@@ -37,7 +39,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.github_pull_fixture import Origin, clone_checkout, git_env, install_fake_gh
+from tests.github_pull_fixture import (
+    CANONICAL,
+    Origin,
+    clone_checkout,
+    git_env,
+    install_fake_gh,
+)
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 from tests.test_github_pulls_stacks_chrome import stacks_scenario
@@ -74,13 +82,28 @@ HISTORY_COMMITS = 300
 
 
 def add_reveal_files(checkout: Path) -> None:
-    """A deep folder, a document that links into it, and a long folder."""
+    """A deep folder, a document that links into it, and a long folder.
+
+    The document also links the repository's pages on github.com that open in the app: the
+    checkout's head commit, pull request 8, and the list of pull requests.
+    """
 
     deeper = checkout / "docs" / "deep" / "deeper"
     deeper.mkdir(parents=True)
     (deeper / "leaf.md").write_text("# Leaf\n\nA file three folders down.\n", encoding="utf-8")
+    head = subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=git_env(checkout.parent),
+    ).stdout.strip()
     (checkout / "docs" / "links.md").write_text(
-        "# Links\n\n- [The leaf](deep/deeper/leaf.md)\n", encoding="utf-8"
+        "# Links\n\n- [The leaf](deep/deeper/leaf.md)\n"
+        f"- [The head commit]({CANONICAL}/commit/{head})\n"
+        f"- [Pull request 8]({CANONICAL}/pull/8)\n"
+        f"- [The pull requests]({CANONICAL}/pulls)\n",
+        encoding="utf-8",
     )
     long = checkout / "long"
     long.mkdir()

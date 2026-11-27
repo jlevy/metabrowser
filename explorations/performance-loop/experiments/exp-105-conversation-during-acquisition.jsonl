@@ -1,0 +1,9 @@
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"control_fresh","metric":"verified_core_before_release","unit":"count","statistic":"sample","sample_count":1,"value":0}
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"candidate_fresh","metric":"verified_core_before_release","unit":"count","statistic":"sample","sample_count":1,"value":1}
+{"phase":"provider","scenario":"checkout_acquisition_held","condition":"candidate_fresh","metric":"core_queries","unit":"requests","statistic":"sample","sample_count":1,"value":1}
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"candidate_fresh","metric":"core_survives_handoff","unit":"count","statistic":"sample","sample_count":1,"value":1}
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"candidate_fresh","metric":"comparison_matches_after_release","unit":"count","statistic":"sample","sample_count":1,"value":1}
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"candidate_promoted_prefetch","metric":"verified_core_before_release","unit":"count","statistic":"sample","sample_count":1,"value":1}
+{"phase":"provider","scenario":"checkout_acquisition_held","condition":"candidate_promoted_prefetch","metric":"core_queries","unit":"requests","statistic":"sample","sample_count":1,"value":1}
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"candidate_promoted_prefetch","metric":"core_survives_handoff","unit":"count","statistic":"sample","sample_count":1,"value":1}
+{"phase":"navigation_api","scenario":"checkout_acquisition_held","condition":"candidate_promoted_prefetch","metric":"comparison_matches_after_release","unit":"count","statistic":"sample","sample_count":1,"value":1}

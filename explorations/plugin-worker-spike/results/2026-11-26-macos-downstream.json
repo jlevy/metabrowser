@@ -1,0 +1,183 @@
+{
+  "platform": "darwin",
+  "python": "3.14.7",
+  "machine": "arm64",
+  "load_average": 83.3,
+  "backend": {
+    "macos": "26.5.2",
+    "sandbox_exec": true,
+    "applies": true
+  },
+  "real": {
+    "bare": {
+      "spawn_to_listed_ms": 856.6,
+      "plugins listed": 3,
+      "errors": [],
+      "plugin manifests": 3,
+      "plugin entry scripts": 3,
+      "declared hook counts": [2, 4, 6],
+      "info": 200,
+      "viz-model": {
+        "status": 200,
+        "bytes": 6513,
+        "sha256": "2d842cf0065bd259969b59eede205614baaed00026fa637b9d92fe12daf5baec",
+        "handler_ms": 1615.9
+      },
+      "resident MB": 119.0,
+      "exit": 0,
+      "charts": {
+        "pool.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 2,
+          "sha256": "b3b980b3c9eb1c05e188549fcf7775ee3a396ecd00734f4768c86211c13526f1"
+        },
+        "agent.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 1,
+          "sha256": "689f0ee655f18895816ef0c491ddcd40814d1dd1b8d336a09e66f6172526589c"
+        }
+      },
+      "chart host calls": ["host.detect_builtin", "host.agent_charts"],
+      "extra fixture hooks": {
+        "catalog": {
+          "status": 200,
+          "bytes": 161,
+          "sha256": "df1e997d90e916f1021586bd15ee9fc4c2d4841b347cfde7809219d4ee1a7ea9",
+          "headers": {}
+        },
+        "room": {
+          "status": 200,
+          "bytes": 241,
+          "sha256": "e2f27d599d82c049a129e627bc64323690b51c6e1c9709a86aca3600855f8023",
+          "headers": {}
+        },
+        "raw HTML": {
+          "status": 200,
+          "bytes": 70,
+          "sha256": "215014621e9d9063a5d384c5de319dc863a82e543b3fc6bfb8713251c8e8dd44",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:;",
+            "x-content-type-options": "nosniff"
+          }
+        },
+        "provenance": {
+          "status": 200,
+          "bytes": 144,
+          "sha256": "11873cf566c0a9158b4803e8e1ee71e51f168565df1a8b7c89a34e0e89cb9ce3",
+          "headers": {}
+        },
+        "bundle": {
+          "status": 200,
+          "bytes": 376,
+          "sha256": "3ee8c1ac6a557b7cd7a826439c08fdf0ecac626b0ef0669915f26b531b460a0f",
+          "headers": {}
+        },
+        "page records": {
+          "status": 200,
+          "bytes": 156,
+          "sha256": "7e35d0e70791b5df129ec973bf5d80d05cb0b052f508dad5f14cb71637be98dc",
+          "headers": {}
+        }
+      }
+    },
+    "confined": {
+      "spawn_to_listed_ms": 595.2,
+      "plugins listed": 3,
+      "errors": [],
+      "plugin manifests": 3,
+      "plugin entry scripts": 3,
+      "declared hook counts": [2, 4, 6],
+      "info": 200,
+      "viz-model": {
+        "status": 200,
+        "bytes": 6513,
+        "sha256": "2d842cf0065bd259969b59eede205614baaed00026fa637b9d92fe12daf5baec",
+        "handler_ms": 1361.1
+      },
+      "resident MB": 119.2,
+      "exit": 0,
+      "charts": {
+        "pool.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 2,
+          "sha256": "b3b980b3c9eb1c05e188549fcf7775ee3a396ecd00734f4768c86211c13526f1"
+        },
+        "agent.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 1,
+          "sha256": "689f0ee655f18895816ef0c491ddcd40814d1dd1b8d336a09e66f6172526589c"
+        }
+      },
+      "chart host calls": ["host.detect_builtin", "host.agent_charts"],
+      "extra fixture hooks": {
+        "catalog": {
+          "status": 200,
+          "bytes": 161,
+          "sha256": "df1e997d90e916f1021586bd15ee9fc4c2d4841b347cfde7809219d4ee1a7ea9",
+          "headers": {}
+        },
+        "room": {
+          "status": 200,
+          "bytes": 241,
+          "sha256": "e2f27d599d82c049a129e627bc64323690b51c6e1c9709a86aca3600855f8023",
+          "headers": {}
+        },
+        "raw HTML": {
+          "status": 200,
+          "bytes": 70,
+          "sha256": "215014621e9d9063a5d384c5de319dc863a82e543b3fc6bfb8713251c8e8dd44",
+          "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:;",
+            "x-content-type-options": "nosniff"
+          }
+        },
+        "provenance": {
+          "status": 200,
+          "bytes": 144,
+          "sha256": "11873cf566c0a9158b4803e8e1ee71e51f168565df1a8b7c89a34e0e89cb9ce3",
+          "headers": {}
+        },
+        "bundle": {
+          "status": 200,
+          "bytes": 376,
+          "sha256": "3ee8c1ac6a557b7cd7a826439c08fdf0ecac626b0ef0669915f26b531b460a0f",
+          "headers": {}
+        },
+        "page records": {
+          "status": 200,
+          "bytes": 156,
+          "sha256": "7e35d0e70791b5df129ec973bf5d80d05cb0b052f508dad5f14cb71637be98dc",
+          "headers": {}
+        }
+      }
+    },
+    "confined: the kernel's refusals": [
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/passwd",
+      "file-read-data /private/etc/ssl/openssl.cnf",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data /usr/share/locale/UTF-8/LC_CTYPE",
+      "mach-lookup com.apple.system.notification_center",
+      "mach-lookup com.apple.system.opendirectoryd.libinfo"
+    ]
+  },
+  "startup probe": {
+    "platform": "darwin",
+    "kernel": "25.5.0",
+    "python": "3.14.7",
+    "load_average": 71.2,
+    "pth": {
+      "bare interpreter ran the control command": true,
+      "a .pth line ran in a bare interpreter started with -I": true,
+      "confined interpreter ran the control command": true,
+      "the same line wrote its file behind the confinement prefix": false,
+      "confined interpreter reported a permission error": true
+    }
+  }
+}

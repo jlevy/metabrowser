@@ -1,0 +1,21 @@
+Exp-105 — selected PR metadata during checkout acquisition
+Registered 2026-11-26 before reading measurements.
+
+H126: a selected, missing Conversation on a checkout whose Git store is not
+attached can read and publish the existing provider record while the store turn
+is held. The metadata path must be incapable of fetching into the Git store.
+
+Use the real checkout API, deterministic fake gh responses, and an explicitly
+held StoreTurn representing startup acquisition. The same selected PR must
+produce its verified core before release and eventually its complete record.
+Guard the core by the actual response viewer, assert the exact selected body and
+one core query, and request Changes while the turn is still held. Comparison
+preparation must wait and then use the same record after release. Keep account
+mismatch and provider failure checks on the normal paths; do not widen provider
+concurrency or add requests.
+
+Use the ordering assertion on the control and candidate. This is a causal
+diagnostic, independent of the host clock except for bounded waits. Record
+passing or failing predicates and which path the control took. The normal
+acceptance campaign will separately compare input-to-useful-Conversation in
+Chrome on pinned sources, then verify Changes, startup, and provider counts.

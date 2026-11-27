@@ -33,6 +33,10 @@ restores them so `make golden-update` is a single reviewable step:
 * `[COUNT]` for the engine sequence in the pending-tally diagnostic, which counts
   internal change batches
 
+Given files or glob patterns, it restores them in those alone, as
+`make golden-update ONLY=...` passes the transcripts it rewrote; given none, in every
+transcript under `tests/golden`.
+
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
 trims line ends on both sides of a comparison, so stripping is match-safe.
@@ -42,9 +46,11 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from devtools.run_goldens import matched
 from tests import cache_home_fixture, github_pull_fixture, source_mirror_fixture
 
 GOLDEN_DIR = Path(__file__).parent.parent / "tests" / "golden"
@@ -242,9 +248,19 @@ def fix_text(text: str, *, now: datetime | None = None) -> str:
     return frontmatter + separator + body
 
 
-def main(golden_dir: Path = GOLDEN_DIR) -> int:
+def main(golden_dir: Path = GOLDEN_DIR, patterns: Sequence[str] = ()) -> int:
+    """Restore the patterns in each transcript of *golden_dir*, or in each file *patterns*
+    match, which fails when they match none."""
+
+    if patterns:
+        paths = [Path(name) for name in matched(patterns)]
+        if not paths:
+            print(f"golden_fixup: no file matches {' '.join(patterns)}", file=sys.stderr)
+            return 1
+    else:
+        paths = sorted(golden_dir.glob("*.tryscript.md"))
     status = 0
-    for path in sorted(golden_dir.glob("*.tryscript.md")):
+    for path in paths:
         text = path.read_text(encoding="utf-8")
         try:
             fixed = fix_text(text)
@@ -259,4 +275,4 @@ def main(golden_dir: Path = GOLDEN_DIR) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(patterns=sys.argv[1:]))

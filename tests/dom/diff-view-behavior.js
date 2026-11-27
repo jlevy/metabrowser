@@ -893,10 +893,147 @@ async function headLinkChecks(mountDiffView, byName) {
             (node.tagName === "IMG" && node.getAttribute("src") !== null),
           'a[href^="/view/"]': (node) =>
             node.tagName === "A" && (node.getAttribute("href") ?? "").startsWith("/view/"),
+          // The repository's resolver, and the diff's marking of outside links.
+          "a[href]": (node) => node.tagName === "A" && node.getAttribute("href") !== null,
+          'a[target="_blank"]': (node) =>
+            node.tagName === "A" && node.getAttribute("target") === "_blank",
         }[selector] ?? ((node) => node.tagName === selector.toUpperCase());
       return [...this.walk()].filter((node) => node !== this && wanted(node));
     }
   }
+  // A rendered file's links into the served repository open its pages in place, as every
+  // text's do: the view hands static/repository-links.js, run whole, the SDK's navigation, so
+  // a plain click on a commit's page, the list, or another pull request's opens it through
+  // `navigation.openRoute`, and a modified or middle click is the browser's.
+  async function routeLinkChecks() {
+    const sandbox = { Object, URL, TextEncoder, TextDecoder, btoa, atob, console };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    for (const name of ["git-path.js", "repository-links.js"]) {
+      const file = path.join(repoRoot, "src/metabrowser/static", name);
+      vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
+    }
+    const commit = "c".repeat(40);
+    const targets = [
+      [`https://github.com/octo/demo/commit/${commit}`, "a commit"],
+      ["https://github.com/octo/demo/pulls", "the pull requests"],
+      ["https://github.com/octo/demo/pull/8", "another pull request"],
+    ];
+    // One block that links them, with its parse, as the recording holds each block's.
+    const html = `<p>${targets.map(([href, text]) => `<a href="${href}">${text}</a>`).join(", ")}</p>`;
+    recording.trees[html] = [
+      {
+        tag: "p",
+        attrs: [],
+        children: targets.flatMap(([href, text], index) => [
+          ...(index > 0 ? [", "] : []),
+          { tag: "a", attrs: [["href", href]], children: [text] },
+        ]),
+      },
+    ];
+    const answer = structuredClone(recording.answers.f1["view=concise"]);
+    const added = answer.blocks.findIndex((block) => block.kind === "added");
+    answer.blocks[added] = { ...answer.blocks[added], html };
+    const routed = [];
+    const host = new MarkupElement("div");
+    const handle = mountDiffView(
+      host,
+      byName.get("added-text-file"),
+      {
+        filterControls: { groupHtml: () => "", bind: () => () => {} },
+        ensureAsset: async () => {},
+        // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
+        loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
+        repository: {
+          host: "github.com",
+          owner: "octo",
+          name: "demo",
+          branch: null,
+          revision: "b".repeat(40),
+          served_prefix: "",
+        },
+        sourceKind: () => "git_revision",
+        navigation: {
+          href: (target) => `/view/${target.path}`,
+          open: async () => {},
+          openRoute: (href) => routed.push(href) > 0,
+        },
+        decorateExternalLink: (link) => link,
+      },
+      {
+        markdownViews,
+        renderMarkdown: async () => answer,
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const drawn = host
+      .querySelectorAll("a")
+      .filter((link) => link.closest(".diff-markdown") !== null);
+    const clicked = (link, overrides = {}) => {
+      const event = {
+        altKey: false,
+        button: 0,
+        ctrlKey: false,
+        defaultPrevented: false,
+        metaKey: false,
+        shiftKey: false,
+        ...overrides,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+      };
+      for (const listener of link.listeners.get("click") ?? []) {
+        listener(event);
+      }
+      return event.defaultPrevented;
+    };
+    const textOf = (node) =>
+      node.tagName === "#TEXT" ? node.textContent : node.children.map(textOf).join("");
+    const opened = targets.map(([, text]) => {
+      const link = drawn.find((anchor) => textOf(anchor) === text);
+      if (link === undefined) {
+        throw new Error(`no drawn link says ${text}: ${drawn.map(textOf).join(", ")}`);
+      }
+      const plain = clicked(link);
+      const asked = routed.splice(0);
+      const modified = clicked(link, { metaKey: true }) || clicked(link, { button: 1 });
+      return {
+        text,
+        href: link.getAttribute("href"),
+        plain,
+        asked,
+        modified,
+        leaves: link.getAttribute("target") !== null,
+      };
+    });
+    check(
+      "a rendered file's link to a commit's page, the list, or another pull request opens it in place",
+      JSON.stringify(opened) ===
+        JSON.stringify(
+          [`/commit/${commit}`, "/pulls", "/pull/8"].map((href, index) => ({
+            text: targets[index][1],
+            href,
+            plain: true,
+            asked: [href],
+            modified: false,
+            leaves: false,
+          })),
+        ) && routed.length === 0,
+      JSON.stringify({ opened, routed }),
+    );
+    handle.dispose();
+  }
+
   // A rendered file's Source is drawn only while it shows and once it is reached: on a pull
   // request's Docs, a 17,177-line document's Source, drawn at load behind its rendered view,
   // was 72,000 nodes and 4 s of main-thread work (mb-qzgs). Here a 2,000-line Markdown file
@@ -1229,6 +1366,294 @@ async function headLinkChecks(mountDiffView, byName) {
     handle.dispose();
     check("disposal lets the page's pin-change news go", pinChanged === null);
 
+    // The diff reads a rendered file's github.com links with the production resolver
+    // (static/repository-links.js), as the page loads it, under the host's rule for when a
+    // `/view/` target opens (`headLinksOpen`): while the page shows the head, a link to a
+    // file or folder on the served branch opens there in place, and once the pin changes,
+    // each is the link the text wrote, leaving the page. The plugin's rule itself, and what
+    // each page draws, is the Markdown session's (tests/dom/diff-markdown-session.js).
+    const resolverRealm = { Object, URL, TextEncoder, TextDecoder, btoa, atob, console };
+    resolverRealm.window = resolverRealm;
+    vm.createContext(resolverRealm);
+    for (const name of ["git-path.js", "repository-links.js"]) {
+      const file = path.join(repoRoot, "src/metabrowser/static", name);
+      vm.runInContext(fs.readFileSync(file, "utf8"), resolverRealm, { filename: file });
+    }
+    const branchAnswer = recording.answers.f12["view=concise"];
+    const written = [
+      ...branchAnswer.blocks
+        .map((block) => block.html)
+        .join("")
+        .matchAll(/href="([^"]+)"/g),
+    ].map((match) => match[1]);
+    let branchOpen = true;
+    let branchPinChanged = null;
+    const navigated = [];
+    const decorated = new Set();
+    const branchContainer = new MarkupElement("div");
+    const branchHandle = mountDiffView(
+      branchContainer,
+      byName.get("added-text-file"),
+      {
+        filterControls: { groupHtml: () => "", bind: () => () => {} },
+        ensureAsset: async () => {},
+        loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
+        repository: {
+          branch: "feature",
+          host: "github.com",
+          name: "demo",
+          owner: "octo",
+          revision: "b".repeat(40),
+          served_prefix: "",
+        },
+        sourceKind: () => "git_revision",
+        navigation: {
+          href: (target) => `/view/${target.path}`,
+          open: async (target) => {
+            navigated.push(`/view/${target.path}`);
+          },
+        },
+        decorateExternalLink: (link) => decorated.add(link),
+      },
+      {
+        onPinChanged(listener) {
+          branchPinChanged = listener;
+          return () => {
+            branchPinChanged = null;
+          };
+        },
+        markdownViews,
+        renderMarkdown: async () => structuredClone(branchAnswer),
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => branchOpen),
+        headLinksOpen: () => branchOpen,
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const branchLinks = () =>
+      branchContainer
+        .querySelectorAll("a")
+        .filter((link) => link.closest(".diff-markdown") !== null);
+    /**
+     * A primary click on *link*, as the browser sends it, plain unless *overrides* say
+     * otherwise: whether the page kept it.
+     */
+    const clickOn = (link, overrides = {}) => {
+      const event = {
+        button: 0,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        defaultPrevented: false,
+        ...overrides,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+      };
+      for (const handler of link.listeners.get("click") ?? []) {
+        handler(event);
+      }
+      return event.defaultPrevented;
+    };
+    const atHead = branchLinks().map((link) => ({
+      href: link.getAttribute("href"),
+      target: link.getAttribute("target"),
+      kept: clickOn(link),
+    }));
+    check(
+      "at the head, a rendered file's links to the served branch open in place what they hold",
+      atHead.length === written.length &&
+        atHead.every(
+          (link) => link.href.startsWith("/view/") && link.target === null && link.kept,
+        ) &&
+        JSON.stringify(navigated) === JSON.stringify(atHead.map((link) => link.href)) &&
+        decorated.size === 0,
+      JSON.stringify({ atHead, navigated }),
+    );
+    branchOpen = false;
+    branchPinChanged?.();
+    navigated.length = 0;
+    const closed = branchLinks().map((link) => ({
+      href: link.getAttribute("href"),
+      target: link.getAttribute("target"),
+      kept: clickOn(link),
+      marked: decorated.has(link),
+    }));
+    check(
+      "once the pin changes, each is the link the text wrote, leaving the page, and marked so",
+      JSON.stringify(closed.map((link) => link.href)) === JSON.stringify(written) &&
+        closed.every((link) => link.target === "_blank" && !link.kept && link.marked) &&
+        navigated.length === 0,
+      JSON.stringify({ closed, navigated }),
+    );
+    branchHandle.dispose();
+
+    // A link to a file of the head the server spelled, as it spells `[setup](setup.md)`,
+    // opens in place too while the page shows the head, as the resolver's own `/view/`
+    // targets beside it do: a plain click opens the file through `navigation.open`, at the
+    // target the shell itself reads the link's address as (static/navigation.js, `parse`),
+    // so the address and the click open the same. A modified or middle click, and one the
+    // page already kept, are the browser's, and so is every click once the pin changes and
+    // the link opens the file at the head on github.com. Each link has one listener.
+    const navigationFile = path.join(repoRoot, "src/metabrowser/static/navigation.js");
+    vm.runInContext(fs.readFileSync(navigationFile, "utf8"), resolverRealm, {
+      filename: navigationFile,
+    });
+    const shellRoute = resolverRealm.MetabrowserNavigationRoute;
+    const spelled = [
+      ["/view/g1-ZG9jcw/g1-c2V0dXAubWQ", "the setup notes"],
+      ["/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-%C3%A9t%C3%A9", "its summer part"],
+    ];
+    const spelledHtml = `<p>${spelled.map(([href, text]) => `<a href="${href}">${text}</a>`).join(" and ")}</p>`;
+    recording.trees[spelledHtml] = [
+      {
+        tag: "p",
+        attrs: [],
+        children: spelled.flatMap(([href, text], index) => [
+          ...(index > 0 ? [" and "] : []),
+          { tag: "a", attrs: [["href", href]], children: [text] },
+        ]),
+      },
+    ];
+    const spelledAnswer = structuredClone(recording.answers.f1["view=concise"]);
+    const spelledAt = spelledAnswer.blocks.findIndex((block) => block.kind === "added");
+    spelledAnswer.blocks[spelledAt] = { ...spelledAnswer.blocks[spelledAt], html: spelledHtml };
+    const headRepository = {
+      branch: "feature",
+      host: "github.com",
+      name: "demo",
+      owner: "octo",
+      revision: "b".repeat(40),
+      served_prefix: "",
+    };
+    let spelledOpen = true;
+    let spelledPinChanged = null;
+    const spelledOpened = [];
+    const spelledContainer = new MarkupElement("div");
+    const spelledHandle = mountDiffView(
+      spelledContainer,
+      byName.get("added-text-file"),
+      {
+        filterControls: { groupHtml: () => "", bind: () => () => {} },
+        ensureAsset: async () => {},
+        loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
+        repository: headRepository,
+        sourceKind: () => "git_revision",
+        navigation: {
+          href: shellRoute.href,
+          open: async (target) => {
+            spelledOpened.push(target);
+          },
+          openRoute: () => false,
+        },
+        decorateExternalLink: (link) => link,
+      },
+      {
+        onPinChanged(listener) {
+          spelledPinChanged = listener;
+          return () => {
+            spelledPinChanged = null;
+          };
+        },
+        markdownViews,
+        renderMarkdown: async () => structuredClone(spelledAnswer),
+        markdownTargets: markdownViews.markdownTargets(
+          recording.image_route,
+          () => spelledOpen,
+          (href, links) =>
+            links?.viewFileUrl(headRepository, headRepository.revision, href) ?? null,
+        ),
+        headLinksOpen: () => spelledOpen,
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const spelledLinks = () =>
+      spelledContainer
+        .querySelectorAll("a")
+        .filter((link) => link.closest(".diff-markdown") !== null);
+    // A later read of the same body, as the diff's own read after a pin change is, gives
+    // no link a second listener.
+    markdownViews.openHeadLinks(spelledContainer, {
+      navigation: { open: async () => {} },
+      linksOpen: () => true,
+      isPlainClick: () => true,
+    });
+    const others = [
+      { metaKey: true },
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+      { defaultPrevented: true },
+    ];
+    const spelledAtHead = spelledLinks().map((link) => {
+      const href = link.getAttribute("href") ?? "";
+      const [pathname, fragment] = href.split("#", 2);
+      const read = shellRoute.parse(pathname, "", fragment === undefined ? "" : `#${fragment}`);
+      const plain = clickOn(link);
+      const opened = spelledOpened.splice(0);
+      // Each other click the page kept, or that opened anything.
+      const taken = others.filter((overrides) => {
+        const kept = clickOn(link, overrides) && overrides.defaultPrevented !== true;
+        return spelledOpened.splice(0).length > 0 || kept;
+      });
+      return {
+        href,
+        listeners: (link.listeners.get("click") ?? []).length,
+        plain,
+        opens: JSON.stringify(opened) === JSON.stringify([read]) && shellRoute.href(read) === href,
+        opened,
+        taken,
+      };
+    });
+    check(
+      "at the head, a plain click on a link to a file of the head opens it in place, and no other click does",
+      JSON.stringify(spelledAtHead.map((link) => link.href)) ===
+        JSON.stringify(spelled.map(([href]) => href)) &&
+        spelledAtHead.every(
+          (link) => link.listeners === 1 && link.plain && link.opens && link.taken.length === 0,
+        ),
+      JSON.stringify(spelledAtHead),
+    );
+    spelledOpen = false;
+    spelledPinChanged?.();
+    const spelledClosed = spelledLinks().map((link) => ({
+      href: link.getAttribute("href"),
+      listeners: (link.listeners.get("click") ?? []).length,
+      kept: clickOn(link),
+    }));
+    check(
+      "once the pin changes, a click on a link to a file of the head is the browser's",
+      spelledClosed.length === spelled.length &&
+        spelledClosed.every(
+          (link) =>
+            link.href.startsWith("https://github.com/octo/demo/blob/") &&
+            link.listeners === 1 &&
+            !link.kept,
+        ) &&
+        spelledOpened.length === 0,
+      JSON.stringify({ spelledClosed, spelledOpened }),
+    );
+    spelledHandle.dispose();
+
     // A Markdown file whose changes did not load has the chooser too: Source is chosen,
     // Full and Concise are unavailable for the reason the file's body gives, and no
     // projection is asked for it (mb-rm40).
@@ -1291,6 +1716,7 @@ async function headLinkChecks(mountDiffView, byName) {
     unreadHandle.dispose();
 
     await heldSourceChecks();
+    await routeLinkChecks();
   } finally {
     global.document = saved.document;
     global.window = saved.window;

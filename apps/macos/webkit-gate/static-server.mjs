@@ -30,6 +30,7 @@ export const BENCHMARK_ASSETS = Object.freeze([
   "src/metabrowser/builtin_plugins/diff/diff-view.js",
   "src/metabrowser/builtin_plugins/diff/styles.css",
   "src/metabrowser/data/file-diff-format/file-diff-conformance.json",
+  "src/metabrowser/static/formatters.js",
   "src/metabrowser/static/styles.css",
 ]);
 

@@ -1,0 +1,35 @@
+Exp-103 — post-load survey diagnostics, recorded 2026-11-26
+
+This is a retrospective protocol for the wiring and attribution pilots. No paired
+acceptance criteria were registered. Treat these measurements as diagnostic.
+
+Serve the standalone Metabrowser corpus at commit 7a02fed4b131dc0ddc076cc34325cc5209d6767b.
+The base product source is b38b2ca33c7a9220f6cac2c705e8dbce9933065f. The final Files
+smoke uses e928b6e84073f4dc7ce3b32213e2eff5d24fd0be, including the image decode change.
+The browser instrument uses transition-navigation/v1 revision 6 and headless Chrome
+152. The Mac was above the paced series load threshold. Compare samples only within
+their named phase, scenario and condition.
+
+HTTP pilots: use devtools.bench_navigation with a single candidate and three rounds.
+Check Git history, commit detail and comparison for 5136540f2ea228029b3454b7ba522718094a6eec
+and file content for docs/design-system.md. Either start without API preparation or
+prepare history and comparison after inventory readiness. Use an isolated seed from
+the Pulls browser pilot for the record and description of jlevy/metabrowser#888.
+Golden projections and equivalent response hashes are required.
+
+Browser pilots: record the original mixed-journey smoke without its rehearsal pass,
+a fresh-state Pulls journey with closed subjects 888,882,887,880, and the final Files
+journey with fresh state. Keep convergence refusals. The broad original smoke and the
+Pulls pilot were refused. Correlate measured input epochs with the isolated local
+event log and count completed provider spans whose intervals overlap the click.
+
+Provider pilot: run github-fetch-probe.mjs for its three matched REST pairs,
+validator reads and minimal GraphQL projections. Preserve status and returned
+body sizes. The two REST modes share payloads. GraphQL has its own payload.
+
+Rendering pilot: run render-fixtures.mjs against a loopback static server for one
+fresh Chrome profile per fixture. Use the fixture-reported times after setup.
+
+The retained JSONL contains selected measurements without paths, request bodies,
+auth identities, tokens, or mutable logs. The artifact's observations point to
+these phases, and the survey describes the limits of each comparison.

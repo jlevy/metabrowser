@@ -12,7 +12,8 @@
     {"id": "f8", "availability": "ready", "old": {"entry_type": "file", "path": "docs/huge.md"}, "new": {"entry_type": "file", "path": "docs/huge.md"}},
     {"id": "f9", "availability": "too_large", "old": {"entry_type": "file", "path": "docs/unread.md"}, "new": {"entry_type": "file", "path": "docs/unread.md"}},
     {"id": "f10", "availability": "ready", "old": {"entry_type": "file", "path": "docs/long.md"}, "new": {"entry_type": "file", "path": "docs/long.md"}},
-    {"id": "f11", "availability": "ready", "old": null, "new": {"entry_type": "file", "path": "docs/book.md"}}
+    {"id": "f11", "availability": "ready", "old": null, "new": {"entry_type": "file", "path": "docs/book.md"}},
+    {"id": "f12", "availability": "ready", "old": null, "new": {"entry_type": "file", "path": "docs/links.md"}}
   ],
   "answers": {
     "f4": {
@@ -718,6 +719,20 @@
         "source_only": false,
         "view": "concise",
         "count": 623,
+        "folds": []
+      }
+    },
+    "f12": {
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "added", "side": "new", "html": "<h1 id=\"user-content-eaea5626d13a00d99ed68705-new-links\">Links</h1>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>", "source_only": false}
+        ],
+        "source_only": false,
+        "view": "concise",
+        "count": 2,
         "folds": []
       }
     },
@@ -1639,6 +1654,8 @@
     "<p>Page 618.</p>": [{"tag": "p", "attrs": [], "children": ["Page 618."]}],
     "<p>Page 619.</p>": [{"tag": "p", "attrs": [], "children": ["Page 619."]}],
     "<h2 id=\"user-content-551f72faeefec8bfd215686a-new-the-last-part\">The last part</h2>": [{"tag": "h2", "attrs": [["id", "user-content-551f72faeefec8bfd215686a-new-the-last-part"]], "children": ["The last part"]}],
-    "<p>The end.</p>": [{"tag": "p", "attrs": [], "children": ["The end."]}]
+    "<p>The end.</p>": [{"tag": "p", "attrs": [], "children": ["The end."]}],
+    "<h1 id=\"user-content-eaea5626d13a00d99ed68705-new-links\">Links</h1>": [{"tag": "h1", "attrs": [["id", "user-content-eaea5626d13a00d99ed68705-new-links"]], "children": ["Links"]}],
+    "<p>See <a href=\"https://github.com/octo/demo/blob/feature/docs/setup.md\" target=\"_blank\" rel=\"noopener noreferrer\">the setup notes</a> in <a href=\"https://github.com/octo/demo/tree/feature/docs\" target=\"_blank\" rel=\"noopener noreferrer\">the docs folder</a>.</p>": [{"tag": "p", "attrs": [], "children": ["See ", {"tag": "a", "attrs": [["href", "https://github.com/octo/demo/blob/feature/docs/setup.md"], ["target", "_blank"], ["rel", "noopener noreferrer"]], "children": ["the setup notes"]}, " in ", {"tag": "a", "attrs": [["href", "https://github.com/octo/demo/tree/feature/docs"], ["target", "_blank"], ["rel", "noopener noreferrer"]], "children": ["the docs folder"]}, "."]}]
   }
 }

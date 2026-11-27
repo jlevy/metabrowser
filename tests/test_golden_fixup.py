@@ -250,6 +250,24 @@ def test_main_rewrites_only_transcripts_that_change(
     assert (tmp_path / "notes.txt").read_text("utf-8") == "metab 0.12.0\n"
 
 
+def test_main_given_files_restores_those_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`make golden-update ONLY=...` names the transcripts it rewrote, by path or pattern."""
+
+    for name in ("named", "matched-1", "other"):
+        (tmp_path / f"{name}.tryscript.md").write_text(FRONTMATTER + "metab 0.12.0\n", "utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert golden_fixup.main(patterns=["named.tryscript.md", "matched-*.tryscript.md"]) == 0
+    assert capsys.readouterr().out == (
+        "patterns restored: matched-1.tryscript.md\npatterns restored: named.tryscript.md\n"
+    )
+    assert (tmp_path / "other.tryscript.md").read_text("utf-8") == FRONTMATTER + "metab 0.12.0\n"
+    # A name that matches no file fails: a misspelled transcript is not left unfixed quietly.
+    assert golden_fixup.main(patterns=["absent.tryscript.md"]) == 1
+    assert "no file matches absent.tryscript.md" in capsys.readouterr().err
+
+
 def test_main_fails_on_an_unexpected_time_and_leaves_the_transcript(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

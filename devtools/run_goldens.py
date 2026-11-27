@@ -7,7 +7,7 @@ goldens kept one of a CI runner's four processors busy for 3.3 to 4.3 minutes
 ``tryscript run <file>`` for each file the patterns match, from a queue of ``--jobs``
 workers:
 
-    python -m devtools.run_goldens --jobs 4 'tests/golden/*.tryscript.md' -- <tryscript>
+    python -m devtools.run_goldens --jobs 4 'tests/golden/*.tryscript.md' -- <tryscript> run
 
 ``--shard I/N`` runs the Ith of N disjoint parts of the matched files, so CI can split the
 goldens across runners as it does the pytest tiers (``make test-goldens SHARD=1/2``).
@@ -17,8 +17,13 @@ same parts, and every file is in exactly one. Until run 45062416967 a file's siz
 in for its time, which had tracked it over the 119 files of run 44788663205 and no longer
 did: one part of two held 568 s of the 844 s of golden time.
 
-Everything after ``--`` is the tryscript command. The ``Makefile``'s ``TRYSCRIPT`` holds
-it with its environment, so ``make golden-update`` and this run the same command.
+Everything after ``--`` is the command, and each file's path is added to its end: the
+``Makefile``'s ``TRYSCRIPT``, ``devtools/tryscript.sh``, which holds the goldens'
+environment, then ``run`` to check them or ``run --update`` to rewrite them, as
+``make golden-update`` does. A file tryscript rewrote reports ``FAIL``, as tryscript
+itself does.
+Every pattern must match a file before sharding. ``--check-patterns PATTERN...`` applies
+the same check before ``golden-update`` runs a recorder or rewrites a transcript.
 
 Each file's output is printed whole when the file finishes, then one line that
 ``devtools/suite_report.py`` reads:
@@ -79,11 +84,27 @@ class Result:
         return f"{PREFIX} {shown} {self.seconds:.1f} s {self.path}"
 
 
-def matched(patterns: Sequence[str]) -> list[str]:
-    """The files the patterns match, relative to the working directory, each once."""
+def matched(patterns: Sequence[str], *, require_each: bool = False) -> list[str]:
+    """The files the patterns match, each once. With *require_each*, reject unmatched patterns."""
 
-    found = {name for pattern in patterns for name in glob.glob(pattern)}
-    return sorted(name for name in found if Path(name).is_file())
+    found: set[str] = set()
+    unmatched: list[str] = []
+    for pattern in patterns:
+        files = {name for name in glob.glob(pattern) if name in found or Path(name).is_file()}
+        found.update(files)
+        if not files:
+            unmatched.append(pattern)
+    if require_each and unmatched:
+        raise ValueError(f"no file matches {' '.join(unmatched)}")
+    return sorted(found)
+
+
+def _checked_paths(patterns: Sequence[str]) -> list[str] | None:
+    try:
+        return matched(patterns, require_each=True)
+    except ValueError as exc:
+        print(f"{PREFIX} {exc}", file=sys.stderr)
+        return None
 
 
 def parse_shard(value: str) -> tuple[int, int]:
@@ -135,7 +156,7 @@ def run_one(command: Sequence[str], path: str) -> Result:
     started = time.monotonic()
     try:
         completed = subprocess.run(
-            [*command, "run", path],
+            [*command, path],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -169,9 +190,11 @@ def _jobs(value: str) -> int:
 
 def main(arguments: Sequence[str] | None = None) -> int:
     given = list(sys.argv[1:] if arguments is None else arguments)
+    if given[:1] == ["--check-patterns"]:
+        return 1 if _checked_paths(given[1:]) is None else 0
     if "--" not in given or given.index("--") == len(given) - 1:
         print(
-            "usage: python -m devtools.run_goldens [--jobs N] PATTERN... -- TRYSCRIPT...",
+            "usage: python -m devtools.run_goldens [--jobs N] PATTERN... -- COMMAND...",
             file=sys.stderr,
         )
         return 2
@@ -184,9 +207,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("patterns", nargs="+", help="golden files or glob patterns")
     args = parser.parse_args(given[:split])
     command = given[split + 1 :]
-    paths = matched(args.patterns)
-    if not paths:
-        print(f"{PREFIX} no file matches {' '.join(args.patterns)}", file=sys.stderr)
+    paths = _checked_paths(args.patterns)
+    if paths is None:
         return 1
     if args.shard is not None:
         paths = dealt(paths, *args.shard)

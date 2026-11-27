@@ -49,6 +49,7 @@ from metabrowser.frontmatter_yaml import (
 )
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import fast_import_store, pinned_client
+from tests.process_group import group_is_live
 from tests.required_tools import needs_git
 from tests.test_markdown_diff_projection import (
     _patch,  # pyright: ignore[reportPrivateUsage]
@@ -85,6 +86,9 @@ def _child(worker: ProjectionWorker) -> asyncio.subprocess.Process | None:
 
 
 def _alive(pid: int) -> bool:
+    """Whether *pid* is still a process, a zombie included: once the loop that started the
+    child has closed, ``not _alive`` says that loop both stopped and reaped it."""
+
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -520,6 +524,7 @@ def test_closing_on_a_later_loop_does_not_wait_for_an_earlier_loops_child(stoppe
 
     async def first() -> int:
         child = await _ready(worker)
+        assert os.getpgid(child.pid) == child.pid, "the child leads its own group"
         if stopped:
             worker._kill(child)  # pyright: ignore[reportPrivateUsage]
             worker.stop()
@@ -530,11 +535,14 @@ def test_closing_on_a_later_loop_does_not_wait_for_an_earlier_loops_child(stoppe
 
     pid = asyncio.run(first())
     asyncio.run(second())
-    for _ in range(100):
-        if not _alive(pid):
-            break
+    # Only the loop that started the child waits for it, and that loop has closed: under a
+    # pidfd child watcher (Linux, Python 3.12 and later) the killed child stays a zombie
+    # until CPython collects its Popen. `os.kill(pid, 0)` answers for a zombie as for a
+    # live process, so the look is for a member of its group still running.
+    deadline = time.monotonic() + 10
+    while group_is_live(pid, deadline) and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert not _alive(pid), "the earlier loop's child was stopped all the same"
+    assert not group_is_live(pid, deadline), "the earlier loop's child was stopped all the same"
 
 
 def test_an_exchange_past_the_idle_limit_does_not_run_the_idle_stop_every_turn(

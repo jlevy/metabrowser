@@ -1,0 +1,25 @@
+Exp-104 — prepare the first Commits history page
+Registered 2026-11-26 before reading measurements.
+
+H125: a fresh server can shift one default-sized Git history page into background
+startup preparation. The first ordinary GET /api/git/log?limit=250 should then reuse
+the prepared session. A concurrent reader should join the existing walk.
+
+Use the public Metabrowser fixture pinned to 7a02fed4b131, with isolated server
+state, fixed provider settings and the checkout origin store disabled in both
+conditions. Compare the immediate parent to one product change as an interleaved
+ABBA HTTP diagnostic. No explicit prepare requests in either condition. Use the
+same interpreter and dependency versions. The default history and a Files route
+must return the same checked content and ETag behavior in both conditions.
+
+Keep process launch to HTTP and inventory readiness, the startup history span,
+and first and repeated HTTP observations separate. Compare first history
+end-to-end and its server timing. Treat Files response, startup readiness and
+one shared Git history walk as guards. Report whether startup preparation finished
+before the first read where the timestamps permit that classification.
+
+This diagnostic does not judge user-visible first paint. For a verdict, run a
+quiet series under the existing campaign guards with at least three matched
+fresh starts per condition. Set the no-hover first useful Commits click as the
+deciding browser metric, with startup, first Files paint, and exact contents as
+guards. Record refused samples and never relax the host guard for a verdict.

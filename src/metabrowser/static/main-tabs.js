@@ -400,10 +400,99 @@
       if (panelId === "git") {
         navPanelScroll.delete("git");
       }
-      deps.cancelPreview();
+      land(panelId, href, state, () => markMainTabLanding(panelId, "tab"));
+    }
+
+    /**
+     * Open an address that Pulls or Commits holds, in place, as a link in a text names it
+     * (the SDK's `navigation.openRoute`): a pull request's page, one of its tabs or changed
+     * files, a stack's page, the list, or a commit. It is the reader's open of that address,
+     * so it pushes an entry, its tab comes to the front and its panel reveals the item, as
+     * any open does (`revealPlan`), and the pane shows it as it shows a tab's destination
+     * (`openMainTab`). A pull request's page that holds the pane writes its place into its
+     * own entry first.
+     *
+     * The address shown is opened again where it is, as `navigation.open` and a pull
+     * request's page open theirs: it pushes no entry and lands nothing, so the page keeps
+     * its place, and its panel reveals the item again, as Quick Search for the item shown
+     * does (`revealAtAddress`'s *again*).
+     *
+     * It answers whether it opened the address, and opens nothing for an address it cannot
+     * show in place: a file's, which `navigation.open` opens; one on another origin, or no
+     * tab's; a pull request's that the routes do not read, or before they have loaded; a
+     * commit before the Commits tab is here; and any before the tab that holds it has its
+     * button. The browser then follows the link.
+     *
+     * @param {string} href
+     * @returns {boolean}
+     */
+    function openRoute(href) {
+      const routes = window.MetabrowserNavigationRoute;
+      const pulls = window.MetabrowserPullRoute;
+      let here;
+      let address;
+      try {
+        here = new URL(window.location.href);
+        address = new URL(href, here);
+        if (address.origin !== here.origin) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+      const { pathname, search, hash } = address;
+      const panelId = tabAtAddress(address, {
+        routes,
+        isPullAddress: deps.isPullAddress,
+        gitLanding: false,
+      });
+      // An address in the pull requests' space that names a page or the list, as the pane
+      // shows them (app.js, applyNavigationTarget); a stack's page is in that space too.
+      const pullPage =
+        pulls !== undefined &&
+        (pulls.parsePull(pathname) ?? pulls.parseStack(pathname) ?? pulls.parsePulls(pathname)) !==
+          null;
+      const opens = panelId === "git" ? hasGitPanel() : panelId === "pulls" && pullPage;
+      if (panelId === null || !opens || !tabButton(panelId)) {
+        return false;
+      }
+      gitOpenPending = false;
+      if (`${pathname}${search}${hash}` === `${here.pathname}${here.search}${here.hash}`) {
+        void revealAtAddress("open", { again: true }).catch((error) => {
+          console.error("Could not reveal the opened address", error);
+        });
+        return true;
+      }
+      deps.flushPull();
+      rememberMainTabAddress();
+      land(panelId, `${pathname}${search}${hash}`, null, () => {
+        void revealAtAddress("open").catch((error) => {
+          console.error("Could not reveal the opened address", error);
+        });
+      });
+      return true;
+    }
+
+    /**
+     * Push *href*, an address *panelId* holds, and apply it: *show* brings the panel to the
+     * front, the shell shows what the address names in the pane, and the Commits panel
+     * selects the commit it names. A switch of tab takes the pane from what the tab it
+     * leaves showed, as Back's does (`onHistory`); within one tab, what the address names
+     * claims the pane as it shows, so a pull request's page shown lands on another of its
+     * tabs in place.
+     *
+     * @param {string} panelId
+     * @param {string} href
+     * @param {unknown} state
+     * @param {() => void} show
+     */
+    function land(panelId, href, state, show) {
+      if (panelId !== activeNavPanelId) {
+        deps.cancelPreview();
+      }
       window.history.pushState(state, "", href);
       rememberMainTabAddress();
-      markMainTabLanding(panelId, "tab");
+      show();
       if (panelId !== "pulls") {
         window.MetabrowserPullsNav?.routeChanged();
       }
@@ -580,7 +669,7 @@
     if (initial !== null && !deps.isGitHistoryLanding()) {
       activateNavPanel(initial);
     }
-    return Object.freeze({
+    const controller = Object.freeze({
       active: () => activeNavPanelId,
       activate: activateNavPanel,
       bindShortcuts,
@@ -606,15 +695,39 @@
       },
       onHistory,
       open: openMainTab,
+      openRoute,
       register: registerNavPanel,
       remember: rememberMainTabAddress,
       remove: removeNavPanel,
       reveal: revealAtAddress,
     });
+    shellController = controller;
+    return controller;
+  }
+
+  /**
+   * The controller the shell made, which it makes once, for the SDK's
+   * `navigation.openRoute`, which a startup script defines and which cannot reach the
+   * shell's own copy. Null until the shell tools have loaded.
+   *
+   * @type {MetabrowserMainTabsController | null}
+   */
+  let shellController = null;
+
+  /**
+   * The shell's controller's `openRoute`, or false before the shell has made one, so the
+   * browser follows the link.
+   *
+   * @param {string} href
+   * @returns {boolean}
+   */
+  function openShellRoute(href) {
+    return shellController?.openRoute(href) ?? false;
   }
 
   window.MetabrowserMainTabs = Object.freeze({
     create,
+    openRoute: openShellRoute,
     REVEAL_ROUTES,
     landingRoute: landingRouteFor,
     revealPlan,
