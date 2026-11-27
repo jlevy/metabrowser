@@ -1170,17 +1170,20 @@ async function main() {
           ink.none !== null && ink.none[0] === muted && ink.none[1] === ink.line,
           JSON.stringify({ ink, muted }),
         );
+        const zeroWhole =
+          none.statsWhole && none.stats.right <= none.changeLine.right + TOLERANCE_PX;
+        const zeroFits = none.changeRoom >= none.statsNatural + none.toggleRoom - TOLERANCE_PX;
         check(
-          `${at} zero totals: "0 lines" is whole on the last line, before the chevron`,
-          none.statsWhole &&
+          `${at} zero totals: "0 lines" stays whole when it fits and leaves the chevron visible`,
+          zeroWhole === zeroFits &&
             within(none.line, none.tail) &&
-            none.stats.right <= none.chevron.left + TOLERANCE_PX &&
-            none.chevron.right <= none.tail.right + TOLERANCE_PX,
+            within(none.chevron, none.tail) &&
+            none.chevron.right <= none.age.left + TOLERANCE_PX,
           JSON.stringify({ stats: none.stats, chevron: none.chevron, tail: none.tail }),
         );
         const shape = rowShape(none);
         check(
-          `${at} zero totals: #106's row is its run, ending with the author, and its last line, the toggle and the age`,
+          `${at} zero totals: #106 keeps its title and summary on separate lines`,
           shape.ok,
           JSON.stringify(shape.parts ?? shape.why),
         );
