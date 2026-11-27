@@ -590,6 +590,11 @@
        * @param {number} number
        */
       pageFor: (number) => (shown()?.number === number ? shownPage() : null),
+      /** @param {number} number */
+      stackFor(number) {
+        const current = shown();
+        return current !== null && current.number === stackKey(number) ? current.handle : null;
+      },
       show,
       showList,
       showStack,
@@ -604,7 +609,7 @@
    * The host the shell made, which it makes once, for what sits beside the pane and cannot
    * reach the shell's own copy: the Pulls tab. Null until a pull-request route has opened.
    *
-   * @type {{pageFor: (number: number) => unknown} | null}
+   * @type {{pageFor: (number: number) => unknown, stackFor: (number: number) => unknown} | null}
    */
   let attached = null;
   /** @type {Set<() => void>} */
@@ -734,7 +739,7 @@
   }
 
   window.MetabrowserPullRoute = Object.freeze({
-    /** @returns {{pageFor: (number: number) => unknown} | null} */
+    /** @returns {{pageFor: (number: number) => unknown, stackFor: (number: number) => unknown} | null} */
     attachedHost: () => attached,
     /** A page became available, started replacement, or was disposed. @param {() => void} listener */
     onPageChange(listener) {

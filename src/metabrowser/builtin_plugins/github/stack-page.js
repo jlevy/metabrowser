@@ -904,7 +904,8 @@ export function createStackController(deps, options) {
   let disposed = false;
   // One read at a time: a read asked for while one is on its way is made after it, since
   // the one on its way may have left before what the new one is for.
-  let polling = false;
+  /** @type {Promise<void> | null} */
+  let activeRead = null;
   let readAgain = false;
   // How many reads have been sent, which an ask's answer records so that only a read sent
   // after it counts as seeing its fetch end.
@@ -979,11 +980,6 @@ export function createStackController(deps, options) {
     if (disposed) {
       return;
     }
-    if (polling) {
-      readAgain = true;
-      return;
-    }
-    polling = true;
     reads += 1;
     const read = reads;
     let changed = false;
@@ -1021,8 +1017,6 @@ export function createStackController(deps, options) {
         error = UNREADABLE;
         changed = true;
       }
-    } finally {
-      polling = false;
     }
     if (answered) {
       const next = asksAfterRead(envelope, asks, read, deps.now(), reads);
@@ -1046,7 +1040,10 @@ export function createStackController(deps, options) {
     }
     const delay = nextDelay();
     if (delay !== null) {
-      timer = deps.schedule(() => void poll(), delay);
+      timer = deps.schedule(() => {
+        timer = null;
+        void start();
+      }, delay);
     }
   }
 
@@ -1056,7 +1053,14 @@ export function createStackController(deps, options) {
       deps.cancel(timer);
       timer = null;
     }
-    return poll();
+    if (activeRead !== null) {
+      readAgain = true;
+      return activeRead;
+    }
+    activeRead = poll().finally(() => {
+      activeRead = null;
+    });
+    return activeRead;
   }
 
   return Object.freeze({
@@ -2421,7 +2425,7 @@ export function mountStackPage(container, ctx, mb) {
     if (shown.drawn !== null) {
       summaryReading(shown.drawn);
     }
-    void controller.retry();
+    return controller.retry();
   }
 
   function disposeBody() {
@@ -2856,6 +2860,8 @@ export function mountStackPage(container, ctx, mb) {
     await paintDiff(action.tab, action.comparison, owns, adopt);
   }
 
+  /** @type {Set<() => void>} */
+  const refreshDetailListeners = new Set();
   const controller = createStackController(
     {
       async request(method, route, options) {
@@ -2890,7 +2896,13 @@ export function mountStackPage(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       since: () => shown.drawn?.key ?? null,
       render(model) {
+        const fetchedAt = envelope?.fetched_at;
         envelope = model.envelope;
+        if (fetchedAt !== envelope?.fetched_at) {
+          for (const listener of refreshDetailListeners) {
+            listener();
+          }
+        }
         error = model.error;
         failed = model.failed;
         shown = bodyAnswered(shown, envelope, interacted, failed);
@@ -2964,6 +2976,7 @@ export function mountStackPage(container, ctx, mb) {
     cancelGuideAhead?.();
     cancelGuideAhead = null;
     controller.dispose();
+    refreshDetailListeners.clear();
     stacks.dispose();
     memberReadiness?.dispose();
   }
@@ -2980,6 +2993,18 @@ export function mountStackPage(container, ctx, mb) {
       }
     },
     showFile,
+    canRefresh: () => !listening.signal.aborted && globalThis.navigator?.onLine !== false,
+    refresh: retryStack,
+    refreshDetail() {
+      return envelope?.fetched_at == null
+        ? null
+        : { finished_at: envelope.fetched_at, label: "Oldest stack member fetched" };
+    },
+    /** @param {() => void} listener */
+    onRefreshDetail(listener) {
+      refreshDetailListeners.add(listener);
+      return () => refreshDetailListeners.delete(listener);
+    },
     flush() {},
     cancelPending: stop,
     dispose() {

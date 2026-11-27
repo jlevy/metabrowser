@@ -143,6 +143,7 @@ type MetabrowserPullsNavHost = Readonly<{
   stackFileHref(stack: number, path: string): string | null;
   /** The page of that pull request while it holds the pane, else null. */
   pageFor(number: number): unknown;
+  stackFor?(number: number): unknown;
   onPageChange(listener: () => void): () => void;
   filterChanged(state: string): void;
 }>;
@@ -989,6 +990,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     page(): Handle | null;
     /** The page of that pull request when it holds the pane, else null. */
     pageFor(number: number): Handle | null;
+    stackFor?(number: number): Handle | null;
     shown(): number | "list" | `stack:${number}` | null;
   }>;
   createViewMount(shell: {
@@ -1012,7 +1014,10 @@ type MetabrowserPullRouteRuntime = Readonly<{
     dispose(): void;
   } | null>;
   /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
-  attachedHost(): { pageFor(number: number): unknown } | null;
+  attachedHost(): {
+    pageFor(number: number): unknown;
+    stackFor?(number: number): unknown;
+  } | null;
   onPageChange(listener: () => void): () => void;
   parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;

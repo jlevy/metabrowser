@@ -1037,6 +1037,7 @@ async function paintStory(panel, selection = false) {
           file: selection ? "src/app.txt" : null,
           fileHref: (number, path) => `/pull/${number}/files/${path}`,
           pageFor: (number) => pageHost?.pageFor(number) ?? null,
+          stackFor: (number) => pageHost?.stackFor(number) ?? null,
           onPageChange: (listener) => {
             pageChanges.add(listener);
             return () => pageChanges.delete(listener);
@@ -1194,7 +1195,7 @@ async function paintStory(panel, selection = false) {
         URLSearchParams,
       };
       runtime.window = runtime;
-      for (const name of ["navigation.js", "pull-route.js"]) {
+      for (const name of ["navigation.js", "pull-route.js", "refresh-plan.js"]) {
         vm.runInNewContext(
           fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", name), "utf8"),
           runtime,
@@ -1240,13 +1241,15 @@ async function paintStory(panel, selection = false) {
           flush() {},
           dispose() {},
         };
-        handles.set(route.number, handle);
+        handles.set(route.stack ? `stack:${route.number}` : route.number, handle);
         return handle;
       }
       function address(href) {
         pathname = href;
         const route = routes.parsePull(href);
-        mounted.setCurrent(route?.number ?? null, route?.file || null);
+        mounted.setCurrent(route?.number ?? null, route?.file || null, {
+          stack: routes.parseStack(href)?.number ?? null,
+        });
       }
       pageHost = routes.createPullPageHost({
         claim: () => ++claim,
@@ -1379,6 +1382,20 @@ async function paintStory(panel, selection = false) {
       beside.offered = false;
       await lent.get("page")();
       assert(beside.refreshes === 2, "a page with nothing to refresh is asked nothing");
+
+      const stackNumber = 867;
+      await pageHost.open({ number: stackNumber, tab: "changes", stack: true });
+      const stack = handles.get(`stack:${stackNumber}`);
+      assert(pageHost.stackFor(stackNumber) === stack, "the visible stack owns the page part");
+      assert(pageHost.pageFor(stackNumber) === null, "a stack is not a pull request");
+      const refreshPlan = runtime.MetabrowserRefreshPlan.createPlan({
+        shown: (part) =>
+          runtime.MetabrowserRefreshPlan.isShown(part, { front: "pulls", owner: "pull-request" }),
+      });
+      refreshPlan.provide("page", lent.get("page"));
+      await refreshPlan.press();
+      assert(stack.refreshes === 1, "the navigation's Refresh reaches the visible stack");
+      assert(beside.refreshes === 2, "the previous pull request is no longer refreshed");
       mounted.dispose();
       assert(lent.size === 0, "a disposed list takes its parts back");
       handles.get(current).emit("docs/new.md");

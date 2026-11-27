@@ -84,6 +84,7 @@
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
+   *   stackFor?(number: number): unknown,
    *   schedulePrefetch(callback: () => void): unknown,
    *   cancelPrefetch(handle: unknown): void,
    *   showFailure(container: HTMLElement): void,
@@ -179,6 +180,7 @@
                 },
                 // The page a file row jumps in, while it is that pull request's.
                 pageFor: (/** @type {number} */ number) => deps.pageFor(number),
+                stackFor: (/** @type {number} */ number) => deps.stackFor?.(number) ?? null,
                 onPageChange: (listener) => deps.routes.onPageChange(listener),
                 filterChanged: filterChanged,
               }),
@@ -784,6 +786,7 @@
         }),
       // The page host the shell made, which pull-route.js keeps for what sits beside the pane.
       pageFor: (number) => routes.attachedHost()?.pageFor(number) ?? null,
+      stackFor: (number) => routes.attachedHost()?.stackFor?.(number) ?? null,
       schedulePrefetch: (callback) => sdk.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
       cancelPrefetch: (cancel) => /** @type {() => void} */ (cancel)(),
       showFailure(container) {

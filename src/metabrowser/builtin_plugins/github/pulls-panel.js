@@ -4244,6 +4244,8 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {number | null} */
   let currentRow = nav.current;
   /** @type {number | null} */
+  let currentStack = null;
+  /** @type {number | null} */
   let anchorRow = null;
 
   /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
@@ -4331,6 +4333,8 @@ export function mountPullsPanel(container, ctx, mb) {
   let currentFile = nav.file ?? null;
   /** @type {unknown} */
   let followedPage = null;
+  /** @type {ReturnType<typeof refreshPage>} */
+  let timedPage = null;
   /** @type {(() => void) | null} */
   let unwatchFile = null;
   /** @type {(() => void) | null} */
@@ -4344,23 +4348,34 @@ export function mountPullsPanel(container, ctx, mb) {
     );
   }
 
+  /** The preview that owns the page part of Refresh. */
+  function refreshPage() {
+    const stack =
+      /** @type {ReturnType<typeof import("./stack-page.js").mountStackPage> | null} */ (
+        currentStack === null ? null : (tab.stackFor?.(currentStack) ?? null)
+      );
+    return stack ?? currentPage();
+  }
+
   /** A null-file route replays the same page's current observation after address sync.
    * @param {boolean} [replay]
    */
   function followCurrentFile(replay = false) {
     const number = currentRow;
     const page = currentPage();
+    const timing = refreshPage();
+    if (timing !== timedPage) {
+      unwatchRefreshDetail?.();
+      timedPage = timing;
+      unwatchRefreshDetail = timing?.onRefreshDetail?.(updateRefreshTooltip) ?? null;
+      updateRefreshTooltip();
+    }
     if (!replay && page === followedPage) {
       return;
     }
     const epoch = ++fileFollowEpoch;
     unwatchFile?.();
     unwatchFile = null;
-    if (page !== followedPage) {
-      unwatchRefreshDetail?.();
-      unwatchRefreshDetail = page?.onRefreshDetail?.(updateRefreshTooltip) ?? null;
-      updateRefreshTooltip();
-    }
     followedPage = page;
     const reporting =
       /** @type {{onCurrentFile?: (listener: (file: {path: string} | null) => void) => () => void} | null} */ (
@@ -6113,11 +6128,11 @@ export function mountPullsPanel(container, ctx, mb) {
   // its waiting state, and its number are the shell's.
   const releaseRefreshParts = [
     refreshParts?.provide("page", () => {
-      const page = currentPage();
+      const page = refreshPage();
       return page?.canRefresh?.() === true ? page.refresh?.() : undefined;
     }),
     refreshParts?.provide("pulls", () => controller.refresh()),
-    refreshParts?.provideTooltip?.("page", () => currentPage()?.refreshDetail?.() ?? null),
+    refreshParts?.provideTooltip?.("page", () => refreshPage()?.refreshDetail?.() ?? null),
     refreshParts?.provideTooltip?.("pulls", controller.refreshDetail),
   ];
   // The state chips are situational: through the SDK's shortcut surface each takes a number,
@@ -6482,6 +6497,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (focusedTree !== null && focusedTree !== number) {
         trees.get(focusedTree)?.controller.cancelWalk();
       }
+      currentStack = options?.stack ?? null;
       controller.setCurrent(number, options);
       currentFile = file;
       const row = number === null ? undefined : painted.get(number)?.row;

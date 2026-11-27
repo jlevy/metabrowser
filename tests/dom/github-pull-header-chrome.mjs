@@ -56,7 +56,11 @@ const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
 const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
 const DIFF = path.join(root, "src/metabrowser/builtin_plugins/diff");
-const FIXTURES = path.join(root, "tests/fixtures/github-pull-page-responses.json");
+const fixtures = createRequire(import.meta.url);
+const fixtureResponses = JSON.stringify({
+  ...fixtures("../fixtures/github-pull-page-responses.json"),
+  ...fixtures("../fixtures/github-pull-page-followed-head.json"),
+});
 const LABEL_COLORS = path.join(root, "tests/fixtures/github-label-colors.json");
 const KPRESS = process.env.KPRESS_STATIC ? path.resolve(process.env.KPRESS_STATIC) : null;
 const failures = [];
@@ -121,8 +125,11 @@ function serve() {
       return;
     }
     if (url.pathname === "/fixtures.json") {
-      file = FIXTURES;
-    } else if (url.pathname.startsWith("/static/")) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(fixtureResponses);
+      return;
+    }
+    if (url.pathname.startsWith("/static/")) {
       file = path.join(STATIC, url.pathname.slice(8));
     } else if (url.pathname.startsWith("/github/")) {
       file = path.join(GITHUB, url.pathname.slice(8));

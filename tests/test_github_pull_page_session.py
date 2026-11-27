@@ -17,9 +17,10 @@ as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
 in those states and a skipped check, then read 8 again once GitHub named no merger. With
 GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
-and a press of Fetch for 14 was refused past the bound on jobs. Served an older head of 7,
-a refresh then found the newer one. A folder's server answered last. The first test here
-replays that story and fails when the recording no longer matches.
+and a press of Fetch for 14 was refused past the bound on jobs. When served at an older
+head of 7, a refresh found the newer one, recorded separately in
+``tests/fixtures/github-pull-page-followed-head.json``. A folder's server answered last.
+The first test here replays that story and fails when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
@@ -648,9 +649,16 @@ def test_recording_is_what_a_served_pull_request_answers(
     assert (closed["state"], closed["merged"], closed["commits"]) == ("closed", False, 1)
     unattributed = recorded["merged_unattributed"]["body"]["record"]["pull"]
     assert (unattributed["merged"], unattributed["merged_by"]) == (True, None)
+    stored = _stored_once(recorded)
+    followed_head = stored.pop("followed_head")
     check_recording(
         "github-pull-page-responses.json",
-        _stored_once(recorded),
+        stored,
+        transcript="cli-ui-github-pull-page.tryscript.md",
+    )
+    check_recording(
+        "github-pull-page-followed-head.json",
+        {"followed_head": followed_head},
         transcript="cli-ui-github-pull-page.tryscript.md",
     )
     check_recording(

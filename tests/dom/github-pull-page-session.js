@@ -25,9 +25,10 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
-);
+const recorded = {
+  ...require("../fixtures/github-pull-page-responses.json"),
+  ...require("../fixtures/github-pull-page-followed-head.json"),
+};
 // What KPress alone made of the hostile comment, recorded beside the server's answers.
 const kpressTree = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-kpress-tree.json"), "utf8"),

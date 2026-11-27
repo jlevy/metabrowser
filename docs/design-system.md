@@ -1415,9 +1415,9 @@ the control does, not from where the answer comes from:
   A quick press shows the spinner briefly, including when the data was already fresh.
 - **One Refresh for the page.** The Refresh at the top of the navigation refreshes
   everything the page holds that can be read again, each part through the path it
-  already had: the mirror’s or origin’s fetch, the pull request page in the main pane,
-  the Files tree with the file or folder the pane shows, the Pulls list, the Commits
-  history, which follows the revision the server serves, and the branch and tag
+  already had: the mirror’s or origin’s fetch, the pull request or Stack Overview in the
+  main pane, the Files tree with the file or folder the pane shows, the Pulls list, the
+  Commits history, which follows the revision the server serves, and the branch and tag
   chooser’s list while it is open.
   A checkout’s working tree has no fetch its page waits for, so there the origin is
   fetched last, in the background, after the disk and the history are read again
@@ -1428,8 +1428,10 @@ the control does, not from where the answer comes from:
   The button waits while the parts on screen refresh.
   Each part keeps its own busy state while it runs.
   The Refresh tooltip reports the most specific available completed read.
-  A pull request shown in the main pane takes precedence, followed by the Pulls catalog
-  when that tab is in front, then the source’s last fetch or checkout observation.
+  A pull request shown in the main pane takes precedence.
+  Stack Overview gives the oldest known member fetch time.
+  The next fallbacks are the Pulls catalog when in front and the source’s last fetch or
+  checkout observation.
   When a GitHub CLI receipt includes measurements, a second line gives the number of
   answered requests, response body size, elapsed time, and provider.
   The measurements describe that read, while Git, inventory, and other work keep their

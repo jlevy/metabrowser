@@ -5,9 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const root = path.resolve(__dirname, "../..");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(root, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
-);
+const recorded = {
+  ...require("../fixtures/github-pull-page-responses.json"),
+  ...require("../fixtures/github-pull-page-followed-head.json"),
+};
 // A status whose checks were listed when it was observed is recorded without the time they
 // were listed, which is its own `observed_at`, and one whose checks were never seen
 // otherwise without `moved_at`, which is none; any other value is as recorded.
