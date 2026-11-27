@@ -50,7 +50,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from functools import partial
+from functools import cached_property, partial
 from pathlib import Path
 from typing import Any, Final, Literal, NotRequired, TypedDict
 from urllib.parse import urlencode
@@ -354,13 +354,16 @@ def comparison_route(record: PullRecord, *, store: str) -> str | None:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _Parsed:
     stamp: tuple[int, int, int] | None
     record: PullRecord
     dumped: dict[str, Any]
     revision: str
-    observation: str
+
+    @cached_property
+    def observation(self) -> str:
+        return pull_observation_key(self.record)
 
 
 # Records parsed for this route, keyed by home, slug, and number, each kept with the
@@ -410,7 +413,7 @@ def _parsed_pull_record(home: Path, slug: str, number: int) -> _Parsed | RecordA
         for item in dumped[kind]:
             if abs(item["id"]) > (1 << 53) - 1:
                 item["timeline_id"] = str(item["id"])
-    parsed = _Parsed(stamp, record, dumped, revision, pull_observation_key(record))
+    parsed = _Parsed(stamp, record, dumped, revision)
     if stamp is not None:
         with _PARSED_LOCK:
             if key not in _PARSED and len(_PARSED) >= MAX_PARSED_RECORDS:

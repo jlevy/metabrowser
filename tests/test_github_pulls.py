@@ -1534,11 +1534,11 @@ def test_a_git_failure_is_reported_without_gits_own_text(
 
 
 def test_the_route_parses_a_record_again_only_when_it_changed(
-    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from metabrowser.builtin_plugins.github import pull_route
 
-    stand.refresh(7)
+    stand, client = pinned_pull
     reads: list[int] = []
     original = pull_route.read_pull_record
 
@@ -1547,13 +1547,28 @@ def test_the_route_parses_a_record_again_only_when_it_changed(
         return original(home, slug, number)
 
     monkeypatch.setattr(pull_route, "read_pull_record", counting)
+    observed: list[int] = []
+    observation_key = pull_route.pull_observation_key
+
+    def count_observation(record: PullRecord) -> str:
+        observed.append(record.number)
+        return observation_key(record)
+
+    monkeypatch.setattr(pull_route, "pull_observation_key", count_observation)
     home, slug = stand.published.home, stand.published.slug
     first, _, first_revision = pull_route.cached_pull_record(home, slug, 7)
     again, _, again_revision = pull_route.cached_pull_record(home, slug, 7)
     assert again is first and reads == [7] and again_revision == first_revision
+    assert observed == []
+    for _ in range(2):
+        assert _read(client, 7).json()["refresh_timing"]["provider"] == "github_cli"
+    assert observed == [7]
     stand.refresh(7)
     pull_route.cached_pull_record(home, slug, 7)
     assert reads == [7, 7]
+    assert observed == [7]
+    assert _read(client, 7).json()["refresh_timing"]["provider"] == "github_cli"
+    assert observed == [7, 7]
 
 
 # ── served beside the mirror: the fetch lock, the refresh route, and serve mode ──
