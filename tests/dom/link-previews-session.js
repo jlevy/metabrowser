@@ -38,6 +38,17 @@ function assert(condition, message) {
 
 assert(tooltipBlock, "the tooltip block was not found in app.js");
 
+/** One top-level function of app.js, by name, as tests/dom/nav-reveal-session.js lifts one. */
+function appFunction(name) {
+  const match = new RegExp(`\\nfunction ${name}\\(`).exec(appSource);
+  assert(match, `app.js ${name} is not extractable`);
+  const start = match.index + 1;
+  return appSource.slice(start, appSource.indexOf("\n}\n", start) + 2);
+}
+// The served root's name as the shell gives it to the view header and the card (app.js
+// `servedRootName`), with what it reads, lifted verbatim.
+const ROOT_NAME = ["queryHtml", "pathBaseName", "servedRoot", "servedRootName"];
+
 const SERVED = "a".repeat(40);
 const PINNED = "c".repeat(40);
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -243,14 +254,33 @@ function createPage(options = {}) {
     clearTimeout: clock.clearTimeout,
     setTimeout: clock.setTimeout,
     requestAnimationFrame: (callback) => clock.setTimeout(callback, 16),
-    document: { body: { appendChild() {} }, createElement: () => tooltipElement },
+    document: {
+      body: { appendChild() {} },
+      createElement: () => tooltipElement,
+      querySelector: (selector) => (selector === ".header-path" ? heading : null),
+    },
     Element: FakeElement,
     innerHeight: 800,
     innerWidth: 1200,
   };
+  // The tree's heading, the one element that carries the served root (server.py), here a
+  // checkout named for its repository unless a session serves another.
+  const heading = { dataset: { servedRoot: options.servedRoot ?? "~/src/docs" } };
   shell.window = shell;
   vm.createContext(shell);
-  vm.runInContext(`${tooltipBlock[0]}\ninitTooltip();`, shell, { filename: "app.js (lifted)" });
+  vm.runInContext(
+    `${tooltipBlock[0]}\ninitTooltip();\n${ROOT_NAME.map(appFunction).join("\n")}`,
+    shell,
+    { filename: "app.js (lifted)" },
+  );
+  // The view header's own title for the root (static/view-header.js), over the same shell.
+  vm.runInContext(fs.readFileSync(path.join(staticRoot, "view-header.js"), "utf8"), shell, {
+    filename: "view-header.js",
+  });
+  const header = shell.MetabrowserViewHeader.create({
+    servedRoot: shell.servedRoot,
+    servedRootName: shell.servedRootName,
+  });
   const shown = () =>
     tooltipElement.style.display === "block" && classes.has("visible")
       ? lines(tooltipElement.innerHTML)
@@ -323,6 +353,8 @@ function createPage(options = {}) {
     document,
     metabrowser: mb,
     MetabrowserIcons: { layers: '<svg data-glyph="layers"></svg>' },
+    // The seam app.js gives core modules (`MetabrowserShell`): the root's name.
+    MetabrowserShell: { servedRootName: shell.servedRootName },
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
@@ -391,7 +423,21 @@ function createPage(options = {}) {
     dispatch(element, "focusin");
   }
 
-  return { clock, log, warnings, document, mb, previews, sandbox, text, point, look, act };
+  return {
+    clock,
+    log,
+    warnings,
+    document,
+    heading,
+    header,
+    mb,
+    previews,
+    sandbox,
+    text,
+    point,
+    look,
+    act,
+  };
 }
 
 /**
@@ -650,19 +696,38 @@ function cards(page) {
     checkCard(html, linkText, preview);
     return { label: name, linkText, preview, html };
   });
-  // The root is named by the served folder's name, the last of the served prefix, or else
-  // by the repository's, and is `/` only on a page with no repository identity.
+  // The root is named as its view header's title names it, by the served folder's own
+  // name, whatever the repository is called and with no repository at all: a served
+  // prefix's last folder, a plain folder's, and a checkout cloned under a folder name of
+  // its own, as a worktree is; and it is `/` where that title is.
   const { repository } = page.mb;
-  for (const [name, context] of [
-    ["the root of a served folder", { ...repository, served_prefix: "guides/notes" }],
-    ["the root, on a page with no repository identity", null],
+  const served = page.heading.dataset.servedRoot;
+  for (const [name, address, context] of [
+    [
+      "the root of a served folder",
+      "~/src/docs/guides/notes",
+      { ...repository, served_prefix: "guides/notes" },
+    ],
+    ["the root of a plain folder", "~/notes", null],
+    ["the root of a checkout under another folder's name", "~/work/docs-review", repository],
+    ["the root, where its header's title is /", "", null],
   ]) {
     page.mb.repository = context;
+    page.heading.dataset.servedRoot = address;
     const html = previews.card(root, null, { linkText: "the start" });
     checkCard(html, "the start", null);
-    rows.push({ label: name, linkText: "the start", preview: null, html });
+    const header = page.header.viewHeaderName("");
+    rows.push({
+      label: name,
+      linkText: "the start",
+      preview: null,
+      html,
+      header,
+      repository: context?.name ?? null,
+    });
   }
   page.mb.repository = repository;
+  page.heading.dataset.servedRoot = served;
   // An author's title: in place of an object's, beside it, and never twice.
   for (const [name, preview, authorTitle] of [
     ["an author's title, no object title", null, "Read this first"],

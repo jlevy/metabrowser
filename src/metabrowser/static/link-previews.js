@@ -515,20 +515,14 @@
   }
 
   /**
-   * The served root's name, as a folder's card names it: the served folder's, the last of
-   * the served prefix, or else the repository's, as its view header's title names the root
-   * by its folder (static/view-header.js). Empty, so the card says `/`, on a page with no
-   * repository identity.
+   * The served root's name, as a folder's card names the root: the name its view header's
+   * title gives it, from the one function the shell gives both (`servedRootName` in
+   * static/app.js), the served folder's own, whether or not the page has a repository
+   * identity and whatever the repository is called. Empty, so the card says `/`, where
+   * that title is `/`.
    */
   function rootName() {
-    const repository = window.metabrowser?.repository;
-    if (!repository) {
-      return "";
-    }
-    const prefix = String(repository.served_prefix ?? "").replace(/\/+$/, "");
-    return prefix === ""
-      ? String(repository.name ?? "")
-      : prefix.slice(prefix.lastIndexOf("/") + 1);
+    return window.MetabrowserShell?.servedRootName() ?? "";
   }
 
   /** @param {Subject} target */

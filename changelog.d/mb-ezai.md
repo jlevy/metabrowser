@@ -13,3 +13,7 @@
   `metabrowser.previewLink(root, anchor, target, { authorTitle })` gives a link in
   authored text its link card on any page, and `forgetPreview` and `disposePreviews`
   take cards away ([Data and Navigation](docs/plugins.md#data-and-navigation)).
+
+- **A link to the served folder’s root names it as its view header does.** Its link card
+  names the folder by its own name, on a plain folder too and on a checkout cloned under
+  a folder name of its own, as a worktree is, rather than by the repository’s.

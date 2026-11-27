@@ -317,6 +317,13 @@ function servedRoot() {
   return queryHtml(".header-path")?.dataset.servedRoot || "";
 }
 
+// The served root's name, "" for none: the view header's title for the root
+// (view-header.js) and a link card's name for it (link-previews.js, through
+// `MetabrowserShell`) both read it here, so the two cannot disagree.
+function servedRootName() {
+  return pathBaseName(servedRoot());
+}
+
 // What a served mirror's page adds to its headings; see static/mirror-heading.js.
 function mirrorHeading(part) {
   return window.MetabrowserMirrorHeading?.[part]() ?? "";
@@ -5123,6 +5130,7 @@ window.MetabrowserShell = Object.freeze({
   renderPreviewHtml,
   rereadFiles,
   renderPreviewNode,
+  servedRootName,
   stagePreviewNode,
   shortcuts: () => shortcutRegistry,
   sourceFreshness,
@@ -6874,7 +6882,7 @@ function viewHeaderBuilders() {
     viewHeader = header.create({
       esc,
       servedRoot,
-      pathBaseName,
+      servedRootName,
       ownedControlAttr,
       mirrorHeading,
       getFileIcon,

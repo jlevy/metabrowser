@@ -312,14 +312,21 @@ def test_a_branch_link_says_what_the_page_serves() -> None:
     assert "working tree" not in pinned
 
 
-def test_the_root_is_named_by_its_folder() -> None:
-    """The root's card names the served folder, or the repository, as its header does, and
-    is `/` only where the page has no repository identity."""
+def test_the_root_is_named_as_its_view_header_names_it() -> None:
+    """The root's card names the served root by its view header's title for it, a folder's
+    name ending in `/`, or `/` where that title is: by the served folder's own name, on a
+    page with no repository identity too, and not by the repository's on a checkout under a
+    folder name of its own."""
 
-    cards = {row["label"]: _lines(row["html"])[0] for row in _drawn_cards()}
-    assert cards["the root, from a branch's link"] == "docs/"
-    assert cards["the root of a served folder"] == "notes/"
-    assert cards["the root, on a page with no repository identity"] == "/"
+    rows = {row["label"]: row for row in _drawn_cards() if "header" in row}
+    assert len(rows) == 4, sorted(rows)
+    for label, row in rows.items():
+        header = row["header"]
+        assert _lines(row["html"])[0] == ("/" if header == "/" else f"{header}/"), label
+    plain = rows["the root of a plain folder"]
+    assert plain["repository"] is None and plain["header"] != "/", plain
+    checkout = rows["the root of a checkout under another folder's name"]
+    assert checkout["repository"] not in (None, checkout["header"]), checkout
 
 
 def test_a_pins_address_reads_as_the_same_path() -> None:

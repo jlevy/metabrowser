@@ -3723,7 +3723,8 @@ declare global {
     esc(value: unknown): string;
     /** The served root, absolute. */
     servedRoot(): string;
-    pathBaseName(path: string): string;
+    /** The served root's name, "" for none (`MetabrowserShellRuntime.servedRootName`). */
+    servedRootName(): string;
     /** The SDK's owner mark for the shell's delegated controls. */
     ownedControlAttr(): string;
     /** What a served mirror's page adds to its headings (mirror-heading.js). */
@@ -5006,6 +5007,12 @@ declare global {
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
     /** Read the tree and the file or folder the pane holds again; settles when drawn. */
     rereadFiles(): Promise<unknown>;
+    /**
+     * The served root's name: the last part of its address, or "" for none. The view
+     * header's title for the root and a link card's name for it (static/view-header.js,
+     * static/link-previews.js) both read it here, so they agree.
+     */
+    servedRootName(): string;
     stagePreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): (() => void) | null;
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */

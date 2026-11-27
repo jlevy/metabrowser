@@ -7286,8 +7286,10 @@ tooltip does:
 
 1. **What it is**, in `.tip-name`: “Pull request #12”, “Stack #3”, “Commit a1b2c3d” (the
    short commit ID, [Short Commit IDs](#short-commit-ids)), the path of a file or
-   folder, a folder’s ending in `/`, the root by the served folder’s name or the
-   repository’s, as its view header’s title names it, or “Pull requests”.
+   folder, a folder’s ending in `/`, the root by the name its
+   [view header](#view-headers)’s title gives it, the served folder’s own, with or
+   without a repository identity and whatever the repository is called, from the one
+   function both read (`servedRootName` in `static/app.js`), or “Pull requests”.
    A link to a tab or a changed file names it after the identity: “Pull request #12 ·
    Changes · docs/guide.md”.
 2. **Its title**, when the app knows it: a pull request’s title, a commit’s subject, a

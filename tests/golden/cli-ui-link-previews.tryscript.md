@@ -47,8 +47,11 @@ the session read the `tooltip` the reader would see.
   out, and the first line kept leads with the mark.
   The last line says where the link opens, in the module’s own words (`opens`), or what
   the provider says is missing.
-  The root is named by the served folder, or the repository, and is `/` only on a page
-  with no repository identity.
+  The root is named as its view header’s title names it (`header`, the exact
+  `static/view-header.js` over app.js’s own `servedRootName`, lifted), by the served
+  folder’s own name: a served prefix’s last folder, a plain folder with no repository
+  identity, and a checkout under a folder name other than its repository’s; and it is
+  `/` only where that title is.
   A provider’s text is escaped, and an answer that is not data is none.
   An author’s title is quoted, after the identity, which it never takes the place of.
   A link to another site has one line, where it goes, and “in a new tab” only where the
@@ -503,13 +506,33 @@ $ node tests/dom/link-previews-session.js
    "label": "the root of a served folder",
    "linkText": "the start",
    "preview": null,
-   "html": "<div class=\"tip-name\">notes/</div><div class=\"tip-detail\">Opens in the served working tree</div>"
+   "html": "<div class=\"tip-name\">notes/</div><div class=\"tip-detail\">Opens in the served working tree</div>",
+   "header": "notes",
+   "repository": "docs"
   },
   {
-   "label": "the root, on a page with no repository identity",
+   "label": "the root of a plain folder",
    "linkText": "the start",
    "preview": null,
-   "html": "<div class=\"tip-name\">/</div><div class=\"tip-detail\">Opens in the served working tree</div>"
+   "html": "<div class=\"tip-name\">notes/</div><div class=\"tip-detail\">Opens in the served working tree</div>",
+   "header": "notes",
+   "repository": null
+  },
+  {
+   "label": "the root of a checkout under another folder's name",
+   "linkText": "the start",
+   "preview": null,
+   "html": "<div class=\"tip-name\">docs-review/</div><div class=\"tip-detail\">Opens in the served working tree</div>",
+   "header": "docs-review",
+   "repository": "docs"
+  },
+  {
+   "label": "the root, where its header's title is /",
+   "linkText": "the start",
+   "preview": null,
+   "html": "<div class=\"tip-name\">/</div><div class=\"tip-detail\">Opens in the served working tree</div>",
+   "header": "/",
+   "repository": null
   },
   {
    "label": "an author's title, no object title",

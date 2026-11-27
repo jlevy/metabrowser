@@ -1957,7 +1957,7 @@ const RUN_BADGE = `async (live, width) => {
   const builders = window.MetabrowserViewHeader.create({
     esc,
     servedRoot: notDrawnHere,
-    pathBaseName: notDrawnHere,
+    servedRootName: notDrawnHere,
     ownedControlAttr: notDrawnHere,
     mirrorHeading: notDrawnHere,
     getFileIcon: notDrawnHere,
