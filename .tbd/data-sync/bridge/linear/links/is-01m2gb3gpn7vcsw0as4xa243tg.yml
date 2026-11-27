@@ -13,9 +13,9 @@ bead_id: is-01m2gb3gpn7vcsw0as4xa243tg
 external_id: 0ec06507-cca1-4389-a123-11079aee3f0d
 external_key: OS-607
 external_url: https://linear.app/finterm-ai/issue/OS-607/stabilize-the-test-suite-under-machine-load
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
 remote_updated_at: 2026-11-27T10:50:41.966Z
 state: linked
-synced_at: 2026-11-27T10:50:42.193Z
+synced_at: 2026-11-27T11:17:40.457Z
 type: lk
