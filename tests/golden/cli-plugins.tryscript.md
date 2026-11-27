@@ -553,8 +553,8 @@ assets in static_root:
   - reconciliation-coordinator.js
   - render-refusal.js
   - rendered.js
-  - structured-disclosure.js
   - source.js
+  - structured-disclosure.js
   - toc-toggle.js
   - transclusion.js
   - wiki-enhancer.js
@@ -674,8 +674,8 @@ $ metab --plugin markdown --json
       "reconciliation-coordinator.js",
       "render-refusal.js",
       "rendered.js",
-      "structured-disclosure.js",
       "source.js",
+      "structured-disclosure.js",
       "toc-toggle.js",
       "transclusion.js",
       "wiki-enhancer.js",
