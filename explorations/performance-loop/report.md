@@ -140,6 +140,7 @@ against one that did.
 | exp-117 | [Distinguish an Optional Pulls Tally From List Readiness](experiments/exp-117-pulls-readiness-diagnostic.md) | H135 | `usable Pulls rows during optional tally` | diagnostic |
 | exp-118 | [Replay Pulls With Separate List and Optional-Tally Readiness](experiments/exp-118-integrated-pulls-replay.md) | H127, H128, H135 | `usable first Pulls list and visible Changes` | diagnostic |
 | exp-119 | [Wait for the Checkout Origin Before Timing First Visits](experiments/exp-119-origin-warmup-gate.md) | H136 | `origin startup wait after inventory ready` | diagnostic |
+| exp-120 | [Time a First Pulls Visit After the Origin Store Is Ready](experiments/exp-120-origin-warm-first-pulls.md) | H127, H135, H136 | `first visible Changes hunk once the origin is ready` | diagnostic |
 
 ## Absolute numbers, per condition
 
