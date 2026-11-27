@@ -5,12 +5,15 @@ title: "softschema plugin: folder table source, collection index cache, overview
 kind: feature
 status: in_progress
 priority: 2
-version: 20
+version: 22
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 refs:
   - kind: branch
     url: https://github.com/jlevy/metabrowser/tree/codex/softschema-folder-tables
     at: 2026-11-26T17:55:35.181Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/915
+    at: 2026-11-27T09:59:04.004Z
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -32,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:43:02.432Z
-updated_at: 2026-11-26T21:06:59.095Z
+updated_at: 2026-11-27T10:31:15.256Z
 started_at: 2026-11-26T17:54:36.329Z
 ---
 Phase 3: fixture collection with every bad-record kind; core folder table source (offer, directory TableHandle, table query key, indexing page reason); builtin_plugins/softschema over the upstream API with a SQLite index in the plugin cache and a single-flight builder; references from learned ID prefixes; collection route; overview and SoftSchema record view; goldens, parity rows, map, changelog.
@@ -40,3 +43,5 @@ Phase 3: fixture collection with every bad-record kind; core folder table source
 ## Notes
 
 The bounded in-memory preview is verified through the real Universe table routes. First-phase coverage, detail, and released-dependency rollout have separate beads. The later schema catalog, disk projection, row-level refresh, and 100K-to-millions continuous scrolling are planned under separate child beads.
+
+PR #915 is the reviewed collection layer in formal Metabrowser stack #916. Its built wheel served 4,971 Universe records across 18 tables with the checksummed SoftSchema #79 CI wheel. One-file refresh used one content read and updated the table row and open record. Published SoftSchema 0.10.0 and a fresh locked verification run remain the rollout gate under mb-r7zc.

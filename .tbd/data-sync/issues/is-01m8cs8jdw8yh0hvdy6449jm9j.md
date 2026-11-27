@@ -3,9 +3,9 @@ type: is
 id: is-01m8cs8jdw8yh0hvdy6449jm9j
 title: Refresh the post-load navigation and fetch performance campaign
 kind: epic
-status: in_progress
+status: open
 priority: 1
-version: 25
+version: 32
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
@@ -32,7 +32,10 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/908
     at: 2026-11-26T23:58:24.418Z
-delegate: codex@spud10.local
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/920
+    at: 2026-11-27T11:50:17.650Z
+delegate: null
 labels:
   - linear
   - Improvement
@@ -53,13 +56,21 @@ child_order_hints:
   - is-01m8d7f3cak33dgkwfge44gvb5
   - is-01m8d7qe087mjkep5t4t8mxtgg
   - is-01m8d8063m8y25s44y4c20d673
+  - is-01m8d879b5wgca2sq719p8b0y3
+  - is-01m8d8j2d2f12rya3xwqfq5tsp
+  - is-01m8e6h0hx38mtqghzs275jbw9
+  - is-01m8edaswj95zwmwj9hz59ntg6
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:37:58.326Z
-updated_at: 2026-11-27T00:55:32.210Z
+updated_at: 2026-11-27T12:10:20.666Z
 started_at: 2026-11-26T20:38:34.641Z
 extensions:
   linear:
     id: 83946ca1-f902-4d2b-8df2-2988e9b02f48
     linked_at: 2026-11-26T20:56:08.806Z
 ---
+
+## Notes
+
+The reviewed performance stack #899 merged at 4313286 and is deployed. The post-merge WebKit harness fix #920 passed Linux and macOS main CI at 63c60489. Matched quiet-host post-load acceptance, remaining live PR timing, and follow-up experiments remain open under this effort.

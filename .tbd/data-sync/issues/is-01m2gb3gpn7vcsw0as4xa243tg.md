@@ -3,9 +3,9 @@ type: is
 id: is-01m2gb3gpn7vcsw0as4xa243tg
 title: Stabilize the test suite under machine load
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 67
+version: 70
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/495
@@ -55,6 +55,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/823
     at: 2026-11-25T05:09:27.507Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/919
+    at: 2026-11-27T10:50:23.384Z
 labels:
   - testing
   - linear
@@ -112,8 +115,9 @@ child_order_hints:
   - is-01m88e1ab37np67xadm99kf891
   - is-01m88eccxtthhtehhz0g0czp33
   - is-01m88f9mkarrx71ysemj0epxsh
+  - is-01m8e9efws1ype2z1r05jn6ekz
 created_at: 2026-09-14T16:13:19.443Z
-updated_at: 2026-11-25T05:09:27.511Z
+updated_at: 2026-11-27T10:50:23.791Z
 extensions:
   linear:
     id: 0ec06507-cca1-4389-a123-11079aee3f0d

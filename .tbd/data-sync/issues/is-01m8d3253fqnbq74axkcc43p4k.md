@@ -3,9 +3,9 @@ type: is
 id: is-01m8d3253fqnbq74axkcc43p4k
 title: Prioritize selected Conversation at the provider handoff
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
@@ -17,7 +17,11 @@ parent_id: is-01m8cs8jdw8yh0hvdy6449jm9j
 child_order_hints:
   - is-01m8d4b4wmv9ckytczde13v0hb
 created_at: 2026-11-26T23:29:13.834Z
-updated_at: 2026-11-26T23:51:37.089Z
+updated_at: 2026-11-27T11:22:32.746Z
+closed_at: 2026-11-27T11:22:32.746Z
+close_reason: "Merged in the exact reviewed performance stack #899 at main 4313286. Each owning layer passed its hosted workflow."
+resolution: null
+duplicate_of: null
 ---
 H128. Use the existing provider concurrency cap while giving selected Conversation metadata the next free slot during initial Git acquisition. Keep ordinary waits bounded, do not interrupt in-flight provider work, and log the actual selected slot wait.
 

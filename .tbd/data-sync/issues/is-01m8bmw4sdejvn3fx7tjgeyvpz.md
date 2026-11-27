@@ -5,12 +5,15 @@ title: "Merge readiness phase 3: measure and tune how Pulls browsing uses gh and
 kind: feature
 status: in_progress
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-26-pull-request-merge-readiness.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/903
     at: 2026-11-26T23:08:35.655Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/914
+    at: 2026-11-27T09:55:09.926Z
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -26,7 +29,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T10:02:02.413Z
-updated_at: 2026-11-26T23:08:35.655Z
+updated_at: 2026-11-27T09:55:09.926Z
 started_at: 2026-11-26T22:23:19.661Z
 ---
 Owner asked 2026-11-26, as a later phase after the readiness stack. Measure every GitHub request a Pulls browsing session makes (REST core, GraphQL points, 304s, latency, concurrency, queue wait, lane: visible, attended, prefetch, background), find the bottlenecks, and make sure parallelism, throttling, prioritization of what is visible, and the cache are used well, then fix what the measurements justify. Absorbs mb-mg37's hour-long budget measurement.
