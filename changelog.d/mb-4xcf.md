@@ -13,7 +13,7 @@
   link its `enhance` reads through the page SDK it is given, whose `previewLink` and
   `forgetPreview` give the link its link card and take it away, with the element it was
   given as the link’s root, for a target the resolver opens here, a rendered diff’s link
-  to a file of its head (`view-head`), or a page on another site (`{kind: "external",
-  url}`); its unreleased `WORKING_TREE_TITLE` is gone
+  to a file of its head (`view-head`), or a page on another site
+  (`{kind: "external", url}`); its unreleased `WORKING_TREE_TITLE` is gone
   ([Data and Navigation](docs/plugins.md#data-and-navigation)). The runtime has not been
   released, so `PLUGIN_SDK_VERSION` is unchanged.
