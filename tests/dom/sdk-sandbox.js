@@ -82,11 +82,13 @@ function createSdkSandbox(overrides = {}) {
  * loads (`previewLink`, `forgetPreview`, and `disposePreviews` in plugin-sdk-views.js): for
  * a session whose stand-in SDK draws a view that registers its links, and whose pointer
  * rests on none of them, so the bundle is never asked for. It answers as the page does,
- * whether the card is about each target, and each root it is given listens for the pointer.
+ * whether the card is about each target, and each root it is given listens for the pointer;
+ * the titles a view hands a link's card (`takeAuthorTitles`) come back as its card ends.
  */
 function linkCardRegistration(overrides = {}) {
-  const { previewLink, forgetPreview, disposePreviews } = createSdkSandbox(overrides).metabrowser;
-  return { previewLink, forgetPreview, disposePreviews };
+  const { previewLink, forgetPreview, disposePreviews, takeAuthorTitles, giveAuthorTitlesBack } =
+    createSdkSandbox(overrides).metabrowser;
+  return { previewLink, forgetPreview, disposePreviews, takeAuthorTitles, giveAuthorTitlesBack };
 }
 
 module.exports = { createSdkSandbox, linkCardRegistration };

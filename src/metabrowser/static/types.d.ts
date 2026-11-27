@@ -2109,6 +2109,13 @@ type MetabrowserSdk = {
   forgetPreview(anchor: Element): void;
   /** Forget every card of *root*'s links, and put away the one it shows. */
   disposePreviews(root: Element): void;
+  /**
+   * Take every title off a link `previewLink` gave a card, and off what it holds, keeping
+   * *authorTitle*, which the card says, for assistive technology (static/plugin-sdk-views.js).
+   */
+  takeAuthorTitles(anchor: Element, authorTitle: string | null | undefined): void;
+  /** Give a link with no card any more back what `takeAuthorTitles` took and added. */
+  giveAuthorTitlesBack(anchor: Element): void;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   /**
@@ -4081,8 +4088,8 @@ declare global {
     | "sourceKind"
     | "tooltip"
   > &
-    /** The view helpers bring it, so a page that has drawn no view has none yet. */
-    Partial<Pick<MetabrowserPublicSdk, "prefetchCounterpart">>;
+    /** The view helpers bring these, so a page that has drawn no view has none yet. */
+    Partial<Pick<MetabrowserPublicSdk, "giveAuthorTitlesBack" | "prefetchCounterpart">>;
 
   type MetabrowserLinkPreviewTarget =
     | Extract<MetabrowserRepositoryLinkTarget, { kind: "view" | "route" }>

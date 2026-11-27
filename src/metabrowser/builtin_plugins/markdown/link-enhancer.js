@@ -77,7 +77,8 @@ const authorTitles = new WeakMap();
  *   and a `github.com` link the resolver opens here; and so has each link to another site,
  *   whose card says where it goes. A link to a place in the same document has none: it opens
  *   no other page. A title the author gave a link with a card moves into its card, so the
- *   reader never sees two tooltips; a link with none keeps its title.
+ *   reader never sees two tooltips, and assistive technology still reads it; a link with
+ *   none keeps its title.
  *   `rawVersions` is the render's `raw_versions`: the version of each served file it
  *   embeds, by identity, which that file's address carries.
  *   `pagePath` is the path of the page that shows this document as its own, when that is
@@ -130,9 +131,11 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
    * Give *anchor*, a link this document opens in Metabrowser or one to another site, its
    * link card, saying the title its author gave it, which then leaves the link: its own, or
    * else an image's inside it, as `[![d](d.png "Its title")](x.md)` writes one. Every title
-   * inside the link leaves it too, since each would be a second tooltip over the card. A
-   * link the SDK gives no card, such as a mail link, keeps its titles, and a download, which
-   * saves the file rather than opening its page, has none.
+   * inside the link leaves it too, since each would be a second tooltip over the card, and
+   * the SDK keeps the card's for assistive technology and gives all of them back when the
+   * link's card ends (`takeAuthorTitles`). A link the SDK gives no card, such as a mail
+   * link, keeps its titles, and a download, which saves the file rather than opening its
+   * page, has none.
    *
    * @param {Element} anchor
    * @param {MetabrowserLinkPreviewTarget} target
@@ -141,20 +144,18 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     if (anchor.hasAttribute("download")) {
       return;
     }
-    const inner = Array.from(anchor.querySelectorAll("[title]"));
     const authorTitle =
       anchor.getAttribute("title") ??
       authorTitles.get(anchor) ??
-      inner.map((element) => element.getAttribute("title")).find(Boolean) ??
+      Array.from(anchor.querySelectorAll("[title]"), (element) =>
+        element.getAttribute("title"),
+      ).find(Boolean) ??
       null;
     if (mb.previewLink(container, anchor, target, { authorTitle })) {
       if (authorTitle !== null) {
         authorTitles.set(anchor, authorTitle);
       }
-      anchor.removeAttribute("title");
-      for (const element of inner) {
-        element.removeAttribute("title");
-      }
+      mb.takeAuthorTitles(anchor, authorTitle);
     }
   }
 

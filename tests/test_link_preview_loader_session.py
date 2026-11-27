@@ -10,7 +10,9 @@ shows its own link's card once the bundle has run; a rest the pointer left, or t
 ended, shows none; a link forgotten or disposed before the load has none; a load that fails
 leaves every link with its author's title and asks once; a link to a file, a folder, or
 another site has its card on a page with no GitHub identity; the SDK's answer for an
-outside link is the card's; and the SDK keeps no document its surface let go of.
+outside link is the card's; the SDK keeps no document its surface let go of; and a title
+the card takes off a link still reads to assistive technology, until the card ends and
+gives it back.
 """
 
 from __future__ import annotations
@@ -180,6 +182,38 @@ def test_links_registered_during_and_after_the_load_have_cards() -> None:
     assert all(entry["card"] for entry in registered)
     assert {entry["on"] for entry in _seen(log)} == {entry["registered"] for entry in registered}
     assert len({entry["listeners"] for entry in log if "listeners" in entry}) == 1
+
+
+def test_a_title_the_card_takes_still_reads_to_assistive_technology() -> None:
+    """While a link has its card, before its code loads and after, it reads to assistive
+    technology as it did as written: its name, or, where nothing named it, the title its
+    card says, and its description. Once its card ends it is as its author wrote it."""
+
+    log = _session()["an author's title, for assistive technology"]
+    reads = [entry for entry in log if "reads" in entry]
+    written = {entry["reads"]: entry for entry in reads if entry["stage"] == "as written"}
+    carded = {
+        entry["registered"]
+        for entry in log
+        if "registered" in entry and entry["card"] and entry["at"] == 0
+    }
+    assert "write to us" not in carded and len(carded) == len(written) - 1, carded
+    for stage in ("registered", "registered again"):
+        read = {entry["reads"]: entry for entry in reads if entry["stage"] == stage}
+        assert set(read) == set(written), stage
+        for name, entry in read.items():
+            before = written[name]
+            assert entry["description"] == before["description"], (stage, entry, before)
+            assert entry["name"] == before["name"] or before["name"] == "", (stage, entry)
+            assert entry["name"] != "" or name not in carded, (stage, entry)
+    ended = [entry for entry in reads if entry["stage"] in ("forgotten", "disposed")]
+    assert {entry["reads"] for entry in ended} == set(written), ended
+    assert all(entry["asWritten"] for entry in ended), ended
+    assert all(
+        (entry["name"], entry["description"])
+        == (written[entry["reads"]]["name"], written[entry["reads"]]["description"])
+        for entry in ended
+    ), ended
 
 
 def test_the_card_loads_apart_from_the_resolver_and_is_no_startup_script() -> None:

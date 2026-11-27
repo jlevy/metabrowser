@@ -101,10 +101,10 @@ ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "static/plugin-sdk-views.js",
-        'anchor.setAttribute("title", title)',
-        "gives a link that has no card after all, its card's code not loaded, the title its "
-        "author wrote, which its surface took off it when the link was registered "
-        "(`giveTitleBack`), as a link with no card keeps it",
+        'element.setAttribute("title", title)',
+        "gives a link whose card has ended, or that has none after all, back each title its "
+        "author wrote, which its surface handed to the card when the link was registered "
+        "(`giveAuthorTitlesBack`), as a link with no card keeps it",
     ),
     # The next three explain a link or embed inside a rendered document, where the title is
     # part of what the enhancers restore and test. They predate this rule's reach to

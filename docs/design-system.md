@@ -7332,6 +7332,16 @@ ends in `/` and a commit is its ID, as the catalog draws neither.
 The surface that registers the link takes every title off the link and what it holds,
 and hands the link’s own, or else the image’s, to the card, which quotes it on its own
 line after the identity and the object’s title, and never twice.
+A title is also what assistive technology reads of a link, its name where nothing else
+names it and otherwise its description, so the titles leave through the SDK alone
+(`takeAuthorTitles` in `static/plugin-sdk-views.js`), which keeps the card’s for it: as
+the link’s `aria-label` where it has no words, `aria-label`, or image `alt` of its own,
+and otherwise as its `aria-description`, unless that says its name again, never in place
+of one the link already has.
+Wherever the link’s card ends, when it is forgotten, its text disposed, a later
+registration gives it none, or the card’s code does not load, the SDK gives back exactly
+the titles it took and takes off only what it added (`giveAuthorTitlesBack`), so the
+link is as its author wrote it.
 An image the page does not load is a chip whose own tooltip says its address
 ([Images the Page Does Not Load](#images-the-page-does-not-load)); inside a link with a
 card, the card takes that tooltip off the chip as the link is registered, gives it back
@@ -7374,7 +7384,9 @@ and its delegated listeners, the resolver, the registry, and the providers on re
 answers together, and `tests/test_link_card_integration_session.py` holds the rules
 across those boundaries.
 `tests/dom/link-preview-loader-session.js` holds what a link registered before the
-card’s code loads does, on pages with no GitHub identity among them, and
+card’s code loads does, on pages with no GitHub identity among them, and what assistive
+technology reads of a titled link while it has its card and after, by the rules Chrome’s
+accessibility tree follows for the same markup, and
 `tests/test_link_preview_loader_session.py` its invariants.
 
 ### Shared Overlay Lifecycle

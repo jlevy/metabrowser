@@ -70,15 +70,22 @@ class FakeElement extends ElementShim {
     this.scrolled = true;
   }
 
-  /** The descendants that carry a title: the one selector the enhancer asks a link. */
+  /**
+   * The descendants that carry a title, or the images that carry an `alt`: what the
+   * enhancer and the SDK ask of a link.
+   */
   querySelectorAll(selector) {
-    if (selector !== "[title]") {
+    const wanted = { "[title]": () => true, "img[alt]": (child) => child.tagName === "IMG" }[
+      selector
+    ];
+    if (wanted === undefined) {
       throw new Error(`the stand-in does not read ${selector}`);
     }
+    const attribute = selector === "[title]" ? "title" : "alt";
     const found = [];
     const walk = (node) => {
       for (const child of node.children) {
-        if (child.hasAttribute("title")) {
+        if (wanted(child) && child.hasAttribute(attribute)) {
           found.push(child);
         }
         walk(child);
@@ -329,6 +336,7 @@ async function loadModule() {
       cards.calls.push(["forget", anchor]);
       cards.registered.delete(anchor);
     },
+    takeAuthorTitles: registration.takeAuthorTitles,
     disposePreviews(root) {
       registration.disposePreviews(root);
       cards.calls.push(["dispose", root]);
@@ -651,6 +659,16 @@ async function loadModule() {
       cards.registered.get(imageLink)?.authorTitle,
       cards.registered.get(bothTitled)?.authorTitle,
     ]),
+  );
+  // A title is what assistive technology read of a link where nothing else names it, as
+  // nothing names these, whose stand-ins hold no words: it stays for it, through the SDK
+  // (`takeAuthorTitles`), the link's own or its image's, until the document is disposed.
+  const spoken = [titled, imageLink, bothTitled, externalTitled];
+  check(
+    "a title a link's card took still names the link to assistive technology",
+    JSON.stringify(spoken.map((anchor) => anchor.getAttribute("aria-label"))) ===
+      JSON.stringify(["How to set it up", "The image title", "The link's title", "Somewhere else"]),
+    JSON.stringify(spoken.map((anchor) => [...anchor.attributes])),
   );
   check(
     "an outside link's title moves into its card, and a disabled one keeps its explanation",
@@ -1128,6 +1146,15 @@ async function loadModule() {
     !eventTarget.listeners.has("metabrowser:navigation-fragment"),
   );
   check("dispose cancels pending scroll", frames.size === 0);
+  check(
+    "dispose gives each link back the titles its card took, and takes off what it added",
+    titled.getAttribute("title") === "How to set it up" &&
+      titledImage.getAttribute("title") === "The image title" &&
+      bothTitled.getAttribute("title") === "The link's title" &&
+      innerTitled.getAttribute("title") === "An inner title" &&
+      spoken.every((anchor) => !anchor.hasAttribute("aria-label")),
+    JSON.stringify(spoken.map((anchor) => [...anchor.attributes])),
+  );
   check(
     "dispose puts away the rendered root's cards",
     cards.calls.some(([verb, root]) => verb === "dispose" && root === container) &&

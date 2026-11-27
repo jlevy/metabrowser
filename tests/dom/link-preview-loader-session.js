@@ -27,7 +27,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const v8 = require("node:v8");
 const vm = require("node:vm");
-const { FakeElement, PAGE_ADDRESS, assert, createPage } = require("./link-card-page.js");
+const {
+  FakeElement,
+  PAGE_ADDRESS,
+  assert,
+  createPage,
+  markdownLink,
+} = require("./link-card-page.js");
 
 // The collector, so a session can show what the SDK lets go of.
 v8.setFlagsFromString("--expose-gc");
@@ -72,6 +78,94 @@ const MAIL = Object.freeze({
   target: Object.freeze({ kind: "external", url: "mailto:team@example.com" }),
 });
 const LOAD_MS = 30;
+
+/**
+ * Links whose authors titled them, each as a Markdown document writes one, and a link
+ * nothing else names among them: what assistive technology reads of each (`reading`) is
+ * what Chrome read of the same markup.
+ */
+const TO_GUIDE = Object.freeze({ href: GUIDE.href, target: GUIDE.target });
+const TITLED = Object.freeze([
+  // Words of its own, and a title read as its description.
+  Object.freeze({ ...TO_GUIDE, name: "Setup", title: "How to set it up" }),
+  // `[![](badge.svg)](https://ci.example.com/build "CI status")`: an image with an empty
+  // `alt`, which says nothing, so the link's title is its name.
+  Object.freeze({
+    name: "the CI badge",
+    href: "https://ci.example.com/build",
+    title: "CI status",
+    image: { alt: "" },
+    target: Object.freeze({ kind: "external", url: "https://ci.example.com/build" }),
+  }),
+  // An image with no `alt`, whose own title names it and so the link.
+  Object.freeze({
+    href: DOCS.href,
+    target: DOCS.target,
+    name: "the docs diagram",
+    image: { title: "The docs, drawn" },
+  }),
+  // `[![](badge.svg "Build status")](docs/guide.md)`: a title on an image with an empty
+  // `alt` names nothing, so nothing named the link; its card says that title, and now so
+  // does its name.
+  Object.freeze({
+    ...TO_GUIDE,
+    name: "the build badge",
+    image: { alt: "", title: "Build status" },
+  }),
+  // Its author's own `aria-label` and `aria-description`, which stay as they are.
+  Object.freeze({
+    ...TO_GUIDE,
+    name: "the labelled link",
+    label: "The guide",
+    title: "Start here",
+  }),
+  Object.freeze({ ...TO_GUIDE, name: "the described link", title: "A guide", description: "Ours" }),
+  // A title that says its words again, which is read once.
+  Object.freeze({
+    href: ELSEWHERE.href,
+    target: ELSEWHERE.target,
+    name: "Elsewhere",
+    title: "Elsewhere",
+  }),
+]);
+
+/**
+ * What assistive technology reads of *anchor*, a link: its name and its description, by
+ * the rules Chrome's accessibility tree (`Accessibility.getPartialAXTree`) followed for each
+ * markup above and for its `aria-label` and `aria-description` in place of its titles. Its
+ * name is its `aria-label`, else what it holds (its text, and each image's `alt`, or the
+ * image's `title` where it has no `alt`), else its own `title`; its description is its
+ * `aria-description`, else its `title` where that is not its name.
+ */
+function reading(anchor) {
+  const words = (value) =>
+    String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const held = (node) =>
+    node.childNodes
+      .map((child) => {
+        if (child.nodeType === 3) {
+          return child.nodeValue;
+        }
+        if (child.tagName === "IMG") {
+          return child.getAttribute("alt") ?? child.getAttribute("title") ?? "";
+        }
+        return held(child);
+      })
+      .join(" ");
+  const title = words(anchor.getAttribute("title"));
+  const name = words(anchor.getAttribute("aria-label")) || words(held(anchor)) || title;
+  const description =
+    words(anchor.getAttribute("aria-description")) || (title === name ? "" : title);
+  return { name, description };
+}
+
+/** Every attribute of *anchor* and of each element it holds, in order: what its author wrote. */
+function attributesOf(anchor) {
+  const elements = [anchor, ...anchor.querySelectorAll("*")];
+  return JSON.stringify(elements.map((element) => [...element.attributes].sort()));
+}
 
 /** A plain folder's page, with no GitHub identity, whose bundle loads *loadMs* after asked. */
 function folderPage(cards = { loadMs: LOAD_MS }) {
@@ -215,6 +309,10 @@ async function forgottenAndDisposedBeforeTheLoad() {
   await page.point(2200, second.anchors[DOCS.name]);
   await page.look(2600);
   assert(page.log.at(-1).sees === null, "a disposed document's link showed a card");
+  assert(
+    attributesOf(first.anchors[ELSEWHERE.name]) === attributesOf(markdownLink(ELSEWHERE)),
+    "a link forgotten before the load is not as its author wrote it",
+  );
   return page.log;
 }
 
@@ -237,14 +335,70 @@ async function aFailedLoad() {
   assert(page.log.filter((entry) => entry.load).length === 1, "a failed load was asked again");
   assert(page.log.filter((entry) => entry.warned).length === 1, "a failed load did not warn once");
   assert(
-    anchors[GUIDE.name].getAttribute("title") === GUIDE.title &&
-      anchors[ELSEWHERE.name].getAttribute("title") === ELSEWHERE.title,
-    "a link whose card did not load lost its author's title",
+    [GUIDE, ELSEWHERE].every(
+      (link) => attributesOf(anchors[link.name]) === attributesOf(markdownLink(link)),
+    ),
+    "a link whose card did not load is not as its author wrote it, its title back",
   );
   assert(
     page.log.find((entry) => entry.registered === DOCS.name)?.card === false,
     "a link registered after a failed load was said to have a card",
   );
+  return page.log;
+}
+
+/**
+ * The titles a link's card takes in place of its native tooltip still say what they said
+ * to assistive technology: each link reads as it did as written, before the card's code
+ * loads and after, registered again, as a later pass registers one; a link nothing named is
+ * named by the title its card says. A link forgotten, and then each of its document's when
+ * it is disposed, is back as its author wrote it, its author's own attributes among them.
+ */
+async function authorTitlesForAssistiveTechnology() {
+  const page = folderPage();
+  const links = [...TITLED, MAIL];
+  const read = (stage, anchors, only = links) => {
+    for (const link of only) {
+      const anchor = anchors[link.name];
+      page.log.push({
+        at: page.clock.now,
+        reads: link.name,
+        stage,
+        ...reading(anchor),
+        ...(stage === "forgotten" || stage === "disposed"
+          ? { asWritten: attributesOf(anchor) === attributesOf(markdownLink(link)) }
+          : {}),
+      });
+    }
+  };
+  const written = Object.fromEntries(links.map((link) => [link.name, markdownLink(link)]));
+  read("as written", written);
+  const { prose, anchors } = page.markdown("the README", ...links);
+  read("registered", anchors);
+  await page.point(1000, anchors.Setup);
+  const card = await page.look(1600);
+  assert(card?.includes("How to set it up"), `the card did not say the title: ${card}`);
+  for (const link of links) {
+    page.register(prose, anchors[link.name], link, link.title ?? link.image?.title ?? null);
+  }
+  read("registered again", anchors);
+  for (const stage of ["registered", "registered again"]) {
+    for (const link of links) {
+      const before = reading(written[link.name]);
+      const after = page.log.find((entry) => entry.reads === link.name && entry.stage === stage);
+      const named = before.name || (link.title ?? link.image?.title ?? "");
+      assert(
+        after.name === named && after.description === before.description,
+        `${stage}, ${link.name} read ${JSON.stringify(after)}, not ${JSON.stringify(before)}`,
+      );
+    }
+  }
+  page.sdk.forgetPreview(anchors.Setup);
+  read("forgotten", anchors, links.slice(0, 1));
+  page.sdk.disposePreviews(prose);
+  read("disposed", anchors);
+  const changed = page.log.filter((entry) => entry.asWritten === false).map((entry) => entry.reads);
+  assert(changed.length === 0, `not as written once its card ended: ${changed.join(", ")}`);
   return page.log;
 }
 
@@ -412,6 +566,7 @@ const SESSIONS = {
   "outside addresses": outsideAddresses,
   "a document no surface disposed": aDocumentNoSurfaceDisposed,
   "registered during and after the load": registeredDuringAndAfterTheLoad,
+  "an author's title, for assistive technology": authorTitlesForAssistiveTechnology,
 };
 
 /** Every session, or those named on the command line, each one's failure said as it ends. */

@@ -56,6 +56,13 @@ ran (`loaded`) or failed, a provider read the server (`read`), the page warned
 - `registered during and after the load`: a link registered while the bundle loads and
   one registered after it each have a card, and the first document keeps one pair of
   pointer listeners through the hand-over (`listeners`).
+- `an author's title, for assistive technology`: what assistive technology reads of each
+  titled link (`reads`, its `name` and `description`, by the rules Chrome’s
+  accessibility tree follows) as written, once registered before the card’s code loads,
+  and once registered again after; the build badge, which nothing named, is named by the
+  title its card says.
+  Once the link is forgotten, and then its document disposed, each link is as its author
+  wrote it (`asWritten`).
 
 ```console
 $ node tests/dom/link-preview-loader-session.js
@@ -660,6 +667,345 @@ $ node tests/dom/link-preview-loader-session.js
    "at": 1800,
    "sees": "Opens example.com",
    "on": "elsewhere"
+  }
+ ],
+ "an author's title, for assistive technology": [
+  {
+   "at": 0,
+   "reads": "Setup",
+   "stage": "as written",
+   "name": "Setup",
+   "description": "How to set it up"
+  },
+  {
+   "at": 0,
+   "reads": "the CI badge",
+   "stage": "as written",
+   "name": "CI status",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the docs diagram",
+   "stage": "as written",
+   "name": "The docs, drawn",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the build badge",
+   "stage": "as written",
+   "name": "",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the labelled link",
+   "stage": "as written",
+   "name": "The guide",
+   "description": "Start here"
+  },
+  {
+   "at": 0,
+   "reads": "the described link",
+   "stage": "as written",
+   "name": "the described link",
+   "description": "Ours"
+  },
+  {
+   "at": 0,
+   "reads": "Elsewhere",
+   "stage": "as written",
+   "name": "Elsewhere",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "write to us",
+   "stage": "as written",
+   "name": "write to us",
+   "description": "The team's address"
+  },
+  {
+   "at": 0,
+   "registered": "Setup",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the CI badge",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs diagram",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the build badge",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the labelled link",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the described link",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "Elsewhere",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "write to us",
+   "card": false
+  },
+  {
+   "at": 0,
+   "reads": "Setup",
+   "stage": "registered",
+   "name": "Setup",
+   "description": "How to set it up"
+  },
+  {
+   "at": 0,
+   "reads": "the CI badge",
+   "stage": "registered",
+   "name": "CI status",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the docs diagram",
+   "stage": "registered",
+   "name": "The docs, drawn",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the build badge",
+   "stage": "registered",
+   "name": "Build status",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "the labelled link",
+   "stage": "registered",
+   "name": "The guide",
+   "description": "Start here"
+  },
+  {
+   "at": 0,
+   "reads": "the described link",
+   "stage": "registered",
+   "name": "the described link",
+   "description": "Ours"
+  },
+  {
+   "at": 0,
+   "reads": "Elsewhere",
+   "stage": "registered",
+   "name": "Elsewhere",
+   "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "write to us",
+   "stage": "registered",
+   "name": "write to us",
+   "description": "The team's address"
+  },
+  {
+   "at": 1000,
+   "pointer": "Setup"
+  },
+  {
+   "at": 1000,
+   "load": "link-previews"
+  },
+  {
+   "at": 1030,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 1600,
+   "sees": "docs/guide.md | “How to set it up” | Opens here in Metabrowser",
+   "on": "Setup"
+  },
+  {
+   "at": 1600,
+   "registered": "Setup",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the CI badge",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the docs diagram",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the build badge",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the labelled link",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "the described link",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "Elsewhere",
+   "card": true
+  },
+  {
+   "at": 1600,
+   "registered": "write to us",
+   "card": false
+  },
+  {
+   "at": 1600,
+   "reads": "Setup",
+   "stage": "registered again",
+   "name": "Setup",
+   "description": "How to set it up"
+  },
+  {
+   "at": 1600,
+   "reads": "the CI badge",
+   "stage": "registered again",
+   "name": "CI status",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "the docs diagram",
+   "stage": "registered again",
+   "name": "The docs, drawn",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "the build badge",
+   "stage": "registered again",
+   "name": "Build status",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "the labelled link",
+   "stage": "registered again",
+   "name": "The guide",
+   "description": "Start here"
+  },
+  {
+   "at": 1600,
+   "reads": "the described link",
+   "stage": "registered again",
+   "name": "the described link",
+   "description": "Ours"
+  },
+  {
+   "at": 1600,
+   "reads": "Elsewhere",
+   "stage": "registered again",
+   "name": "Elsewhere",
+   "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "write to us",
+   "stage": "registered again",
+   "name": "write to us",
+   "description": "The team's address"
+  },
+  {
+   "at": 1600,
+   "reads": "Setup",
+   "stage": "forgotten",
+   "name": "Setup",
+   "description": "How to set it up",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "Setup",
+   "stage": "disposed",
+   "name": "Setup",
+   "description": "How to set it up",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the CI badge",
+   "stage": "disposed",
+   "name": "CI status",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the docs diagram",
+   "stage": "disposed",
+   "name": "The docs, drawn",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the build badge",
+   "stage": "disposed",
+   "name": "",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the labelled link",
+   "stage": "disposed",
+   "name": "The guide",
+   "description": "Start here",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "the described link",
+   "stage": "disposed",
+   "name": "the described link",
+   "description": "Ours",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "Elsewhere",
+   "stage": "disposed",
+   "name": "Elsewhere",
+   "description": "",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
+   "reads": "write to us",
+   "stage": "disposed",
+   "name": "write to us",
+   "description": "The team's address",
+   "asWritten": true
   }
  ]
 }

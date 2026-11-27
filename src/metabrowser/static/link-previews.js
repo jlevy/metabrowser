@@ -747,7 +747,9 @@
   }
 
   /**
-   * Forget *anchor*: it shows no card, and its card is put away.
+   * Forget *anchor*: it shows no card, and its card is put away. It gets back its author's
+   * titles, as its surface handed them to the card (`giveAuthorTitlesBack` in
+   * static/plugin-sdk-views.js), and its images their tooltips.
    *
    * @param {Element} anchor
    */
@@ -758,6 +760,7 @@
     }
     entries.delete(anchor);
     roots.get(entry.root)?.anchors.delete(anchor);
+    entry.mb.giveAuthorTitlesBack?.(anchor);
     giveImageTips(entry.images);
     if (current?.anchor === anchor) {
       leave();
@@ -803,8 +806,8 @@
   }
 
   /**
-   * Forget every link of *root*, stop listening to it, and put away its card, and no
-   * other surface's (`mb.tooltip.hide(root)`).
+   * Forget every link of *root*, each given back what `forget` gives back, stop listening
+   * to it, and put away its card, and no other surface's (`mb.tooltip.hide(root)`).
    *
    * @param {Element} root
    */
@@ -817,7 +820,9 @@
     root.removeEventListener("pointerover", state.over);
     root.removeEventListener("pointerout", state.out);
     for (const anchor of state.anchors) {
-      giveImageTips(entries.get(anchor)?.images ?? []);
+      const entry = entries.get(anchor);
+      entry?.mb.giveAuthorTitlesBack?.(anchor);
+      giveImageTips(entry?.images ?? []);
       entries.delete(anchor);
     }
     if (current !== null && current.entry.root === root) {

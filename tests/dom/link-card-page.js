@@ -260,6 +260,48 @@ class FakeElement {
   }
 }
 
+/**
+ * A rendered Markdown document's link, as its author wrote it and before anything
+ * registers it: `{name, href, title?, newTab?, label?, description?, image?}`. Its words
+ * are its *name*, unless it holds an image, `{alt?, title?}`, and nothing else, as
+ * `[![](badge.svg "Its title")](x.md)` writes one; *label* and *description* are an
+ * `aria-label` and an `aria-description` its author wrote.
+ */
+function markdownLink(link) {
+  const anchor = new FakeElement("a", link.name, {
+    href: link.href,
+    ...(link.title === undefined ? {} : { title: link.title }),
+    ...(link.label === undefined ? {} : { "aria-label": link.label }),
+    ...(link.description === undefined ? {} : { "aria-description": link.description }),
+    ...(link.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {}),
+  });
+  if (link.image === undefined) {
+    anchor.append(link.name);
+  } else {
+    const { alt, title } = link.image;
+    anchor.append(
+      new FakeElement("img", `${link.name}'s image`, {
+        src: "badge.svg",
+        ...(alt === undefined ? {} : { alt }),
+        ...(title === undefined ? {} : { title }),
+      }),
+    );
+  }
+  return anchor;
+}
+
+/** The title the Markdown enhancer hands a link's card: its own, or else an image's. */
+function titleOf(anchor) {
+  return (
+    anchor.getAttribute("title") ??
+    anchor
+      .querySelectorAll("[title]")
+      .map((element) => element.getAttribute("title"))
+      .find(Boolean) ??
+    null
+  );
+}
+
 // ── The clock ──────────────────────────────────────────────────────
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -558,31 +600,36 @@ function createPage(options = {}) {
   }
 
   /**
-   * A rendered Markdown document's links, each `{name, href, target, title?, newTab?}`,
-   * registered through the SDK with what the Markdown enhancer says it opens, as it
-   * registers them (builtin_plugins/markdown/link-enhancer.js, `previewLink`): its author's
-   * title moves into the card when the SDK answers that the link has one.
+   * A rendered Markdown document's links, each drawn by `markdownLink`, registered through
+   * the SDK with what the Markdown enhancer says it opens, as it registers them
+   * (builtin_plugins/markdown/link-enhancer.js, `previewLink`): its author's title, or else
+   * its image's, moves into the card when the SDK answers that the link has one.
    */
   function markdown(name, ...links) {
     const { host, prose: element } = prose(name);
     const anchors = {};
     for (const link of links) {
-      const anchor = new FakeElement("a", link.name, {
-        href: link.href,
-        ...(link.title === undefined ? {} : { title: link.title }),
-        ...(link.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {}),
-      });
-      anchor.append(link.name);
+      const anchor = markdownLink(link);
       element.append(anchor, " ");
       anchors[link.name] = anchor;
-      const authorTitle = anchor.getAttribute("title");
-      const card = sdk.previewLink(element, anchor, link.target, { authorTitle });
-      if (card) {
-        anchor.removeAttribute("title");
-      }
-      log.push({ at: clock.now, registered: link.name, card });
+      register(element, anchor, link);
     }
     return { host, prose: element, anchors };
+  }
+
+  /**
+   * Register *anchor*, a link of *root* drawn from *link*, as the Markdown enhancer does:
+   * with its author's title, and, when the SDK answers that it has a card, the titles
+   * handed to the SDK (`takeAuthorTitles`). *authorTitle* is what the enhancer remembers of
+   * a link registered before, whose titles the SDK holds.
+   */
+  function register(root, anchor, link, authorTitle = titleOf(anchor)) {
+    const card = sdk.previewLink(root, anchor, link.target, { authorTitle });
+    if (card) {
+      sdk.takeAuthorTitles(anchor, authorTitle);
+    }
+    log.push({ at: clock.now, registered: link.name, card });
+    return card;
   }
 
   /** Dispatch *type* at *target*: the document's capture listeners, then up from *target*. */
@@ -680,6 +727,7 @@ function createPage(options = {}) {
     prose,
     text,
     markdown,
+    register,
     point,
     focus,
     press,
@@ -706,5 +754,6 @@ module.exports = {
   catalogLists,
   createPage,
   lines,
+  markdownLink,
   recorded,
 };

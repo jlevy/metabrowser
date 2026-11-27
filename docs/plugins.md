@@ -1026,16 +1026,21 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   whether it opens a new tab; an address the browser reads as one on the page’s own
   origin, or one with another scheme than `http` or `https`, has no card.
   *root* is the element whose links the view puts away together.
-  When `previewLink` answers `true`, the link has a card, and the view takes off the
-  link any `title` its author wrote, passed as `authorTitle`, so the reader sees one
-  tooltip; it answers `false` for a target the card says nothing of, such as a mail
-  link’s, which keeps its title.
+  When `previewLink` answers `true`, the link has a card, and the view calls
+  `takeAuthorTitles(anchor, authorTitle)`, which takes off the link and what it holds
+  every `title` its author wrote, so the reader sees one tooltip, and keeps
+  `authorTitle` for assistive technology, which read the title there
+  ([Tooltips on Links](design-system.md#tooltips-on-links)); it answers `false` for a
+  target the card says nothing of, such as a mail link’s, which keeps its title.
   The card’s code loads at the page’s first rest on a link registered this way
-  (`static/plugin-sdk-views.js`); where it cannot load, each link gets its `authorTitle`
-  back and shows no card.
+  (`static/plugin-sdk-views.js`); where it cannot load, each link shows no card.
   `forgetPreview(anchor)` takes a card from a link that no longer has one, and
   `disposePreviews(root)` forgets every card of *root*’s links, and puts away the one it
   shows, when the view replaces that text or is disposed.
+  However a link’s card ends, by either of those, by a later `previewLink` that gives it
+  none, or by a card that cannot load, the SDK gives the link back what
+  `takeAuthorTitles` took and takes off what it added (`giveAuthorTitlesBack(anchor)`),
+  so a view never does.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
   event log what the page waits for

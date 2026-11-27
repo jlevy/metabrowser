@@ -319,22 +319,27 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
   globalThis.cancelAnimationFrame = () => {};
   // The SDK, through which each link the document opens here has its link card
   // (`metabrowser.previewLink`, static/plugin-sdk-views.js), on a page with no resolver: a
-  // stand-in that records each card, by its link, with its root and target.
+  // stand-in that records each card, by its link, with its root and target, and the SDK's
+  // own hand-over of a link's titles to its card, given back as the card ends.
   const linkCards = new Map();
   const disposedRoots = [];
+  const { takeAuthorTitles, giveAuthorTitlesBack } = linkCardRegistration();
   const cardRegistration = {
     previewLink(root, anchor, target) {
       linkCards.set(anchor, { root, target });
       return true;
     },
+    takeAuthorTitles,
     forgetPreview(anchor) {
       linkCards.delete(anchor);
+      giveAuthorTitlesBack(anchor);
     },
     disposePreviews(root) {
       disposedRoots.push(root);
       for (const [anchor, entry] of linkCards) {
         if (entry.root === root) {
           linkCards.delete(anchor);
+          giveAuthorTitlesBack(anchor);
         }
       }
     },

@@ -98,6 +98,11 @@ keeps that title, quoted as the author’s, in its card, and loses its native `t
 does an image inside it, whose title the card says where the link has none of its own;
 an image fallback inside the link loses its own tooltip, whose address the card says
 instead. So the reader never sees two tooltips.
+Assistive technology read that title too, as the link’s name where nothing else named it
+and otherwise as its description, so the titles leave through one SDK helper
+(`takeAuthorTitles`), which keeps the card’s as the link’s `aria-label` or
+`aria-description` by that rule, and gives back exactly what it took and added wherever
+the card ends (`giveAuthorTitlesBack`).
 
 An outside link has a card too, decided with the owner on 2026-11-26 after review: the
 macOS app’s web view has no status bar, and `decorateExternalLink` marks only a GitHub
@@ -188,7 +193,7 @@ old as the load took (`rest`), so that rest’s card comes up for it; a press or
 during the load ends that rest.
 From then on the SDK’s calls go straight to the registry.
 A bundle that does not load leaves every link without a card and gives back the author’s
-title the surface took off it, with one warning.
+titles the surface handed the card, with one warning.
 `enhance` and the Markdown enhancer register each link they make by identity, through
 the SDK; the rendered diff registers its head links; a commit’s message on a page with
 no resolver registers each of its links as the outside link it is.

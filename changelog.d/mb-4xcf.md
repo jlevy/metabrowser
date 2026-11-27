@@ -17,3 +17,11 @@
   (`{kind: "external", url}`); its unreleased `WORKING_TREE_TITLE` is gone
   ([Data and Navigation](docs/plugins.md#data-and-navigation)). The runtime has not been
   released, so `PLUGIN_SDK_VERSION` is unchanged.
+
+- **A screen reader still reads a link’s title.** A title that moves into the link card
+  stays with assistive technology, as the link’s description, or as its name where
+  nothing else names it, as for a badge whose image says nothing, and the link is as its
+  author wrote it again once its card goes.
+  A plugin hands a link’s titles to its card with
+  `metabrowser.takeAuthorTitles(anchor, authorTitle)`
+  ([Data and Navigation](docs/plugins.md#data-and-navigation)).

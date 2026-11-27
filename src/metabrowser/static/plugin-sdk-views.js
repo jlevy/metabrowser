@@ -2959,6 +2959,7 @@
     }
     pendingRootOf.delete(anchor);
     pendingRoots.get(root)?.links.delete(anchor);
+    giveAuthorTitlesBack(anchor);
     if (pendingRest?.anchor === anchor) {
       pendingRest = null;
     }
@@ -2986,6 +2987,7 @@
     root.removeEventListener("pointerout", state.out);
     for (const anchor of state.links.keys()) {
       pendingRootOf.delete(anchor);
+      giveAuthorTitlesBack(anchor);
     }
     if (pendingRest?.root === root) {
       pendingRest = null;
@@ -3150,7 +3152,8 @@
 
   /**
    * Hand every link of a root the page still keeps to *registry*, or, with none, since the
-   * bundle did not load, give each its title back.
+   * bundle did not load, give each back the titles its surface handed its card, as a link
+   * the registry turns down gets them (`giveAuthorTitlesBack`).
    * @param {MetabrowserLinkPreviewsRuntime | null} registry
    */
   function handOverLinkCards(registry) {
@@ -3171,7 +3174,7 @@
       for (const [anchor, link] of state.links) {
         pendingRootOf.delete(anchor);
         if (!registry?.register(root, anchor, link.target, mb, link.options)) {
-          giveTitleBack(anchor, link);
+          giveAuthorTitlesBack(anchor);
         }
       }
     }
@@ -3183,16 +3186,117 @@
     }
   }
 
+  // ── An author's title, which a link's card says ───────────────
+  //
+  // A native `title` is a second tooltip over a link's card, so a surface that hands its
+  // link's title to the card takes every title off the link and what it holds
+  // (docs/design-system.md, "Tooltips on Links"). A title is also what assistive technology
+  // reads of a link: its name where nothing else names it, else its description. So the
+  // titles leave through `takeAuthorTitles` alone, which keeps the one the card says for
+  // assistive technology, and `giveAuthorTitlesBack` gives back exactly what it took and
+  // added wherever the link's card ends: here, and in the card's registry
+  // (`forget` and `dispose` in static/link-previews.js). A link without a card then reads
+  // as its author wrote it. tests/dom/link-preview-loader-session.js holds both on what
+  // Chrome's accessibility tree reads of the same markup.
+
   /**
-   * A link with no card after all keeps its author's title, which its surface took off it.
-   * @param {Element} anchor
-   * @param {PendingLink} link
+   * What `takeAuthorTitles` took off each link and what it added to it.
+   *
+   * @typedef {{titles: ReadonlyArray<readonly [Element, string]>, added: ReadonlyArray<readonly [string, string]>}} HeldTitles
+   * @type {WeakMap<Element, HeldTitles>}
    */
-  function giveTitleBack(anchor, link) {
-    const title = link.options.authorTitle;
-    if (typeof title === "string" && title !== "" && !anchor.hasAttribute("title")) {
-      anchor.setAttribute("title", title);
+  const heldTitles = new WeakMap();
+
+  /**
+   * Take every title off *anchor*, a link whose card now says *authorTitle*, and off each
+   * element inside it, as a surface does once `previewLink` answers that the link has a
+   * card, and keep *authorTitle* for assistive technology, which read it there: as the
+   * link's `aria-label` where nothing else names the link, and otherwise as its
+   * `aria-description`, unless it says the link's name again. Neither replaces one the link
+   * already has. A later call for the same link gives back what the last one took first.
+   *
+   * @param {Element} anchor
+   * @param {string | null | undefined} authorTitle
+   */
+  function takeAuthorTitles(anchor, authorTitle) {
+    giveAuthorTitlesBack(anchor);
+    /** @type {Array<readonly [Element, string]>} */
+    const titles = [];
+    for (const element of [anchor, ...Array.from(anchor.querySelectorAll("[title]"))]) {
+      const title = element.getAttribute("title");
+      if (title !== null) {
+        titles.push([element, title]);
+        element.removeAttribute("title");
+      }
     }
+    /** @type {Array<readonly [string, string]>} */
+    const added = [];
+    const said = collapsedWords(authorTitle);
+    if (said !== "") {
+      const name = nameWithoutTitles(anchor);
+      const named = name !== "" || anchor.hasAttribute("aria-labelledby");
+      const attribute = named ? "aria-description" : "aria-label";
+      const described = anchor.hasAttribute("aria-describedby");
+      if (!anchor.hasAttribute(attribute) && !(named && (described || said === name))) {
+        anchor.setAttribute(attribute, said);
+        added.push([attribute, said]);
+      }
+    }
+    if (titles.length > 0 || added.length > 0) {
+      heldTitles.set(anchor, Object.freeze({ titles, added }));
+    }
+  }
+
+  /**
+   * Give *anchor*, a link with no card any more, back each title `takeAuthorTitles` took off
+   * it and what it holds, and take off it what that added, unless something has changed it
+   * since. A link it took nothing from is left as it is.
+   *
+   * @param {Element} anchor
+   */
+  function giveAuthorTitlesBack(anchor) {
+    const held = heldTitles.get(anchor);
+    if (held === undefined) {
+      return;
+    }
+    heldTitles.delete(anchor);
+    for (const [attribute, value] of held.added) {
+      if (anchor.getAttribute(attribute) === value) {
+        anchor.removeAttribute(attribute);
+      }
+    }
+    for (const [element, title] of held.titles) {
+      if (!element.hasAttribute("title")) {
+        element.setAttribute("title", title);
+      }
+    }
+  }
+
+  /**
+   * The words that name *anchor* apart from any title, as assistive technology reads a link:
+   * its `aria-label`, else its text, else the `alt` of each image inside it; "" for none.
+   *
+   * @param {Element} anchor
+   */
+  function nameWithoutTitles(anchor) {
+    const label = collapsedWords(anchor.getAttribute("aria-label"));
+    if (label !== "") {
+      return label;
+    }
+    const text = collapsedWords(anchor.textContent);
+    if (text !== "") {
+      return text;
+    }
+    return collapsedWords(
+      Array.from(anchor.querySelectorAll("img[alt]"), (image) => image.getAttribute("alt")).join(
+        " ",
+      ),
+    );
+  }
+
+  /** @param {unknown} words */
+  function collapsedWords(words) {
+    return typeof words === "string" ? words.replace(/\s+/g, " ").trim() : "";
   }
 
   function loadChangedFilesTree() {
@@ -3236,6 +3340,7 @@
     disposePreviews,
     externalLinkMenuItems,
     forgetPreview,
+    giveAuthorTitlesBack,
     loadChangedFilesTree,
     loadRepositoryLinks,
     mountCounterpart,
@@ -3250,6 +3355,7 @@
     ageLabel,
     ageLabelHtml,
     retellAge,
+    takeAuthorTitles,
     highlightSyntax: highlightSyntax,
     isLargeTextPreview: isLargeTextPreview,
     langForExtension: langForExtension,
