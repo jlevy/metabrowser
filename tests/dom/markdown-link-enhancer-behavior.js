@@ -312,6 +312,17 @@ async function loadModule() {
     target: "_blank",
     rel: "noopener noreferrer",
   });
+  // A commit's page and the list, which the shell opens in place as it opens a pull request.
+  const githubCommit = new FakeElement("a", {
+    href: `https://github.com/example/docs/commit/${"b".repeat(40)}`,
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
+  const githubPulls = new FakeElement("a", {
+    href: "https://github.com/example/docs/pulls",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  });
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
   const newTab = new FakeElement("a", { href: "other.md", target: "_blank" });
@@ -331,6 +342,8 @@ async function loadModule() {
     githubPull,
     githubBranch,
     githubOtherBranch,
+    githubCommit,
+    githubPulls,
     unsafe,
     download,
     newTab,
@@ -345,6 +358,10 @@ async function loadModule() {
   let frameSequence = 0;
   let catalogSnapshotCalls = 0;
   const opened = [];
+  // What the shell was asked to open in place (`navigation.openRoute`), and whether it can:
+  // false before its tabs have loaded.
+  const routed = [];
+  let routeOpens = true;
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
     decorateExternalLink: sdk.metabrowser.decorateExternalLink,
@@ -373,6 +390,7 @@ async function loadModule() {
       current: () => current,
       href: (target) => `/view/${target.path}${target.fragment ? `#${target.fragment}` : ""}`,
       open: async (target) => opened.push(target),
+      openRoute: (href) => routed.push(href) > 0 && routeOpens,
     },
   };
   const handle = module.enhanceRenderedLinks(container, "docs/readme.md", mb, {
@@ -495,12 +513,55 @@ async function loadModule() {
     JSON.stringify(opened),
   );
   opened.pop();
-  const pullClick = click(githubPull);
-  container.listeners.get("click")(pullClick);
   check(
-    "a plain click on a pull request's page is followed as a link",
-    !pullClick.defaultPrevented && opened.length === 1,
+    "a commit's page and the list are in-app links",
+    githubCommit.getAttribute("href") === `/commit/${"b".repeat(40)}` &&
+      githubCommit.getAttribute("data-metabrowser-github-localization") === "commit" &&
+      !githubCommit.hasAttribute("target") &&
+      githubPulls.getAttribute("href") === "/pulls" &&
+      githubPulls.getAttribute("data-metabrowser-github-localization") === "pulls" &&
+      !githubPulls.hasAttribute("target"),
+    JSON.stringify([[...githubCommit.attributes], [...githubPulls.attributes]]),
   );
+  for (const [name, anchor] of [
+    ["a pull request's page", githubPull],
+    ["a commit's page", githubCommit],
+    ["the list", githubPulls],
+  ]) {
+    const routeClick = click(anchor);
+    container.listeners.get("click")(routeClick);
+    check(
+      `a plain click on ${name} has the shell open it in place`,
+      routeClick.defaultPrevented &&
+        routed.length === 1 &&
+        routed[0] === anchor.getAttribute("href") &&
+        opened.length === 1,
+      JSON.stringify(routed),
+    );
+    routed.length = 0;
+    for (const [how, overrides] of [
+      ["a modified", { metaKey: true }],
+      ["a middle", { button: 1 }],
+    ]) {
+      const nativeClick = click(anchor, overrides);
+      container.listeners.get("click")(nativeClick);
+      check(
+        `${how} click on ${name} is the browser's`,
+        !nativeClick.defaultPrevented && routed.length === 0,
+        JSON.stringify(routed),
+      );
+    }
+  }
+  routeOpens = false;
+  const notReadyClick = click(githubCommit);
+  container.listeners.get("click")(notReadyClick);
+  check(
+    "a route the shell cannot open yet is followed as a link",
+    !notReadyClick.defaultPrevented && routed.length === 1 && opened.length === 1,
+    JSON.stringify(routed),
+  );
+  routed.length = 0;
+  routeOpens = true;
 
   const sameDocumentClick = click(sameDocument);
   container.listeners.get("click")(sameDocumentClick);

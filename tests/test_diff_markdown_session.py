@@ -82,6 +82,14 @@ _BOOK = (
     + b"".join(b"Page %d.\n\n" % index for index in range(620))
     + b"## The last part\n\nThe end.\n"
 )
+# A new document whose links name a file and a folder on the pull request's branch on
+# github.com, which open in place only on a page that shows the head (`headLinksOpen` in
+# builtin_plugins/diff/index.js).
+_LINKS = (
+    b"# Links\n\n"
+    b"See [the setup notes](https://github.com/octo/demo/blob/feature/docs/setup.md) in "
+    b"[the docs folder](https://github.com/octo/demo/tree/feature/docs).\n"
+)
 _README = (
     b'<p align="center"><img src="https://example.com/logo.png" alt="" width="64"></p>\n\n'
     b"# Demo\n\nWelcome.<br>Press <kbd>Ctrl</kbd> to begin.\n\n"
@@ -148,11 +156,12 @@ def _recording() -> dict[str, Any]:
         "f7": _projection(_PLAIN_OLD, _PLAIN_NEW, "docs/plain.md"),
         "f10": _projection(_LONG_OLD, _LONG_NEW, "docs/long.md"),
         "f11": _projection(None, _BOOK, "docs/book.md"),
+        "f12": _projection(None, _LINKS, "docs/links.md"),
     }
     folds = _kept(projections["f10"]).folds
     deep = next(fold for fold in folds if fold.withheld)
     answers: dict[str, Any] = {
-        **{file: _views(projections[file], "concise") for file in ("f4", "f6", "f7", "f11")},
+        **{file: _views(projections[file], "concise") for file in ("f4", "f6", "f7", "f11", "f12")},
         # A short document Docs opens in Full (`prefers_full` in
         # metabrowser.diff.markdown_views), as tests/dom/diff-current-session.js mounts it.
         "f1": _views(projections["f1"], "concise", "prefer-full"),
@@ -195,6 +204,7 @@ def _recording() -> dict[str, Any]:
             _file("f9", "docs/unread.md", availability="too_large"),
             _file("f10", "docs/long.md"),
             _file("f11", "docs/book.md", old=False),
+            _file("f12", "docs/links.md", old=False),
         ],
         "answers": answers,
         "trees": trees,
@@ -251,6 +261,7 @@ def test_recording_matches_the_production_projection() -> None:
         "f8": ("too_large", None),
         "f10": {"view=concise": "ready", "view=full": "ready", "blocks=13-15": "ready"},
         "f11": {"view=concise": "ready"},
+        "f12": {"view=concise": "ready"},
     }
     # f10 folds a run sent with the answer and withholds two longer ones.
     folds = recording["answers"]["f10"]["view=concise"]["folds"]
@@ -273,10 +284,59 @@ def test_session_replays_the_recording() -> None:
         "pinned at the comparison's head": "/view/g1-ZG9jcw/g1-c2V0dXAubWQ",
         "pinned at the merge base before the resolver arrives": None,
         "pinned at the merge base after the resolver arrives": on_github,
+        "pinned on the pull request's branch before its last push": on_github,
         "beside a checkout at the head, which has no pin": on_github,
         "pinned at the comparison's head, after another tab changed the pin": on_github,
     }
+    # The same rule decides a github.com link to the served branch, which the repository's
+    # resolver opens in place, as a README's (mb-e2lo): only on the page that shows the
+    # head; anywhere else, even pinned on that branch at an earlier commit or beside a
+    # checkout of the head, it is the link the text wrote, and a click is the browser's.
+    in_place = ["in place: /view/g1-ZG9jcw/g1-c2V0dXAubWQ", "in place: /view/g1-ZG9jcw/"]
+    written = [
+        "the browser's: https://github.com/octo/demo/blob/feature/docs/setup.md",
+        "the browser's: https://github.com/octo/demo/tree/feature/docs",
+    ]
+    assert {
+        page: drawn["plain clicks"] for page, drawn in transcript["links"]["repository"].items()
+    } == {
+        "pinned at the comparison's head": in_place,
+        "pinned at the merge base": written,
+        "pinned on the pull request's branch before its last push": written,
+        "beside a checkout at the head, which has no pin": written,
+        "pinned at the comparison's head, after another tab changed the pin": written,
+    }
     steps = {step["step"]: step for step in transcript["steps"]}
+    at_head = "at the head, a link to a file or folder on the served branch opens it in place"
+    assert "/view/" in steps[at_head]["files"]["f12 docs/links.md"]["rows"][1]
+    clicks = steps[
+        "a plain click opens it through the navigation API, and a modified one is the browser's"
+    ]["clicks"]
+    assert [each["plain"] for each in clicks.values()] == in_place
+    assert all(
+        each["with a modifier"].startswith("the browser's: /view/") for each in clicks.values()
+    )
+    # The link to a file of the head the server spelled beside them opens in place the same
+    # way, and not by loading the page again.
+    head_link = "/view/g1-ZG9jcw/g1-c2V0dXAubWQ"
+    assert steps["a link to a file of the head opens it in place the same way"]["clicks"] == {
+        "first setup notes": {
+            "plain": f"in place: {head_link}",
+            "with a modifier": f"the browser's: {head_link}",
+        }
+    }
+    # Another tab changed the pin: every link the page opened in place is the link the text
+    # wrote again, and reads as one in a file drawn after the change; the server's link to
+    # a file of the head opens that file at the head on github.com.
+    closed = steps[
+        "a page that learns another pin is served links a file of the head on github.com, "
+        "and a branch link as written"
+    ]
+    assert not any("/view/" in row for each in closed["files"].values() for row in each["rows"])
+    after = steps["every click on a link the page opened in place is the browser's"]["clicks"]
+    assert [each["plain"] for each in after.values()] == [f"the browser's: {on_github}", *written]
+    relinked = steps["a file drawn after the pin change links as the one the change closed"]
+    assert relinked["files"]["f12 docs/links.md"] == closed["files"]["f12 docs/links.md"]
     first = steps["an answer within the loading delay paints Rendered first"]["files"]
     assert first["f1 docs/guide.md"]["shows"] == "rendered"
     # A file still waiting past the delay goes on showing nothing: Source shown then was
@@ -288,7 +348,7 @@ def test_session_replays_the_recording() -> None:
         "mount: a Markdown file waits for Rendered with Source hidden; "
         "one whose changes did not load shows Source"
     ]["files"]
-    assert len(mounted) == 10
+    assert len(mounted) == 11
     assert mounted["f1 docs/guide.md"]["chooser"] == "*Rendered | Source"
     unread = "This change is too large to show inline."
     assert mounted["f9 docs/unread.md"] == {

@@ -379,6 +379,16 @@ type MetabrowserNavigationApi = Readonly<{
     target: MetabrowserNavigationTarget,
     options?: MetabrowserNavigationOpenOptions,
   ): Promise<void>;
+  /**
+   * Open an in-app page other than a file's in place, by the address a link carries: a
+   * pull request's page and its tabs and changed files (`/pull/`), a stack's (`/stack/`),
+   * the list (`/pulls`), or a commit (`/commit/`); the address shown is opened again
+   * where it is, pushing no history entry. Answers whether the shell opened it:
+   * false for any other address, one the shell cannot show yet, or before its tabs have
+   * loaded, and the caller then lets the browser follow the link. The shell's tab
+   * controller opens it (static/main-tabs.js, `openRoute`).
+   */
+  openRoute(href: string): boolean;
 }>;
 
 type MetabrowserNavigationTarget = Readonly<{
@@ -4019,6 +4029,8 @@ declare global {
       directory?: boolean,
       suffix?: string,
     ): string | null;
+    /** Whether a click is a plain primary one, which a link it made in-app opens in place. */
+    isPlainClick(event: Event): boolean;
     viewFileUrl(
       context: MetabrowserRepositoryContext | null | undefined,
       revision: string,
@@ -4802,6 +4814,8 @@ declare global {
     landingRoute(source: "startup" | "user" | "popstate"): MetabrowserRevealRoute;
     onHistory(): void;
     open(id: string): void;
+    /** Open an address Pulls or Commits holds in place, as a link names it; see the SDK's. */
+    openRoute(href: string): boolean;
     register(panel: MetabrowserNavPanel): void;
     remember(): void;
     remove(id: string): void;
@@ -4815,9 +4829,11 @@ declare global {
   type MetabrowserPreviewClaim = number;
 
   /**
-   * The internal seam between the shell and core modules that are not file
-   * renderers. Deliberately not `window.metabrowser`, which is the
-   * documented plugin SDK and carries a compatibility contract.
+   * The internal seam between the shell (static/app.js) and core modules that are not
+   * file renderers. Deliberately narrow, and deliberately not `window.metabrowser`, which
+   * is the documented plugin SDK and carries a compatibility contract: this is an internal
+   * boundary that core modules loaded by the shell may use. Exposing it at all is what
+   * lets git-panel.js stay out of app.js instead of adding a thousand lines to it.
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
@@ -5223,6 +5239,8 @@ declare global {
     MetabrowserRefreshPlan?: MetabrowserRefreshPlanRuntime;
     MetabrowserMainTabs?: Readonly<{
       create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+      /** The shell's controller's `openRoute`, false before the shell has made one. */
+      openRoute(href: string): boolean;
       REVEAL_ROUTES: readonly MetabrowserRevealRoute[];
       landingRoute(
         source: "startup" | "user" | "popstate",

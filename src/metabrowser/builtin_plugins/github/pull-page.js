@@ -293,7 +293,7 @@ export function changedPaths(raw) {
  * What a page's `open` takes to show the pull request, stack, tab, or changed file a link in
  * a text names (`pull` of static/repository-links.js's route, which static/pull-route.js's
  * `open` takes as a route), or null for a route that names none, a commit's or the list's,
- * which the browser follows. Pure.
+ * which the shell opens (`metabrowser.navigation.openRoute`). Pure.
  *
  * @param {Extract<MetabrowserRepositoryLinkTarget, {kind: "route"}>} route
  * @returns {{number: number, tab: string, file?: string, stack?: true} | null}
@@ -6720,7 +6720,7 @@ export function mountPullPage(container, ctx, mb) {
   /**
    * Open a pull request's page, tab, or changed file that a text links to in place, as
    * `pageLink` and a changed file's row do; answer false for any other route, a commit's or
-   * the list's, which the browser follows.
+   * the list's, which `enhance` then has the shell open (`metabrowser.navigation.openRoute`).
    *
    * @param {Extract<MetabrowserRepositoryLinkTarget, {kind: "route"}>} route
    */

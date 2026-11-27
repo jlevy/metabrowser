@@ -87,6 +87,13 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const preserveFragmentOnlyHrefs = isCurrentDocument(pagePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
+  /**
+   * Each link into a pull request's, the list's, or a commit's page, by its address, which
+   * a plain click asks the shell to open in place (`navigation.openRoute`).
+   *
+   * @type {WeakMap<Element, string>}
+   */
+  const routeTargets = new WeakMap();
   /** The PDF cards this document drew, disposed with it. @type {Set<{dispose: () => void}>} */
   const pdfEmbeds = new Set();
   const ownsReconciliation = !options.reconciliation;
@@ -154,8 +161,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           // A document has no text context, so the answer is in-app or nothing. An in-app
           // page does not leave the page, so it loses what an inert render gives an outside
           // link, once its address is spelled; a plain click on a `/view/` target, spelled
-          // in the GitPath wire on a pin, then opens it here, and a pull request's or a
-          // commit's page is followed as a link.
+          // in the GitPath wire on a pin, then opens it here, and one on a pull request's,
+          // the list's, or a commit's page opens that page in place, as the shell opens it.
           if (localized?.kind === "view") {
             const target = navigationTarget(localized.target);
             anchor.setAttribute("href", mb.navigation.href(target));
@@ -167,6 +174,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             internalTargets.set(anchor, target);
           } else if (localized?.kind === "route") {
             anchor.setAttribute("href", localized.href);
+            routeTargets.set(anchor, localized.href);
           }
           if (localized?.kind === "view" || localized?.kind === "route") {
             anchor.removeAttribute("target");
@@ -323,15 +331,21 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     while (element && element !== container) {
       if (element instanceof Element) {
         const target = internalTargets.get(element);
-        if (target) {
+        const route = routeTargets.get(element);
+        if (target || route !== undefined) {
           const anchor = /** @type {HTMLAnchorElement} */ (element);
           if (anchor.hasAttribute("download") || notSameBrowsingContext(anchor)) {
             return;
           }
-          event.preventDefault();
-          void mb.navigation.open(target).catch((error) => {
-            console.warn("Could not open Markdown link", error);
-          });
+          if (target) {
+            event.preventDefault();
+            void mb.navigation.open(target).catch((error) => {
+              console.warn("Could not open Markdown link", error);
+            });
+          } else if (route !== undefined && mb.navigation.openRoute(route)) {
+            // A page the shell cannot open in place yet is the browser's to follow.
+            event.preventDefault();
+          }
           return;
         }
         element = element.parentElement;

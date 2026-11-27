@@ -5110,13 +5110,7 @@ function renderPreviewNode(node, claim) {
   return preview;
 }
 
-// The seam between the shell and modules that are not file renderers.
-//
-// Deliberately narrow, and deliberately not `window.metabrowser`: that
-// object is the documented plugin SDK with a compatibility contract,
-// whereas this is an internal boundary that core modules loaded by the
-// shell may use. Exposing it at all is what lets git-panel.js stay out
-// of app.js instead of adding a thousand lines to it.
+// The seam between the shell and core modules: MetabrowserShellRuntime in types.d.ts.
 window.MetabrowserShell = Object.freeze({
   activateNavPanel: (/** @type {string} */ id) => mainTabs?.activate(id),
   rememberMainTabAddress: () => mainTabs?.remember(),

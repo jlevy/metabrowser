@@ -835,8 +835,11 @@ async function textRefusal() {
 // `/pull/` as github.com resolves it. At the served head, such a link opens the head's file
 // in place. Away from it, it opens github.com at the head until the comparison is read, and
 // then, for a file the comparison changes on either side, that file in Changes, in place
-// and through the page's own `open`; an unchanged file stays on github.com. The read lands
-// while Checks shows, so the description's section kept for a return to Conversation is read
+// and through the page's own `open`; an unchanged file stays on github.com. Another pull
+// request opens in place through the page's own `open` too, and a commit's page and the
+// list through the shell's (`navigation.openRoute`), which is asked only for what the
+// page declined; a modified click on any of them is the browser's. The read lands while
+// Checks shows, so the description's section kept for a return to Conversation is read
 // again too, once, and its link keeps its one click listener. Returns each step's links, as
 // "text → href", and what each click did.
 async function textLinks() {
@@ -892,6 +895,9 @@ async function textLinks() {
       '<a href="https://github.com/octo/demo/pull/docs/changed.md" data-metabrowser-path-relative="">the changed guide</a>',
       '<a href="https://github.com/octo/demo/pull/docs/same.md" data-metabrowser-path-relative="">an unchanged file</a>',
       '<a href="https://github.com/octo/demo/pull/7/files">the Changes tab</a>',
+      `<a href="https://github.com/octo/demo/commit/${"d".repeat(40)}">a commit</a>`,
+      '<a href="https://github.com/octo/demo/pulls">the pull requests</a>',
+      '<a href="https://github.com/octo/demo/pull/8">another pull request</a>',
     ].join(""),
     [`issue_comment/${COMMENT}`]:
       '<a href="https://github.com/octo/demo/pull/docs/before.md" data-metabrowser-path-relative="">the renamed file</a>',
@@ -919,13 +925,14 @@ async function textLinks() {
     },
   };
   const steps = [];
-  const plain = () => ({
+  const plain = (modifiers = {}) => ({
     altKey: false,
     button: 0,
     ctrlKey: false,
     defaultPrevented: false,
     metaKey: false,
     shiftKey: false,
+    ...modifiers,
     preventDefault() {
       this.defaultPrevented = true;
     },
@@ -983,6 +990,8 @@ async function textLinks() {
     };
     const opened = [];
     const viewed = [];
+    // What the shell was asked to open in place: a route the page's own `open` declined.
+    const shell = [];
     const diffView = {
       prefetch: async (asked) => (asked.right === comparison.head ? raw : null),
       summary: async () => ({ dispose() {} }),
@@ -1033,6 +1042,10 @@ async function textLinks() {
           async open(target) {
             viewed.push(`/view/${target.path}`);
           },
+          openRoute(href) {
+            shell.push(href);
+            return true;
+          },
         },
         sourceKind: () => "git_revision",
         icons: { toggle: "" },
@@ -1046,30 +1059,41 @@ async function textLinks() {
       await settle();
     };
     const movePin = () => listeners.dispatchEvent(new Event("metabrowser:pin-changed"));
-    return { container, handle, opened, viewed, idle, movePin };
+    return { container, handle, opened, viewed, shell, idle, movePin };
   }
   const anchors = (holder) => holder.querySelectorAll("a[href]");
   const told = (holder) =>
     anchors(holder)
       .map((link) => `${link.textContent} → ${link.getAttribute("href")}`)
       .join("; ");
-  /** Click *text*'s link: what it opened in place, or that the browser follows it. */
-  const click = (holder, text, mounted) => {
+  /**
+   * Click *text*'s link, plainly or with *modifiers*: what it opened in place, the shell's
+   * opens named so, or that the browser follows it.
+   */
+  const click = (holder, text, mounted, modifiers = {}) => {
     const link = anchors(holder).find((anchor) => anchor.textContent === text);
-    const event = plain();
+    const event = plain(modifiers);
     link.events.get("click")?.(event);
     const routes = mounted.opened.splice(0);
     const viewed = mounted.viewed.splice(0);
+    const shell = mounted.shell.splice(0);
     // What a plain click opens in place is the address the link holds, as pull-route.js
     // spells a route, so a new tab and a copied link open the same.
     const spelled = routes.map(
-      (route) => `/pull/${route.number}/${route.tab}${route.file ? `/${route.file}` : ""}`,
+      (route) =>
+        `/pull/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`,
     );
-    for (const address of [...spelled, ...viewed]) {
+    for (const address of [...spelled, ...viewed, ...shell]) {
       assert.equal(address, link.getAttribute("href"), "a click opens the link's own address");
     }
-    assert.equal(routes.length + viewed.length > 0, event.defaultPrevented, "opened in place");
-    const opened = [...routes.map((route) => JSON.stringify(route)), ...viewed];
+    const inPlace = routes.length + viewed.length + shell.length;
+    assert.ok(inPlace <= 1, "one click opens one thing");
+    assert.equal(inPlace > 0, event.defaultPrevented, "opened in place");
+    const opened = [
+      ...routes.map((route) => JSON.stringify(route)),
+      ...viewed,
+      ...shell.map((href) => `the shell opens ${href}`),
+    ];
     return `${text}: ${event.defaultPrevented ? opened.join(", ") : "the browser follows it"}`;
   };
   const proses = (container) => container.querySelectorAll(".kpress-prose");
@@ -1119,9 +1143,15 @@ async function textLinks() {
     ["the changed guide", description],
     ["an unchanged file", description],
     ["the Changes tab", description],
+    ["a commit", description],
+    ["the pull requests", description],
+    ["another pull request", description],
     ["the renamed file", comment],
   ]) {
     steps.push(`  click ${click(holder, text, away)}`);
+  }
+  for (const text of ["a commit", "the pull requests", "another pull request"]) {
+    steps.push(`  Command-click ${click(description, text, away, { metaKey: true })}`);
   }
   assert.equal(
     anchors(comment)[0].getAttribute("href"),

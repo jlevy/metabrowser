@@ -52,6 +52,13 @@
 // route's windows and the catalog's one-row lookups; a row the list moved for takes focus
 // only while focus is where the move left it.
 //
+// `a link's address`, the part `links` prints, opens by a plain click on a link in a text
+// an address Pulls or Commits holds, through the SDK's `navigation.openRoute` and
+// static/main-tabs.js's `openRoute` over the same tabs: a commit, another commit, a pull
+// request, another tab of the one shown, another pull request, the list, and a stack's
+// page, each pushing one entry and landing as a tab's destination lands, and the addresses
+// it leaves to the browser, which move, write, and tell nothing.
+//
 // `invariants` are relations every step holds.
 
 const assert = require("node:assert/strict");
@@ -107,6 +114,9 @@ function createContext(document, address, modules) {
     setTimeout: () => 0,
     clearTimeout() {},
     location: {
+      get href() {
+        return location.href;
+      },
       get pathname() {
         return location.pathname;
       },
@@ -215,14 +225,11 @@ function ruleStory() {
 
 // ── The tabs ──────────────────────────────────────────────────────
 
-async function tabsStory() {
-  const document = new FakeDocument();
-  const context = createContext(document, "/view/README.md", [
-    "navigation.js",
-    "pull-route.js",
-    "main-tabs.js",
-    "pulls-nav.js",
-  ]);
+/**
+ * The shell's navigation pane over *document*: its three tabs with Files in front, the
+ * scroller that holds their panels, and the reading pane, which has focus.
+ */
+function navigationPane(document) {
   const navBar = element(document, "div", { class: "nav-tab-bar", role: "tablist" });
   for (const [id, label] of [
     ["files", "Files"],
@@ -254,28 +261,15 @@ async function tabsStory() {
   document.body.append(element(document, "nav", { class: "tree-pane" }, navBar, treeContent));
   document.body.append(reading);
   reading.focus();
+  return { treeContent, reading };
+}
 
-  const told = [];
-  let restores = 0;
-  const mainTabs = context.MetabrowserMainTabs.create({
-    cancelPreview: () => told.push("the pane given up"),
-    filesShown() {},
-    filesHidden() {},
-    flushPull() {},
-    focusFilesRow: () => false,
-    isGitHistoryLanding: () => false,
-    isPullAddress: (pathname) => pathname.startsWith("/pull/") || pathname === "/pulls",
-    openHome: () => Promise.resolve(),
-    restore() {
-      restores += 1;
-      return Promise.resolve();
-    },
-    async revealFile(how) {
-      told.push(`Files: reveal ${context.location.pathname}, scroll ${how.scroll}`);
-    },
-    scrollShadow() {},
-  });
-  context.mainTabs = mainTabs;
+/**
+ * static/pulls-nav.js's tab under *mainTabs*, whose view is the Pulls panel's own
+ * controller over the recorded lists: it decides whether a row is revealed, and what the
+ * host tells the view is *told* as it is told.
+ */
+function pullsTab(context, document, mainTabs, treeContent, told) {
   const nav = context.MetabrowserPullsNav.createPullsNav({
     routes: context.MetabrowserPullRoute,
     location: () => ({ pathname: context.location.pathname, search: context.location.search }),
@@ -325,6 +319,41 @@ async function tabsStory() {
     routeChanged: nav.routeChanged,
   });
   nav.start();
+  return nav;
+}
+
+async function tabsStory() {
+  const document = new FakeDocument();
+  const context = createContext(document, "/view/README.md", [
+    "navigation.js",
+    "pull-route.js",
+    "main-tabs.js",
+    "pulls-nav.js",
+  ]);
+  const { treeContent, reading } = navigationPane(document);
+
+  const told = [];
+  let restores = 0;
+  const mainTabs = context.MetabrowserMainTabs.create({
+    cancelPreview: () => told.push("the pane given up"),
+    filesShown() {},
+    filesHidden() {},
+    flushPull() {},
+    focusFilesRow: () => false,
+    isGitHistoryLanding: () => false,
+    isPullAddress: (pathname) => pathname.startsWith("/pull/") || pathname === "/pulls",
+    openHome: () => Promise.resolve(),
+    restore() {
+      restores += 1;
+      return Promise.resolve();
+    },
+    async revealFile(how) {
+      told.push(`Files: reveal ${context.location.pathname}, scroll ${how.scroll}`);
+    },
+    scrollShadow() {},
+  });
+  context.mainTabs = mainTabs;
+  const nav = pullsTab(context, document, mainTabs, treeContent, told);
   // The Commits panel, which reveals a commit from its own landing (git-panel.js).
   mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   await settle();
@@ -480,6 +509,191 @@ async function tabsStory() {
     return mainTabs.reveal("address");
   });
   return { steps, "tab switches restored the address": restores };
+}
+
+// ── A link's address ──────────────────────────────────────────────
+
+/**
+ * A link in a text opens an address Pulls or Commits holds in place, through the SDK's
+ * `navigation.openRoute` (static/navigation.js) and the tab controller's `openRoute`
+ * (static/main-tabs.js), loaded whole with static/pull-route.js and static/pulls-nav.js, as
+ * a plain click on such a link asks it (static/repository-links.js, `enhance`, and the
+ * Markdown plugin's link-enhancer.js). Each step prints its answer, the address and the tab
+ * in front after it, how many history entries it pushed, and what the shell's parts were
+ * asked: a pull request's page writing its place into its entry, the pane given up on a
+ * switch of tab, the pane applying the address (app.js's `applyNavigationTarget`, which the
+ * controller's `restore` runs), the Commits panel's landing (git-panel.js's
+ * `restoreCommitLanding`, the one Back runs), and what the Pulls tab's view was told.
+ */
+async function linksStory() {
+  const document = new FakeDocument();
+  const context = createContext(document, "/view/README.md", [
+    "navigation.js",
+    "pull-route.js",
+    "main-tabs.js",
+    "pulls-nav.js",
+  ]);
+  const { treeContent, reading } = navigationPane(document);
+  const navigation = context.MetabrowserNavigationRoute.navigation;
+  const routes = context.MetabrowserPullRoute;
+  const told = [];
+  let pushed = 0;
+  const write = context.history.pushState;
+  context.history.pushState = (state, title, href) => {
+    pushed += 1;
+    write(state, title, href);
+  };
+  context.history.replaceState = write;
+  // The Commits panel's landing on a commit's address, as Back and a tab's switch run it.
+  context.MetabrowserGitPanel = {
+    async restoreCommitLanding() {
+      const commit = context.MetabrowserNavigationRoute.parseCommit(context.location.pathname);
+      if (commit !== null) {
+        told.push(`Commits: selects ${commit.revision.slice(0, 7)} and reveals its row`);
+      }
+    },
+  };
+  const address = () => `${context.location.pathname}${context.location.search}`;
+  /** @type {ReturnType<typeof context.MetabrowserMainTabs.create> | null} */
+  let mainTabs = null;
+
+  const steps = [];
+  const refused = [];
+  /** A plain click on a link to *href*: *reveals*, for one that names a pull request. */
+  const click = async (what, href, { reveals = null } = {}) => {
+    const before = {
+      address: address(),
+      hash: context.location.hash,
+      tab: mainTabs?.active() ?? "files",
+      pushed,
+    };
+    const opened = navigation.openRoute(href);
+    await settle();
+    // The Pulls view tells the reveal its own read of the list makes and the current row
+    // the host gives it, which nothing orders against each other (its controller starts
+    // unawaited, as pulls-panel.js mounts it), so its lines are kept together, sorted,
+    // after the shell's, which keep their order.
+    const said = told.splice(0);
+    const view = said.filter((line) => line.startsWith("Pulls: ")).sort();
+    said.splice(0, said.length, ...said.filter((line) => !line.startsWith("Pulls: ")), ...view);
+    const after = { address: address(), tab: mainTabs?.active() ?? "files" };
+    assert.equal(document.activeElement, reading, `${what}: focus stays where the reader reads`);
+    if (!opened) {
+      // The browser follows the link: nothing here moved, wrote, or was told.
+      assert.deepEqual(after, { address: before.address, tab: before.tab }, what);
+      assert.equal(pushed, before.pushed, what);
+      assert.deepEqual(said, [], what);
+      refused.push({ link: what, href });
+      return;
+    }
+    // One entry, the link's own address, as a click on any link pushes; a link to the
+    // address shown opens it again where it is, and pushes none, as `navigation.open` and
+    // a pull request's page push none for the address shown.
+    const again = `${before.address}${before.hash}` === href;
+    assert.equal(pushed - before.pushed, again ? 0 : 1, what);
+    assert.equal(`${after.address}${context.location.hash}`, href, what);
+    if (reveals !== null) {
+      assert.equal(
+        said.some((line) => line.endsWith(" revealed")),
+        reveals,
+        `${what}: ${reveals ? "the row is revealed" : "no row is revealed"} (${said.join("; ")})`,
+      );
+    }
+    steps.push({ step: what, href, address: after.address, tab: after.tab, told: said });
+  };
+
+  await click("the list, before the shell tools have loaded: no controller opens it", "/pulls");
+  mainTabs = context.MetabrowserMainTabs.create({
+    cancelPreview: () => told.push("the pane given up"),
+    filesShown() {},
+    filesHidden() {},
+    // app.js's flushPull: only a pull request's page holding the pane has a place to write.
+    flushPull() {
+      const page = routes.parsePull(context.location.pathname);
+      if (page !== null) {
+        told.push(`#${page.number}'s page writes its place into its entry`);
+      }
+    },
+    focusFilesRow: () => false,
+    isGitHistoryLanding: () => false,
+    isPullAddress: (pathname) => /^\/(pull|stack)\//.test(pathname) || pathname === "/pulls",
+    openHome: () => Promise.resolve(),
+    restore() {
+      told.push(`the pane shows ${address()}`);
+      return Promise.resolve();
+    },
+    async revealFile(how) {
+      told.push(`Files: reveal ${context.location.pathname}, scroll ${how.scroll}`);
+    },
+    scrollShadow() {},
+  });
+  pullsTab(context, document, mainTabs, treeContent, told);
+  await settle();
+  told.length = 0;
+  await click(
+    "a commit, before Git discovery has registered the Commits tab",
+    `/commit/${"b".repeat(40)}`,
+  );
+  mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  told.length = 0;
+
+  await click(
+    "a Markdown file links a commit: Commits comes to the front and its panel selects it",
+    `/commit/${"b".repeat(40)}`,
+  );
+  await click(
+    "the commit's message links another commit: Commits stays, and its panel claims the pane",
+    `/commit/${"c".repeat(40)}`,
+  );
+  await click(
+    "the message links a pull request: Pulls comes to the front and reveals it",
+    "/pull/8",
+    { reveals: true },
+  );
+  await click(
+    "a document drawn in #8's Changes links #8's Changes: a step within it, nothing revealed",
+    "/pull/8/files",
+    { reveals: false },
+  );
+  await click("the same document links #7: its row is revealed", "/pull/7", { reveals: true });
+  await click(
+    "#7's description links a commit: its page writes its place, and Commits comes to the front",
+    `/commit/${"b".repeat(40)}#diff`,
+  );
+  await click(
+    "the commit's message links the list: Pulls comes to the front, and the pane shows it",
+    "/pulls",
+    { reveals: false },
+  );
+  await click("a link opens a stack's page", "/stack/3", { reveals: false });
+  // A link to the address shown, as a document in a page's own Changes links that page.
+  await click("a link to the stack's page shown opens it again, pushing nothing", "/stack/3");
+  await click("a link opens the list", "/pulls", { reveals: false });
+  await click("a link to the list shown opens it again, pushing nothing", "/pulls");
+  await click("a link opens a changed file of #8", "/pull/8/files/docs/a%20b.md");
+  await click(
+    "a link to the changed file shown opens it again, pushing nothing",
+    "/pull/8/files/docs/a%20b.md",
+  );
+
+  // Each leaves the browser to follow the link.
+  for (const [what, href] of [
+    ["a file's address, which navigation.open opens", "/view/docs/guide.md"],
+    ["the served root's", "/view/"],
+    ["an address on another origin", "https://example.com/pulls"],
+    ["a protocol-relative address, on another origin", "//example.com/pull/8"],
+    ["a backslash the URL parser reads as a second slash", "/\\example.com/pulls"],
+    ["GitHub's page that opens a pull request, which the routes do not read", "/pull/new/topic"],
+    ["a pull request numbered 0", "/pull/0"],
+    ["a tab a stack's page does not have", "/stack/3/checks"],
+    ["a commit's address with no revision", "/commit/"],
+    ["an address no tab holds", "/raw/notes.md"],
+    ["no URL at all", "http://["],
+  ]) {
+    await click(what, href);
+  }
+  return { opened: steps, "the browser follows": refused };
 }
 
 // ── The Files tree ────────────────────────────────────────────────
@@ -1574,8 +1788,20 @@ async function main(part = process.argv[2] ?? null) {
     process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
     return;
   }
+  if (part === "links") {
+    const transcript = {
+      "a link's address": await linksStory(),
+      invariants: {
+        "an open pushes one entry, the link's own address, and none for the address shown": true,
+        "an address the shell cannot open in place moves, writes, and tells nothing": true,
+        "no link moves focus": true,
+      },
+    };
+    process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+    return;
+  }
   if (part !== null) {
-    throw new Error(`Unknown part ${part}; the one part to name is pulls-depth`);
+    throw new Error(`Unknown part ${part}; the parts to name are pulls-depth and links`);
   }
   const transcript = {
     ...ruleStory(),
@@ -1596,6 +1822,9 @@ async function main(part = process.argv[2] ?? null) {
     "a reveal never leaves another row selected": true,
     "a step within the pull request shown reveals no row, and Quick Search for it does": true,
   };
+  // `links` runs here too, after the rest, and prints only when named: the parity registry
+  // runs a session with no part, and its row for the shell's opener reads this run.
+  await linksStory();
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
 }
 

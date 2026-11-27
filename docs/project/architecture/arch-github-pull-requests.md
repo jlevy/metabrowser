@@ -843,7 +843,13 @@ path-relative references before that conversion.
 `static/repository-links.js` reads marked references against the pull request’s head and
 can open a changed head-side path in Changes.
 An authored absolute URL follows its own GitHub route.
-See [In-App Link Resolution](../specs/active/plan-2026-11-26-in-app-link-resolution.md).
+On a plain click, a link to a pull request’s or a stack’s page, one of its tabs, or a
+changed file opens in place through the page’s own `open`, the page host’s, which
+switches the shown page’s tab without mounting it again; a link to a commit’s page or to
+the list opens in place through the shell’s `metabrowser.navigation.openRoute`, as the
+same links in a Markdown file, a commit’s message, and a rendered diff do.
+A modified click on any of them is the browser’s. See
+[In-App Link Resolution](../specs/active/plan-2026-11-26-in-app-link-resolution.md).
 A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
 through the Markdown plugin’s exported `drawDiagrams` with `isolated: true`
 (`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
