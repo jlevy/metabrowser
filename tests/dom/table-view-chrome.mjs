@@ -125,7 +125,12 @@ async function main() {
   let chrome = null;
   const measured = {};
   try {
-    chrome = await launchChrome(process.env.CHROME_BIN, { profiles });
+    // The mouse journey requires hover capability even on runners without a mouse.
+    // Chromium defines HOVER_TYPE_HOVER as 2 in pointer_device.h.
+    chrome = await launchChrome(process.env.CHROME_BIN, {
+      profiles,
+      args: ["--blink-settings=primaryHoverType=2,availableHoverTypes=2"],
+    });
     phase("chrome");
     await chrome.send("Page.enable");
     await chrome.send("Runtime.enable");
@@ -438,6 +443,7 @@ async function main() {
     measured.mappingRow = await chrome.evaluate(
       `[...document.querySelectorAll("#preview-pane .data-grid tbody tr > :not(.structured-row-action)")].map((cell) => cell.textContent)`,
     );
+    assert.ok(await chrome.evaluate('matchMedia("(hover: hover)").matches'), "mouse hover");
     const mappingCopy = `document.querySelector('button[aria-label="Copy name"]')`;
     const copyPaint = (opacity, pointerEvents) =>
       `getComputedStyle(${mappingCopy}).opacity === "${opacity}" && getComputedStyle(${mappingCopy}).pointerEvents === "${pointerEvents}"`;
