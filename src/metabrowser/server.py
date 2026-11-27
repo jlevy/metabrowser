@@ -2462,9 +2462,10 @@ async def index(
         # code that runs only once a pointer rests on a link a surface registered, on any
         # page, through metabrowser.previewLink() (static/plugin-sdk-views.js), which loads
         # this at the page's first such rest and hands it that rest. Measured 2026-11-27 at
-        # `delivery.GZIP_LEVEL`: 12,849 and 6,970 bytes sent (44,828 and 24,088 raw; the
-        # timings below were taken when the first was 13,069, before it read an outside
-        # link's address through the SDK's `outsideAddress`), which as a startup script, or
+        # `delivery.GZIP_LEVEL`: 12,899 and 7,003 bytes sent (45,001 and 23,974 raw; the
+        # timings below were taken at 13,069 and 6,970, before review I's fixes, which read
+        # an outside link's address through the SDK's `outsideAddress`, dropped the file
+        # catalog, and give an author's title back), which as a startup script, or
         # in the resolver's bundle, every page would wait for; at a
         # rest, the card's appear delay (`TOOLTIP_APPEAR_DELAY` in static/app.js) hides most
         # of its load. In headless Chrome 158 from 127.0.0.1 as above, the first rest on a
