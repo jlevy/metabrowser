@@ -164,7 +164,7 @@ def test_recording_is_what_the_application_answers(
         "": ["o", "m"],
         "docs": ["o", "m"],
         "README.md": ["v", "s"],
-        "data.json": ["v", "s"],
+        "data.json": ["a", "v", "s"],
         "session.jsonl": ["e", "v", "c", "s"],
         "page.html": ["v", "s"],
     }

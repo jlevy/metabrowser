@@ -176,7 +176,13 @@ async def read_projection(ref: ContentRef, query: QueryParams) -> JSONResponse:
             raise ValueError("fence_line selects a positive line in a Markdown body")
     except (ValueError, RecursionError) as exc:
         return JSONResponse(
-            {**address, "status": "bad_request", "error": str(exc)}, status_code=400
+            {
+                **address,
+                "status": "bad_request",
+                "error": "Could not open this structured selection.",
+                "detail": str(exc),
+            },
+            status_code=400,
         )
 
     frontmatter = ref.logical_ext == ".md"

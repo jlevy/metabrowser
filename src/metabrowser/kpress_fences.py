@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from metabrowser.gz_io import ArtifactCompressionError
-from metabrowser.inert_html import ANCHOR_PREFIX
 from metabrowser.markdown_limits import MARKDOWN_DIFF_MAX_BYTES
 from metabrowser.source import ContentReadError, read_content_window, resolve_content
 
@@ -69,6 +68,7 @@ async def read_fence_origin(
 def mark_fences(source: str, origin: bytes, revision: str) -> MarkedMarkdown:
     # The same KPress block parser and budgets define the structured projection route.
     # Token maps address the full source here; KPress later strips frontmatter itself.
+    from metabrowser.inert_html import ANCHOR_PREFIX
     from metabrowser.markdown_fences import structured_fences
 
     original = {f.opening_line: f for f in structured_fences(origin)}

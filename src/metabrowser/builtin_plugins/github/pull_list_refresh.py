@@ -26,7 +26,7 @@ from time import monotonic_ns
 from typing import Any, Final, Literal
 
 from metabrowser import event_log
-from metabrowser.builtin_plugins.github import gh_budget, pull_list
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes, pull_list
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, GhServerError, gh_graphql
@@ -466,6 +466,11 @@ async def refresh_pull_list(
         restarted: set[tuple[str, bool]] = set()
         activity_restarted: set[PullListName] = set()
         activity_deferred: set[PullListName] = set()
+        # The lane the job was started in: a reader's pages serve it, and the rest serve
+        # the background (:mod:`.gh_lanes`). A delta scan serves the reader when a change
+        # or a Refresh asked for it, through all its pages, and otherwise it is due by age.
+        asked_lane = gh_lanes.current_lane()
+        delta_asked = False
         while True:
             previous = await asyncio.to_thread(read_catalog, repository.home, repository.slug)
             state = (
@@ -490,15 +495,18 @@ async def refresh_pull_list(
                 continue
             selected, wanted = demand() if demand else (name, target)
             force = take_retry() if take_retry else False
-            scan, backfill = (
-                ("updated", False)
-                if (retry or force) and state is not None
-                else _next_scan(state, selected, wanted)
-            )
+            asked = (retry or force) and state is not None
+            scan, backfill = ("updated", False) if asked else _next_scan(state, selected, wanted)
             retry = False
             if scan is None:
                 break
             updated = scan == "updated"
+            if updated:
+                # A delta scan already under way keeps the lane its first page served.
+                delta_asked = asked or (delta_asked and state is not None and state.delta_started)
+            lane: gh_lanes.Lane = (
+                "background" if backfill or (updated and not delta_asked) else asked_lane
+            )
             cursor = None
             if state is not None:
                 if backfill:
@@ -528,7 +536,10 @@ async def refresh_pull_list(
                     asked_at = utc_stamp(pull_list.utc_now())
                     # A backfill page is one no reader asked for: speculative work, counted
                     # toward its share (:mod:`.gh_budget`).
-                    with gh_budget.speculative() if backfill else contextlib.nullcontext():
+                    with (
+                        gh_budget.speculative() if backfill else contextlib.nullcontext(),
+                        gh_lanes.serving(lane),
+                    ):
                         page = await _read_page(
                             repository,
                             "all" if updated else scan,

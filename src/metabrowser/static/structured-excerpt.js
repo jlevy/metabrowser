@@ -66,7 +66,7 @@ export function mountStructuredExcerpt(host, mb, options) {
           return;
         }
         if (typeof page.source_text !== "string") {
-          throw Error(page.diagnostic || "Source is unavailable for this selection.");
+          throw Error("Source is unavailable for this selection.", { cause: page.diagnostic });
         }
         mb.renderSourceView(
           alternate,
@@ -101,7 +101,11 @@ export function mountStructuredExcerpt(host, mb, options) {
     warning.className = "notice";
     warning.dataset.severity = "warning";
     warning.setAttribute("role", "status");
-    warning.textContent = error instanceof Error ? error.message : String(error);
+    console.error("Could not open structured view", error);
+    warning.textContent =
+      error instanceof Error && "status" in error && error.status === 409
+        ? "This file changed. Reload the page to read the current version."
+        : "Could not open this view. Open the file in Source.";
     element.replaceChildren(warning);
   }
   const unbind = filterControls.bind(controls, {

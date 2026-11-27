@@ -48,7 +48,7 @@ export function createStructuredPageReader(fetchPluginData, path, options = {}) 
     async tree(position, signal) {
       const page = await read(position, signal, { tree: 1 });
       if (!Object.hasOwn(page, "tree_value")) {
-        throw Error(page.diagnostic || "Tree is unavailable for this selection.");
+        throw Error("Tree is unavailable for this selection.", { cause: page.diagnostic });
       }
       return page.tree_value;
     },
@@ -56,7 +56,7 @@ export function createStructuredPageReader(fetchPluginData, path, options = {}) 
     async copyRow(position, signal) {
       const page = await read(position, signal, { copy: "row" });
       if (typeof page.copy_text !== "string") {
-        throw Error(page.diagnostic || "Copy is unavailable for this row.");
+        throw Error("Copy is unavailable for this row.", { cause: page.diagnostic });
       }
       return page.copy_text;
     },

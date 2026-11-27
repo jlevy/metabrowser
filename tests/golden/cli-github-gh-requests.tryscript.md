@@ -22,20 +22,23 @@ before: >-
 # Golden tests: what the servers asked of GitHub, through `--api`
 
 `/api/plugin/github/gh-requests` reads the `gh` spans of the structured event log over a
-window and says what they add up to: the calls, by the budget each was charged to and
-the job each ran in, what GitHub charged for them, the share it answered `304`, how long
-gh took, how many ran at once, and how long their jobs waited for a network slot.
+window and says what they add up to: the calls, by the lane each served, the budget each
+was charged to, and the job each ran in, what GitHub charged for them, the share it
+answered `304`, how long gh took, how long each waited for a network slot, how many ran
+at once, whether a less urgent lane’s call started ahead of a more urgent one asked
+before it, and which reads repeated.
 The GitHub plugin’s `gh_requests.py` names every field.
 
-The fixture is one minute of a synthetic server, process 4242: a pull request page opens
-#7 and its refresh checks the account twice a moment apart, its probe of the pull
-request’s issue every five seconds is answered `304`, the Pulls tab reads the catalog (a
-backfill page waiting for a network slot) and the open pull requests’ statuses, the
-prefetch reads #9 with an account check of its own, two asks read one batch of cores at
-once, a files list waits for a slot and its read never answers, the reader clicks
-Refresh, the GitHub status check runs `gh --version` and `gh auth status`, a size read
-asks for no status, and one call was recorded before calls recorded their budget and
-status. One call ends after the window closes.
+The fixture is one minute of a synthetic server, process 4242: the source’s refresh
+reads #7, the pull request the server attends, and checks the account twice a moment
+apart, the page’s probe of the pull request’s issue every five seconds is answered
+`304`, the Pulls tab reads the catalog (a backfill page waiting for a network slot) and
+the open pull requests’ statuses, the prefetch reads #9 with an account check of its
+own, two asks read one batch of the cores walk at once, a files list waits for a slot
+and its read never answers, the reader clicks Refresh, the GitHub status check runs
+`gh --version` and `gh auth status`, a size read asks for no status, and one call was
+recorded before calls recorded their lane, budget, and status.
+One call ends after the window closes.
 A second server, process 4343, reads one pull request of another repository.
 The segments were written by the production `gh.loggable_args` and `gh.fingerprint`.
 
@@ -97,11 +100,209 @@ status: 200
     },
     "peak_in_flight": 3,
     "queued": {
-      "spans": 4,
-      "p50_ms": 0.3,
+      "waits": 3,
+      "p50_ms": 810.4,
       "p95_ms": 1503.1,
       "max_ms": 1503.1,
-      "total_ms": 2314.0
+      "total_ms": 2313.7
+    }
+  },
+  "lanes": {
+    "visible": {
+      "requests": 8,
+      "commands": {
+        "rest": 5,
+        "graphql": 1,
+        "other": 2
+      },
+      "statuses": {
+        "200": 1,
+        "304": 3
+      },
+      "no_status": {
+        "failed": 1,
+        "unread": 1,
+        "unrecorded": 0
+      },
+      "core": 0,
+      "graphql_points": 1,
+      "share_304": 1.0,
+      "conditional": 3,
+      "cache_hits": 3,
+      "latency": {
+        "p50_ms": 400.0,
+        "p95_ms": 30006.0,
+        "max_ms": 30006.0,
+        "total_ms": 32881.0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 2,
+      "queued": {
+        "waits": 1,
+        "p50_ms": 1503.1,
+        "p95_ms": 1503.1,
+        "max_ms": 1503.1,
+        "total_ms": 1503.1
+      }
+    },
+    "attended": {
+      "requests": 4,
+      "commands": {
+        "rest": 3,
+        "graphql": 1,
+        "other": 0
+      },
+      "statuses": {
+        "200": 2,
+        "304": 2
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 1,
+      "graphql_points": 1,
+      "share_304": 0.667,
+      "conditional": 3,
+      "cache_hits": 2,
+      "latency": {
+        "p50_ms": 380.0,
+        "p95_ms": 840.0,
+        "max_ms": 840.0,
+        "total_ms": 2180.0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 1
+      },
+      "peak_in_flight": 1,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
+    },
+    "prefetch": {
+      "requests": 2,
+      "commands": {
+        "rest": 2,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {
+        "200": 1,
+        "304": 1
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 1,
+      "graphql_points": 0,
+      "share_304": 0.5,
+      "conditional": 1,
+      "cache_hits": 1,
+      "latency": {
+        "p50_ms": 360.0,
+        "p95_ms": 640.0,
+        "max_ms": 640.0,
+        "total_ms": 1000.0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 1
+      },
+      "peak_in_flight": 1,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
+    },
+    "background": {
+      "requests": 4,
+      "commands": {
+        "rest": 0,
+        "graphql": 4,
+        "other": 0
+      },
+      "statuses": {
+        "200": 4
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 0,
+      "graphql_points": 5,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": 700.0,
+        "p95_ms": 1240.0,
+        "max_ms": 1240.0,
+        "total_ms": 3640.0
+      },
+      "duplicates": {
+        "in_flight": 1,
+        "repeated": 0
+      },
+      "peak_in_flight": 2,
+      "queued": {
+        "waits": 2,
+        "p50_ms": 0.2,
+        "p95_ms": 810.4,
+        "max_ms": 810.4,
+        "total_ms": 810.6
+      }
+    },
+    "unknown": {
+      "requests": 1,
+      "commands": {
+        "rest": 1,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {},
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 1
+      },
+      "core": 0,
+      "graphql_points": 0,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": 500.0,
+        "p95_ms": 500.0,
+        "max_ms": 500.0,
+        "total_ms": 500.0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 1,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
     }
   },
   "budgets": {
@@ -137,7 +338,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -177,11 +378,11 @@ status: 200
       },
       "peak_in_flight": 3,
       "queued": {
-        "spans": 4,
-        "p50_ms": 0.3,
+        "waits": 2,
+        "p50_ms": 0.2,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
-        "total_ms": 2314.0
+        "total_ms": 1503.3
       }
     },
     "speculative": {
@@ -217,7 +418,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 810.4,
         "p95_ms": 810.4,
         "max_ms": 810.4,
@@ -256,7 +457,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -293,7 +494,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -337,11 +538,11 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
-        "p50_ms": 0.3,
-        "p95_ms": 0.3,
-        "max_ms": 0.3,
-        "total_ms": 0.3
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
       }
     },
     {
@@ -378,7 +579,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -419,7 +620,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 810.4,
         "p95_ms": 810.4,
         "max_ms": 810.4,
@@ -460,7 +661,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -499,7 +700,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -538,7 +739,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -579,7 +780,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 0.2,
         "p95_ms": 0.2,
         "max_ms": 0.2,
@@ -618,7 +819,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -657,7 +858,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -678,6 +879,8 @@ status: 200
       "3": 908.0
     },
     "bucket_ms": 7083.5,
+    "spans_peak": 3,
+    "slotted_peak": 2,
     "series": [
       {
         "at_ms": 0.0,
@@ -711,9 +914,54 @@ status: 200
       }
     ]
   },
+  "order": {
+    "visible": {
+      "attended": {
+        "overtook": 0,
+        "beside": 1
+      },
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 1
+      }
+    },
+    "attended": {
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 1
+      }
+    },
+    "prefetch": {
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    }
+  },
+  "repeats": [
+    {
+      "asks": "gh api user",
+      "fingerprint": "eb500829d7df0806",
+      "in_flight": 0,
+      "repeated": 2
+    },
+    {
+      "asks": "gh api graphql",
+      "fingerprint": "c38e2696fb73af9a",
+      "in_flight": 1,
+      "repeated": 0
+    }
+  ],
   "unrecorded": {
     "first_answer_seen": "when a page first showed GitHub's answer: a page reports a wait only once it is late, so the time to a first answer is not in the log",
-    "lanes": "whether a call served the pull request on screen, a visible list, the prefetch, or other background work: a call records the budget it was charged to and the job it ran in, not which of those it was for",
     "local_cache_hits": "reads the server answered from its own store: those make no gh call, so cache_hits counts only the 304s GitHub answered",
     "store_turn_waits": "time a job waited for its turn at the store: queued counts only the waits for a network slot"
   }
@@ -779,11 +1027,200 @@ status: 200
     },
     "peak_in_flight": 2,
     "queued": {
-      "spans": 1,
+      "waits": 1,
       "p50_ms": 1503.1,
       "p95_ms": 1503.1,
       "max_ms": 1503.1,
       "total_ms": 1503.1
+    }
+  },
+  "lanes": {
+    "visible": {
+      "requests": 3,
+      "commands": {
+        "rest": 3,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {
+        "200": 1
+      },
+      "no_status": {
+        "failed": 1,
+        "unread": 1,
+        "unrecorded": 0
+      },
+      "core": 1,
+      "graphql_points": 0,
+      "share_304": 0.0,
+      "conditional": 1,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": 500.0,
+        "p95_ms": 30006.0,
+        "max_ms": 30006.0,
+        "total_ms": 31006.0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 2,
+      "queued": {
+        "waits": 1,
+        "p50_ms": 1503.1,
+        "p95_ms": 1503.1,
+        "max_ms": 1503.1,
+        "total_ms": 1503.1
+      }
+    },
+    "attended": {
+      "requests": 0,
+      "commands": {
+        "rest": 0,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {},
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 0,
+      "graphql_points": 0,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 0,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
+    },
+    "prefetch": {
+      "requests": 0,
+      "commands": {
+        "rest": 0,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {},
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 0,
+      "graphql_points": 0,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 0,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
+    },
+    "background": {
+      "requests": 0,
+      "commands": {
+        "rest": 0,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {},
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 0,
+      "graphql_points": 0,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 0,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
+    },
+    "unknown": {
+      "requests": 1,
+      "commands": {
+        "rest": 1,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {},
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 1
+      },
+      "core": 0,
+      "graphql_points": 0,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "latency": {
+        "p50_ms": 500.0,
+        "p95_ms": 500.0,
+        "max_ms": 500.0,
+        "total_ms": 500.0
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      },
+      "peak_in_flight": 1,
+      "queued": {
+        "waits": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "total_ms": 0
+      }
     }
   },
   "budgets": {
@@ -817,7 +1254,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -856,7 +1293,7 @@ status: 200
       },
       "peak_in_flight": 2,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -893,7 +1330,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -930,7 +1367,7 @@ status: 200
       },
       "peak_in_flight": 0,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -967,7 +1404,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1010,7 +1447,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1049,7 +1486,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 1,
+        "waits": 1,
         "p50_ms": 1503.1,
         "p95_ms": 1503.1,
         "max_ms": 1503.1,
@@ -1088,7 +1525,7 @@ status: 200
       },
       "peak_in_flight": 1,
       "queued": {
-        "spans": 0,
+        "waits": 0,
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
@@ -1107,6 +1544,8 @@ status: 200
       "2": 1500.0
     },
     "bucket_ms": 15003.0,
+    "spans_peak": 2,
+    "slotted_peak": 1,
     "series": [
       {
         "at_ms": 0.0,
@@ -1120,9 +1559,41 @@ status: 200
       }
     ]
   },
+  "order": {
+    "visible": {
+      "attended": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    },
+    "attended": {
+      "prefetch": {
+        "overtook": 0,
+        "beside": 0
+      },
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    },
+    "prefetch": {
+      "background": {
+        "overtook": 0,
+        "beside": 0
+      }
+    }
+  },
+  "repeats": [],
   "unrecorded": {
     "first_answer_seen": "when a page first showed GitHub's answer: a page reports a wait only once it is late, so the time to a first answer is not in the log",
-    "lanes": "whether a call served the pull request on screen, a visible list, the prefetch, or other background work: a call records the budget it was charged to and the job it ran in, not which of those it was for",
     "local_cache_hits": "reads the server answered from its own store: those make no gh call, so cache_hits counts only the 304s GitHub answered",
     "store_turn_waits": "time a job waited for its turn at the store: queued counts only the waits for a network slot"
   }

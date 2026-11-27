@@ -18,30 +18,25 @@ before: >-
 ---
 # Golden tests: the table routes over record lists
 
-A JSON or YAML file is the structured kind’s, which has a Table view beside Tree and
-Source (plan Decision 12) on a file that starts as a list of records: a JSON list whose
-first item is a mapping, a YAML list whose first item is one, or a YAML stream of
-mappings. The server decides from the file’s first bytes (`structured/offer.py`), so a
-mapping, a scalar, or a list of anything else has no Table tab.
-The table routes serve it through the structured plugin’s record-list source: a file
-whose top level is a list of mappings is one table, each mapping a row named by its
-position, and its fields are the mappings’ keys in the order each first appears, typed
-from their values. Any other document is refused with `source_unreadable`, saying why.
-Only a file that starts as a list of records and is not one, a later item that is not a
-mapping or a parse error further on, reaches that refusal from its Table tab, which says
-it in place of a table.
+A JSON or YAML file opens in Table with Tree and Source beside it.
+Table renders individual mappings as fields and values.
+Record lists use the shared grid, whose table routes serve each mapping as a row named
+by its position.
+The fields are the mappings’ keys in the order each first appears, typed
+from their values. The record-list routes return `source_unreadable` for other shapes or
+malformed documents.
 
 A generation is the file’s identity, size, and modification time, so it differs from one
 checkout to the next and the transcripts elide it.
 
-## Test: a list of records has a Table view, and Tree stays the default
+## Test: a record list opens in Table
 
 ```console
 $ metab listroot --show people.json
 show: people.json
 route: /view/people.json
 kind: structured
-views: tree (default, key V), table (key A), source (key S)
+views: table (default, key A), tree (key V), source (key S)
 model: text envelope; size=[..] content_bytes=[..] content_truncated=False
 ? 0
 ```
@@ -51,34 +46,31 @@ $ metab listroot --show cities.yaml
 show: cities.yaml
 route: /view/cities.yaml
 kind: structured
-views: tree (default, key V), table (key A), source (key S)
+views: table (default, key A), tree (key V), source (key S)
 model: text envelope; size=[..] content_bytes=[..] content_truncated=False
 ? 0
 ```
 
-## Test: a mapping has no Table view
+## Test: a mapping also opens in Table
 
 ```console
 $ metab listroot --show package.json
 show: package.json
 route: /view/package.json
 kind: structured
-views: tree (default, key V), source (key S)
+views: table (default, key A), tree (key V), source (key S)
 model: text envelope; size=[..] content_bytes=[..] content_truncated=False
 ? 0
 ```
 
-## Test: a file that starts as a list of records has the Table view even when it is not one
-
-Its first bytes are all the server reads to decide, so the refusals below are what its
-Table tab says.
+## Test: Table is offered before the document is parsed
 
 ```console
 $ metab listroot --show mixed.json
 show: mixed.json
 route: /view/mixed.json
 kind: structured
-views: tree (default, key V), table (key A), source (key S)
+views: table (default, key A), tree (key V), source (key S)
 model: text envelope; size=[..] content_bytes=[..] content_truncated=False
 ? 0
 ```
@@ -88,7 +80,7 @@ $ metab listroot --show broken.json
 show: broken.json
 route: /view/broken.json
 kind: structured
-views: tree (default, key V), table (key A), source (key S)
+views: table (default, key A), tree (key V), source (key S)
 model: text envelope; size=[..] content_bytes=[..] content_truncated=False
 ? 0
 ```

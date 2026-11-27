@@ -79,7 +79,7 @@ from weakref import WeakKeyDictionary
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from metabrowser.builtin_plugins.github import gh_budget, pull_list
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes, pull_list
 from metabrowser.builtin_plugins.github.gh_lists import (
     READ_FAILURES,
     PullDataError,
@@ -917,7 +917,10 @@ def _start_due(
     if trigger != "settle":
         scan.pending.clear()
     work = partial(_scan_job, repository, coordinator, scan, trigger, reader, stamp, git_dir)
-    with gh_budget.readers_own() if retry else contextlib.nullcontext():
+    # A reader's Refresh serves the lane that asked; anything else reads every open pull
+    # request's status on the scan's own clock, for no one page (:mod:`.gh_lanes`).
+    lane = gh_lanes.current_lane() if trigger == "retry" else "background"
+    with gh_budget.readers_own() if retry else contextlib.nullcontext(), gh_lanes.serving(lane):
         return coordinator.start(scan.key, work, network=False)
 
 

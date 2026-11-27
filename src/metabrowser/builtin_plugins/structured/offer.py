@@ -24,8 +24,8 @@ import yaml
 # The most of a file's start read for its shape. A list is decided by its first item and
 # JSON by its first two tokens, so only a stream of mappings reads far: a mapping is taken
 # as a record when the next document's first key and its colon fall within the bound, so
-# a stream whose first document is longer than this, nearly, is taken as one mapping and
-# has no Table tab. Its cost set the bound: a 16 KiB mapping, the case that reads all of
+# a stream whose first document nearly fills the prefix is treated as one mapping by
+# the probe and cannot use the record grid fallback. Its cost set the bound: a 16 KiB mapping, the case that reads all of
 # it, took 2.9 ms with libyaml and 34 ms with PyYAML's Python parser, and a list of
 # records or a stream of small documents was settled in under 0.3 ms with either (best of
 # 30, Python 3.14, a 10-core arm64 Mac at a load average of 130 to 170, 2026-11-24). For

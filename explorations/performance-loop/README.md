@@ -18,6 +18,10 @@ reference engine’s measured costs are in
 
 Measurements taken once to set a design-system rule, in WebKit and Chrome, are in
 [Design Rule Measurements](design-rule-measurements.md).
+What one scripted session of browsing pull requests asks of GitHub, live against this
+repository, is in [GitHub Requests While Browsing](github-requests/README.md), with its
+driver, [`github_browsing.py`](github_browsing.py), which the in-process benchmark
+`tests/test_github_browsing_benchmark.py` runs against the stand-in.
 
 The browser half is the Metabrowser adapter for the reusable
 [Web Performance Framework](../../docs/web-performance-framework.md).

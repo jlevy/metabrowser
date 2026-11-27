@@ -3,10 +3,13 @@
 Every ``gh`` process is a span in the event log (:func:`.gh._run`), and its end record
 says what it asked and how it went: its command (``args``, without values), how long gh
 ran, the budget it was charged to (``budget``, :func:`.gh_budget.current_budget`), the
-request's ``fingerprint`` (:func:`.gh.fingerprint`), and, for a read of GitHub's answer,
+lane it served (``lane``, :func:`.gh_lanes.current_lane`), the request's ``fingerprint``
+(:func:`.gh.fingerprint`), and, for a read of GitHub's answer,
 its ``http_status`` and ``cost``, the number :mod:`.gh_budget` counted. Its parent is
 the job it ran in, or the request that ran it, whose own record says how long it waited
-for a network slot (``queued_ms``, :class:`metabrowser.mirror_refresh.NetworkSlots`).
+for a network slot (``queued_ms``, :class:`metabrowser.mirror_refresh.NetworkSlots`); and
+a call whose span had taken a slot says how much of that wait came before it started
+(``parent_queued_ms``).
 This module reads those records over a window and says what they add up to, so the
 GitHub traffic of a session of browsing can be measured before and after a change.
 
@@ -18,6 +21,11 @@ The answer counts each ``gh`` call that ended in the window:
 
 ``requests``
     Every call, as one row.
+``lanes``
+    A row for each lane a call served (:mod:`.gh_lanes`), most urgent first: ``visible``
+    (a page on screen, or a reader's own action), ``attended`` (read for what is on screen
+    and not shown), ``prefetch``, and ``background``, and ``unknown`` for a call recorded
+    before calls recorded their lane.
 ``budgets``
     A row for each budget a call is charged to, as :mod:`.gh_budget` counts them:
     ``reader`` (a reader's own action), ``automatic``, ``speculative``, and ``walk`` (the
@@ -30,7 +38,28 @@ The answer counts each ``gh`` call that ended in the window:
 ``in_flight``
     How many calls ran at once: the most and when it was first reached, the time spent at
     each count, and the most and the mean in each of ``buckets`` equal parts of the time
-    from the first call's start to the last one's end.
+    from the first call's start to the last one's end; and ``spans_peak``, the most spans
+    with a call in flight at once, of which ``slotted_peak`` held a network slot (a span
+    with ``parent_queued_ms`` on its call), so it is held to the coordinator's
+    ``MAX_CONCURRENT_REFRESHES`` slots. A span runs some of its calls together, as a
+    record's parts are, so a span can have several in flight.
+``order``
+    For each lane, and each less urgent lane after it in :data:`.gh_lanes.LANES`, how the
+    less urgent lane's calls met the more urgent calls asked before them: ``overtook``,
+    how many started while such a call had not yet started, ahead of it; and ``beside``,
+    how many of the rest started while such a call ran, before it was answered. A call is
+    asked when it started, less the wait for a network slot just before it: the growth of
+    the ``queued_ms`` of the span it ran in since the call before it (``parent_queued_ms``).
+    So ``overtook`` counts the calls that started while a more urgent one asked before them
+    waited for a slot; a wait for the store's turn is not recorded (``unrecorded``). The
+    calls of two processes never meet, and a call recorded before calls recorded that wait
+    is asked at its start.
+``repeats``
+    Each read that repeated an identical one (``duplicates`` below), the most repeated
+    first, at most :data:`MAX_REPEATS`: what it asked (``gh api user``, ``gh api graphql``:
+    the subcommand and its path, which a GraphQL read's fingerprint tells apart), its
+    ``fingerprint``, and how many of its calls were ``in_flight`` beside an identical one or
+    ``repeated`` one just answered.
 ``unrecorded``
     What a report of GitHub requests would want that the log does not hold, each with why.
 
@@ -63,9 +92,12 @@ A row holds:
 ``peak_in_flight``
     The most of the row's calls running at once.
 ``queued``
-    How long the spans the row's calls ran in waited for a network slot: how many recorded
-    one, and the median, 95th percentile, longest, and total wait. A span that took several
-    slots, as a scan takes one for each page, recorded their sum.
+    How long the row's calls waited for a network slot just before they started, the growth
+    of their span's ``queued_ms`` since its call before (``parent_queued_ms``): how many
+    waited at all, and the median, 95th percentile, longest, and total of those waits. A
+    call whose span held no slot waited for none. For a process that recorded no such
+    growth, a log of a build from before calls recorded it, each span the row's calls ran
+    in counts its own whole wait once, as that span recorded it.
 
 A call is in the window when it ended in it, and it starts at its end record's time less
 its duration, to the millisecond. A call still running when the log is read is not
@@ -74,12 +106,15 @@ counted until it ends.
 **Bounds.** The segments are those ``/api/event-log/failures`` reads
 (:func:`metabrowser.event_log_route.window_segments`): the ones written since ``since``,
 each read to a segment's bound, at most the directory's; the work is one parse of each
-line, which is that route's too. The answer lists at most :data:`MAX_JOBS` jobs and says
-how many more there are, and at most :data:`MAX_BUCKETS` parts of the time in flight.
+line, which is that route's too, and the lanes' order sorts each lane's calls once. The
+answer lists at most :data:`MAX_JOBS` jobs and says how many more there are,
+:data:`MAX_REPEATS` repeated reads, and at most :data:`MAX_BUCKETS` parts of the time in
+flight.
 """
 
 from __future__ import annotations
 
+import bisect
 import math
 from collections import defaultdict
 from collections.abc import Iterable
@@ -90,6 +125,7 @@ from typing import Any, Final, Literal
 
 from metabrowser import event_log
 from metabrowser.builtin_plugins.github.gh_budget import BUDGETS
+from metabrowser.builtin_plugins.github.gh_lanes import LANES
 from metabrowser.builtin_plugins.github.served_pull import PROBE_FLOOR_S
 from metabrowser.event_log_route import (
     QueryError,
@@ -114,26 +150,30 @@ MAX_BUCKETS: Final = 600
 # named for its function (event_log.job_name), so this lists every one; a call a request
 # runs itself is named for the request's method and path, which the routes bound.
 MAX_JOBS: Final = 40
+# The most repeated reads one answer lists: the plugin makes about two dozen kinds of read,
+# and a session of browsing that repeats more than this many kinds has its worst first.
+MAX_REPEATS: Final = 20
 # Decimal places a share keeps.
 _SHARE_DIGITS: Final = 3
 # The header a conditional call sends, as gh.loggable_args keeps it: its name, and no value.
 _CONDITIONAL_ARG: Final = "if-none-match:"
+# The options of ``gh api`` that take a value, so the path is the first word that is neither
+# one of them nor its value (gh.gh_api and gh.gh_graphql).
+_VALUED_OPTIONS: Final = frozenset({"--hostname", "--method", "-H", "-f", "-F", "--jq"})
 
 type Command = Literal["rest", "graphql", "other"]
 type OwnerKind = Literal["job", "request", "none", "unknown"]
 COMMANDS: Final[tuple[Command, ...]] = ("rest", "graphql", "other")
 # Every budget a row is kept for, :mod:`.gh_budget`'s and one for calls that record none.
 REPORTED_BUDGETS: Final[tuple[str, ...]] = (*BUDGETS, "unknown")
+# Every lane a row is kept for, :mod:`.gh_lanes`'s in its order and one for calls that
+# record none.
+REPORTED_LANES: Final[tuple[str, ...]] = (*LANES, "unknown")
 
 UNRECORDED: Final[dict[str, str]] = {
     "first_answer_seen": (
         "when a page first showed GitHub's answer: a page reports a wait only once it is "
         "late, so the time to a first answer is not in the log"
-    ),
-    "lanes": (
-        "whether a call served the pull request on screen, a visible list, the prefetch, or "
-        "other background work: a call records the budget it was charged to and the job it "
-        "ran in, not which of those it was for"
     ),
     "local_cache_hits": (
         "reads the server answered from its own store: those make no gh call, so cache_hits "
@@ -233,7 +273,7 @@ type Process = tuple[str, int]
 
 @dataclass(frozen=True, slots=True)
 class _Call:
-    """One ``gh`` call that ended in the window, as its end record says."""
+    """One ``gh`` call, as its end record says, and whether it ended in the window."""
 
     order: int
     process: Process
@@ -247,9 +287,15 @@ class _Call:
     cost: int | None
     conditional: bool
     budget: str
+    lane: str
     fingerprint: str | None
     failed: bool
     recorded: bool
+    # The network-slot wait its span had recorded when it started, or ``None`` before calls
+    # recorded it; and what it asked, for the repeated reads.
+    parent_queued: float | None
+    asks: str
+    in_window: bool
 
 
 def _command(name: str, args: list[Any]) -> Command:
@@ -258,7 +304,25 @@ def _command(name: str, args: list[Any]) -> Command:
     return "graphql" if "graphql" in args[1:2] else "rest"
 
 
-def _call(order: int, process: Process, record: dict[str, Any], moment: datetime) -> _Call | None:
+def _asks(name: str, args: list[Any]) -> str:
+    """What a call asked, as the repeated reads name it: the subcommand and its path."""
+
+    if name != "gh api":
+        return name
+    words = iter(args[1:])
+    for word in words:
+        if not isinstance(word, str):
+            continue
+        if word in _VALUED_OPTIONS:
+            next(words, None)
+        elif not word.startswith("-"):
+            return f"{name} {word}"
+    return name
+
+
+def _call(
+    order: int, process: Process, record: dict[str, Any], moment: datetime, *, in_window: bool
+) -> _Call | None:
     """*record* as a call, or ``None`` when it is not the end of a ``gh`` process."""
 
     name = record.get("name")
@@ -278,6 +342,7 @@ def _call(order: int, process: Process, record: dict[str, Any], moment: datetime
     args: list[Any] = raw_args if isinstance(raw_args, list) else []  # pyright: ignore[reportUnknownVariableType]
     budget = attrs.get("budget")
     recorded = budget in BUDGETS
+    lane = attrs.get("lane")
     fingerprint = attrs.get("fingerprint")
     end = moment.timestamp()
     return _Call(
@@ -295,9 +360,13 @@ def _call(order: int, process: Process, record: dict[str, Any], moment: datetime
             isinstance(arg, str) and arg.lower().startswith(_CONDITIONAL_ARG) for arg in args
         ),
         budget=budget if isinstance(budget, str) and recorded else "unknown",
+        lane=lane if isinstance(lane, str) and lane in LANES else "unknown",
         fingerprint=fingerprint if isinstance(fingerprint, str) else None,
         failed=record.get("outcome") != "ok",
         recorded=recorded,
+        parent_queued=_number(attrs.get("parent_queued_ms")),
+        asks=_asks(name, args),
+        in_window=in_window,
     )
 
 
@@ -323,14 +392,17 @@ type _Owners = dict[tuple[Process, int], _Owner]
 
 @dataclass(slots=True)
 class _Read:
+    # The calls that ended in the window, and every call the segments hold, which says what
+    # each span waited for before the first of them.
     calls: list[_Call]
+    every: list[_Call]
     owners: _Owners
     files: list[str]
     scanned: int
 
 
 def _read(query: Query, *, state: Path, directory: Path) -> _Read:
-    calls: list[_Call] = []
+    every: list[_Call] = []
     owners: _Owners = {}
     files: list[str] = []
     scanned = 0
@@ -351,16 +423,98 @@ def _read(query: Query, *, state: Path, directory: Path) -> _Read:
                     owners[(process, span)] = owned
                 continue
             moment = record_time(record)
-            if (
-                moment is None
-                or moment < query.since
-                or (query.until is not None and moment > query.until)
-            ):
+            if moment is None:
                 continue
-            call = _call(len(calls), process, record, moment)
+            in_window = moment >= query.since and (query.until is None or moment <= query.until)
+            call = _call(len(every), process, record, moment, in_window=in_window)
             if call is not None:
-                calls.append(call)
-    return _Read(calls, owners, files, scanned)
+                every.append(call)
+    calls = [call for call in every if call.in_window]
+    return _Read(calls, every, owners, files, scanned)
+
+
+def _waits(every: Iterable[_Call]) -> dict[int, float]:
+    """How long each call waited for a network slot just before it started, in
+    milliseconds, by its order: the growth of its span's wait since the call before it."""
+
+    spans: dict[tuple[Process, int | None], list[_Call]] = defaultdict(list)
+    for call in every:
+        spans[(call.process, call.parent)].append(call)
+    waits: dict[int, float] = {}
+    for group in spans.values():
+        group.sort(key=lambda c: (c.start, c.order))
+        waited_before = 0.0
+        for call in group:
+            waited = 0.0
+            if call.parent_queued is not None:
+                waited = max(0.0, call.parent_queued - waited_before)
+                waited_before = max(waited_before, call.parent_queued)
+            waits[call.order] = waited
+    return waits
+
+
+def _asked(calls: Iterable[_Call], waits: dict[int, float]) -> dict[int, float]:
+    """When each call was asked, by its order (the module docstring's ``order`` says how)."""
+
+    return {call.order: call.start - waits.get(call.order, 0.0) / 1000 for call in calls}
+
+
+def _order(calls: list[_Call], asked: dict[int, float]) -> dict[str, dict[str, dict[str, int]]]:
+    """How each less urgent lane's calls met the more urgent calls asked before them."""
+
+    by: dict[tuple[Process, str], list[_Call]] = defaultdict(list)
+    for call in calls:
+        by[(call.process, call.lane)].append(call)
+    met = {
+        first: {later: {"overtook": 0, "beside": 0} for later in LANES[LANES.index(first) + 1 :]}
+        for first in LANES[:-1]
+    }
+    processes = {call.process for call in calls}
+    for process in processes:
+        for first in LANES[:-1]:
+            urgent = sorted(by.get((process, first), []), key=lambda c: asked[c.order])
+            if not urgent:
+                continue
+            moments = [asked[c.order] for c in urgent]
+            # The latest start and the latest end of the urgent calls asked by each one.
+            starts = list(_running_max(c.start for c in urgent))
+            ends = list(_running_max(c.end for c in urgent))
+            for later in LANES[LANES.index(first) + 1 :]:
+                for call in by.get((process, later), []):
+                    before = bisect.bisect_left(moments, asked[call.order])
+                    if before == 0:
+                        continue
+                    if starts[before - 1] > call.start:
+                        met[first][later]["overtook"] += 1
+                    elif ends[before - 1] > call.start:
+                        met[first][later]["beside"] += 1
+    return met
+
+
+def _running_max(values: Iterable[float]) -> Iterable[float]:
+    most = -math.inf
+    for value in values:
+        most = max(most, value)
+        yield most
+
+
+def _repeats(calls: Iterable[_Call], repeats: dict[int, str]) -> list[dict[str, Any]]:
+    """Each read that repeated an identical one, the most repeated first."""
+
+    found: dict[tuple[str, str], dict[str, int]] = defaultdict(
+        lambda: {"in_flight": 0, "repeated": 0}
+    )
+    for call in calls:
+        how = repeats.get(call.order)
+        if how is not None and call.fingerprint is not None:
+            found[(call.asks, call.fingerprint)][how] += 1
+    ranked = sorted(
+        found.items(), key=lambda item: (-sum(item[1].values()), item[0][0], item[0][1])
+    )
+    return [
+        {"asks": asks, "fingerprint": fingerprint, **counts}
+        for (asks, fingerprint), counts in ranked[:MAX_REPEATS]
+    ]
 
 
 def _duplicates(calls: Iterable[_Call]) -> dict[int, str]:
@@ -415,24 +569,36 @@ def _share(part: int, whole: int) -> float | None:
     return round(part / whole, _SHARE_DIGITS) if whole else None
 
 
-def _row(calls: list[_Call], *, owners: _Owners, repeats: dict[int, str]) -> dict[str, Any]:
-    """What *calls* add up to (the module's docstring names each field)."""
+def _row(
+    calls: list[_Call],
+    *,
+    owners: _Owners,
+    repeats: dict[int, str],
+    waits: dict[int, float],
+    recorded: frozenset[Process],
+) -> dict[str, Any]:
+    """What *calls* add up to (the module's docstring names each field). *waits* is each
+    call's wait for a slot, and *recorded* the processes that record one for each call."""
 
     commands = dict.fromkeys(COMMANDS, 0)
     statuses: dict[int, int] = defaultdict(int)
     no_status = {"failed": 0, "unread": 0, "unrecorded": 0}
     core = points = conditional = hits = rest_answers = answered_304 = 0
     duplicates = {"in_flight": 0, "repeated": 0}
-    waits: dict[tuple[Process, int], float] = {}
+    queued: list[float] = []
+    spans: dict[tuple[Process, int], float] = {}
     for call in calls:
         commands[call.command] += 1
         how = repeats.get(call.order)
         if how is not None:
             duplicates[how] += 1
-        if call.parent is not None:
+        if call.process in recorded:
+            if waits.get(call.order, 0.0) > 0:
+                queued.append(waits[call.order])
+        elif call.parent is not None:
             owner = owners.get((call.process, call.parent))
-            if owner is not None and owner.queued_ms is not None:
-                waits[(call.process, call.parent)] = owner.queued_ms
+            if owner is not None and owner.queued_ms:
+                spans[(call.process, call.parent)] = owner.queued_ms
         if call.command == "other":
             continue
         if call.status is None:
@@ -449,7 +615,7 @@ def _row(calls: list[_Call], *, owners: _Owners, repeats: dict[int, str]) -> dic
         if call.status == 304:
             answered_304 += 1
             hits += call.conditional
-    queued = list(waits.values())
+    queued += spans.values()
     return {
         "requests": len(calls),
         "commands": commands,
@@ -463,7 +629,7 @@ def _row(calls: list[_Call], *, owners: _Owners, repeats: dict[int, str]) -> dic
         "latency": time_statistics([call.dur_ms for call in calls]),
         "duplicates": duplicates,
         "peak_in_flight": _peak(calls),
-        "queued": {"spans": len(queued), **time_statistics(queued)},
+        "queued": {"waits": len(queued), **time_statistics(queued)},
     }
 
 
@@ -478,6 +644,33 @@ def _job(call: _Call, owners: _Owners) -> tuple[OwnerKind, str | None]:
     return ("job" if owner.kind == "job" else "request"), owner.name
 
 
+def _spans_peak(calls: list[_Call]) -> int:
+    """The most spans with one of *calls* in flight at once; a call of no span is its own."""
+
+    changes = sorted(
+        [
+            change
+            for call in calls
+            for change in (
+                (call.start, 1, call.process, call.parent, call.order),
+                (call.end, -1, call.process, call.parent, call.order),
+            )
+        ],
+        key=lambda change: (change[0], change[1]),
+    )
+    running: dict[tuple[Process, int | None, int | None], int] = defaultdict(int)
+    most = 0
+    for index, (moment, step, process, parent, order) in enumerate(changes):
+        key = (process, parent, None if parent is not None else order)
+        running[key] += step
+        if running[key] == 0:
+            del running[key]
+        held = index + 1 < len(changes) and changes[index + 1][0] > moment
+        if held:
+            most = max(most, len(running))
+    return most
+
+
 def _in_flight(calls: list[_Call], *, buckets: int) -> dict[str, Any]:
     """How many of *calls* ran at once over the time from the first start to the last end."""
 
@@ -490,6 +683,8 @@ def _in_flight(calls: list[_Call], *, buckets: int) -> dict[str, Any]:
             "levels_ms": {},
             "bucket_ms": None,
             "series": [],
+            "spans_peak": 0,
+            "slotted_peak": 0,
         }
     first = min(call.start for call in calls)
     last = max(call.end for call in calls)
@@ -522,6 +717,8 @@ def _in_flight(calls: list[_Call], *, buckets: int) -> dict[str, Any]:
         "last": _instant(last),
         "levels_ms": {str(level): round(levels[level] * 1000, 1) for level in sorted(levels)},
         "bucket_ms": round(width * 1000, 1),
+        "spans_peak": _spans_peak(calls),
+        "slotted_peak": _spans_peak([call for call in calls if call.parent_queued is not None]),
         "series": [
             {
                 "at_ms": round(index * width * 1000, 1),
@@ -539,15 +736,20 @@ def report(query: Query, *, state: Path, directory: Path) -> dict[str, Any]:
     read = _read(query, state=state, directory=directory)
     calls = read.calls
     repeats = _duplicates(calls)
+    by_lane: dict[str, list[_Call]] = {lane: [] for lane in REPORTED_LANES}
     by_budget: dict[str, list[_Call]] = {budget: [] for budget in REPORTED_BUDGETS}
     by_job: dict[tuple[OwnerKind, str | None], list[_Call]] = defaultdict(list)
     for call in calls:
+        by_lane[call.lane].append(call)
         by_budget[call.budget].append(call)
         by_job[_job(call, read.owners)].append(call)
     ranked = sorted(by_job.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1] or ""))
 
+    waits = _waits(read.every)
+    recorded = frozenset(call.process for call in read.every if call.parent_queued is not None)
+
     def row(of: list[_Call]) -> dict[str, Any]:
-        return _row(of, owners=read.owners, repeats=repeats)
+        return _row(of, owners=read.owners, repeats=repeats, waits=waits, recorded=recorded)
 
     return {
         "schema_version": event_log.SCHEMA_VERSION,
@@ -559,10 +761,13 @@ def report(query: Query, *, state: Path, directory: Path) -> dict[str, Any]:
         "pids": sorted({call.pid for call in calls}),
         "duplicate_window_s": DUPLICATE_WINDOW_S,
         "requests": row(calls),
+        "lanes": {lane: row(of) for lane, of in by_lane.items()},
         "budgets": {budget: row(of) for budget, of in by_budget.items()},
         "jobs": [{"job": name, "kind": kind, **row(of)} for (kind, name), of in ranked[:MAX_JOBS]],
         "jobs_more": max(0, len(ranked) - MAX_JOBS),
         "in_flight": _in_flight(calls, buckets=query.buckets),
+        "order": _order(calls, _asked(calls, waits)),
+        "repeats": _repeats(calls, repeats),
         "unrecorded": UNRECORDED,
     }
 
@@ -573,7 +778,9 @@ __all__ = [
     "DUPLICATE_WINDOW_S",
     "MAX_BUCKETS",
     "MAX_JOBS",
+    "MAX_REPEATS",
     "REPORTED_BUDGETS",
+    "REPORTED_LANES",
     "UNRECORDED",
     "Query",
     "parse_query",
