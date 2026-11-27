@@ -1,0 +1,3182 @@
+{
+  "url": "http://127.0.0.1:48231",
+  "started": "2026-11-27T01:02:29Z",
+  "ended": "2026-11-27T01:03:38Z",
+  "steps": [
+    {
+      "name": "open the Pulls tab",
+      "started": "2026-11-27T01:02:29Z",
+      "notes": {
+        "status_scan": "started",
+        "prefetch": "started",
+        "top": [911, 908]
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:02:29Z",
+          "until": "2026-11-27T01:02:31Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 5,
+          "commands": {
+            "rest": 3,
+            "graphql": 2,
+            "other": 0
+          },
+          "statuses": {
+            "200": 4,
+            "304": 1
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 2,
+          "graphql_points": 2,
+          "share_304": 0.333,
+          "conditional": 1,
+          "cache_hits": 1,
+          "latency": {
+            "p50_ms": 414.2,
+            "p95_ms": 679.9,
+            "max_ms": 679.9,
+            "total_ms": 1931.6
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 1
+          },
+          "peak_in_flight": 2,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 51.6,
+            "p95_ms": 51.6,
+            "max_ms": 51.6,
+            "total_ms": 51.6
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 2,
+            "commands": {
+              "rest": 1,
+              "graphql": 1,
+              "other": 0
+            },
+            "statuses": {
+              "200": 2
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 1,
+            "graphql_points": 1,
+            "share_304": 0.0,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": 212.2,
+              "p95_ms": 416.8,
+              "max_ms": 416.8,
+              "total_ms": 629.0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 51.6,
+              "p95_ms": 51.6,
+              "max_ms": 51.6,
+              "total_ms": 51.6
+            }
+          },
+          "attended": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 2,
+            "commands": {
+              "rest": 2,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "200": 1,
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 1,
+            "graphql_points": 0,
+            "share_304": 0.5,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 208.5,
+              "p95_ms": 414.2,
+              "max_ms": 414.2,
+              "total_ms": 622.7
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 1
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 1,
+            "commands": {
+              "rest": 0,
+              "graphql": 1,
+              "other": 0
+            },
+            "statuses": {
+              "200": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 1,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": 679.9,
+              "p95_ms": 679.9,
+              "max_ms": 679.9,
+              "total_ms": 679.9
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 51.6,
+              "p95_ms": 51.6,
+              "max_ms": 51.6,
+              "total_ms": 51.6
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [
+          {
+            "asks": "gh api user",
+            "fingerprint": "eb500829d7df0806",
+            "in_flight": 0,
+            "repeated": 1
+          }
+        ],
+        "in_flight": {
+          "peak": 2,
+          "peak_at": "2026-11-27T01:02:30.372Z",
+          "first": "2026-11-27T01:02:29.650Z",
+          "last": "2026-11-27T01:02:30.996Z",
+          "levels_ms": {
+            "0": 15.3,
+            "1": 728.2,
+            "2": 601.7
+          },
+          "bucket_ms": 1345.2,
+          "spans_peak": 2,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:02:30Z"
+    },
+    {
+      "name": "scroll",
+      "started": "2026-11-27T01:02:40Z",
+      "notes": {},
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:02:40Z",
+          "until": "2026-11-27T01:02:41Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 1,
+          "commands": {
+            "rest": 0,
+            "graphql": 1,
+            "other": 0
+          },
+          "statuses": {
+            "200": 1
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 0,
+          "graphql_points": 1,
+          "share_304": null,
+          "conditional": 0,
+          "cache_hits": 0,
+          "latency": {
+            "p50_ms": 606.5,
+            "p95_ms": 606.5,
+            "max_ms": 606.5,
+            "total_ms": 606.5
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 1,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0,
+            "total_ms": 0.0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 1,
+            "commands": {
+              "rest": 0,
+              "graphql": 1,
+              "other": 0
+            },
+            "statuses": {
+              "200": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 1,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": 606.5,
+              "p95_ms": 606.5,
+              "max_ms": 606.5,
+              "total_ms": 606.5
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 0.0,
+              "p95_ms": 0.0,
+              "max_ms": 0.0,
+              "total_ms": 0.0
+            }
+          },
+          "attended": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 1,
+          "peak_at": "2026-11-27T01:02:40.377Z",
+          "first": "2026-11-27T01:02:40.377Z",
+          "last": "2026-11-27T01:02:40.984Z",
+          "levels_ms": {
+            "1": 606.5
+          },
+          "bucket_ms": 606.5,
+          "spans_peak": 1,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:02:40Z"
+    },
+    {
+      "name": "open the first",
+      "started": "2026-11-27T01:02:45Z",
+      "notes": {
+        "number": 911,
+        "refresh": "started"
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:02:45Z",
+          "until": "2026-11-27T01:02:46Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 2,
+          "commands": {
+            "rest": 2,
+            "graphql": 0,
+            "other": 0
+          },
+          "statuses": {
+            "200": 1,
+            "304": 1
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 1,
+          "graphql_points": 0,
+          "share_304": 0.5,
+          "conditional": 1,
+          "cache_hits": 1,
+          "latency": {
+            "p50_ms": 272.9,
+            "p95_ms": 365.6,
+            "max_ms": 365.6,
+            "total_ms": 638.5
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 2,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0,
+            "total_ms": 0.0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 1,
+            "commands": {
+              "rest": 1,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": 1.0,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 272.9,
+              "p95_ms": 272.9,
+              "max_ms": 272.9,
+              "total_ms": 272.9
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 0.0,
+              "p95_ms": 0.0,
+              "max_ms": 0.0,
+              "total_ms": 0.0
+            }
+          },
+          "attended": {
+            "requests": 1,
+            "commands": {
+              "rest": 1,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "200": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 1,
+            "graphql_points": 0,
+            "share_304": 0.0,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": 365.6,
+              "p95_ms": 365.6,
+              "max_ms": 365.6,
+              "total_ms": 365.6
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 2,
+          "peak_at": "2026-11-27T01:02:45.410Z",
+          "first": "2026-11-27T01:02:45.403Z",
+          "last": "2026-11-27T01:02:45.769Z",
+          "levels_ms": {
+            "1": 92.7,
+            "2": 272.9
+          },
+          "bucket_ms": 365.6,
+          "spans_peak": 2,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:02:45Z"
+    },
+    {
+      "name": "its page asks again",
+      "started": "2026-11-27T01:02:50Z",
+      "notes": {
+        "number": 911,
+        "refresh": "started"
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:02:50Z",
+          "until": "2026-11-27T01:02:52Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 4,
+          "commands": {
+            "rest": 4,
+            "graphql": 0,
+            "other": 0
+          },
+          "statuses": {
+            "200": 3,
+            "304": 1
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 3,
+          "graphql_points": 0,
+          "share_304": 0.25,
+          "conditional": 1,
+          "cache_hits": 1,
+          "latency": {
+            "p50_ms": 272.4,
+            "p95_ms": 471.3,
+            "max_ms": 471.3,
+            "total_ms": 1287.2
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 2,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0,
+            "total_ms": 0.0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 4,
+            "commands": {
+              "rest": 4,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "200": 3,
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 3,
+            "graphql_points": 0,
+            "share_304": 0.25,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 272.4,
+              "p95_ms": 471.3,
+              "max_ms": 471.3,
+              "total_ms": 1287.2
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 2,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 0.0,
+              "p95_ms": 0.0,
+              "max_ms": 0.0,
+              "total_ms": 0.0
+            }
+          },
+          "attended": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 2,
+          "peak_at": "2026-11-27T01:02:51.071Z",
+          "first": "2026-11-27T01:02:50.779Z",
+          "last": "2026-11-27T01:02:51.805Z",
+          "levels_ms": {
+            "0": 10.5,
+            "1": 742.4,
+            "2": 272.4
+          },
+          "bucket_ms": 1025.3,
+          "spans_peak": 1,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:02:51Z"
+    },
+    {
+      "name": "open the second",
+      "started": "2026-11-27T01:03:06Z",
+      "notes": {
+        "number": 908,
+        "refresh": "started"
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:03:06Z",
+          "until": "2026-11-27T01:03:07Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 2,
+          "commands": {
+            "rest": 2,
+            "graphql": 0,
+            "other": 0
+          },
+          "statuses": {
+            "304": 2
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 0,
+          "graphql_points": 0,
+          "share_304": 1.0,
+          "conditional": 2,
+          "cache_hits": 2,
+          "latency": {
+            "p50_ms": 225.6,
+            "p95_ms": 385.5,
+            "max_ms": 385.5,
+            "total_ms": 611.1
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 2,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0,
+            "total_ms": 0.0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 1,
+            "commands": {
+              "rest": 1,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": 1.0,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 225.6,
+              "p95_ms": 225.6,
+              "max_ms": 225.6,
+              "total_ms": 225.6
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 0.0,
+              "p95_ms": 0.0,
+              "max_ms": 0.0,
+              "total_ms": 0.0
+            }
+          },
+          "attended": {
+            "requests": 1,
+            "commands": {
+              "rest": 1,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": 1.0,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 385.5,
+              "p95_ms": 385.5,
+              "max_ms": 385.5,
+              "total_ms": 385.5
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 2,
+          "peak_at": "2026-11-27T01:03:06.565Z",
+          "first": "2026-11-27T01:03:06.560Z",
+          "last": "2026-11-27T01:03:06.946Z",
+          "levels_ms": {
+            "1": 159.9,
+            "2": 225.6
+          },
+          "bucket_ms": 385.5,
+          "spans_peak": 2,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:03:06Z"
+    },
+    {
+      "name": "switch to closed",
+      "started": "2026-11-27T01:03:16Z",
+      "notes": {
+        "number": 910,
+        "refresh": "not_cached, then started"
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:03:16Z",
+          "until": "2026-11-27T01:03:18Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 3,
+          "commands": {
+            "rest": 3,
+            "graphql": 0,
+            "other": 0
+          },
+          "statuses": {
+            "200": 1,
+            "304": 2
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 1,
+          "graphql_points": 0,
+          "share_304": 0.667,
+          "conditional": 2,
+          "cache_hits": 2,
+          "latency": {
+            "p50_ms": 309.4,
+            "p95_ms": 358.3,
+            "max_ms": 358.3,
+            "total_ms": 896.4
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 1,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0,
+            "total_ms": 0.0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 3,
+            "commands": {
+              "rest": 3,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "200": 1,
+              "304": 2
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 1,
+            "graphql_points": 0,
+            "share_304": 0.667,
+            "conditional": 2,
+            "cache_hits": 2,
+            "latency": {
+              "p50_ms": 309.4,
+              "p95_ms": 358.3,
+              "max_ms": 358.3,
+              "total_ms": 896.4
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 0.0,
+              "p95_ms": 0.0,
+              "max_ms": 0.0,
+              "total_ms": 0.0
+            }
+          },
+          "attended": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 1,
+          "peak_at": "2026-11-27T01:03:16.956Z",
+          "first": "2026-11-27T01:03:16.956Z",
+          "last": "2026-11-27T01:03:17.893Z",
+          "levels_ms": {
+            "0": 40.0,
+            "1": 896.4
+          },
+          "bucket_ms": 936.4,
+          "spans_peak": 1,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:03:17Z"
+    },
+    {
+      "name": "come back to the open list",
+      "started": "2026-11-27T01:03:27Z",
+      "notes": {
+        "refresh": "not_due"
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:03:27Z",
+          "until": "2026-11-27T01:03:28Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 1,
+          "commands": {
+            "rest": 1,
+            "graphql": 0,
+            "other": 0
+          },
+          "statuses": {
+            "304": 1
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 0,
+          "graphql_points": 0,
+          "share_304": 1.0,
+          "conditional": 1,
+          "cache_hits": 1,
+          "latency": {
+            "p50_ms": 398.1,
+            "p95_ms": 398.1,
+            "max_ms": 398.1,
+            "total_ms": 398.1
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 1,
+          "queued": {
+            "spans": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "max_ms": null,
+            "total_ms": 0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 1,
+            "commands": {
+              "rest": 1,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": 1.0,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 398.1,
+              "p95_ms": 398.1,
+              "max_ms": 398.1,
+              "total_ms": 398.1
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "attended": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 1,
+          "peak_at": "2026-11-27T01:03:27.302Z",
+          "first": "2026-11-27T01:03:27.302Z",
+          "last": "2026-11-27T01:03:27.701Z",
+          "levels_ms": {
+            "1": 398.1
+          },
+          "bucket_ms": 398.1,
+          "spans_peak": 1,
+          "slotted_peak": 0
+        }
+      },
+      "until": "2026-11-27T01:03:27Z"
+    },
+    {
+      "name": "revisit the first",
+      "started": "2026-11-27T01:03:37Z",
+      "notes": {
+        "number": 911,
+        "refresh": "started"
+      },
+      "report": {
+        "query": {
+          "since": "2026-11-27T01:03:37Z",
+          "until": "2026-11-27T01:03:39Z",
+          "pid": null,
+          "buckets": 1
+        },
+        "requests": {
+          "requests": 3,
+          "commands": {
+            "rest": 2,
+            "graphql": 1,
+            "other": 0
+          },
+          "statuses": {
+            "200": 1,
+            "304": 2
+          },
+          "no_status": {
+            "failed": 0,
+            "unread": 0,
+            "unrecorded": 0
+          },
+          "core": 0,
+          "graphql_points": 1,
+          "share_304": 1.0,
+          "conditional": 2,
+          "cache_hits": 2,
+          "latency": {
+            "p50_ms": 375.8,
+            "p95_ms": 634.2,
+            "max_ms": 634.2,
+            "total_ms": 1281.7
+          },
+          "duplicates": {
+            "in_flight": 0,
+            "repeated": 0
+          },
+          "peak_in_flight": 2,
+          "queued": {
+            "spans": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0,
+            "total_ms": 0.0
+          }
+        },
+        "lanes": {
+          "visible": {
+            "requests": 2,
+            "commands": {
+              "rest": 1,
+              "graphql": 1,
+              "other": 0
+            },
+            "statuses": {
+              "200": 1,
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 1,
+            "share_304": 1.0,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 271.7,
+              "p95_ms": 634.2,
+              "max_ms": 634.2,
+              "total_ms": 905.9
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 1,
+              "p50_ms": 0.0,
+              "p95_ms": 0.0,
+              "max_ms": 0.0,
+              "total_ms": 0.0
+            }
+          },
+          "attended": {
+            "requests": 1,
+            "commands": {
+              "rest": 1,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {
+              "304": 1
+            },
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": 1.0,
+            "conditional": 1,
+            "cache_hits": 1,
+            "latency": {
+              "p50_ms": 375.8,
+              "p95_ms": 375.8,
+              "max_ms": 375.8,
+              "total_ms": 375.8
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 1,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "prefetch": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "background": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          },
+          "unknown": {
+            "requests": 0,
+            "commands": {
+              "rest": 0,
+              "graphql": 0,
+              "other": 0
+            },
+            "statuses": {},
+            "no_status": {
+              "failed": 0,
+              "unread": 0,
+              "unrecorded": 0
+            },
+            "core": 0,
+            "graphql_points": 0,
+            "share_304": null,
+            "conditional": 0,
+            "cache_hits": 0,
+            "latency": {
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            },
+            "duplicates": {
+              "in_flight": 0,
+              "repeated": 0
+            },
+            "peak_in_flight": 0,
+            "queued": {
+              "spans": 0,
+              "p50_ms": null,
+              "p95_ms": null,
+              "max_ms": null,
+              "total_ms": 0
+            }
+          }
+        },
+        "order": {
+          "visible": {
+            "attended": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "attended": {
+            "prefetch": {
+              "overtook": 0,
+              "beside": 0
+            },
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          },
+          "prefetch": {
+            "background": {
+              "overtook": 0,
+              "beside": 0
+            }
+          }
+        },
+        "repeats": [],
+        "in_flight": {
+          "peak": 2,
+          "peak_at": "2026-11-27T01:03:37.723Z",
+          "first": "2026-11-27T01:03:37.722Z",
+          "last": "2026-11-27T01:03:38.633Z",
+          "levels_ms": {
+            "1": 539.9,
+            "2": 370.9
+          },
+          "bucket_ms": 910.8,
+          "spans_peak": 2,
+          "slotted_peak": 1
+        }
+      },
+      "until": "2026-11-27T01:03:38Z"
+    }
+  ],
+  "report": {
+    "schema_version": 1,
+    "directory": "$STATE/events",
+    "state": "present",
+    "query": {
+      "since": "2026-11-27T01:02:29Z",
+      "until": "2026-11-27T01:03:39Z",
+      "pid": null,
+      "buckets": 12
+    },
+    "files": ["events-20261127T010223Z-p31090-000.jsonl"],
+    "scanned": 156,
+    "pids": [31090],
+    "duplicate_window_s": 4.0,
+    "requests": {
+      "requests": 51,
+      "commands": {
+        "rest": 31,
+        "graphql": 20,
+        "other": 0
+      },
+      "statuses": {
+        "200": 37,
+        "304": 14
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 17,
+      "graphql_points": 20,
+      "share_304": 0.452,
+      "conditional": 14,
+      "cache_hits": 14,
+      "latency": {
+        "p50_ms": 398.1,
+        "p95_ms": 1067.8,
+        "max_ms": 2736.2,
+        "total_ms": 26060.5
+      },
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 5
+      },
+      "peak_in_flight": 5,
+      "queued": {
+        "spans": 10,
+        "p50_ms": 0.0,
+        "p95_ms": 622.3,
+        "max_ms": 622.3,
+        "total_ms": 673.9
+      }
+    },
+    "lanes": {
+      "visible": {
+        "requests": 24,
+        "commands": {
+          "rest": 16,
+          "graphql": 8,
+          "other": 0
+        },
+        "statuses": {
+          "200": 16,
+          "304": 8
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 8,
+        "graphql_points": 8,
+        "share_304": 0.5,
+        "conditional": 8,
+        "cache_hits": 8,
+        "latency": {
+          "p50_ms": 332.0,
+          "p95_ms": 693.7,
+          "max_ms": 1067.8,
+          "total_ms": 10138.3
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 1
+        },
+        "peak_in_flight": 3,
+        "queued": {
+          "spans": 8,
+          "p50_ms": 0.0,
+          "p95_ms": 51.6,
+          "max_ms": 51.6,
+          "total_ms": 51.6
+        }
+      },
+      "attended": {
+        "requests": 3,
+        "commands": {
+          "rest": 3,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {
+          "200": 1,
+          "304": 2
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 1,
+        "graphql_points": 0,
+        "share_304": 0.667,
+        "conditional": 2,
+        "cache_hits": 2,
+        "latency": {
+          "p50_ms": 375.8,
+          "p95_ms": 385.5,
+          "max_ms": 385.5,
+          "total_ms": 1126.9
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 1,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      },
+      "prefetch": {
+        "requests": 12,
+        "commands": {
+          "rest": 12,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {
+          "200": 8,
+          "304": 4
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 8,
+        "graphql_points": 0,
+        "share_304": 0.333,
+        "conditional": 4,
+        "cache_hits": 4,
+        "latency": {
+          "p50_ms": 258.6,
+          "p95_ms": 436.8,
+          "max_ms": 436.8,
+          "total_ms": 3588.5
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 4
+        },
+        "peak_in_flight": 3,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      },
+      "background": {
+        "requests": 12,
+        "commands": {
+          "rest": 0,
+          "graphql": 12,
+          "other": 0
+        },
+        "statuses": {
+          "200": 12
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 0,
+        "graphql_points": 12,
+        "share_304": null,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": 664.9,
+          "p95_ms": 2736.2,
+          "max_ms": 2736.2,
+          "total_ms": 11206.8
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 2,
+        "queued": {
+          "spans": 3,
+          "p50_ms": 51.6,
+          "p95_ms": 622.3,
+          "max_ms": 622.3,
+          "total_ms": 673.9
+        }
+      },
+      "unknown": {
+        "requests": 0,
+        "commands": {
+          "rest": 0,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {},
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 0,
+        "graphql_points": 0,
+        "share_304": null,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 0,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      }
+    },
+    "budgets": {
+      "reader": {
+        "requests": 7,
+        "commands": {
+          "rest": 6,
+          "graphql": 1,
+          "other": 0
+        },
+        "statuses": {
+          "200": 5,
+          "304": 2
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 4,
+        "graphql_points": 1,
+        "share_304": 0.333,
+        "conditional": 2,
+        "cache_hits": 2,
+        "latency": {
+          "p50_ms": 332.0,
+          "p95_ms": 567.2,
+          "max_ms": 567.2,
+          "total_ms": 2519.3
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 1
+        },
+        "peak_in_flight": 3,
+        "queued": {
+          "spans": 1,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        }
+      },
+      "automatic": {
+        "requests": 23,
+        "commands": {
+          "rest": 13,
+          "graphql": 10,
+          "other": 0
+        },
+        "statuses": {
+          "200": 15,
+          "304": 8
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 5,
+        "graphql_points": 10,
+        "share_304": 0.615,
+        "conditional": 8,
+        "cache_hits": 8,
+        "latency": {
+          "p50_ms": 398.1,
+          "p95_ms": 1970.7,
+          "max_ms": 2736.2,
+          "total_ms": 13878.3
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 2,
+        "queued": {
+          "spans": 9,
+          "p50_ms": 0.0,
+          "p95_ms": 622.3,
+          "max_ms": 622.3,
+          "total_ms": 673.9
+        }
+      },
+      "speculative": {
+        "requests": 21,
+        "commands": {
+          "rest": 12,
+          "graphql": 9,
+          "other": 0
+        },
+        "statuses": {
+          "200": 17,
+          "304": 4
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 8,
+        "graphql_points": 9,
+        "share_304": 0.333,
+        "conditional": 4,
+        "cache_hits": 4,
+        "latency": {
+          "p50_ms": 419.6,
+          "p95_ms": 759.3,
+          "max_ms": 877.2,
+          "total_ms": 9662.9
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 4
+        },
+        "peak_in_flight": 4,
+        "queued": {
+          "spans": 1,
+          "p50_ms": 51.6,
+          "p95_ms": 51.6,
+          "max_ms": 51.6,
+          "total_ms": 51.6
+        }
+      },
+      "walk": {
+        "requests": 0,
+        "commands": {
+          "rest": 0,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {},
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 0,
+        "graphql_points": 0,
+        "share_304": null,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 0,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      },
+      "unknown": {
+        "requests": 0,
+        "commands": {
+          "rest": 0,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {},
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 0,
+        "graphql_points": 0,
+        "share_304": null,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 0,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      }
+    },
+    "jobs": [
+      {
+        "job": "checkout._pull_job",
+        "kind": "job",
+        "requests": 27,
+        "commands": {
+          "rest": 22,
+          "graphql": 5,
+          "other": 0
+        },
+        "statuses": {
+          "200": 17,
+          "304": 10
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 12,
+        "graphql_points": 5,
+        "share_304": 0.455,
+        "conditional": 10,
+        "cache_hits": 10,
+        "latency": {
+          "p50_ms": 327.4,
+          "p95_ms": 634.2,
+          "max_ms": 1067.8,
+          "total_ms": 10056.1
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 5
+        },
+        "peak_in_flight": 3,
+        "queued": {
+          "spans": 5,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        }
+      },
+      {
+        "job": "pull_list_route._run_refresh",
+        "kind": "job",
+        "requests": 11,
+        "commands": {
+          "rest": 1,
+          "graphql": 10,
+          "other": 0
+        },
+        "statuses": {
+          "200": 11
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 1,
+        "graphql_points": 10,
+        "share_304": 0.0,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": 628.9,
+          "p95_ms": 877.2,
+          "max_ms": 877.2,
+          "total_ms": 6703.4
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 1,
+        "queued": {
+          "spans": 1,
+          "p50_ms": 51.6,
+          "p95_ms": 51.6,
+          "max_ms": 51.6,
+          "total_ms": 51.6
+        }
+      },
+      {
+        "job": "pull_list_probe.ListProbe._run",
+        "kind": "job",
+        "requests": 5,
+        "commands": {
+          "rest": 5,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {
+          "200": 1,
+          "304": 4
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 1,
+        "graphql_points": 0,
+        "share_304": 0.8,
+        "conditional": 4,
+        "cache_hits": 4,
+        "latency": {
+          "p50_ms": 375.8,
+          "p95_ms": 398.1,
+          "max_ms": 398.1,
+          "total_ms": 1834.4
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 1,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      },
+      {
+        "job": "pull_status_scan._scan_job",
+        "kind": "job",
+        "requests": 3,
+        "commands": {
+          "rest": 0,
+          "graphql": 3,
+          "other": 0
+        },
+        "statuses": {
+          "200": 3
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 0,
+        "graphql_points": 3,
+        "share_304": null,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": 1970.7,
+          "p95_ms": 2736.2,
+          "max_ms": 2736.2,
+          "total_ms": 5132.4
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 1,
+        "queued": {
+          "spans": 2,
+          "p50_ms": 0.0,
+          "p95_ms": 622.3,
+          "max_ms": 622.3,
+          "total_ms": 622.3
+        }
+      },
+      {
+        "job": "served_pull.ServedPull._probe",
+        "kind": "job",
+        "requests": 3,
+        "commands": {
+          "rest": 3,
+          "graphql": 0,
+          "other": 0
+        },
+        "statuses": {
+          "200": 3
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 3,
+        "graphql_points": 0,
+        "share_304": 0.0,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": 290.3,
+          "p95_ms": 471.3,
+          "max_ms": 471.3,
+          "total_ms": 1034.0
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 2,
+        "queued": {
+          "spans": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "max_ms": null,
+          "total_ms": 0
+        }
+      },
+      {
+        "job": "pull_cores._prepare",
+        "kind": "job",
+        "requests": 2,
+        "commands": {
+          "rest": 0,
+          "graphql": 2,
+          "other": 0
+        },
+        "statuses": {
+          "200": 2
+        },
+        "no_status": {
+          "failed": 0,
+          "unread": 0,
+          "unrecorded": 0
+        },
+        "core": 0,
+        "graphql_points": 2,
+        "share_304": null,
+        "conditional": 0,
+        "cache_hits": 0,
+        "latency": {
+          "p50_ms": 606.5,
+          "p95_ms": 693.7,
+          "max_ms": 693.7,
+          "total_ms": 1300.2
+        },
+        "duplicates": {
+          "in_flight": 0,
+          "repeated": 0
+        },
+        "peak_in_flight": 1,
+        "queued": {
+          "spans": 2,
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "max_ms": 0.0,
+          "total_ms": 0.0
+        }
+      }
+    ],
+    "jobs_more": 0,
+    "in_flight": {
+      "peak": 5,
+      "peak_at": "2026-11-27T01:02:30.998Z",
+      "first": "2026-11-27T01:02:29.650Z",
+      "last": "2026-11-27T01:03:38.633Z",
+      "levels_ms": {
+        "0": 54127.0,
+        "1": 7857.8,
+        "2": 4211.8,
+        "3": 1859.9,
+        "4": 429.1,
+        "5": 496.6
+      },
+      "bucket_ms": 5748.5,
+      "spans_peak": 3,
+      "slotted_peak": 2,
+      "series": [
+        {
+          "at_ms": 0.0,
+          "peak": 5,
+          "mean": 2.26
+        },
+        {
+          "at_ms": 5748.5,
+          "peak": 1,
+          "mean": 0.3
+        },
+        {
+          "at_ms": 11497.0,
+          "peak": 2,
+          "mean": 0.22
+        },
+        {
+          "at_ms": 17245.5,
+          "peak": 2,
+          "mean": 0.33
+        },
+        {
+          "at_ms": 22994.1,
+          "peak": 0,
+          "mean": 0.0
+        },
+        {
+          "at_ms": 28742.6,
+          "peak": 0,
+          "mean": 0.0
+        },
+        {
+          "at_ms": 34491.1,
+          "peak": 2,
+          "mean": 0.29
+        },
+        {
+          "at_ms": 40239.6,
+          "peak": 0,
+          "mean": 0.0
+        },
+        {
+          "at_ms": 45988.1,
+          "peak": 4,
+          "mean": 0.83
+        },
+        {
+          "at_ms": 51736.6,
+          "peak": 0,
+          "mean": 0.0
+        },
+        {
+          "at_ms": 57485.2,
+          "peak": 1,
+          "mean": 0.07
+        },
+        {
+          "at_ms": 63233.7,
+          "peak": 2,
+          "mean": 0.22
+        }
+      ]
+    },
+    "order": {
+      "visible": {
+        "attended": {
+          "overtook": 0,
+          "beside": 0
+        },
+        "prefetch": {
+          "overtook": 0,
+          "beside": 5
+        },
+        "background": {
+          "overtook": 0,
+          "beside": 1
+        }
+      },
+      "attended": {
+        "prefetch": {
+          "overtook": 0,
+          "beside": 0
+        },
+        "background": {
+          "overtook": 0,
+          "beside": 0
+        }
+      },
+      "prefetch": {
+        "background": {
+          "overtook": 0,
+          "beside": 3
+        }
+      }
+    },
+    "repeats": [
+      {
+        "asks": "gh api user",
+        "fingerprint": "eb500829d7df0806",
+        "in_flight": 0,
+        "repeated": 5
+      }
+    ],
+    "unrecorded": {
+      "first_answer_seen": "when a page first showed GitHub's answer: a page reports a wait only once it is late, so the time to a first answer is not in the log",
+      "local_cache_hits": "reads the server answered from its own store: those make no gh call, so cache_hits counts only the 304s GitHub answered",
+      "store_turn_waits": "time a job waited for its turn at the store: queued counts only the waits for a network slot"
+    }
+  }
+}

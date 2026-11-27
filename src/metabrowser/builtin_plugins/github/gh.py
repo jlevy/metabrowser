@@ -24,9 +24,10 @@ same-second refreshes at once on purpose (measured 2026-11-11).
 hand every response's rate-limit headers, and every ``rate_limited`` refusal, to
 :mod:`.gh_budget`, which decides whether background work may spend the account's budget.
 
-Every run is a span in the event log (:func:`_run`), and a read of GitHub's answer
-records its HTTP status and what it cost there, the same number :mod:`.gh_budget`
-counts; :mod:`.gh_requests` reports them.
+Every run is a span in the event log (:func:`_run`) that records the budget it is charged
+to and the lane it serves (:mod:`.gh_lanes`), and a read of GitHub's answer records its
+HTTP status and what it cost there, the same number :mod:`.gh_budget` counts;
+:mod:`.gh_requests` reports them.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ from pathlib import Path
 from typing import Any, Final, Literal
 
 from metabrowser import event_log, network_cause
-from metabrowser.builtin_plugins.github import gh_budget
+from metabrowser.builtin_plugins.github import gh_budget, gh_lanes
 from metabrowser.git.process import (
     forget_process_group,
     kill_when_spawned,
@@ -333,23 +334,33 @@ async def _run(
         raise GhUnavailableError
     # Every gh process is a span in the event log (metabrowser.event_log): its command
     # without field values or headers, its deadline, the budget it is charged to
-    # (gh_budget.current_budget), a fingerprint that is the same for two calls that ask
+    # (gh_budget.current_budget), the lane it serves (gh_lanes.current_lane), a
+    # fingerprint that is the same for two calls that ask
     # GitHub the same thing (fingerprint), how it ended, and the cause its error text
     # names; for a read of GitHub's answer, its HTTP status and what it cost. Its time is
-    # gh's: the clock stops when gh exits, before its output is read. The request report
+    # gh's: the clock stops when gh exits, before its output is read. When the span it runs
+    # in has taken one of the coordinator's network slots, it also records how long that
+    # span had waited for them when it started (``parent_queued_ms``,
+    # mirror_refresh.NetworkSlots), so the wait just before each call is the difference
+    # from the call before it, and a call with none ran outside a slot. The request report
     # (gh_requests) reads these.
+    attrs: dict[str, object] = {
+        "args": loggable_args(args),
+        "timeout_s": timeout_s,
+        "host": network_cause.GITHUB_API_HOST,
+        "budget": gh_budget.current_budget(),
+        "lane": gh_lanes.current_lane(),
+        "fingerprint": fingerprint(args),
+    }
+    waited = event_log.current().attrs.get("queued_ms")
+    if isinstance(waited, int | float):
+        attrs["parent_queued_ms"] = waited
     unreachable = False
     try:
         with event_log.span(
             "subprocess",
             f"gh {next((arg for arg in args if not arg.startswith('-')), '')}".rstrip(),
-            attrs={
-                "args": loggable_args(args),
-                "timeout_s": timeout_s,
-                "host": network_cause.GITHUB_API_HOST,
-                "budget": gh_budget.current_budget(),
-                "fingerprint": fingerprint(args),
-            },
+            attrs=attrs,
         ) as span:
             completed = await _run_in(exe, args, timeout_s=timeout_s, max_bytes=max_bytes, cwd=cwd)
             span.stop()

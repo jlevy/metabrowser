@@ -3129,9 +3129,12 @@ export function createPullController(deps, options) {
     polling = true;
     if (!first && catalogScanDue()) {
       // Asked first, so the read below already sees the scan running and the record current.
+      // The list is read for this page's record, not shown on it: the attended lane.
       catalogAskedAt = deps.now();
       try {
-        await deps.request("POST", CATALOG_REFRESH_ROUTE, { body: { background: true } });
+        await deps.request("POST", CATALOG_REFRESH_ROUTE, {
+          body: { background: true, lane: "attended" },
+        });
       } catch {
         // The read below still answers; the next window asks again.
       }
