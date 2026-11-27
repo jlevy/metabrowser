@@ -1,5 +1,5 @@
 // The branch chooser over thousands of branches in a real engine (mb-dcp2): every branch
-// in the list, newest first, with only the rows near the view in the document.
+// in the list, primary branches first, with only the rows near the view in the document.
 //
 // The listing's order and the window's range are browserless (tests/test_source_refs.py,
 // tests/dom/source-ref-selector-session.js). What needs a browser is layout: how tall a
@@ -16,8 +16,8 @@
 //      keeps focus, that Tab from the filter box reaches it, and that ArrowDown brings
 //      the next row into view;
 //   5. types a filter and reads the narrowed list;
-//   6. switches to the oldest branch, and on its page opens the list, which shows the
-//      served branch's row, at the foot of the list, rather than the newest.
+//   6. switches to the oldest branch and verifies the list and its first Tab stop still
+//      start at the top. End reaches the served branch, which is still marked.
 //
 // It times opening, from the click to the frame after the rows; End, from the key to the
 // frame after; and the filter, from its last key to the frame after the narrowed rows.
@@ -332,7 +332,7 @@ try {
   result.filterMs = Date.now() - started;
   result.filtered = await chrome.evaluate(LISTED);
 
-  // 6. The oldest branch, chosen from the filtered list; its page's list opens on its row.
+  // 6. The oldest branch, chosen from the filtered list. Its page's list starts at the top.
   await chrome.evaluate(
     `(() => { const box = ${ROOT}.querySelector(".source-ref-selector-filter"); box.focus(); box.select(); return true; })()`,
   );
@@ -349,6 +349,16 @@ try {
   await chrome.waitFor(`${SETTLED} && ${LIST}.querySelectorAll("button").length > 0`);
   await chrome.evaluate(FRAMES);
   result.switched = await chrome.evaluate(LISTED);
+  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-filter").focus(), true`);
+  await press("Tab", "Tab", 9);
+  result.switchedTab = await chrome.evaluate(LISTED);
+  await press("End", "End", 35);
+  result.switchedEnd = await chrome.evaluate(LISTED);
+  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
+  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
+  await chrome.waitFor(`${SETTLED} && ${LIST}.querySelectorAll("button").length > 0`);
+  await chrome.evaluate(FRAMES);
+  result.reopened = await chrome.evaluate(LISTED);
   console.log(JSON.stringify(result));
 } finally {
   await chrome.close();

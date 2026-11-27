@@ -366,8 +366,8 @@ cost alone
   `metab PATH --ref origin/topic` reads the store once the cache has it and the checkout
   until then. The status of such a pin has the store’s freshness, `refreshable` and
   `follows`, and is still a folder’s, named and placed as the folder is.
-- **The origin’s default branch** lists first in Remotes and is marked `default`, as a
-  mirror’s is, from the store’s record of it.
+- **The origin’s default branch** appears among the primary branches in Remotes and is
+  marked `default`, as a mirror’s is, from the store’s record of it.
 - **The freshness row** is on every page of a folder that keeps a store, its working
   tree’s too: the status of the working tree, and of one of the checkout’s own
   revisions, has the store’s last fetch and is `refreshable`, with nothing of the

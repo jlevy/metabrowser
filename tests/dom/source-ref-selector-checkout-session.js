@@ -82,7 +82,7 @@ async function runCheckout() {
   const branchesListed = selector.setKind("branch");
   await page.answer(recording.branches);
   await branchesListed;
-  steps.push(page.observe("the checkout's branches, the checked-out one first and marked"));
+  steps.push(page.observe("the checkout's branches, with the checked-out branch marked"));
 
   const remotes = selector.setKind("remote");
   await page.answer(recording.remotes);

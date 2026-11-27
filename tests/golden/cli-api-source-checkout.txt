@@ -32,7 +32,7 @@ status: 200
 }
 --- stderr ---
 
-== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and where HEAD is, its branch and its commit, read from the checkout as the listing is made; kinds names the four lists in the order of the selector's tabs. The checked-out branch lists first and is checked_out, not current: chosen as a ref it shows its commit, which the working tree is not.
+== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and where HEAD is, its branch and its commit, read from the checkout as the listing is made; kinds names the four lists in the order of the selector's tabs. The origin's default branch lists with the primary branches. The checked_out field names the branch the working tree is on. The current field marks a served ref.
 
 # metab checkout --api /api/source/refs
 exit: 0
@@ -138,7 +138,7 @@ status: 200
 }
 --- stderr ---
 
-== Remote-tracking branches are a third list, each with its remote's name. The symbolic origin/HEAD a clone writes is not a row. Tags list newest first, peeled to the commit they name.
+== Remote-tracking branches are a third list, each with its remote's name. The symbolic origin/HEAD a clone writes puts its target among the primary branches. Tags list newest first, peeled to the commit they name.
 
 # metab checkout --api '/api/source/refs?kind=remote'
 exit: 0
@@ -168,19 +168,19 @@ status: 200
   "pull_requests": null,
   "refs": [
     {
-      "name": "origin/feature",
-      "ref": "refs/remotes/origin/feature",
-      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-      "committed_at": 1767232800.0,
+      "name": "origin/topic",
+      "ref": "refs/remotes/origin/topic",
+      "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": false,
       "checked_out": false,
       "current": false
     },
     {
-      "name": "origin/topic",
-      "ref": "refs/remotes/origin/topic",
-      "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "committed_at": 1767229200.0,
+      "name": "origin/feature",
+      "ref": "refs/remotes/origin/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false

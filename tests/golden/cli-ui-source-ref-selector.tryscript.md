@@ -9,9 +9,11 @@ env:
 A page on a served mirror’s pin shows a compact button naming the ref it was rendered
 for.
 Opening it lists every one of the mirror’s branches or tags from `/api/source/refs`,
-the default branch first and then newest first, with the served ref marked; the filter
-box asks again after a pause in typing, and a newer filter, or closing the list, aborts
-a request still on its way.
+with the served ref marked.
+Primary and default branches precede other branches.
+Each group and the tag list sort newest first.
+The filter box asks again after a pause in typing.
+A newer filter or closing the list aborts a request still on its way.
 Choosing a ref switches the served pin with `POST /api/source/pin`, naming the page’s
 `/view/` address so the answer says where the page goes: the same file when the new
 revision has it, else the root.
@@ -516,7 +518,7 @@ $ node tests/dom/source-ref-selector-checkout-session.js
         }
       },
       {
-        "step": "the checkout's branches, the checked-out one first and marked",
+        "step": "the checkout's branches, with the checked-out branch marked",
         "requests": [
           "GET /api/source/refs?kind=branch"
         ],
@@ -565,8 +567,8 @@ $ node tests/dom/source-ref-selector-checkout-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "origin/feature c7ae2a3 2026-01-01T02:00:00Z (remote chip)",
-            "origin/topic 42382ea 2026-01-01T01:00:00Z (remote chip)"
+            "origin/topic 42382ea 2026-01-01T01:00:00Z (remote chip)",
+            "origin/feature c7ae2a3 2026-01-01T02:00:00Z (remote chip)"
           ],
           "note": "",
           "error": null
@@ -1084,9 +1086,9 @@ $ node tests/dom/source-ref-selector-checkout-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "feature c7ae2a3 2026-01-01T02:00:00Z [checked out] (local chip)",
+            "topic 42382ea 2026-01-01T01:00:00Z (local chip)",
             "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
-            "topic 42382ea 2026-01-01T01:00:00Z (local chip)"
+            "feature c7ae2a3 2026-01-01T02:00:00Z [checked out] (local chip)"
           ],
           "note": "",
           "error": null
@@ -1115,9 +1117,9 @@ $ node tests/dom/source-ref-selector-checkout-session.js
           "loading": false,
           "switching": false,
           "rows": [
+            "topic 42382ea 2026-01-01T01:00:00Z (local chip)",
             "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
-            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)",
-            "topic 42382ea 2026-01-01T01:00:00Z (local chip)"
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null

@@ -466,11 +466,13 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
 - **`GET /api/source/refs`** lists every one of the mirror’s branches or tags for the
   ref selector from one `for-each-ref`, filtered by name (`REFS_MAX_QUERY_CHARS`), each
   with its commit and that commit’s committer date, from which the selector shows its
-  age. The default branch lists first, then the rest newest first by that date, then by
-  name (`_newest_first` in `cache/resolve.py`); nothing pages the list, and the measured
-  cost of listing every ref is beside the constants in `source_routes.py`. An answer the
-  Git routes’ memo can keep is kept under the store’s ref state and the recorded default
-  branch (`_refs_answer_key`), so asking again while no ref moved runs no Git.
+  age. The default branch, `main`, and `master` appear before other branches.
+  Each group sorts newest first by that date, then by name (`cache/resolve.py`). Tags
+  omit the branch grouping.
+  The list has no pages, and the measured cost of listing every ref is beside the
+  constants in `source_routes.py`. An answer the Git routes’ memo can keep is kept under
+  the store’s ref state and the recorded default branch (`_refs_answer_key`), so asking
+  again while no ref moved runs no Git.
   The memo keeps no body over its `MAX_ENTRY_BYTES`, about 9,000 branches, or about
   5,200 where each is a pull request’s head (`REF_PULLS_PER_ROW` in `source_routes.py`),
   and has no key for a repository with more loose refs than `MAX_REF_ENTRIES`; a listing

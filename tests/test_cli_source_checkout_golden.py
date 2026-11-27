@@ -72,8 +72,9 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         "The selector lists the working tree and the checkout's own branches. working_tree says "
         "the working tree is served and where HEAD is, its branch and its commit, read from "
         "the checkout as the listing is made; kinds names the four lists in the order of the "
-        "selector's tabs. The checked-out branch lists first and is checked_out, not current: "
-        "chosen as a ref it shows its commit, which the working tree is not.",
+        "selector's tabs. The origin's default branch lists with the primary branches. "
+        "The checked_out field names the branch the working tree is on. The current field marks "
+        "a served ref.",
         ((("checkout", "--api", "/api/source/refs"), 0),),
     ),
     (
@@ -89,8 +90,8 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
     ),
     (
         "Remote-tracking branches are a third list, each with its remote's name. The symbolic "
-        "origin/HEAD a clone writes is not a row. Tags list newest first, peeled to the commit "
-        "they name.",
+        "origin/HEAD a clone writes puts its target among the primary branches. Tags list newest "
+        "first, peeled to the commit they name.",
         (
             (("checkout", "--api", "/api/source/refs?kind=remote"), 0),
             (("checkout", "--api", "/api/source/refs?kind=tag"), 0),

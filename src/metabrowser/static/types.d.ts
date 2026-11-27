@@ -4238,8 +4238,8 @@ declare global {
     refreshing: boolean;
   };
 
-  /** One answer of `GET /api/source/refs`: every matching ref, the default or
-   * checked-out branch first and then newest first. */
+  /** One answer of `GET /api/source/refs`: every matching ref. Primary and default
+   * branches precede other branches, with each group newest first. Tags are newest first. */
   type MetabrowserSourceRefListing = {
     kind: MetabrowserSourceListKind;
     query: string;
