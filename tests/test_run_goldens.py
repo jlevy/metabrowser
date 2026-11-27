@@ -242,7 +242,7 @@ def test_a_run_without_a_command_is_refused(
 @pytest.mark.parametrize("only", ["", "   "])
 def test_explicit_empty_only_refuses_to_update(only: str) -> None:
     result = subprocess.run(
-        ["make", "-n", "golden-update", f"ONLY={only}"],
+        ["make", "--no-print-directory", "-n", "golden-update", f"ONLY={only}"],
         cwd=ROOT,
         capture_output=True,
         text=True,
