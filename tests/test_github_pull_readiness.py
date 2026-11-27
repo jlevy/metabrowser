@@ -364,11 +364,12 @@ def test_a_status_of_another_head_or_base_or_none_is_never_shown_as_current() ->
 
 
 def test_provider_unknown_does_not_hide_a_reported_check_state() -> None:
-    for rollup, verdict in (
+    cases: tuple[tuple[RollupState, Verdict], ...] = (
         ("success", "checking"),
         ("pending", "checks_pending"),
         ("failure", "checks_failing"),
-    ):
+    )
+    for rollup, verdict in cases:
         candidate = _status(
             conflicts="unknown", merge="unknown", review=None, checks=_summary(rollup, (0, 0))
         )
