@@ -447,7 +447,8 @@ folder’s identity), and `TableHandle.read_window` refuses on it.
 A folder cannot address a table as `<path>/<table>`, as a container file does, because
 the segment would collide with a child’s name.
 The table routes and the table view gain an optional `table` query key for a source over
-a folder; a file source keeps its path form.
+a folder. In the view address, an empty `table` value opens the catalog.
+A file source keeps its path form.
 These are internal contracts (`/api/*` and the view’s address) and change everywhere in
 one commit.
 
