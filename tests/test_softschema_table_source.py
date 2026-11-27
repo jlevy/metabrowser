@@ -61,6 +61,11 @@ def test_collection_reports_discovery_before_the_index_is_ready(
     resume = threading.Event()
     scan_collection = collection.scan_collection
 
+    def isolated_database(_index: indexer.CollectionIndex) -> Path:
+        return tmp_path / ".snapshot.sqlite"
+
+    monkeypatch.setattr(indexer.CollectionIndex, "_database", isolated_database)
+
     def paused_scan(root: Path, **kwargs: Any) -> collection.CollectionScan:
         ignore = kwargs.pop("ignore")
 
