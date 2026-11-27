@@ -1227,8 +1227,7 @@ async function main() {
   steps.push(await background.step("the reader stayed: it asks", async () => background.fireAsk()));
 
   // A page left open keeps refreshing: once its refresh has landed and the record goes stale
-  // again, it asks again, at once, showing the plain age and offering nothing to press, rather
-  // than staying stale.
+  // again, it asks again at once, saying it is refreshing and offering nothing to press.
   const leftOpen = createPage(runtime, { number: 7, tab: "", brief: true });
   /** Printed with the second part: tryscript compiles one block's output as one regex. */
   const leftOpenStory = [];
@@ -1250,7 +1249,7 @@ async function main() {
   assert(
     wentStale.paint.revalidating === true &&
       wentStale.paint.canRefresh === false &&
-      wentStale.paint.freshness === "Fetched 1 min ago via GitHub CLI",
+      wentStale.paint.freshness === "Refreshing…",
     `a page left open went stale without refreshing: ${JSON.stringify(wentStale.paint)}`,
   );
   leftOpenStory.push(wentStale);
@@ -1434,10 +1433,10 @@ async function main() {
   }
   // The revision leaves out `fetched_at`, so a read another asker made of the same content
   // is answered without the record too: the page's record takes the answer's time, and its
-  // age line says what the whole answer would have (review A1 on #746).
+  // Refresh reports what the whole answer would have (review A1 on #746).
   probing.clock.now += 5 * 60_000;
   const readElsewhere = new Date(probing.clock.now).toISOString().replace(".000Z", "Z");
-  const heldPull = recorded.probed.body.pull;
+  const { refresh_timing: _timing, ...heldPull } = recorded.probed.body.pull;
   probing.server.refresh.push({
     ...recorded.probed,
     body: {
@@ -1448,20 +1447,10 @@ async function main() {
   await probing.step("a held answer after another asker's read", async () =>
     probing.fireAsk(interval),
   );
-  const wholeAnswer = runtime.describePull(
-    {
-      ...probing.server.pull.body,
-      fetched_at: readElsewhere,
-      verified_at: readElsewhere,
-      verified_by: heldPull.verified_by,
-      record: { ...probing.server.pull.body.record, fetched_at: readElsewhere },
-    },
-    { number: 7, tab: "", nowMs: probing.clock.now, online: true },
-  );
+  const heldTiming = probing.controller.refreshDetail();
   assert(
-    /just now/u.test(wholeAnswer.freshness) &&
-      probing.lastModel().freshness === wholeAnswer.freshness,
-    `a held record kept its own age: ${probing.lastModel().freshness}, not ${wholeAnswer.freshness}`,
+    heldTiming?.finished_at === readElsewhere && heldTiming.label === "Last fetched",
+    `a held record kept its own age: ${JSON.stringify(heldTiming)}`,
   );
   // A held answer that lands after a newer read was shown is dropped, as a whole one is:
   // it is merged with the page's record and then refused by its request's number.

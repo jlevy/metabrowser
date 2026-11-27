@@ -4663,11 +4663,25 @@ declare global {
   /** A part of the page the navigation's Refresh refreshes (static/refresh-plan.js). */
   type MetabrowserRefreshPart = "source" | "refs" | "page" | "files" | "pulls" | "git" | "origin";
 
+  /** A completed read, with provider measurements only when observed. */
+  type MetabrowserRefreshTooltipTiming = {
+    finished_at: string;
+    duration_ms?: number;
+    provider?: "github_cli";
+    request_count?: number;
+    response_body_bytes?: number;
+    label?: string;
+  };
+
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
     provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
-    /** The refresh detail shown while this tab is in front, until released. */
-    provideTooltip?(tab: string, detail: () => string | null): () => void;
+    /** The refresh detail for a foreground tab or the current PR page, until released. */
+    provideTooltip?(
+      tab: string,
+      detail: () => string | MetabrowserRefreshTooltipTiming | null,
+    ): () => void;
+    updateTooltip?(): void;
   }>;
 
   type MetabrowserRefreshPlan = MetabrowserRefreshParts &
@@ -5377,6 +5391,7 @@ declare global {
     MetabrowserTooltip?: {
       hide(within?: Element | null): void;
       show(html: string, anchor: Element | null): void;
+      updateText?(anchor: HTMLElement): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";

@@ -381,7 +381,14 @@
         ],
         "truncated": false
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:00:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 2585
+      }
     }
   },
   "markdown body": {
@@ -502,7 +509,14 @@
       "checks": {
         "same_as": "current"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:00:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 2585
+      }
     }
   },
   "stale": {
@@ -549,7 +563,14 @@
       "checks": {
         "same_as": "current"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:00:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 2585
+      }
     }
   },
   "refresh_again": {
@@ -598,7 +619,14 @@
         "checks": {
           "same_as": "current"
         },
-        "status_unavailable": null
+        "status_unavailable": null,
+        "refresh_timing": {
+          "finished_at": "2026-09-17T12:00:00Z",
+          "duration_ms": 425,
+          "provider": "github_cli",
+          "request_count": 6,
+          "response_body_bytes": 2585
+        }
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }
@@ -647,7 +675,14 @@
       "checks": {
         "same_as": "current"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:00:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 2585
+      }
     }
   },
   "refreshed_unchanged": {
@@ -835,7 +870,14 @@
         "same_as": "current",
         "observed_at": "2026-09-17T12:05:00Z"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:05:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 0
+      }
     }
   },
   "refreshed": {
@@ -1032,7 +1074,14 @@
         "same_as": "current",
         "observed_at": "2026-09-17T12:06:00Z"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:06:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 1550
+      }
     }
   },
   "markdown added": {
@@ -1093,6 +1142,13 @@
           "observed_at": "2026-09-17T12:06:05Z"
         },
         "status_unavailable": null,
+        "refresh_timing": {
+          "finished_at": "2026-09-17T12:06:00Z",
+          "duration_ms": 425,
+          "provider": "github_cli",
+          "request_count": 6,
+          "response_body_bytes": 1550
+        },
         "record_held": true
       },
       "status_route": "/api/plugin/github/pull?number=7"
@@ -1145,7 +1201,14 @@
         "same_as": "current",
         "observed_at": "2026-09-17T12:06:05Z"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:06:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 1550
+      }
     }
   },
   "merged": {
@@ -1308,7 +1371,14 @@
         ],
         "truncated": false
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:06:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 724
+      }
     }
   },
   "closed": {
@@ -1442,7 +1512,14 @@
         "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
         "observed_at": "2026-09-17T12:06:00Z"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:06:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 653
+      }
     }
   },
   "merged_unattributed": {
@@ -1545,7 +1622,14 @@
       "checks": {
         "same_as": "merged"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:06:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 705
+      }
     }
   },
   "failed": {
@@ -1590,7 +1674,14 @@
       "checks": {
         "same_as": "merged"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:06:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 705
+      }
     }
   },
   "not_due": {
@@ -1637,7 +1728,14 @@
         "checks": {
           "same_as": "merged"
         },
-        "status_unavailable": null
+        "status_unavailable": null,
+        "refresh_timing": {
+          "finished_at": "2026-09-17T12:06:00Z",
+          "duration_ms": 425,
+          "provider": "github_cli",
+          "request_count": 6,
+          "response_body_bytes": 705
+        }
       },
       "status_route": "/api/plugin/github/pull?number=8"
     }
@@ -1686,7 +1784,14 @@
         "checks": {
           "same_as": "merged"
         },
-        "status_unavailable": null
+        "status_unavailable": null,
+        "refresh_timing": {
+          "finished_at": "2026-09-17T12:06:00Z",
+          "duration_ms": 425,
+          "provider": "github_cli",
+          "request_count": 6,
+          "response_body_bytes": 705
+        }
       },
       "status_route": "/api/plugin/github/pull?number=8"
     }
@@ -1886,7 +1991,14 @@
         "same_as": "current",
         "observed_at": "2026-09-17T12:41:00Z"
       },
-      "status_unavailable": null
+      "status_unavailable": null,
+      "refresh_timing": {
+        "finished_at": "2026-09-17T12:41:00Z",
+        "duration_ms": 425,
+        "provider": "github_cli",
+        "request_count": 6,
+        "response_body_bytes": 928
+      }
     }
   },
   "absent_14": {

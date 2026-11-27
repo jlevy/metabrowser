@@ -150,6 +150,7 @@ function panelRig(panel, { current = null } = {}) {
 /** A pull envelope the catalog vouched for, from the recorded page answers. */
 function vouched(recorded, { checkedAt, fetchedAt }) {
   const envelope = structuredClone(recorded.current.body);
+  delete envelope.refresh_timing;
   envelope.state = "current";
   envelope.refreshing = false;
   envelope.fetched_at = fetchedAt;
@@ -360,14 +361,14 @@ function pageRig(page, envelope) {
   await view.controller.start();
   await settle();
   facts.firstRead = view.take();
-  facts.checked = view.model().freshness;
+  facts.checked = view.controller.refreshDetail();
   // A minute on, the record's check has lapsed: the page asks for the catalog's scan first,
   // then reads, and the read's 304 carries the next check in its header.
   view.state.now = Date.parse("2026-09-17T12:01:01Z");
   view.answer(304, "catalog 2026-09-17T12:01:01Z");
   await view.fire(SLOW_POLL_MS);
   facts.lapsedRead = view.take();
-  facts.checkedAfter304 = view.model().freshness;
+  facts.checkedAfter304 = view.controller.refreshDetail();
   // Within the window of that ask, nothing more is asked.
   view.state.now = Date.parse("2026-09-17T12:01:31Z");
   await view.fire(SLOW_POLL_MS);

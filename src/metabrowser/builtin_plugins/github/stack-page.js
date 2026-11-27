@@ -82,7 +82,6 @@ import {
   changesDocuments,
   describeLabel,
   FAST_POLL_MS,
-  fetchedNote,
   h,
   headerSentence,
   holdDiff,
@@ -91,6 +90,7 @@ import {
   manifestFiles,
   noFiles,
   numberHeaderControls,
+  offlineFetchNote,
   PREFETCH_IDLE_TIMEOUT_MS,
   pageHeaderParts,
   paintSizeLine,
@@ -1343,8 +1343,8 @@ export function stackSizeInput(answer, files) {
  * stack has, in a pull request's order (docs/design-system.md, "Stacks", "The Stack Page"):
  * its title and the View on GitHub corner; the row of ages, led by the tally of its members'
  * states (`stateTally`), when a member was last opened and last updated (`ages`); the
- * author's row, its sentence (`stackSentence`) and the freshness note, the oldest member
- * record's fetch (`note`); the merge the stack makes; the labels its members carry, each
+ * author's row, its sentence (`stackSentence`) and the offline note when needed; the merge
+ * the stack makes; the labels its members carry, each
  * once; the status line; the size line; the members, a toggle that shows them, "**12**
  * Pulls"; and the Diff summary. *rows* names them in order, and the rest is what they hold:
  * `status` the status line's notices, there only while it has something to say, and
@@ -1362,9 +1362,8 @@ export function stackSizeInput(answer, files) {
  * quiet period as a pull request's page with no record in hand is (`.github-pull-cold`), so
  * an answer that lands within it is the first header the reader sees.
  *
- * The freshness note says "Offline" as a pull request's does (`fetchedNote`) when the
- * browser reports no network (*offline*) and a member's record is behind (`pending`), since
- * no refresh can run.
+ * The notice gives the oldest cached record's fetch when the browser reports no network
+ * (*offline*) and a member's record needs refreshing (`pending`).
  *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
@@ -1405,12 +1404,9 @@ export function stackHeader(envelope, known, listed, status, drawn, nowMs, offli
     ages: envelope === null ? null : { opened: envelope.opened_at, updated: envelope.updated_at },
     sentence: stackSentence(envelope),
     note:
-      envelope === null || envelope.fetched_at === null
-        ? null
-        : fetchedNote(
-            relativeAge(envelope.fetched_at, nowMs),
-            offline && envelope.pending.length > 0,
-          ),
+      offline && envelope !== null && envelope.pending.length > 0 && envelope.fetched_at !== null
+        ? offlineFetchNote(relativeAge(envelope.fetched_at, nowMs))
+        : null,
     labels,
     members,
     merge: head === null || base === null ? null : { head, base },

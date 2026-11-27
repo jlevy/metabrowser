@@ -159,10 +159,11 @@ A plugin draws an age with `metabrowser.ageLabel` and puts the exact time in its
 its `data-tip-text`, on a surface that has tooltips
 ([Tooltips Add Information](#tooltips-add-information)). `metabrowser.formatAge` gives
 the label alone, for words: an accessible name, or a sentence.
-Freshness sentences such as “Fetched 2 min ago via GitHub CLI” retain their sentence
-formatter. When a summary shows created or opened and updated ages, omit the updated age
-when its displayed label matches the closed or merged age beside it, or else the created
-or opened age, and add the exact updated time to the tooltip of the age it repeats.
+Offline notices such as “Offline · fetched 2 min ago via GitHub CLI” retain their
+sentence formatter. When a summary shows created or opened and updated ages, omit the
+updated age when its displayed label matches the closed or merged age beside it, or else
+the created or opened age, and add the exact updated time to the tooltip of the age it
+repeats.
 
 ### Ages End the Row
 
@@ -179,8 +180,7 @@ A table, such as the agents Sessions table or an event log’s rows, gives its t
 column of their own, so they read as one wherever its columns put it.
 An age that is not in a list row stays where its words put it:
 
-- inline prose, such as a freshness sentence, “Fetched 2 min ago via GitHub CLI”, or a
-  card’s head, “jlevy commented 3d ago”;
+- inline prose, such as a card’s head, “jlevy commented 3d ago”;
 - a page header’s metadata line, “Opened 3d ago · updated 2h ago”, which reads as a
   sentence;
 - a single-line item with no column under it, such as a tally, “3,310 commits begun 4mo
@@ -306,9 +306,9 @@ Never inline a font-size literal at a use site.
 accompanies.** An age, an update or fetch time, a count, a size, a row’s second line, a
 note, or a caption is never set a step smaller than the text beside it: it steps back by
 its ink, muted, not by its size.
-So “Fetched just now via GitHub CLI” at the end of a pull request’s author’s row reads
-at the body size of the sentence before it, and the repository count in the Pulls tab
-reads at the list size of the rows under it.
+So “Refreshing…” at the end of a pull request’s author’s row reads at the body size of
+the sentence before it, and the repository count in the Pulls tab reads at the list size
+of the rows under it.
 
 The chrome has two text sizes, and the one region set apart is the navigation column,
 which takes the smaller one throughout, its metadata and its header path included: it is
@@ -646,7 +646,7 @@ themselves, under a toggle above its Diff summary.
 | Author | The [actor identity](#actor-identity) | The actor identity and its sentence, “wants to merge 2 commits” | Every member’s author, each once, and the sentence, “want to merge 12 commits”, or every merger’s once all are merged |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base | The top member’s head → the stack’s base |
 | Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …” and Browse code, and at the end the stack chip’s slot | A state badge for each state a member is in, “2 Pulls Open”, then “Last opened 3d ago · Last update 1h ago” |
-| Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say | Every member’s labels, each once; the freshness note of its stalest record; the status line, while it has something to say; the members, top first, the stack menu’s rows in a card under a “**2** Pulls” toggle |
+| Its own | None | The labels, a row of chips; progress or connectivity at the end of the author’s row; the status line, while it has something to say | Every member’s labels, each once; an offline note when a member needs refreshing; the status line, while it has something to say; the members, top first, the stack menu’s rows in a card under a “**2** Pulls” toggle |
 | Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” | “12 commits · 4 files changed · 2.1 MB compressed (7.0 MB raw diff)”, the commits and sizes of the members the top contains, and the files of the stack’s combined comparison |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison | The last line, drawn from the stack’s comparison |
 | Under the header | The description, a card | The tab bar | The tab bar |
@@ -1427,10 +1427,16 @@ the control does, not from where the answer comes from:
   Within each half the fetch comes first, since every other part reads what it brings.
   The button waits while the parts on screen refresh.
   Each part keeps its own busy state while it runs.
-  The tooltip gives the last source fetch age when available.
-  With Pulls in front, the completed list refresh time and duration take precedence when
-  both are known. `static/refresh-plan.js` holds the one order, and
-  `cli-ui-refresh-plan.tryscript.md` shows it for each screen.
+  The Refresh tooltip reports the most specific available completed read.
+  A pull request shown in the main pane takes precedence, followed by the Pulls catalog
+  when that tab is in front, then the source’s last fetch or checkout observation.
+  When a GitHub CLI receipt includes measurements, a second line gives the number of
+  answered requests, response body size, elapsed time, and provider.
+  The measurements describe that read, while Git, inventory, and other work keep their
+  own event log spans.
+  Older cached data can give its time without a measured receipt.
+  `static/refresh-plan.js` holds the one order, and `cli-ui-refresh-plan.tryscript.md`
+  shows it for each screen.
   A pull request’s page has no Refresh of its own.
   The freshness row below the navigation appears for fetch progress, source issues, and
   actions tied to a revision.
@@ -3119,17 +3125,16 @@ tests named beside each primitive.
 The page is a header, a [tab bar](#the-tab-bar), and a body, in that order; native stack
 navigation is part of the header.
 The header is a [page header](#page-headers), as a commit’s summary is: the title, then
-the row of ages, which ends in the stack chip, the author’s row, which ends in the
-freshness note, the branches, the labels, the status line while it has something to say,
-and the Diff summary, every line under the title at the body size and one gap under the
-one before. It shares the title, the author, the age, and the Diff summary with a
-commit’s page, in that order, and keeps the state, the branches, the labels, the stack
-chip, and the status line, which a commit does not have; the table there says where the
-two diverge and why.
-The author is the shell’s [actor identity](#actor-identity), its avatar’s box holding
-the person glyph where GitHub gave no usable avatar, as a commit’s author’s does.
-The header, tabs, Conversation, and Checks use `.page-reading-column` and start at the
-same pane gutter as the commit summary.
+the row of ages, which ends in the stack chip, the author’s row, the branches, the
+labels, the status line while it has something to say, and the Diff summary, every line
+under the title at the body size and one gap under the one before.
+It shares the title, the author, the age, and the Diff summary with a commit’s page, in
+that order, and keeps the state, the branches, the labels, the stack chip, and the
+status line, which a commit does not have; the table there says where the two diverge
+and why. The author is the shell’s [actor identity](#actor-identity), its avatar’s box
+holding the person glyph where GitHub gave no usable avatar, as a commit’s author’s
+does. The header, tabs, Conversation, and Checks use `.page-reading-column` and start at
+the same pane gutter as the commit summary.
 The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
@@ -3166,18 +3171,20 @@ widest verdict, or its glyph alone in a narrow row
 Browse code, and ends in the stack chip’s slot (see native stack navigation below), one
 line at a chip’s height whose ages are cut short at their end, the links after them
 whole down to 420 px, or 560 px beside two stacks’ chips, below which they are clipped
-at the row’s end; the author’s row is one line, the author and the sentence, then the
-freshness note; where that row has no room left, the note leaves it first, whole, and
-then the sentence is cut short at its end, the action first and then the author, never
-moved or wrapped; the branches have the line under it to themselves, one line in every
-state, their names cut short rather than wrapping it; a pull request with labels has a
-row of them, one line at a label’s height, and one with none has no labels row and no
-gap for it; and a cold page keeps every row, empty, at its height.
-The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
-its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
-now via GitHub CLI”, never a second time for a check that found nothing changed, since
-that makes what is shown no newer.
-A rate limit’s hold is said in its place, “GitHub rate limit reached.
+at the row’s end; the author’s row is one line with the author and the sentence,
+followed by a progress or connectivity note when needed; where that row has no room
+left, the note leaves it first, whole, and then the sentence is cut short at its end,
+the action first and then the author, never moved or wrapped; the branches have the line
+under it to themselves, one line in every state, their names cut short rather than
+wrapping it; a pull request with labels has a row of them, one line at a label’s height,
+and one with none has no labels row and no gap for it; and a cold page keeps every row,
+empty, at its height.
+The notice is muted after a muted dot, at the sentence’s size.
+In steady state the author’s row ends with the author’s sentence.
+The navigation’s Refresh tooltip reports when the displayed record was fetched and shows
+the provider and measurements when available.
+A later verification of an unchanged record leaves its fetch timestamp intact.
+A rate limit’s hold reads “GitHub rate limit reached.
 Next attempt after 2:05 PM.”, in the failure’s ink: it begins and lifts by itself and
 asks nothing of the reader, so it adds no line.
 It names a time of day, in the reader’s short form, when the limit lifts today, and a
@@ -3272,11 +3279,9 @@ A cold page uses the same gray pulsing row skeleton as other known text layouts,
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
-A cached page stays readable and still during refresh: nothing spins over it, and only
-its age line breathes ([Refreshing Content](#refreshing-content)). Its freshness copy
-names GitHub CLI and the plain fetch age, with no prefix while a refresh runs and no
-suffix while the record is stale, since a stale page is refreshing.
-It names a problem only when no refresh can run: `Offline`,
+A cached page stays readable and still during refresh.
+The muted “Refreshing…” notice breathes ([Refreshing Content](#refreshing-content)).
+When a refresh cannot run, the page can show `Offline`,
 `GitHub rate limit reached. Next attempt after` a time, or the last failure with Retry.
 The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every GitHub
 surface uses. The Checks tab uses the same heading and status badges for check runs and
@@ -4422,15 +4427,15 @@ It shows the stack’s combined comparison, from the bottom member’s merge bas
 member’s head (`GET stack`, `pull_stack.py`), and is reached from the stack menu’s Stack
 Overview row. `builtin_plugins/github/stack-page.js` draws it with the pull request
 page’s own builders, exported from `pull-page.js`: `pageHeaderParts`, `titleHeading`,
-`stateBadge`, `agesLine`, `rowStrut`, `actorSentence`, `actionWords`, `fetchedNote`,
-`showNote`, `labelChip`, `statusLine`, `summaryPlaceholders`, and `holdDiff`; and
-`builtin_plugins/github/stack-member-row.js`, the stack menu’s builder, draws its
-members.
+`stateBadge`, `agesLine`, `rowStrut`, `actorSentence`, `actionWords`,
+`offlineFetchNote`, `showNote`, `labelChip`, `statusLine`, `summaryPlaceholders`, and
+`holdDiff`; and `builtin_plugins/github/stack-member-row.js`, the stack menu’s builder,
+draws its members.
 
 ```text
  [Layers] Stack Overview  #70                              ( [GitHub] View on GitHub | v )
  [1 Pull Draft] [1 Pull Merged] · Last opened 2mo ago · Last update 2mo ago
- (o) maintainer wants to merge 2 commits · Fetched 3d ago via GitHub CLI
+ (o) maintainer wants to merge 2 commits
  wip -> main
  [enhancement]
  #8 joined the stack.  Show the new comparison
@@ -4479,7 +4484,7 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   No one branch holds a stack, the page reads the stack on its own poll, and the page is
   the stack the chip would open; the row ends in the chip’s hidden strut (`rowStrut`),
   so it is as tall as a pull request’s.
-- **Author’s row and its freshness note:** adapted.
+- **Author’s row and its offline notice:** adapted.
   The pull request’s sentence (`actorSentence`), said of the stack (`stackSentence`):
   every member’s author, top first, each once and a comma between, then “wants to merge”
   or, for several, “want to merge” the commits the top contains, “maintainer, forker
@@ -4491,12 +4496,9 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   sentence names no commits (`actionWords`). In a narrow pane a sentence of several
   names gives way in its names and its action together, each name down to a pull
   request’s author’s floor, so neither is cut to nothing while the other is whole, and a
-  name cut short says itself in its tooltip (`sentenceActor`). The freshness note says
-  the oldest of the members’ records’ fetches, “Fetched 3d ago via GitHub CLI”
-  (`fetched_at`), so the stack is said to be no fresher than its stalest record, its
-  slot as wide as its widest age’s words, as a pull request’s is (`showNote`). Offline,
-  while a member’s record is behind and no refresh can run, it says so, “Offline ·
-  fetched 3d ago via GitHub CLI”, as a pull request’s does (`fetchedNote`).
+  name cut short says itself in its tooltip (`sentenceActor`). If a member needs
+  refreshing while offline, the notice names the oldest cached record’s fetch as
+  “Offline · fetched 3d ago via GitHub CLI” (`offlineFetchNote`).
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.

@@ -72,6 +72,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_REFRESH_MESSAGE_CHARS,
     clear_pulls,
 )
+from metabrowser.builtin_plugins.github.refresh_metrics import record_answer
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PullListName
 from metabrowser.home import (
@@ -178,6 +179,7 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
         nonlocal elapsed_ms
         assert "refresh_timing" not in pull_list_envelope(view, window)
         elapsed_ms += 150
+        record_answer(650)
         return await graphql(*args, **kwargs)
 
     monkeypatch.setattr(pull_list_refresh, "gh_graphql", measured_page)
@@ -192,6 +194,9 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
         expected = {
             "finished_at": now().isoformat().replace("+00:00", "Z"),
             "duration_ms": 150 * len(calls),
+            "provider": "github_cli",
+            "request_count": len(calls),
+            "response_body_bytes": 650 * len(calls),
         }
         assert pull_list_envelope(view, window).get("refresh_timing") == expected
         exact = pull_list_envelope(view, ListWindow("all", limit=1, at=101))
@@ -220,6 +225,8 @@ def test_catalog_refresh_timing_measures_the_job_and_survives_a_failed_retry(
     assert success["outcome"] == "ok"
     assert success["attrs"]["refresh_duration_ms"] == expected["duration_ms"]
     assert success["attrs"]["refresh_finished_at"] == expected["finished_at"]
+    assert success["attrs"]["request_count"] == expected["request_count"]
+    assert success["attrs"]["response_body_bytes"] == expected["response_body_bytes"]
     failure = ended["failed catalog refresh"]
     assert failure["outcome"] == "failed"
     assert failure["attrs"]["refresh_duration_ms"] == 180

@@ -68,6 +68,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     write_list_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp, cut_escaped
+from metabrowser.builtin_plugins.github.refresh_metrics import begin_counting, finish_counting
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PULL_LIST_NAMES, PullListName
 from metabrowser.home import PrivateStorageError
@@ -451,6 +452,7 @@ async def refresh_pull_list(
     holds background work.
     """
     started_ns = monotonic_ns()
+    answers, measurement = begin_counting()
     published_epoch: str | None = None
     published_pages = 0
     reader: str | None = None
@@ -690,6 +692,14 @@ async def refresh_pull_list(
             raise PullDataError(outcome, message) from exc
         raise
     finally:
+        finish_counting(measurement)
+        github = answers.snapshot()
+        if github is not None:
+            event_log.current().set(
+                provider="github_cli",
+                request_count=github.request_count,
+                response_body_bytes=github.response_body_bytes,
+            )
         finished_at = pull_list.utc_now()
         duration_ms = round((monotonic_ns() - started_ns) / 1_000_000)
         event_log.current().set(
@@ -701,7 +711,7 @@ async def refresh_pull_list(
     assert state is not None
     if state.epoch == published_epoch:
         timing = CatalogRefreshTiming(
-            epoch=state.epoch, finished_at=finished_at, duration_ms=duration_ms
+            epoch=state.epoch, finished_at=finished_at, duration_ms=duration_ms, github=github
         )
         await run_lock_section(partial(write_catalog_refresh_timing, repository, timing))
     return state

@@ -270,11 +270,9 @@ async function run() {
   assert.equal(session.timelines.length, 0, "the useful Conversation paints first");
   session.frame();
   const [first] = session.timelines;
-  // Commits join a conversation already shown: the age breathes, and nothing spins.
+  // Commits join a conversation already shown without a routine header note.
   assert.equal(placed.querySelector(".spinner"), null);
-  const age = session.note().querySelector(".github-pull-freshness");
-  assert.ok(age.classes.has("mb-refreshing"));
-  assert.equal(age.getAttribute("aria-busy"), "true");
+  assert.equal(session.note().hidden, true);
   assert.deepEqual(first.request, { number: 7, record_revision: firstRevision });
   assert.ok(
     session.marks.indexOf("githubPull:conversationReady") <
@@ -282,7 +280,7 @@ async function run() {
   );
   first.answer("partial", events);
   await settle();
-  assert.equal(age.getAttribute("aria-busy"), null, "the commits arrived");
+  assert.equal(session.note().hidden, true);
   const appended = order(placed);
   assert.deepEqual(
     appended,

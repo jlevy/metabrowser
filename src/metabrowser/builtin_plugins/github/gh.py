@@ -49,6 +49,7 @@ from typing import Any, Final, Literal
 
 from metabrowser import event_log, network_cause
 from metabrowser.builtin_plugins.github import gh_budget, gh_lanes
+from metabrowser.builtin_plugins.github.refresh_metrics import record_answer
 from metabrowser.git.process import (
     forget_process_group,
     kill_when_spawned,
@@ -368,7 +369,13 @@ async def _run(
             if answer is not None:
                 read = _read_answer(completed.stdout, graphql=answer == "graphql")
                 if read is not None:
-                    span.set(http_status=read.response.status, cost=read.cost)
+                    body_bytes = 0 if read.response.status == 304 else len(read.response.body)
+                    record_answer(body_bytes)
+                    span.set(
+                        http_status=read.response.status,
+                        cost=read.cost,
+                        response_body_bytes=body_bytes,
+                    )
                     completed = _Completed(
                         completed.returncode, completed.stdout, completed.stderr, read
                     )

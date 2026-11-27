@@ -2344,6 +2344,8 @@
         },
         workingTreeObserved(moved, filesCovered) {
           observedHeadAt = Date.now();
+          element.dataset.sourceObservedAt = new Date(observedHeadAt).toISOString();
+          window.MetabrowserRefreshPlan?.plan()?.updateTooltip?.();
           if (moved && !filesCovered) {
             void window.MetabrowserShell?.rereadFiles();
           }

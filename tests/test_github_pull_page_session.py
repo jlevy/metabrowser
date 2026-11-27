@@ -54,6 +54,7 @@ import time
 from collections.abc import Set as AbstractSet
 from dataclasses import replace
 from datetime import datetime, timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any, Final
 
@@ -332,6 +333,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     )
     clock = [FETCHED_AT]
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    elapsed = count(step=425_000_000)
+    monkeypatch.setattr(pulls, "monotonic_ns", elapsed.__next__)
     answers = scenario(origin)
     for name, value in install_fake_gh(tmp_path, answers).items():
         monkeypatch.setenv(name, value)
@@ -781,19 +784,20 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "mergeStatus": True,
         "headerAges": True,
         "headerShape": True,
-        # The freshness note's slot is as wide as its widest age, "59 min ago"; an age wider
-        # still sizes its own (mb-ne91).
+        # Offline notes hold the width of their widest age.
         "widestNotes": {
-            "Fetched just now via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
-            "Fetched 3 h ago via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Refreshing…": "Refreshing…",
+            "Offline · fetched just now via GitHub CLI": (
+                "Offline · fetched 59 min ago via GitHub CLI"
+            ),
             "Offline · fetched 12 d ago via GitHub CLI": (
                 "Offline · fetched 59 min ago via GitHub CLI"
             ),
-            "Description fetched 7 min ago via GitHub CLI": (
-                "Description fetched 59 min ago via GitHub CLI"
+            "Offline · description fetched 7 min ago via GitHub CLI": (
+                "Offline · description fetched 59 min ago via GitHub CLI"
             ),
-            "Fetched at an unknown time via GitHub CLI": (
-                "Fetched at an unknown time via GitHub CLI"
+            "Offline · fetched at an unknown time via GitHub CLI": (
+                "Offline · fetched at an unknown time via GitHub CLI"
             ),
         },
         # A hold's lift time in the short form, en-US in UTC: a time of day when it lifts
@@ -962,7 +966,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             # Once the refresh ends the page offers one again on Changes; on Conversation
             # nothing is left to refresh.
             "once the refresh ends, the page can refresh: true",
-            "on Conversation once the refresh ends, the page can refresh: false",
+            "on Conversation once the refresh ends, the page can refresh: true",
             "numbered on Conversation once the refresh ends: 1 Browse code",
             "2: not handled",
             "Shift+H: not handled",
@@ -1070,14 +1074,14 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # or fetch ends in its remedy, which waits, muted, until the refresh it asked for runs.
         "statusRemedies": [
             'a current record whose last refresh failed: status "Could not reach '
-            'GitHub.DetailsRetry"; remedy Retry; note shown; asked nothing; Refresh may '
+            'GitHub.DetailsRetry"; remedy Retry; note none; asked nothing; Refresh may '
             "refresh it",
             'Retry pressed, its refresh not yet started: status "Could not reach '
-            'GitHub.DetailsRetry"; remedy Retry (waiting); note shown; asked POST '
+            'GitHub.DetailsRetry"; remedy Retry (waiting); note none; asked POST '
             '/api/plugin/github/pull-refresh {"number":8,"retry":true}; Refresh has '
             "nothing to refresh",
             'Retry pressed again while it waits: status "Could not reach GitHub.DetailsRetry"; '
-            "remedy Retry (waiting); note shown; asked nothing; Refresh has nothing to "
+            "remedy Retry (waiting); note none; asked nothing; Refresh has nothing to "
             "refresh",
             "the refresh runs: status none; remedy none; note shown; asked nothing; Refresh "
             "has nothing to refresh",

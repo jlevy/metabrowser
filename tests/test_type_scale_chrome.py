@@ -1,8 +1,5 @@
 """Text is sized by its role, and secondary metadata by the text it accompanies, in Chrome.
 
-The owner found one kind of time at three sizes on one screen (mb-ctlu): "Updated just now"
-in the Pulls tab at 13 px, the ages in the rows under it at 12 px, and "Fetched just now via
-GitHub CLI" on the pull request's page at 12 px before the page header's lines were 14 px.
 The rule is in docs/design-system.md, "Type Scale": the main view's reading text is the body
 size, the navigation column's list text one step under it, and metadata, an age, a size, a
 count, an update or fetch time, a row's second line, a note, is the size of the text beside

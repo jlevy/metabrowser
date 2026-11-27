@@ -56,6 +56,7 @@ from metabrowser.builtin_plugins.github.pull_status import (
     kept_observation,
     observation_key,
 )
+from metabrowser.builtin_plugins.github.refresh_metrics import GitHubAnswers, RefreshTiming
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
@@ -663,11 +664,6 @@ def read_catalog(home: Path, slug: str) -> CatalogState | None:
         return None
 
 
-class RefreshTiming(TypedDict):
-    finished_at: str
-    duration_ms: int
-
-
 class CatalogRefreshTiming(BaseModel):
     """The last successful job that published pages for a catalog epoch."""
 
@@ -675,12 +671,16 @@ class CatalogRefreshTiming(BaseModel):
     epoch: str = Field(min_length=1, max_length=64)
     finished_at: AwareDatetime
     duration_ms: int = Field(ge=0)
+    github: GitHubAnswers | None = Field(default=None, exclude_if=lambda value: value is None)
 
     def wire(self) -> RefreshTiming:
-        return {
+        timing: RefreshTiming = {
             "finished_at": self.finished_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
             "duration_ms": self.duration_ms,
         }
+        if self.github is not None:
+            self.github.add_to(timing)
+        return timing
 
 
 def read_catalog_refresh_timing(home: Path, slug: str) -> CatalogRefreshTiming | None:

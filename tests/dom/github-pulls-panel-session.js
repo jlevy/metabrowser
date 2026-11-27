@@ -350,13 +350,10 @@ async function run() {
   steps.push(page.observe("the catalog runs independently of the panel", controller));
   await page.fire(1000);
   await page.answer(recorded.current);
-  const now = page.clock.now;
-  page.clock.now = Date.parse(recorded.current.body.refresh_timing.finished_at) + 120_000;
   const refreshDetail = controller.refreshDetail();
-  page.clock.now = now;
   assert(
-    refreshDetail === "Refreshed 2 min ago in 300ms",
-    "the hint reports completion and duration",
+    refreshDetail === recorded.current.body.refresh_timing && refreshDetail.duration_ms === 300,
+    "the hint reports the completed operation's measurement",
   );
   steps.push({ ...page.observe("the top cache page arrives", controller), refreshDetail });
   await page.answer(recorded.more_window);

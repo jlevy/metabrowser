@@ -28,7 +28,7 @@ import pytest
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
-from metabrowser import server
+from metabrowser import event_log, server
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.locks import repository_store_lock, store_fetch_lock
 from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
@@ -42,6 +42,7 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.update import RefreshOutcome, StoreUpdate, update_store
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
+from metabrowser.home import ensure_private_directory, ensure_storage_root
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PROBED_REF_PREFIX,
@@ -368,6 +369,52 @@ def test_a_failed_refresh_is_a_typed_outcome_and_the_pin_is_still_served(
     readme = served.get("/api/file", params={"path": _wire("README.md")})
     assert readme.status_code == 200
     assert "Second revision." in readme.json()["content"]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "logged"),
+    [
+        (RefreshOutcome.succeeded, "ok"),
+        (RefreshOutcome.default_branch_unknown, "ok"),
+        (RefreshOutcome.origin_unavailable, "failed"),
+    ],
+)
+def test_a_source_refresh_logs_its_own_result_and_work_time(
+    served: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: RefreshOutcome,
+    logged: str,
+) -> None:
+    now = 100.0
+
+    async def update(_home: Path, _store_key: str, *, remote_url: str) -> StoreUpdate:
+        nonlocal now
+        now += 0.125
+        return StoreUpdate(outcome, _FUTURE)
+
+    monkeypatch.setattr("metabrowser.mirror_refresh._monotonic", lambda: now)
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", update)
+    state = tmp_path / "refresh-log"
+    ensure_storage_root(state)
+    ensure_private_directory(state, event_log.EVENTS_DIRECTORY)
+    sink = event_log.EventLog(state / event_log.EVENTS_DIRECTORY, state)
+    with contextlib.closing(sink), event_log.installed(sink):
+        assert _post(served, "/api/source/refresh").status_code == 202
+        assert _settle(served)["last_outcome"]["outcome"] == outcome
+
+    assert sink.path is not None
+    records = [json.loads(line) for line in sink.path.read_text(encoding="utf-8").splitlines()]
+    (job,) = (
+        record
+        for record in records
+        if record["event"] == "end" and record["name"] == "mirror_refresh.StoreSession._refresh_job"
+    )
+    assert job["outcome"] == logged
+    assert job["attrs"]["refresh_outcome"] == outcome
+    assert job["attrs"]["refresh_finished_at"] == _FUTURE
+    assert job["attrs"]["refresh_duration_ms"] == 125
+    assert job["attrs"].get("failure") == (outcome if logged == "failed" else None)
 
 
 def test_the_shutdown_cancels_a_running_refresh(

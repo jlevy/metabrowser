@@ -611,24 +611,10 @@ const MEASURE = `async (name, change, tab, width) => {
   // The status line's remedy, Retry or Fetch, first among its offers, a line tall (mb-ablv).
   const remedy = header.querySelector(".github-pull-status-end > .github-pull-remedy");
   const contentEdge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
-  // The freshness note ends the author's row's lead (mb-ne91). Its slot is as wide as its
-  // widest age, so the age ticking from "just now" to "59 min ago" changes its width not at
-  // all: the slot's width at each, then the note put back.
+  // Only progress or an issue needs a note beside the author's sentence.
   const lead = header.querySelector(".github-pull-meta-lead");
   const note = header.querySelector(".github-pull-note");
   const noteText = note?.querySelector(".github-pull-freshness") ?? null;
-  const ageWidens = (() => {
-    if (noteText === null || note.hidden || !/^Fetched .+ via GitHub CLI$/.test(noteText.textContent)) return null;
-    const slot = note.querySelector(".github-pull-freshness-slot");
-    const was = noteText.textContent;
-    const at = (text) => {
-      noteText.textContent = text;
-      return box(slot).width;
-    };
-    const widened = Math.abs(at("Fetched just now via GitHub CLI") - at("Fetched 59 min ago via GitHub CLI"));
-    noteText.textContent = was;
-    return r2(widened);
-  })();
   // Beside the sentence the note is whole or out of view, dot and all, and while it is in
   // view the login and the sentence keep their natural widths: the width each lays out to
   // alone, at max-content, beside the width it has (A2 of review A on #506).
@@ -648,6 +634,7 @@ const MEASURE = `async (name, change, tab, width) => {
   const sep = header.querySelector(".github-pull-note-sep");
   const leadShape = lead === null ? null : {
     said: noteText?.textContent ?? null,
+    hidden: note?.hidden ?? true,
     held: noteText?.classList.contains("github-pull-freshness-held") ?? false,
     // The width "GitHub rate limit" takes in the note's own type: a cut hold keeps at least
     // that much of its text (C4 of review C on #506).
@@ -841,7 +828,6 @@ const MEASURE = `async (name, change, tab, width) => {
           statusHeight: r2(box(remedy.closest(".github-pull-status")).height),
         }
       : null,
-    ageWidens,
     lead: leadShape,
     statusShown: !header.querySelector(".github-pull-status").hidden,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
@@ -2298,13 +2284,13 @@ async function main() {
                     lead.action.width >= lead.action.natural - 0.05),
                 JSON.stringify(lead),
               );
-              if (width >= 760 && !change.longNames) {
-                check(
-                  `${where}: in a wide pane the note shows whole`,
-                  lead.inView && !lead.cut,
-                  JSON.stringify(lead),
-                );
-              }
+            }
+            if (name === "current" && change.lastRefresh === undefined) {
+              check(
+                `${where}: a current pull request's author row has no routine receipt`,
+                lead?.hidden === true && !lead.dotInView,
+                JSON.stringify(lead),
+              );
             }
             if (shape.readiness !== null) {
               // The readiness slot is its widest label's badge, or in a narrow row the glyph
@@ -2418,11 +2404,6 @@ async function main() {
               author !== undefined &&
                 (statusLine === undefined || Math.abs(tall(statusLine) - tall(author)) <= 0.5),
               JSON.stringify(shape.lines),
-            );
-            check(
-              `${where}: the note's age ticking from "just now" to "59 min ago" widens its slot not at all`,
-              shape.ageWidens === null || shape.ageWidens <= 0.5,
-              JSON.stringify({ ageWidens: shape.ageWidens }),
             );
             // The page has no Refresh of its own (mb-ablv). Where the status line offers Retry
             // or Fetch, the remedy is its first offer, whole, inside the content edge, and no

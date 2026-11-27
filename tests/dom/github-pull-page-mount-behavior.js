@@ -2039,8 +2039,7 @@ async function tabKeys(page) {
   steps.push(await pullsRefresh());
   steps.push(`while that refresh runs, the page can refresh: ${handle.canRefresh()}`);
   steps.push(await pullsRefresh());
-  // The refresh ends. On Changes the page offers a refresh again; on Conversation nothing is
-  // left to refresh.
+  // A healthy record remains eligible for an explicit press on every tab.
   answer = atHead;
   for (const callback of [...timers.values()]) {
     callback();
@@ -2052,6 +2051,19 @@ async function tabKeys(page) {
   await settle();
   steps.push(`on Conversation once the refresh ends, the page can refresh: ${handle.canRefresh()}`);
   steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
+  const receipt = {
+    finished_at: atHead.fetched_at,
+    provider: "github_cli",
+    duration_ms: 562,
+    request_count: 3,
+    response_body_bytes: 988,
+  };
+  const changes = [];
+  const stopWatching = handle.onRefreshDetail(() => changes.push(handle.refreshDetail()));
+  answer = { ...atHead, refresh_timing: receipt };
+  assert.match(await pullsRefresh(), /pull-refresh \{"number":7,"retry":true\}$/);
+  assert.deepEqual(changes, [receipt], "the new measurement is published exactly once");
+  assert.deepEqual(handle.refreshDetail(), receipt);
   arrive("files");
   await settle();
   steps.push(await numberResult("2"));
@@ -2059,6 +2071,9 @@ async function tabKeys(page) {
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
   arrive("checks");
+  assert.match(await pullsRefresh(), /pull-refresh \{"number":7,"retry":true\}$/);
+  assert.deepEqual(changes, [receipt], "another read of the same receipt stays quiet");
+  stopWatching();
   steps.push(result("C", { shiftKey: true }));
   arrive("");
   steps.push(result("g", { ctrlKey: true }));
@@ -2725,9 +2740,9 @@ async function headerShape(page) {
   const REMEDY = {
     "failed, still current": "Retry",
   };
-  /** What each variant's note says where it is not the record's fetch, null where none. */
+  /** What each variant's note says when there is progress or an issue. */
   const NOTE = {
-    "on its way, its last refresh failed": null,
+    stale: /^Refreshing…$/,
     "held by a rate limit": /^GitHub rate limit reached\. Next attempt after /,
     "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
     "no GitHub repository": /^This server serves no GitHub repository\.$/,
@@ -2826,8 +2841,7 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      // The note ends the author's row's lead: the record's one time, or what is said in its
-      // place (mb-ne91).
+      // A notice ends the author's row when there is progress or an issue.
       const note = container.querySelector(".github-pull-note");
       const noteText = container.querySelector(".github-pull-freshness").textContent;
       assert.equal(
@@ -2835,15 +2849,11 @@ async function headerShape(page) {
         meta,
         `${name} ${tab}: the note is on the author's row`,
       );
-      if (NOTE[name] === null) {
+      if (NOTE[name] === undefined) {
         assert.equal(note.hidden, true, `${name} ${tab}: no note`);
       } else {
         assert.ok(note.hidden !== true, `${name} ${tab}: the note says something`);
-        assert.match(
-          noteText,
-          NOTE[name] ?? /^Fetched .+ via GitHub CLI$/,
-          `${name} ${tab}: the note`,
-        );
+        assert.match(noteText, NOTE[name], `${name} ${tab}: the note`);
       }
       // The status line is there exactly while it has something to say, and says it.
       assert.equal(
@@ -4920,16 +4930,14 @@ async function run() {
   await mergeStatusSection(page);
   await headerAges(page);
   await headerShape(page);
-  // The freshness note's slot is as wide as its widest age: each age the page says is put at
-  // "59 min ago", the widest `relativeAge` says, for the hidden copy that sizes the slot, and
-  // a note wider still, as an unknown age is, sizes its own (mb-ne91).
+  // An offline note holds the width of its widest age. Other notices use their own width.
   const widestNotes = Object.fromEntries(
     [
-      "Fetched just now via GitHub CLI",
-      "Fetched 3 h ago via GitHub CLI",
+      "Refreshing…",
+      "Offline · fetched just now via GitHub CLI",
       "Offline · fetched 12 d ago via GitHub CLI",
-      "Description fetched 7 min ago via GitHub CLI",
-      "Fetched at an unknown time via GitHub CLI",
+      "Offline · description fetched 7 min ago via GitHub CLI",
+      "Offline · fetched at an unknown time via GitHub CLI",
     ].map((note) => [note, page.widestNote(note)]),
   );
   // A rate limit's hold says when it lifts in the reader's short form: a time of day when it
