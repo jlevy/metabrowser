@@ -19,6 +19,12 @@ beside the README, which the pointer reaches last, straight from the file's link
 file's card is up, and whose own card must then show (the shell's bug H1, fixed).
 ``tests/dom/link-card-chrome.mjs`` rests Chrome's pointer on each link.
 
+On both, the card's own code loads only at the page's first rest on a link, and that rest
+still shows its card, in the window every rest's comes in moved by the load; a second test
+serves a plain folder with no GitHub identity, whose document links another file and
+another site, and holds that both have their cards and that no resolver is asked for
+(docs/design-system.md, "Tooltips on Links", on every page).
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node
 process leads a process group of its own, which Chrome joins, so a run stopped at its
@@ -124,24 +130,54 @@ def add_card_document(checkout: Path, pull: dict[str, Any]) -> dict[str, object]
     }
 
 
-def test_a_link_card_on_a_served_document_in_chrome(
-    tmp_path: Path, pull_origin: Origin, chrome_profile: Path
+# The plain folder's document, the file it links with its author's title, and that title.
+PLAIN_DOCUMENT = "notes/index.md"
+PLAIN_FILE = "notes/other.md"
+PLAIN_TITLE = "The note after this one"
+
+
+def add_plain_folder(folder: Path) -> dict[str, object]:
+    """Write a plain folder's document, linking another file and another site; what the
+    session expects their cards to say."""
+
+    notes = folder / "notes"
+    notes.mkdir(parents=True)
+    (notes / "other.md").write_text("# Other\n\nThe next note.\n", encoding="utf-8")
+    (folder / PLAIN_DOCUMENT).write_text(
+        "# Notes\n\n"
+        "Plain words, where the pointer waits between links.\n\n"
+        f'- [The other note](other.md "{PLAIN_TITLE}")\n'
+        "- [Another site](https://example.com/elsewhere)\n",
+        encoding="utf-8",
+    )
+    return {
+        "plain": True,
+        "file": PLAIN_FILE,
+        "fileText": "The other note",
+        "authorTitle": PLAIN_TITLE,
+    }
+
+
+def _serve_and_rest(
+    root: Path,
+    env: dict[str, str],
+    document: str,
+    expected: dict[str, object],
+    tmp_path: Path,
+    chrome_profile: Path,
 ) -> None:
+    """Serve *root*, rest Chrome's pointer on *document*'s links, and hold what it found."""
+
     chrome = require_chrome()
     node = require_node()
-    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
-    expected = add_card_document(checkout, pull_bodies(pull_origin)[PULL]["pull"])
-    fake = install_fake_gh(tmp_path, stacks_scenario(pull_origin))
-    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
-    env.update(fake)
     tools = _private(tmp_path / "tools")
     (tools / "git").symlink_to(require_git())
-    env["PATH"] = f"{tmp_path / 'fake-gh-bin'}{os.pathsep}{tools}"
+    env["PATH"] = os.pathsep.join(filter(None, [env.get("PATH"), str(tools)]))
     env["METABROWSER_CACHE_DIR"] = str(_private(tmp_path / "cache"))
     env["METABROWSER_CONFIG_DIR"] = str(_private(tmp_path / "config"))
     env["METABROWSER_LOG_LEVEL"] = "WARNING"
     log = tmp_path / "server.log"
-    server = _serve(checkout, env, log)
+    server = _serve(root, env, log)
     try:
         port = _read_port(server, log)
         _wait_until_serving(server, port, log)
@@ -149,7 +185,7 @@ def test_a_link_card_on_a_served_document_in_chrome(
             [
                 node,
                 str(SESSION),
-                f"http://127.0.0.1:{port}/view/{DOCUMENT}",
+                f"http://127.0.0.1:{port}/view/{document}",
                 json.dumps(expected),
             ],
             timeout_s=_MEASUREMENT_BUDGET_S,
@@ -164,3 +200,29 @@ def test_a_link_card_on_a_served_document_in_chrome(
     assert run.returncode == 0, f"{run.stderr[-6000:]}\nserver: {_log_tail(log)}"
     passed = re.fullmatch(r"link card in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout
+
+
+def test_a_link_card_on_a_served_document_in_chrome(
+    tmp_path: Path, pull_origin: Origin, chrome_profile: Path
+) -> None:
+    require_chrome()
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    expected = add_card_document(checkout, pull_bodies(pull_origin)[PULL]["pull"])
+    fake = install_fake_gh(tmp_path, stacks_scenario(pull_origin))
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    env.update(fake)
+    env["PATH"] = str(tmp_path / "fake-gh-bin")
+    _serve_and_rest(checkout, env, DOCUMENT, expected, tmp_path, chrome_profile)
+
+
+def test_a_link_card_on_a_plain_folders_document_in_chrome(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
+    """A folder with no GitHub identity: its document's links have their cards all the same."""
+
+    require_chrome()
+    folder = _private(tmp_path / "folder")
+    expected = add_plain_folder(folder)
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    env["PATH"] = ""
+    _serve_and_rest(folder, env, PLAIN_DOCUMENT, expected, tmp_path, chrome_profile)

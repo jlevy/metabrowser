@@ -4,12 +4,19 @@
 //   CHROME_BIN=... CHROME_PROFILES=<dir> \
 //     node tests/dom/link-card-chrome.mjs <the document's URL> <what its cards say, as JSON>
 //
-// tests/test_link_card_chrome.py serves the GitHub stand-in's checkout, writes the document,
-// says what its cards say, and owns the profile directory, and stops this process's whole
-// group, Chrome included, however the run ends (tests/process_group.py).
+// tests/test_link_card_chrome.py serves the GitHub stand-in's checkout, or a plain folder
+// with no GitHub identity, writes the document, says what its cards say, and owns the
+// profile directory, and stops this process's whole group, Chrome included, however the run
+// ends (tests/process_group.py).
 //
-// For each in-app link, two rests, with the pointer on empty space between until the
-// tooltip's fade has ended:
+// On either page the card's own code, the `link-previews` bundle, is not loaded until the
+// pointer first rests on a link, and that first rest, on a file's link, shows its card in the
+// window below, moved by the time its pointer waited for the bundle (`previewLink` in
+// static/plugin-sdk-views.js); that time is printed. On the plain folder's page, a link to
+// another file and one to another site have their cards, and no resolver is loaded.
+//
+// On the checkout's page, for each in-app link, two rests, with the pointer on empty space
+// between until the tooltip's fade has ended:
 //
 // 1. The time from the pointer's arrival on the link to the card's appearance, in the page's
 //    own clock, within a window the two timers give it: the tooltip's appear delay
@@ -41,12 +48,20 @@ if (!url || !said || !process.env.CHROME_BIN || !process.env.CHROME_PROFILES) {
   throw new Error("usage: CHROME_BIN CHROME_PROFILES link-card-chrome.mjs <URL> <JSON>");
 }
 /**
+ * What the cards say: on the checkout's page, its pull request's, its commit's, and the
+ * author's title on the guide; on the plain folder's (`plain`), the file its document links,
+ * with its author's title.
+ *
  * @type {{
- *   pull: number, pullTitle: string, pullState: string,
+ *   plain?: false, pull: number, pullTitle: string, pullState: string,
  *   commit: string, commitSubject: string, authorTitle: string,
- * }}
+ * } | {plain: true, file: string, fileText: string, authorTitle: string}}
  */
 const expected = JSON.parse(said);
+// The card's own bundle and the resolver's (server.py, `link-previews` and
+// `repository-links`), by the scripts that only they hold.
+const CARD_SCRIPTS = /\/static\/link-preview(s|-providers)\.js$/;
+const RESOLVER_SCRIPT = /\/static\/repository-links\.js$/;
 const started = Date.now();
 const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - started}\n`);
 // Each wait's bound: the page's load, its links' enhancement, or the stand-in catalog's
@@ -184,8 +199,10 @@ try {
   const addresses = new Map();
   const browsersOwn = (address) => BROWSERS_OWN.has(new URL(address).pathname);
   chrome.on("Network.requestWillBeSent", ({ requestId, request }) =>
-    addresses.set(requestId, request.url),
+    addresses.set(requestId, new URL(request.url).pathname),
   );
+  /** Whether the page has asked for a script *pattern* matches. */
+  const asked = (pattern) => [...addresses.values()].some((address) => pattern.test(address));
   chrome.on("Network.responseReceived", ({ response }) => {
     if (response.status >= 400 && !browsersOwn(response.url)) {
       problems.push(`${response.status} ${response.url}`);
@@ -203,6 +220,8 @@ try {
   for (const domain of ["Runtime", "Page", "Network", "Log"]) {
     await send(`${domain}.enable`);
   }
+  // Every script from the network, so the first rest's load of the card is a cold one.
+  await send("Network.setCacheDisabled", { cacheDisabled: true });
   const waitFor = async (expression, what, timeoutMs = STEP_MS) => {
     try {
       return await chrome.waitFor(expression, timeoutMs);
@@ -239,55 +258,50 @@ try {
   await send("Page.navigate", { url });
   await loaded;
   phase("load");
-  // The document's links, enhanced: each github.com link the page opens here has its
-  // address, and the card's registry and the Commits panel, which reads a commit's subject,
-  // have loaded.
+  // The document's links, enhanced: on the checkout's page each github.com link the page
+  // opens here has its address, and the Commits panel, which reads a commit's subject, has
+  // loaded; on the plain folder's, the link to the other file has its address.
   await waitFor(
-    `document.querySelectorAll('#preview-pane a[href="/pull/${expected.pull}"]').length === 2 &&
+    expected.plain
+      ? `document.querySelector('#preview-pane a[href="/view/${expected.file}"]') !== null`
+      : `document.querySelectorAll('#preview-pane a[href="/pull/${expected.pull}"]').length === 2 &&
       document.querySelector('#preview-pane a[href="/commit/${expected.commit}"]') !== null &&
       document.querySelector('#preview-pane a[href="/pulls"]') !== null &&
-      typeof window.MetabrowserLinkPreviews?.INTENT_MS === "number" &&
       typeof window.MetabrowserGitPanel?.commitSummary === "function"`,
-    "the document's links and the card",
+    "the document's links",
   );
   phase("enhanced");
+  check(
+    "the card's code is not loaded before a rest",
+    (await evaluate("window.MetabrowserLinkPreviews === undefined")) && !asked(CARD_SCRIPTS),
+    JSON.stringify([...addresses.values()].filter((address) => CARD_SCRIPTS.test(address))),
+  );
 
   const constants = await evaluate(`({
     appear: window.TOOLTIP_APPEAR_DELAY,
     fade: window.TOOLTIP_FADE_OUT,
     gap: window.TOOLTIP_ANCHOR_GAP,
     margin: window.TOOLTIP_VIEWPORT_MARGIN,
-    intent: window.MetabrowserLinkPreviews.INTENT_MS,
   })`);
-  const { appear: APPEAR, fade: FADE, gap: GAP, margin: MARGIN, intent: INTENT } = constants;
-  process.stderr.write(
-    `constants INTENT_MS ${INTENT} TOOLTIP_APPEAR_DELAY ${APPEAR} TOOLTIP_FADE_OUT ${FADE}\n`,
-  );
-  check(
-    "the page's timers are numbers",
-    [APPEAR, FADE, GAP, MARGIN, INTENT].every(Number.isFinite),
-    JSON.stringify(constants),
-  );
-  // The windows below hold while the intent delay ends inside the appear delay, as the
-  // design has it: the card is asked for again before the tooltip would have appeared.
-  check(
-    "the intent delay ends inside the appear delay",
-    INTENT < APPEAR,
-    JSON.stringify(constants),
-  );
+  const { appear: APPEAR, fade: FADE, gap: GAP, margin: MARGIN } = constants;
+  // The intent delay is the card's own constant, which the page has only once it has loaded
+  // the card, at the first rest; until then, the most it can be: the appear delay, which it
+  // ends inside (checked below).
+  let INTENT = APPEAR;
   // Where every rest's card comes up: on the appear delay from the pointer's arrival,
   // whatever its provider does meanwhile, and sooner than a show at the intent delay could
   // bring one. A provider that answers at once (a file's, a folder's, the list's) answers at
   // the intent delay, inside the appear delay, and the tooltip takes the newer card and keeps
   // its time; one that reads the server answers then or later, when the card comes with what
-  // the page knew; and where the page knows what the card says, nothing is read.
-  const WINDOW = [APPEAR, INTENT + APPEAR];
+  // the page knew; and where the page knows what the card says, nothing is read. The first
+  // rest's card also waits for the card's bundle, which the window's intent delay holds.
+  let WINDOW = [APPEAR, INTENT + APPEAR];
   // By then any card a rest or a focus would bring is up, even one first asked for at the
   // intent delay, with an appear delay to spare: what a step that shows none waits.
-  const CARD_BY_MS = INTENT + 2 * APPEAR;
+  let CARD_BY_MS = INTENT + 2 * APPEAR;
   // How long a step waits for a card, or for one to go, past when it should have: long
   // enough that a late one is reported with its time rather than as none.
-  const LATE_MS = 2 * CARD_BY_MS;
+  let LATE_MS = 2 * CARD_BY_MS;
 
   await evaluate(PROBE);
   // Where the pointer waits between rests: the pane's empty margin, on no link and no tip.
@@ -333,27 +347,6 @@ try {
     await chrome.waitFor(`window.__linkCardProbe.shown !== null`, LATE_MS).catch(() => {});
     return evaluate(READ);
   };
-
-  // A rest on the pull request before its catalog is known to hold it, as soon as the page
-  // has its links: a card with no title, unless the catalog filled first. The card keeps no
-  // answer, a provider keeps none of a catalog not yet whole, and so the rests below, once
-  // the catalog holds the pull request, say its title (review H4).
-  const early = await rest(`Pull request ${expected.pull}`);
-  process.stderr.write(
-    `a rest before the catalog was known to hold #${expected.pull}: ` +
-      `${early?.lines.map((line) => line.text).join(" | ") ?? "no card"}\n`,
-  );
-  await away();
-  // The catalog holds the pull request, as it does once the page's first refresh is in.
-  await waitFor(
-    `(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const answer = await (await fetch("/api/plugin/github/pulls?q=${expected.pull}")).json();
-      return (answer.rows ?? []).some((row) => row.number === ${expected.pull} && row.title);
-    })()`,
-    "the catalog holds the pull request",
-  );
-  phase("ready");
 
   /** The card is where its link is: centered on it, below, or above without room below. */
   const placed = (label, card) => {
@@ -409,305 +402,426 @@ try {
     const match = /^Commit ([0-9a-f]+)$/.exec(name);
     return match !== null && match[1].length >= 7 && expected.commit.startsWith(match[1]);
   };
-  // The document's in-app links, by their words, in its order: what each card names, the
-  // lines its data gives by the second rest, and the window of its first rest.
-  const links = [
-    {
-      text: "The guide",
-      identity: viewPath,
-      // The author's own words, quoted as theirs, after the path the app names.
-      lines: [`“${expected.authorTitle}”`],
-      first: "at once",
-    },
-    {
-      text: "The source folder",
-      identity: (name, card) => name.endsWith("/") && viewPath(name, card),
-      lines: [],
-      first: "at once",
-    },
-    {
-      text: `Pull request ${expected.pull}`,
-      identity: (name) => name === `Pull request #${expected.pull}`,
-      lines: [expected.pullTitle],
-      state: expected.pullState,
-      first: "read",
-    },
-    {
-      // Its words are the title the card would say, so the card leaves the title out.
-      text: expected.pullTitle,
-      identity: (name) => name === `Pull request #${expected.pull}`,
-      lines: [],
-      state: expected.pullState,
-      first: "known",
-    },
-    {
-      text: "The head commit",
-      identity: shortOf,
-      lines: [expected.commitSubject],
-      first: "read",
-    },
-    {
-      text: "The pull requests",
-      identity: (name) => name === PULLS,
-      lines: [],
-      first: "at once",
-    },
-    {
-      text: "the guide again",
-      identity: viewPath,
-      lines: [],
-      first: "known",
-      foot: true,
-    },
-  ];
-  // The link beside the last, which the pointer reaches only at the end, straight from it,
-  // so that its card is not yet known then (KNOWN_BUG_H1).
-  const straightTo = "the readme";
-  check(
-    "every link of the document that opens a page here is rested on",
-    JSON.stringify([...titles.links].sort()) ===
-      JSON.stringify([...links.map((link) => link.text), straightTo].sort()),
-    JSON.stringify(titles.links),
-  );
-  const placements = new Set();
-  for (const link of links) {
-    if (link.foot) {
-      // At the pane's foot, where the card has no room below its link.
-      await away();
-      await evaluate(
-        `window.__linkCardProbe.find(${JSON.stringify(link.text)})?.scrollIntoView({ block: "end" })`,
+  /**
+   * The first rest on the page, on *text*'s link to a file: the card's bundle loads, and the
+   * card comes up for that rest, saying what *identity* says it opens, in the window every
+   * rest's card comes in, moved by however long the pointer waited for the bundle: the
+   * registry takes the rest when it arrives and asks the tooltip then, which waits its whole
+   * appear delay (`rest` in static/link-previews.js). That wait is short on an idle page and
+   * several times longer on a fresh server's first page (server.py, `link-previews`, has
+   * the measurement), so the window is moved by the load this rest measured. Then the
+   * card's own intent delay, which the windows of every later rest are made of.
+   */
+  const firstRest = async (text, identity) => {
+    const label = `the first rest, on ${JSON.stringify(text)}`;
+    const card = await rest(text);
+    const bundle = await evaluate(`(() => {
+      const scripts = performance.getEntriesByType("resource").filter((entry) =>
+        ${CARD_SCRIPTS}.test(new URL(entry.name).pathname));
+      return {
+        scripts: scripts.length,
+        start: Math.min(...scripts.map((entry) => entry.startTime)),
+        end: Math.max(...scripts.map((entry) => entry.responseEnd)),
+        bytes: scripts.reduce((sum, entry) => sum + entry.encodedBodySize, 0),
+      };
+    })()`);
+    INTENT = await evaluate("window.MetabrowserLinkPreviews?.INTENT_MS");
+    WINDOW = [APPEAR, INTENT + APPEAR];
+    CARD_BY_MS = INTENT + 2 * APPEAR;
+    LATE_MS = 2 * CARD_BY_MS;
+    process.stderr.write(
+      `constants INTENT_MS ${INTENT} TOOLTIP_APPEAR_DELAY ${APPEAR} TOOLTIP_FADE_OUT ${FADE}\n`,
+    );
+    check(
+      "the page's timers are numbers",
+      [APPEAR, FADE, GAP, MARGIN, INTENT].every(Number.isFinite),
+      JSON.stringify({ ...constants, intent: INTENT }),
+    );
+    // The windows hold while the intent delay ends inside the appear delay, as the design
+    // has it: the card is asked for again before the tooltip would have appeared.
+    check("the intent delay ends inside the appear delay", INTENT < APPEAR, String(INTENT));
+    if (card === null || card.shown === null) {
+      check(`${label}: its card comes up`, false, JSON.stringify(card));
+      return;
+    }
+    const delay = card.shown - card.arrived;
+    // How long after the pointer arrived the bundle's last script was in.
+    const waited = Math.max(0, bundle.end - card.arrived);
+    const [low, high] = [WINDOW[0], WINDOW[1] + waited];
+    process.stderr.write(
+      `${label}: up ${Math.round(delay)} ms after the pointer arrived, window ` +
+        `[${low}, ${Math.round(high)}); the card's bundle, ${bundle.scripts} scripts, ` +
+        `${bundle.bytes} bytes, asked ${Math.round(bundle.start - card.arrived)} ms after the ` +
+        `arrival, in ${Math.round(bundle.end - bundle.start)} ms: ` +
+        `${card.lines.map((line) => line.text).join(" | ")}\n`,
+    );
+    check(
+      `${label}: the rest loaded the card's bundle`,
+      bundle.scripts === 2,
+      JSON.stringify(bundle),
+    );
+    check(
+      `${label}: up in every rest's window, moved by its bundle's load`,
+      delay >= low && delay < high,
+      `${Math.round(delay)} ms, window [${low}, ${Math.round(high)})`,
+    );
+    says(label, card, { identity });
+    await pointAt(park.x, park.y);
+  };
+
+  if (expected.plain) {
+    await plainFolder();
+  } else {
+    await firstRest("The guide", viewPath);
+    await checkout();
+  }
+
+  /**
+   * A plain folder's page, with no GitHub identity: no resolver is asked for, the first rest
+   * on the document's link to another file shows its card with its author's title, and the
+   * link to another site has the card that says where it goes.
+   */
+  async function plainFolder() {
+    await firstRest(expected.fileText, viewPath);
+    await away();
+    const card = await rest(expected.fileText);
+    check(
+      "the plain folder's file link says its author's title",
+      card?.lines.some((line) => line.text === `“${expected.authorTitle}”`) === true,
+      JSON.stringify(card?.lines),
+    );
+    await outsideLink();
+    check("a page with no GitHub identity asks for no resolver", !asked(RESOLVER_SCRIPT));
+    phase("the plain folder");
+  }
+
+  /** The outside link's card is the renderer's own lines for its address and its tab. */
+  async function outsideLink() {
+    await away();
+    await evaluate(`(() => {
+      window.__linkCardProbe.reset(${JSON.stringify(OUTSIDE_LINK.text)});
+      window.__linkCardProbe.link.scrollIntoView({ block: "center" });
+    })()`);
+    await frames();
+    const OUTSIDE_LINK_CARD = await evaluate(`(() => {
+      const previews = window.MetabrowserLinkPreviews;
+      const link = window.__linkCardProbe.link;
+      const html = previews.card(
+        previews.subject({ kind: "external", url: ${JSON.stringify(OUTSIDE_LINK.url)} }),
+        null,
+        { linkText: link.textContent, newTab: link.getAttribute("target") === "_blank" },
       );
+      const box = document.createElement("div");
+      box.innerHTML = html;
+      return [...box.children].map((line) => line.textContent.replace(/\\s+/g, " ").trim());
+    })()`);
+    check(
+      "the renderer's card for the outside link is one line naming its host",
+      OUTSIDE_LINK_CARD.length === 1 && OUTSIDE_LINK_CARD[0].startsWith("Opens example.com"),
+      JSON.stringify(OUTSIDE_LINK_CARD),
+    );
+    const outside = await across(OUTSIDE_LINK.text, 0.5);
+    if (outside !== null) {
+      await pointAt(outside.x, outside.y);
+      await pause(CARD_BY_MS);
       await frames();
     }
-    const cards = [];
-    for (const [round, kind] of [
-      [1, link.first],
-      [2, "known"],
-    ]) {
-      const label = `${JSON.stringify(link.text)}, rest ${round}`;
-      const card = await rest(link.text);
-      if (card === null || card.shown === null) {
-        check(`${label}: its card comes up`, false, JSON.stringify(card));
-        break;
-      }
-      const delay = card.shown - card.arrived;
-      const [low, high] = WINDOW;
-      const where = placed(label, card);
-      placements.add(where);
-      process.stderr.write(
-        `rest ${label}: up ${Math.round(delay)} ms after the pointer arrived, ` +
-          `window [${low}, ${high}) for a card ${kind === "read" ? "that reads" : kind}; ` +
-          `${where}: ${card.lines.map((line) => line.text).join(" | ")}\n`,
-      );
-      check(`${label}: the pointer arrived on the link`, card.arrived !== null);
-      check(
-        `${label}: up in [${low}, ${high}) ms`,
-        delay >= low && delay < high,
-        `${Math.round(delay)} ms`,
-      );
-      says(label, card, link);
-      if (round === 1) {
-        // The pointer moves within the link: the card stays as and where it is.
-        for (const at of [0.1, 0.9]) {
-          const point = await across(link.text, at);
-          await pointAt(point.x, point.y);
-        }
-        await pause(APPEAR);
-        await frames();
-        const still = await evaluate(READ);
-        check(
-          `${label}: the card holds still while the pointer moves within the link`,
-          still.up &&
-            still.ups === 1 &&
-            JSON.stringify(still.tip) === JSON.stringify(card.tip) &&
-            still.html === card.html,
-          JSON.stringify({ before: card.tip, after: still.tip, ups: still.ups }),
-        );
-      }
-      cards.push(card);
-      // The pointer leaves: the card goes as it leaves, not on a timer.
-      await pointAt(park.x, park.y);
-      await chrome.waitFor(`window.__linkCardProbe.hidden !== null`, LATE_MS).catch(() => {});
-      const gone = await evaluate(READ);
-      check(
-        `${label}: moving away puts the card away`,
-        gone.left !== null && gone.hidden !== null && gone.hidden - gone.left < FADE,
-        JSON.stringify({ left: gone.left, hidden: gone.hidden }),
-      );
-      await away();
-    }
-    const last = cards[cards.length - 1];
-    if (last !== undefined) {
-      const label = `${JSON.stringify(link.text)}, by its last rest`;
-      for (const line of link.lines) {
-        check(
-          `${label}: it says ${JSON.stringify(line)}`,
-          last.lines.some((said) => said.text === line),
-          JSON.stringify(last.lines),
-        );
-      }
-      if (link.state !== undefined) {
-        check(`${label}: its mark is its ${link.state} state's`, last.state === link.state);
-      }
-      if (link.foot) {
-        check(`${label}: its card had no room below`, placed(label, last) === "above");
-      }
-    }
-    phase(`rests on ${JSON.stringify(link.text)}`);
-  }
-  check(
-    "cards are placed both below and above their links",
-    placements.has("below") && placements.has("above"),
-    JSON.stringify([...placements]),
-  );
-
-  // An outside link, back in view: the pointer rests as long as any card would take, and
-  // its card is OUTSIDE_LINK_CARD, the renderer's own lines for its address and its tab.
-  await away();
-  await evaluate(`(() => {
-    window.__linkCardProbe.reset(${JSON.stringify(OUTSIDE_LINK.text)});
-    window.__linkCardProbe.link.scrollIntoView({ block: "center" });
-  })()`);
-  await frames();
-  const OUTSIDE_LINK_CARD = await evaluate(`(() => {
-    const previews = window.MetabrowserLinkPreviews;
-    const link = window.__linkCardProbe.link;
-    const html = previews.card(
-      previews.subject({ kind: "external", url: ${JSON.stringify(OUTSIDE_LINK.url)} }),
-      null,
-      { linkText: link.textContent, newTab: link.getAttribute("target") === "_blank" },
-    );
-    const box = document.createElement("div");
-    box.innerHTML = html;
-    return [...box.children].map((line) => line.textContent.replace(/\\s+/g, " ").trim());
-  })()`);
-  check(
-    "the renderer's card for the outside link is one line naming its host",
-    OUTSIDE_LINK_CARD.length === 1 && OUTSIDE_LINK_CARD[0].startsWith("Opens example.com"),
-    JSON.stringify(OUTSIDE_LINK_CARD),
-  );
-  const outside = await across(OUTSIDE_LINK.text, 0.5);
-  if (outside !== null) {
-    await pointAt(outside.x, outside.y);
-    await pause(CARD_BY_MS);
-    await frames();
-  }
-  const outsideRest = outside === null ? null : await evaluate(READ);
-  const outsideSays = outsideRest?.up ? outsideRest.lines.map((line) => line.text) : [];
-  check(
-    `an outside link's card says ${JSON.stringify(OUTSIDE_LINK_CARD)}`,
-    outsideRest !== null &&
-      outsideRest.arrived !== null &&
-      outsideRest.ups === 1 &&
-      JSON.stringify(outsideSays) === JSON.stringify(OUTSIDE_LINK_CARD),
-    JSON.stringify({ arrived: outsideRest?.arrived, ups: outsideRest?.ups, says: outsideSays }),
-  );
-  phase("an outside link");
-
-  // Focus. A Tab while a card is up puts it away, and none comes back; then focus brought
-  // onto each link by Tab, and Shift-Tab, shows none, with the pointer away.
-  const [firstLink, secondLink] = links;
-  await away();
-  await evaluate(`window.__linkCardProbe.find(${JSON.stringify(secondLink.text)}).focus()`);
-  const upBefore = await rest("The pull requests");
-  check("a card is up before the Tab", upBefore?.up === true);
-  await evaluate(`window.__linkCardProbe.reset(${JSON.stringify(firstLink.text)})`);
-  await tab(true);
-  await pause(CARD_BY_MS);
-  await frames();
-  const afterTab = await evaluate(READ);
-  check(
-    "Shift-Tab, with a card up, moves focus and puts the card away",
-    afterTab.focused && !afterTab.up && afterTab.ups === 0,
-    JSON.stringify({ focused: afterTab.focused, up: afterTab.up, ups: afterTab.ups }),
-  );
-  await away();
-  // In the document's order from the first link, with Tab: the rest of the list, the
-  // outside link, and the two links at the foot.
-  const order = [
-    ...links.slice(1, -1).map((link) => link.text),
-    "Another site",
-    links.at(-1).text,
-    straightTo,
-  ];
-  for (const text of order) {
-    await evaluate(`window.__linkCardProbe.reset(${JSON.stringify(text)})`);
-    await tab();
-    await pause(CARD_BY_MS);
-    await frames();
-    const focused = await evaluate(READ);
+    const outsideRest = outside === null ? null : await evaluate(READ);
+    const outsideSays = outsideRest?.up ? outsideRest.lines.map((line) => line.text) : [];
     check(
-      `Tab onto ${JSON.stringify(text)}: focus is on it and it shows no card`,
-      focused.focused && focused.ups === 0 && !focused.up,
-      JSON.stringify({ focused: focused.focused, ups: focused.ups }),
+      `an outside link's card says ${JSON.stringify(OUTSIDE_LINK_CARD)}`,
+      outsideRest !== null &&
+        outsideRest.arrived !== null &&
+        outsideRest.ups === 1 &&
+        JSON.stringify(outsideSays) === JSON.stringify(OUTSIDE_LINK_CARD),
+      JSON.stringify({ arrived: outsideRest?.arrived, ups: outsideRest?.ups, says: outsideSays }),
     );
+    phase("an outside link");
   }
-  phase("focus");
 
-  // H1: straight from one link's card onto the next link, within the fade. The pointer rests
-  // on the foot's file link until its card is up, then moves in one step onto the README
-  // beside it, whose card the page does not know yet, and what shows is read once any card
-  // would be up: the README's card, on its link, up in the window every rest's comes in.
-  // Last, so that what it leaves cannot touch another step.
-  const straightFrom = links.at(-1).text;
-  await away();
-  await evaluate(
-    `window.__linkCardProbe.find(${JSON.stringify(straightFrom)}).scrollIntoView({ block: "center" })`,
-  );
-  await frames();
-  const before = await rest(straightFrom);
-  check(`H1: ${JSON.stringify(straightFrom)}'s card is up before the move`, before?.up === true);
-  await evaluate(`window.__linkCardProbe.reset(${JSON.stringify(straightTo)})`);
-  const onto = await across(straightTo, 0.5);
-  if (before !== null && onto !== null) {
-    await pointAt(onto.x, onto.y);
+  /** The checkout's page: every in-app link's rests, focus, and the straight move. */
+  async function checkout() {
+    // A rest on the pull request before its catalog is known to hold it, as soon as the page
+    // has its links: a card with no title, unless the catalog filled first. The card keeps no
+    // answer, a provider keeps none of a catalog not yet whole, and so the rests below, once
+    // the catalog holds the pull request, say its title (review H4).
+    const early = await rest(`Pull request ${expected.pull}`);
+    process.stderr.write(
+      `a rest before the catalog was known to hold #${expected.pull}: ` +
+        `${early?.lines.map((line) => line.text).join(" | ") ?? "no card"}\n`,
+    );
+    await away();
+    // The catalog holds the pull request, as it does once the page's first refresh is in.
+    await waitFor(
+      `(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const answer = await (await fetch("/api/plugin/github/pulls?q=${expected.pull}")).json();
+      return (answer.rows ?? []).some((row) => row.number === ${expected.pull} && row.title);
+    })()`,
+      "the catalog holds the pull request",
+    );
+    phase("ready");
+
+    // The document's in-app links, by their words, in its order: what each card names, the
+    // lines its data gives by the second rest, and the window of its first rest.
+    const links = [
+      {
+        text: "The guide",
+        identity: viewPath,
+        // The author's own words, quoted as theirs, after the path the app names.
+        lines: [`“${expected.authorTitle}”`],
+        first: "at once",
+      },
+      {
+        text: "The source folder",
+        identity: (name, card) => name.endsWith("/") && viewPath(name, card),
+        lines: [],
+        first: "at once",
+      },
+      {
+        text: `Pull request ${expected.pull}`,
+        identity: (name) => name === `Pull request #${expected.pull}`,
+        lines: [expected.pullTitle],
+        state: expected.pullState,
+        first: "read",
+      },
+      {
+        // Its words are the title the card would say, so the card leaves the title out.
+        text: expected.pullTitle,
+        identity: (name) => name === `Pull request #${expected.pull}`,
+        lines: [],
+        state: expected.pullState,
+        first: "known",
+      },
+      {
+        text: "The head commit",
+        identity: shortOf,
+        lines: [expected.commitSubject],
+        first: "read",
+      },
+      {
+        text: "The pull requests",
+        identity: (name) => name === PULLS,
+        lines: [],
+        first: "at once",
+      },
+      {
+        text: "the guide again",
+        identity: viewPath,
+        lines: [],
+        first: "known",
+        foot: true,
+      },
+    ];
+    // The link beside the last, which the pointer reaches only at the end, straight from it,
+    // so that its card is not yet known then (KNOWN_BUG_H1).
+    const straightTo = "the readme";
+    check(
+      "every link of the document that opens a page here is rested on",
+      JSON.stringify([...titles.links].sort()) ===
+        JSON.stringify([...links.map((link) => link.text), straightTo].sort()),
+      JSON.stringify(titles.links),
+    );
+    const placements = new Set();
+    for (const link of links) {
+      if (link.foot) {
+        // At the pane's foot, where the card has no room below its link.
+        await away();
+        await evaluate(
+          `window.__linkCardProbe.find(${JSON.stringify(link.text)})?.scrollIntoView({ block: "end" })`,
+        );
+        await frames();
+      }
+      const cards = [];
+      for (const [round, kind] of [
+        [1, link.first],
+        [2, "known"],
+      ]) {
+        const label = `${JSON.stringify(link.text)}, rest ${round}`;
+        const card = await rest(link.text);
+        if (card === null || card.shown === null) {
+          check(`${label}: its card comes up`, false, JSON.stringify(card));
+          break;
+        }
+        const delay = card.shown - card.arrived;
+        const [low, high] = WINDOW;
+        const where = placed(label, card);
+        placements.add(where);
+        process.stderr.write(
+          `rest ${label}: up ${Math.round(delay)} ms after the pointer arrived, ` +
+            `window [${low}, ${high}) for a card ${kind === "read" ? "that reads" : kind}; ` +
+            `${where}: ${card.lines.map((line) => line.text).join(" | ")}\n`,
+        );
+        check(`${label}: the pointer arrived on the link`, card.arrived !== null);
+        check(
+          `${label}: up in [${low}, ${high}) ms`,
+          delay >= low && delay < high,
+          `${Math.round(delay)} ms`,
+        );
+        says(label, card, link);
+        if (round === 1) {
+          // The pointer moves within the link: the card stays as and where it is.
+          for (const at of [0.1, 0.9]) {
+            const point = await across(link.text, at);
+            await pointAt(point.x, point.y);
+          }
+          await pause(APPEAR);
+          await frames();
+          const still = await evaluate(READ);
+          check(
+            `${label}: the card holds still while the pointer moves within the link`,
+            still.up &&
+              still.ups === 1 &&
+              JSON.stringify(still.tip) === JSON.stringify(card.tip) &&
+              still.html === card.html,
+            JSON.stringify({ before: card.tip, after: still.tip, ups: still.ups }),
+          );
+        }
+        cards.push(card);
+        // The pointer leaves: the card goes as it leaves, not on a timer.
+        await pointAt(park.x, park.y);
+        await chrome.waitFor(`window.__linkCardProbe.hidden !== null`, LATE_MS).catch(() => {});
+        const gone = await evaluate(READ);
+        check(
+          `${label}: moving away puts the card away`,
+          gone.left !== null && gone.hidden !== null && gone.hidden - gone.left < FADE,
+          JSON.stringify({ left: gone.left, hidden: gone.hidden }),
+        );
+        await away();
+      }
+      const last = cards[cards.length - 1];
+      if (last !== undefined) {
+        const label = `${JSON.stringify(link.text)}, by its last rest`;
+        for (const line of link.lines) {
+          check(
+            `${label}: it says ${JSON.stringify(line)}`,
+            last.lines.some((said) => said.text === line),
+            JSON.stringify(last.lines),
+          );
+        }
+        if (link.state !== undefined) {
+          check(`${label}: its mark is its ${link.state} state's`, last.state === link.state);
+        }
+        if (link.foot) {
+          check(`${label}: its card had no room below`, placed(label, last) === "above");
+        }
+      }
+      phase(`rests on ${JSON.stringify(link.text)}`);
+    }
+    check(
+      "cards are placed both below and above their links",
+      placements.has("below") && placements.has("above"),
+      JSON.stringify([...placements]),
+    );
+
+    // An outside link, back in view: the pointer rests as long as any card would take.
+    await outsideLink();
+
+    // Focus. A Tab while a card is up puts it away, and none comes back; then focus brought
+    // onto each link by Tab, and Shift-Tab, shows none, with the pointer away.
+    const [firstLink, secondLink] = links;
+    await away();
+    await evaluate(`window.__linkCardProbe.find(${JSON.stringify(secondLink.text)}).focus()`);
+    const upBefore = await rest("The pull requests");
+    check("a card is up before the Tab", upBefore?.up === true);
+    await evaluate(`window.__linkCardProbe.reset(${JSON.stringify(firstLink.text)})`);
+    await tab(true);
     await pause(CARD_BY_MS);
     await frames();
-    const after = await evaluate(READ);
-    /** Whether *tip* is placed on *link*, below or above it, centered. */
-    const on = (tip, link) =>
-      Math.abs((tip.left + tip.right) / 2 - (link.left + link.right) / 2) <= 1 &&
-      (Math.abs(tip.top - (link.bottom + GAP)) <= 1 ||
-        Math.abs(tip.bottom - (link.top - GAP)) <= 1);
-    let placedOn = "neither link";
-    if (on(after.tip, after.link)) {
-      placedOn = JSON.stringify(straightTo);
-    } else if (on(after.tip, before.link)) {
-      placedOn = JSON.stringify(straightFrom);
-    }
-    const shownAt =
-      after.shown === null ? "never" : `${Math.round(after.shown - after.arrived)} ms`;
-    process.stderr.write(
-      `H1 (static/app.js): straight from ${JSON.stringify(straightFrom)} to ` +
-        `${JSON.stringify(straightTo)}: ${CARD_BY_MS} ms after the move ` +
-        `${after.up ? "a card is up" : "no card is up"}, placed on ${placedOn}, saying ` +
-        `${after.lines.map((line) => line.text).join(" | ") || "nothing"}; it came up ` +
-        `${shownAt} after the pointer arrived, window [${WINDOW[0]}, ${WINDOW[1]}); ` +
-        `${KNOWN_BUG_H1 ? "recorded, not checked" : "checked"}\n`,
+    const afterTab = await evaluate(READ);
+    check(
+      "Shift-Tab, with a card up, moves focus and puts the card away",
+      afterTab.focused && !afterTab.up && afterTab.ups === 0,
+      JSON.stringify({ focused: afterTab.focused, up: afterTab.up, ups: afterTab.ups }),
     );
-    if (!KNOWN_BUG_H1) {
-      const label = `straight from ${JSON.stringify(straightFrom)} to ${JSON.stringify(straightTo)}`;
+    await away();
+    // In the document's order from the first link, with Tab: the rest of the list, the
+    // outside link, and the two links at the foot.
+    const order = [
+      ...links.slice(1, -1).map((link) => link.text),
+      "Another site",
+      links.at(-1).text,
+      straightTo,
+    ];
+    for (const text of order) {
+      await evaluate(`window.__linkCardProbe.reset(${JSON.stringify(text)})`);
+      await tab();
+      await pause(CARD_BY_MS);
+      await frames();
+      const focused = await evaluate(READ);
       check(
-        `${label}: the README's card is up, on its link`,
-        after.up &&
-          viewPath(after.lines[0]?.text ?? "", after) &&
-          placedOn === JSON.stringify(straightTo),
-        JSON.stringify(after.lines),
-      );
-      const delay = after.shown === null ? Number.NaN : after.shown - after.arrived;
-      check(
-        `${label}: up in [${WINDOW[0]}, ${WINDOW[1]}) ms`,
-        after.arrived !== null && delay >= WINDOW[0] && delay < WINDOW[1],
-        shownAt,
+        `Tab onto ${JSON.stringify(text)}: focus is on it and it shows no card`,
+        focused.focused && focused.ups === 0 && !focused.up,
+        JSON.stringify({ focused: focused.focused, ups: focused.ups }),
       );
     }
-    await pointAt(park.x, park.y);
-    const left = await chrome
-      .waitFor(`document.querySelector(".custom-tooltip").style.display !== "block"`, LATE_MS)
-      .catch(() => false);
-    check("after the straight move, moving away puts the card away", left === true);
+    phase("focus");
+
+    // H1: straight from one link's card onto the next link, within the fade. The pointer rests
+    // on the foot's file link until its card is up, then moves in one step onto the README
+    // beside it, whose card the page does not know yet, and what shows is read once any card
+    // would be up: the README's card, on its link, up in the window every rest's comes in.
+    // Last, so that what it leaves cannot touch another step.
+    const straightFrom = links.at(-1).text;
+    await away();
+    await evaluate(
+      `window.__linkCardProbe.find(${JSON.stringify(straightFrom)}).scrollIntoView({ block: "center" })`,
+    );
+    await frames();
+    const before = await rest(straightFrom);
+    check(`H1: ${JSON.stringify(straightFrom)}'s card is up before the move`, before?.up === true);
+    await evaluate(`window.__linkCardProbe.reset(${JSON.stringify(straightTo)})`);
+    const onto = await across(straightTo, 0.5);
+    if (before !== null && onto !== null) {
+      await pointAt(onto.x, onto.y);
+      await pause(CARD_BY_MS);
+      await frames();
+      const after = await evaluate(READ);
+      /** Whether *tip* is placed on *link*, below or above it, centered. */
+      const on = (tip, link) =>
+        Math.abs((tip.left + tip.right) / 2 - (link.left + link.right) / 2) <= 1 &&
+        (Math.abs(tip.top - (link.bottom + GAP)) <= 1 ||
+          Math.abs(tip.bottom - (link.top - GAP)) <= 1);
+      let placedOn = "neither link";
+      if (on(after.tip, after.link)) {
+        placedOn = JSON.stringify(straightTo);
+      } else if (on(after.tip, before.link)) {
+        placedOn = JSON.stringify(straightFrom);
+      }
+      const shownAt =
+        after.shown === null ? "never" : `${Math.round(after.shown - after.arrived)} ms`;
+      process.stderr.write(
+        `H1 (static/app.js): straight from ${JSON.stringify(straightFrom)} to ` +
+          `${JSON.stringify(straightTo)}: ${CARD_BY_MS} ms after the move ` +
+          `${after.up ? "a card is up" : "no card is up"}, placed on ${placedOn}, saying ` +
+          `${after.lines.map((line) => line.text).join(" | ") || "nothing"}; it came up ` +
+          `${shownAt} after the pointer arrived, window [${WINDOW[0]}, ${WINDOW[1]}); ` +
+          `${KNOWN_BUG_H1 ? "recorded, not checked" : "checked"}\n`,
+      );
+      if (!KNOWN_BUG_H1) {
+        const label = `straight from ${JSON.stringify(straightFrom)} to ${JSON.stringify(straightTo)}`;
+        check(
+          `${label}: the README's card is up, on its link`,
+          after.up &&
+            viewPath(after.lines[0]?.text ?? "", after) &&
+            placedOn === JSON.stringify(straightTo),
+          JSON.stringify(after.lines),
+        );
+        const delay = after.shown === null ? Number.NaN : after.shown - after.arrived;
+        check(
+          `${label}: up in [${WINDOW[0]}, ${WINDOW[1]}) ms`,
+          after.arrived !== null && delay >= WINDOW[0] && delay < WINDOW[1],
+          shownAt,
+        );
+      }
+      await pointAt(park.x, park.y);
+      const left = await chrome
+        .waitFor(`document.querySelector(".custom-tooltip").style.display !== "block"`, LATE_MS)
+        .catch(() => false);
+      check("after the straight move, moving away puts the card away", left === true);
+    }
+    phase("straight from one link to the next");
   }
-  phase("straight from one link to the next");
 
   const titlesAfter = await evaluate(TITLES);
   check(
