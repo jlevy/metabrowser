@@ -2612,9 +2612,10 @@
    * arrive with it: the shell calls this as a file's or a folder's page starts loading.
    * `mountCounterpart` then waits for this request rather than making another.
    * @param {string} page
+   * @returns {Promise<void>} Resolves when the counterpart request finishes.
    */
-  function prefetchCounterpart(page) {
-    void askCounterpart(page);
+  async function prefetchCounterpart(page) {
+    await askCounterpart(page);
   }
 
   /**

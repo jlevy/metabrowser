@@ -184,7 +184,7 @@ const mb = {
   async ensureKindAssets(kind) {
     assets.push(kind);
   },
-  prefetchCounterpart(page) {
+  async prefetchCounterpart(page) {
     counterparts.push(page);
   },
   get repository() {

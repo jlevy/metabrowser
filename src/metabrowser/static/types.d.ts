@@ -1967,8 +1967,8 @@ type MetabrowserSdk = {
    *  a header's `.view-header-end`; resolves to the button, or null when there is none. */
   mountCounterpart(corner: Element, page: string): Promise<HTMLElement | null>;
   /** Start asking for `page`'s counterpart before its header is drawn; `mountCounterpart`
-   *  waits for this request rather than making another. */
-  prefetchCounterpart(page: string): void;
+   *  waits for this request rather than making another. Resolves when the request finishes. */
+  prefetchCounterpart(page: string): Promise<void>;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,

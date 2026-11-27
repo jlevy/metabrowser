@@ -407,7 +407,7 @@ function lines(html) {
  * A page: *repository* is its GitHub identity, or null for a plain folder's page; *cards*
  * says how the `link-previews` bundle loads, *loadMs* after the SDK asks, or not at all.
  *
- * @param {{repository?: object | null, cards?: {loadMs?: number, fails?: boolean}}} [options]
+ * @param {{repository?: object | null, cards?: {loadMs?: number, fails?: boolean}, counterpartMs?: number}} [options]
  */
 function createPage(options = {}) {
   const repository = options.repository === undefined ? GITHUB_REPOSITORY : options.repository;
@@ -536,6 +536,20 @@ function createPage(options = {}) {
     performance: { now: () => clock.now },
     console: { warn: (message) => log.push({ at: clock.now, warned: String(message) }) },
     document,
+    fetch:
+      options.counterpartMs === undefined
+        ? undefined
+        : (url) => {
+            const address = new URL(url, PAGE_ADDRESS);
+            assert(address.pathname === "/api/counterpart", `unexpected fetch: ${url}`);
+            log.push({ at: clock.now, counterpart: address.searchParams.get("page") });
+            return new Promise((resolve) =>
+              clock.setTimeout(
+                () => resolve({ ok: true, json: async () => ({ counterpart: null }) }),
+                options.counterpartMs,
+              ),
+            );
+          },
     Element: FakeElement,
     HTMLElement: FakeElement,
     innerWidth: 1200,

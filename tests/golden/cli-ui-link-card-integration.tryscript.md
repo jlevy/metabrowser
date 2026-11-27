@@ -35,6 +35,8 @@ the SDK asked for the card’s bundle (`load`) and it ran (`loaded`), focus move
   cancels a waiting card.
 - `a failed read, then the next rest`: the first read fails, and the next rest reads
   again and says the title.
+- `one file or folder prefetch at a time`: the folder starts its counterpart request
+  once the file's request finishes.
 - `files the catalog leaves out`: a plain folder’s document links each of its files, and
   one the page’s Quick File catalog leaves out (`unlisted`: a hidden, a gitignored, and
   a symlinked file, which the folder opens all the same) has the card a file it lists
@@ -271,6 +273,57 @@ $ node tests/dom/link-card-integration-session.js
    "at": 1700,
    "sees": "Pull request #15 | docs: the rule for tooltips on links | Opens here in Metabrowser",
    "on": "#15"
+  }
+ ],
+ "one file or folder prefetch at a time": [
+  {
+   "at": 0,
+   "registered": "the guide",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "the docs",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "the guide"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 250,
+   "counterpart": "/view/docs/guide.md"
+  },
+  {
+   "at": 380,
+   "sees": "docs/guide.md | Opens here in Metabrowser",
+   "on": "the guide"
+  },
+  {
+   "at": 400,
+   "pointer": "the docs"
+  },
+  {
+   "at": 750,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs"
+  },
+  {
+   "at": 850,
+   "counterpart": "/view/docs/"
+  },
+  {
+   "at": 900,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs"
   }
  ],
  "files the catalog leaves out": [

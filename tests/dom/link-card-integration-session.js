@@ -126,6 +126,32 @@ const fileLink = (name, file) => ({
   target: { kind: "view", target: { path: file }, localization: "revision" },
 });
 
+/** A file and a folder share the card's prefetch slot while a server answer is pending. */
+async function onePathPrefetchAtATime() {
+  const page = createPage({ counterpartMs: 600 });
+  const file = fileLink("the guide", "docs/guide.md");
+  const folder = fileLink("the docs", "docs/");
+  const { anchors } = page.markdown("the README", file, folder);
+  await page.point(0, anchors[file.name]);
+  await page.look(380);
+  await page.point(400, anchors[folder.name]);
+  await page.look(750);
+  const started = () => page.log.filter((entry) => entry.counterpart);
+  assert(
+    started().length === 1,
+    `the folder prefetched while the file's request was pending: ${JSON.stringify(started())}`,
+  );
+  await page.look(900);
+  const [first, second] = started();
+  assert(
+    first?.counterpart === file.href &&
+      second?.counterpart === folder.href &&
+      second.at === first.at + 600,
+    `the folder did not prefetch as soon as the file finished: ${JSON.stringify(started())}`,
+  );
+  return page.log;
+}
+
 /**
  * A plain folder's document links each of its files, and a rest on each shows its card: one
  * the page's Quick File catalog leaves out, as it leaves out a hidden, a gitignored, and a
@@ -232,6 +258,7 @@ const SESSIONS = {
   "focus during the read": focusDuringRead,
   "a press without moving focus": pressWithoutFocus,
   "a failed read, then the next rest": retry,
+  "one file or folder prefetch at a time": onePathPrefetchAtATime,
   "files the catalog leaves out": unlistedFiles,
   "a folder the tree totals": folderTotaled,
   "an image inside a link": imageInLink,

@@ -512,7 +512,7 @@
   /**
    * A file's or folder's page: its View on GitHub answer, asked for as the page itself asks
    * when it starts loading, so the button comes with the header (plugin-sdk-views.js,
-   * `prefetchCounterpart`), which asks again only for an answer no longer fresh. Only a page
+   * `prefetchCounterpart`). Keep the prefetch slot until that request finishes. Only a page
    * on a GitHub repository draws the button.
    *
    * @param {PathSubject} subject
@@ -533,8 +533,7 @@
       // An address the navigation codec will not spell has no page to warm.
       return Promise.resolve();
     }
-    mb.prefetchCounterpart(page);
-    return Promise.resolve();
+    return mb.prefetchCounterpart(page);
   }
 
   // ── The list of pull requests ──────────────────────────────
