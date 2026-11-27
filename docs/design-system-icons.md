@@ -252,7 +252,7 @@ in `/`, so neither draws a folder icon.
 | `gitPullRequestDraft`, Lucide `git-pull-request-draft` | Plugin | A draft pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-draft` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `gitMerge`, Lucide `git-merge` | Plugin | A merged pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-merged` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `gitPullRequestClosed`, Lucide `git-pull-request-closed` | Plugin | A closed pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-closed` | `--icon-glyph` in a row; `1em` of the page’s title |
-| `checkCheck`, Lucide `check-check` | Plugin | Nothing blocks an open pull request: Ready to merge, or Ready for review on a draft | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
+| `checkCheck`, Lucide `check-check` | Plugin | GitHub reports no pending merge requirements. A draft still has to leave draft mode. | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `gitMergeConflict`, Lucide `git-merge-conflict` | Plugin | A pull request has merge conflicts with its base | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `merge`, Lucide `merge` | Plugin | A pull request merges with its base with no conflicts: its Merge status row | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `circleCheck`, Lucide `circle-check` | Plugin | A check passed, and every check of a pull request passed: a check’s row and the checks’ Merge status row | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
@@ -261,6 +261,7 @@ in `/`, so neither draws a folder icon.
 | `circleSlash`, Lucide `circle-slash` | Plugin | A check was skipped, or ended neutral | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `circleStop`, Lucide `circle-stop` | Plugin | A check was cancelled | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `circleDashed`, Lucide `circle-dashed` | Plugin | GitHub has not said yet whether a pull request can merge | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
+| `fileQuestionMark`, Lucide `file-question-mark` | Plugin | No merge status has been observed for the current commit and base | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `fileDiff`, Lucide `file-diff` | Plugin | A reviewer requested changes to a pull request | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `fileCheck`, Lucide `file-check` | Plugin | A pull request’s changes are approved: its Merge status row | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
 | `eye`, Lucide `eye` | Plugin | A pull request waits for a review it requires | `builtin_plugins/github/pull-readiness.js` | The mark’s tone | `--icon-glyph` |
@@ -292,7 +293,7 @@ meaning, in the ink of its tone
 ([Pull Request Status Vocabulary](design-system.md#pull-request-status-vocabulary)). A
 chip and its compact form draw one glyph, a check’s mark is always a circle, and two
 verdicts share a glyph only where they mean one thing: a double check that nothing
-blocks the pull request, ready to merge or ready for review.
+stands in the way of merging except the draft state, when present.
 
 ## Status and Change Marks
 

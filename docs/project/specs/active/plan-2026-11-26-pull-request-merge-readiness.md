@@ -830,7 +830,7 @@ A test holds its keys to the server’s verdict enum.
 | Verdict | Label | Glyph (Lucide) | Tone | GitHub’s equivalent |
 | --- | --- | --- | --- | --- |
 | `ready` | Ready to merge | `circle-check` | success | Green merge button |
-| `ready_for_review` | Ready for review | `circle-check` | success | A draft marked “ready for review” |
+| `ready_for_review` | No other blockers | `check-check` | success | A draft that GitHub reports no other blockers for |
 | `conflicts` | Merge conflicts | `triangle-alert` | danger | `gh`: red “Merge conflicts” |
 | `checks_failing` | Checks failing | `circle-x` | danger | `gh`: red “checks failing”; red `x` |
 | `changes_requested` | Changes requested | `file-diff` | danger | `gh`: red “Changes requested” |
@@ -1123,7 +1123,7 @@ The owner’s decisions of 2026-11-26:
    ([How GitHub Classifies Each State](#how-github-classifies-each-state)). This settled
    two questions the draft left open: failing checks that no rule requires are red, as
    GitHub’s rollup and CLI show them, and a draft is judged as an open pull request is,
-   with Ready for review in place of Ready to merge.
+   with No other blockers in place of Ready to merge.
 2. **Implement everything as one stack of pull requests**, in the layers under
    [Implementation Plan](#implementation-plan).
 3. **Measure and tune GitHub request performance as a later phase**,

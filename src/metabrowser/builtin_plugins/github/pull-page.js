@@ -1511,11 +1511,10 @@ function requirementLink(requirement, shownChecks, shownTimeline, base) {
  *
  * - The header's badge says the server's label, its accessible name adds auto-merge's
  *   sentence while it is on, and its tooltip (`tip`) the requirements that are not met,
- *   which the badge abbreviates.
+ *   which the badge abbreviates. A clear draft's tooltip explains how to leave draft mode.
  * - The Merge status section's sentence is the requirement that heads the verdict: the first,
  *   in the server's order, at the worst status among them (`STATUS_ORDER`, the server's), as
- *   the server chose the verdict by. A verdict no requirement stands in the way of has none,
- *   and its badge says it all.
+ *   the server chose the verdict by. For a clear draft, it explains how to leave draft mode.
  * - Each requirement's row is its chip, the glyph of the verdict it heads and its status's
  *   word in the tone the server gave it, then the server's sentence and its link
  *   (`requirementLink`). A row with a status or a tone this build does not draw is left out.
@@ -1524,13 +1523,29 @@ function requirementLink(requirement, shownChecks, shownTimeline, base) {
  * @param {PullModel["checks"]} shownChecks
  * @param {TimelineItem[]} shownTimeline
  * @param {string} base The pull request's page.
+ * @param {boolean} [statusReadFailed]
  * @returns {ReadinessModel | null}
  */
-export function readinessModel(readiness, shownChecks, shownTimeline, base) {
+export function readinessModel(
+  readiness,
+  shownChecks,
+  shownTimeline,
+  base,
+  statusReadFailed = false,
+) {
   if (readiness === null || readiness === undefined || typeof readiness !== "object") {
     return null;
   }
   const label = text(readiness.label);
+  const verdict = /** @type {ReadinessModel["verdict"]} */ (text(readiness.verdict));
+  let note = null;
+  if (verdict === "ready_for_review") {
+    note = "This PR is a draft. Mark it ready for review on GitHub before merging.";
+  } else if (verdict === "status_unavailable") {
+    note = statusReadFailed
+      ? "Merge status could not be loaded. Use Refresh to try again."
+      : "There is no merge status for the current commit and base branch yet.";
+  }
   const autoMerge = text(readiness.auto_merge_summary) || null;
   /** @type {RequirementRow[]} */
   const rows = list(readiness.requirements)
@@ -1560,12 +1575,12 @@ export function readinessModel(readiness, shownChecks, shownTimeline, base) {
   const worst = STATUS_ORDER.find((status) => unmet.some((row) => row.status === status));
   return {
     // The server's, as it named them: the page draws a verdict and a tone it was given.
-    verdict: /** @type {ReadinessModel["verdict"]} */ (text(readiness.verdict)),
+    verdict,
     tone: /** @type {ReadinessModel["tone"]} */ (text(readiness.tone)),
     label,
     name: autoMerge === null ? label : `${label}. ${autoMerge}`,
-    tip: unmet.length === 0 ? null : unmet.map((row) => row.summary).join(" "),
-    sentence: rows.find((row) => row.status === worst)?.summary ?? null,
+    tip: unmet.length === 0 ? note : unmet.map((row) => row.summary).join(" "),
+    sentence: rows.find((row) => row.status === worst)?.summary ?? note,
     rows,
     autoMerge,
   };
@@ -1958,7 +1973,13 @@ export function describePull(envelope, page) {
     // while the record is on its way, and the Checks tab has no list to link into yet. It
     // judged the core's state, so a state the list says instead draws none.
     model.readiness = readinessForState(
-      readinessModel(envelope.readiness, null, [], model.pull.htmlUrl),
+      readinessModel(
+        envelope.readiness,
+        null,
+        [],
+        model.pull.htmlUrl,
+        typeof envelope.status_unavailable === "string",
+      ),
       displayState(preview.pull),
       model.pull.state,
     );
@@ -2048,7 +2069,13 @@ export function describePull(envelope, page) {
   model.checks = checks(envelope.checks, head, model.pull.htmlUrl) ?? checksListing(envelope, head);
   model.checkNotes = checkNotes(envelope, head);
   model.readiness = readinessForState(
-    readinessModel(envelope.readiness, model.checks, model.timeline, model.pull.htmlUrl),
+    readinessModel(
+      envelope.readiness,
+      model.checks,
+      model.timeline,
+      model.pull.htmlUrl,
+      typeof envelope.status_unavailable === "string",
+    ),
     displayState(pull),
     model.pull.state,
   );

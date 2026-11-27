@@ -469,7 +469,7 @@ $ node tests/dom/github-pulls-readiness-session.js
     {
       "step": "a minute on, the draft is read again, and draws the server's verdict on it",
       "draws": {
-        "#106": "ready_for_review (success): Ready for review",
+        "#106": "ready_for_review (success): No other blockers",
         "#105": "none",
         "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",

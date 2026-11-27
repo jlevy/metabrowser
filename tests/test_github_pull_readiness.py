@@ -344,7 +344,7 @@ def test_closed_and_merged_pull_requests_have_no_readiness() -> None:
 
 def test_a_status_of_another_head_or_base_or_none_is_never_shown_as_current() -> None:
     """A push GitHub has not been read since, a retarget that kept the head, as when the
-    layer below a stacked pull request merges, and no status at all are each ``checking``."""
+    layer below a stacked pull request merges, and no status at all are each ``status_unavailable``."""
 
     clean = _summary("success", (0, 0))
     pushed = _status(
@@ -356,7 +356,28 @@ def test_a_status_of_another_head_or_base_or_none_is_never_shown_as_current() ->
     for status in (pushed, retargeted, None):
         judged = readiness(state="open", head=HEAD, base_ref=BASE_REF, status=status)
         assert judged is not None
-        assert (judged.verdict, judged.requirements, judged.observed_at) == ("checking", (), None)
+        assert (judged.verdict, judged.requirements, judged.observed_at) == (
+            "status_unavailable",
+            (),
+            None,
+        )
+
+
+def test_provider_unknown_does_not_hide_a_reported_check_state() -> None:
+    for rollup, verdict in (
+        ("success", "checking"),
+        ("pending", "checks_pending"),
+        ("failure", "checks_failing"),
+    ):
+        candidate = _status(
+            conflicts="unknown", merge="unknown", review=None, checks=_summary(rollup, (0, 0))
+        )
+        result = _judged(candidate)
+        assert result.verdict == verdict
+        assert result.observed_at is not None
+        assert any(
+            row.kind == "conflicts" and row.status == "unknown" for row in result.requirements
+        )
 
 
 def test_the_headline_is_first_at_the_worst_status_and_the_tone_is_its() -> None:
@@ -479,6 +500,9 @@ def test_rows_appear_only_where_githubs_merge_box_would_show_them() -> None:
 
 def test_every_verdict_is_reachable_and_has_a_label() -> None:
     reached = {_judged(status, state).verdict for status in STATUSES for state in ("open", "draft")}
+    missing = readiness(state="open", head=HEAD, base_ref=BASE_REF, status=None)
+    assert missing is not None
+    reached.add(missing.verdict)
     assert reached == set(get_args(Verdict.__value__)) == set(LABELS)
 
 

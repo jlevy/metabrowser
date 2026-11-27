@@ -20,7 +20,7 @@
  *
  * @typedef {"ready" | "ready_for_review" | "conflicts" | "checks_failing" | "changes_requested"
  *   | "blocked" | "queue_failing" | "queued" | "checks_pending" | "review_required" | "behind"
- *   | "checking"} ReadinessVerdict
+ *   | "checking" | "status_unavailable"} ReadinessVerdict
  */
 
 /**
@@ -125,7 +125,7 @@ export const STATUS_ORDER = Object.freeze(["unmet", "waiting", "unknown", "met"]
  * an answer GitHub has not given yet is the empty, dashed circle (docs/design-system.md, "Pull
  * Request Status Vocabulary"). Two verdicts share a glyph only
  * where they mean one thing: `checkCheck` that nothing blocks the pull request, whether it is
- * ready to merge or, as a draft, ready for review. The label says which.
+ * ready to merge or held by its draft state alone. The label says which.
  *
  * @type {Readonly<Record<ReadinessVerdict, StatusGlyph>>}
  */
@@ -142,6 +142,7 @@ export const VERDICT_GLYPHS = Object.freeze({
   review_required: "eye",
   behind: "arrowUpToLine",
   checking: "circleDashed",
+  status_unavailable: "fileQuestionMark",
 });
 
 /**
@@ -268,6 +269,8 @@ const GLYPHS = Object.freeze({
   `<svg ${STROKE}><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>`,
   circleDashed: // Lucide `circle-dashed`
   `<svg ${STROKE}><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg>`,
+  fileQuestionMark: // Lucide `file-question-mark`
+  `<svg ${STROKE}><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M12 17h.01"/><path d="M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3"/></svg>`,
   fileDiff: // Lucide `file-diff`
   `<svg ${STROKE}><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M9 10h6"/><path d="M12 13V7"/><path d="M9 17h6"/></svg>`,
   fileCheck: // Lucide `file-check`
@@ -408,7 +411,7 @@ export function readinessBadge(readiness) {
  */
 export const SLOT_LABELS = Object.freeze([
   "Ready to merge",
-  "Ready for review",
+  "No other blockers",
   "Merge conflicts",
   "Checks failing",
   "Changes requested",
@@ -418,7 +421,8 @@ export const SLOT_LABELS = Object.freeze([
   "Checks pending",
   "Review required",
   "Not up to date",
-  "Checking",
+  "Mergeability pending",
+  "Status unavailable",
 ]);
 
 /**

@@ -93,6 +93,7 @@ type Verdict = Literal[
     "review_required",
     "behind",
     "checking",
+    "status_unavailable",
 ]
 
 REQUIREMENT_ORDER: Final[tuple[RequirementKind, ...]] = (
@@ -146,7 +147,7 @@ HEADLINES: Final[dict[tuple[RequirementKind, RequirementStatus], Verdict]] = {
 
 LABELS: Final[dict[Verdict, str]] = {
     "ready": "Ready to merge",
-    "ready_for_review": "Ready for review",
+    "ready_for_review": "No other blockers",
     "conflicts": "Merge conflicts",
     "checks_failing": "Checks failing",
     "changes_requested": "Changes requested",
@@ -156,7 +157,8 @@ LABELS: Final[dict[Verdict, str]] = {
     "checks_pending": "Checks pending",
     "review_required": "Review required",
     "behind": "Not up to date",
-    "checking": "Checking",
+    "checking": "Mergeability pending",
+    "status_unavailable": "Status unavailable",
 }
 
 _REVIEW_STATUS: Final[dict[str, RequirementStatus]] = {
@@ -210,7 +212,7 @@ class Readiness(_Model):
     ``tone`` is the tone of the requirement that heads the verdict (:func:`headline`), and
     success when none stands in the way, so a verdict always comes with one tone.
 
-    ``head`` is the commit it judged. A ``checking`` verdict with no requirements and no
+    ``head`` is the commit it judged. A ``status_unavailable`` verdict with no requirements and no
     ``observed_at`` says no status describes that head yet.
     """
 
@@ -240,7 +242,7 @@ def _conflicts(status: PullStatus, base: str, html_url: str | None) -> Requireme
         return Requirement(
             kind="conflicts",
             status="unknown",
-            summary="Merge conflict status unknown: GitHub is still checking.",
+            summary="GitHub has yet to report whether this branch conflicts with the base.",
             github_url=_link(html_url),
         )
     return Requirement(kind="conflicts", status="met", summary=f"No merge conflicts with {base}.")
@@ -376,7 +378,7 @@ def _rules(
         return Requirement(
             kind="rules",
             status="unknown",
-            summary="GitHub has not said yet whether this can merge.",
+            summary="GitHub has yet to report whether this pull request can merge.",
             github_url=_link(html_url),
         )
     if status.merge_state == "blocked" and not explained:
@@ -475,7 +477,7 @@ def readiness(
     closed or merged.
 
     *status* counts only when it describes that head and base (:func:`.pull_status.describes`):
-    a status for another head or base, or none, gives ``checking`` with no requirements,
+    a status for another head or base, or none, gives ``status_unavailable``,
     since a verdict is never shown for a pull request it does not describe. *listed* is
     the page's list of the head's checks, for the checks row (:func:`requirements`).
     """
@@ -483,7 +485,12 @@ def readiness(
     if state in ("closed", "merged"):
         return None
     if not describes(status, head=head, base_ref=base_ref):
-        return Readiness(verdict="checking", tone="attention", label=LABELS["checking"], head=head)
+        return Readiness(
+            verdict="status_unavailable",
+            tone="attention",
+            label=LABELS["status_unavailable"],
+            head=head,
+        )
     rows = requirements(status, listed=listed, html_url=html_url)
     first = headline(rows)
     if first is None:

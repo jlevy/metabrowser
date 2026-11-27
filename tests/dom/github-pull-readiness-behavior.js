@@ -90,6 +90,39 @@ function chipParts(badge, context) {
     ).href
   );
 
+  const { readinessModel } = await import(
+    pathToFileURL(
+      path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/github/pull-page.js"),
+    ).href
+  );
+  const draft = readinessModel(
+    { verdict: "ready_for_review", tone: "success", label: "No other blockers" },
+    null,
+    [],
+    "",
+  );
+  const open = readinessModel(
+    { verdict: "ready", tone: "success", label: "Ready to merge" },
+    null,
+    [],
+    "",
+  );
+  assert.match(draft.sentence, /mark it ready for review on GitHub before merging/i);
+  assert.equal(draft.tip, draft.sentence);
+  assert.equal(open.sentence, null);
+  assert.equal(open.tip, null);
+  const unavailable = {
+    verdict: "status_unavailable",
+    tone: "attention",
+    label: "Status unavailable",
+  };
+  const unobserved = readinessModel(unavailable, null, [], "");
+  const failed = readinessModel(unavailable, null, [], "", true);
+  assert.match(unobserved.sentence, /current commit and base branch/);
+  assert.match(failed.sentence, /could not be loaded.*Refresh/);
+  assert.equal(unobserved.tip, unobserved.sentence);
+  assert.equal(failed.tip, failed.sentence);
+
   // No readiness, as a closed or merged pull request has, draws nothing at all.
   for (const none of [null, undefined]) {
     assert.equal(R.readinessIcon(none), null);
@@ -103,8 +136,7 @@ function chipParts(badge, context) {
   const drew = (meaning, drawing) => {
     drawings.set(meaning, (drawings.get(meaning) ?? new Set()).add(drawing));
   };
-  // The verdicts that mean one thing: nothing blocks the pull request, ready to merge or, as a
-  // draft, ready for review. Every other verdict is a meaning of its own.
+  // Sharing a glyph means GitHub reports no other blockers. A draft must still leave draft mode.
   const meaningOf = (verdict) => (verdict === "ready_for_review" ? "ready" : verdict);
 
   let cases = 0;

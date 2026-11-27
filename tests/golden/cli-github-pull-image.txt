@@ -569,9 +569,9 @@ status: 200
   "labels_pending": false,
   "status": "<STATUS 7>",
   "readiness": {
-    "verdict": "checking",
+    "verdict": "status_unavailable",
     "tone": "attention",
-    "label": "Checking",
+    "label": "Status unavailable",
     "head": "de22d10b6b8d1dd5f87861fb532b0ab66af5f408",
     "observed_at": null,
     "requirements": [],

@@ -3932,7 +3932,7 @@ readiness chip’s glyph measured in Chrome ([Layout](#layout)).
 | Draft | the `draft` state | Draft | Lucide `git-pull-request-draft` | `--github-pull-draft` | As open | As open | `StateLabel` draft | None |
 | Merged | the `merged` state | Merged | Lucide `git-merge` | `--github-pull-merged` | As open | As open | `StateLabel` merged | None |
 | Closed | the `closed` state | Closed | Lucide `git-pull-request-closed` | `--github-pull-closed` | As open | As open | `StateLabel` closed | None |
-| Nothing blocks the merge | `ready`, `ready_for_review` | Ready to merge, Ready for review | Lucide `check-check` | success | Header and verdict chips | Yes | The merge button and badge, `git-merge` in success | Glyph: a circled check is a check’s, and `git-merge` is the merged state’s; every requirement checked off |
+| GitHub reports no pending merge requirements | `ready`, `ready_for_review` | Ready to merge, No other blockers on a draft | Lucide `check-check` | success | Header and verdict chips | Yes | The merge button and badge, `git-merge` in success | Glyph: a circled check is a check’s, and `git-merge` is the merged state’s; every requirement checked off |
 | Merge conflicts | `conflicts`; conflicts unmet | Merge conflicts; Unmet | Lucide `git-merge-conflict` | severe | Header and verdict chips, its row | Yes | `alert` in neutral | Glyph: GitHub draws an out-of-date branch with the same triangle, and a triangle reads as a warning about checks. Color: severe, so a conflict never reads as failing checks |
 | No merge conflicts | conflicts met | Met | Lucide `merge` | success | Its row | No | A check in success | Glyph: a check is the checks’; the merge’s arrow, never the merged state’s glyph |
 | Checks failing | `checks_failing`; checks unmet; bucket `fail` | Checks failing; Unmet; the check’s own word | Lucide `circle-x` | danger | Header and verdict chips, its row, a check’s row | Yes | `x-circle-fill` in danger | None |
@@ -3947,7 +3947,8 @@ readiness chip’s glyph measured in Chrome ([Layout](#layout)).
 | Queued | `queued`; queue waiting | Queued; Waiting | Lucide `list-ordered` | attention | Header and verdict chips, its row | Yes | `git-merge-queue` in attention | Glyph: Lucide has no merge queue; a numbered list |
 | Leaving the queue | `queue_failing`; queue unmet | Leaving queue; Unmet | Lucide `list-x` | danger | Header and verdict chips, its row | Yes | Removed from the queue | Glyph: its own, as leaving the queue is not waiting in it |
 | Not up to date | `behind`; up to date waiting | Not up to date; Waiting | Lucide `arrow-up-to-line` | attention | Header and verdict chips, its row | Yes | `alert` in neutral; `gh`’s yellow | Glyph: GitHub’s triangle is its conflicts’ too |
-| Not known yet | `checking`; any requirement unknown | Checking; Unknown | Lucide `circle-dashed` | attention | Header and verdict chips, its row | Yes | “Checking for ability to merge”; `gh`’s yellow | Glyph: an empty circle, not yet decided |
+| GitHub has yet to report mergeability | `checking`; any requirement unknown | Mergeability pending; Unknown | Lucide `circle-dashed` | attention | Header and verdict chips, its row | Yes | “Checking for ability to merge”; `gh`’s yellow | Glyph: an empty circle, not yet decided |
+| No observation for the current commit and base | `status_unavailable` | Status unavailable | Lucide `file-question-mark` | attention | Header and verdict chips, with an explanation | Header only |  |  |
 
 Each tone is one ink, the same for a glyph and a chip:
 
