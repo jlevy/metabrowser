@@ -1,0 +1,502 @@
+{
+  "platform": "darwin",
+  "python": "3.14.7",
+  "machine": "arm64",
+  "load_average": 123.8,
+  "backend": {
+    "macos": "26.5.2",
+    "sandbox_exec": true,
+    "applies": true
+  },
+  "checks": {
+    "bare": {
+      "read a granted file": "allowed",
+      "read a file outside the grants": "allowed",
+      "list a folder outside the grants": "allowed",
+      "list the home folder": "allowed",
+      "write in the write grant": "allowed",
+      "write in a read-only grant": "allowed",
+      "write outside the grants": "allowed",
+      "connect over TCP": "allowed",
+      "send over UDP": "allowed",
+      "open a UDP socket": "allowed",
+      "connect to a Unix socket outside the grants": "allowed",
+      "resolve localhost": "allowed",
+      "resolve an internet name": "allowed",
+      "look up the user (getpwuid)": "allowed",
+      "start a system tool": "allowed",
+      "fork": "allowed",
+      "start a thread": "allowed",
+      "make a POSIX semaphore (multiprocessing)": "allowed",
+      "signal the parent": "allowed",
+      "make an asyncio event loop": "allowed",
+      "write to an inherited descriptor": "allowed"
+    },
+    "confined": {
+      "read a granted file": "allowed",
+      "read a file outside the grants": "refused (EPERM)",
+      "list a folder outside the grants": "refused (EPERM)",
+      "list the home folder": "refused (EPERM)",
+      "write in the write grant": "allowed",
+      "write in a read-only grant": "refused (EPERM)",
+      "write outside the grants": "refused (EPERM)",
+      "connect over TCP": "refused (EPERM)",
+      "send over UDP": "refused (EPERM)",
+      "open a UDP socket": "allowed",
+      "connect to a Unix socket outside the grants": "refused (EPERM)",
+      "resolve localhost": "refused (resolver error 8)",
+      "resolve an internet name": "refused (resolver error 8)",
+      "look up the user (getpwuid)": "failed (KeyError)",
+      "start a system tool": "allowed",
+      "fork": "allowed",
+      "start a thread": "allowed",
+      "make a POSIX semaphore (multiprocessing)": "refused (EPERM)",
+      "signal the parent": "refused (EPERM)",
+      "make an asyncio event loop": "allowed",
+      "write to an inherited descriptor": "allowed"
+    },
+    "confined: the kernel's refusals": [
+      "file-read-data /Library/Preferences/Logging/com.apple.diagnosticd.filter.plist",
+      "file-read-data /Library/Preferences/com.apple.networkd.plist",
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/hosts",
+      "file-read-data /private/etc/passwd",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data <scratch>/private",
+      "file-read-data <scratch>/private/secret.txt",
+      "file-read-data ~",
+      "file-write-create <scratch>/granted/probe.txt",
+      "file-write-create <scratch>/private/probe.txt",
+      "ipc-posix-sem-create /mp-ibpxhkw_",
+      "mach-lookup com.apple.diagnosticd",
+      "mach-lookup com.apple.logd",
+      "mach-lookup com.apple.system.notification_center",
+      "mach-lookup com.apple.system.opendirectoryd.libinfo",
+      "mach-priv-task-port self",
+      "network-outbound /private/var/run/mDNSResponder",
+      "network-outbound <unix-socket>/agent.sock",
+      "network-outbound remote:*:<test-port>",
+      "network-outbound remote:*:<test-port>"
+    ],
+    "confined, network internet": {
+      "read a granted file": "allowed",
+      "read a file outside the grants": "refused (EPERM)",
+      "list a folder outside the grants": "refused (EPERM)",
+      "list the home folder": "refused (EPERM)",
+      "write in the write grant": "allowed",
+      "write in a read-only grant": "refused (EPERM)",
+      "write outside the grants": "refused (EPERM)",
+      "connect over TCP": "allowed",
+      "send over UDP": "allowed",
+      "open a UDP socket": "allowed",
+      "connect to a Unix socket outside the grants": "refused (EPERM)",
+      "resolve localhost": "allowed",
+      "resolve an internet name": "allowed",
+      "look up the user (getpwuid)": "failed (KeyError)",
+      "start a system tool": "allowed",
+      "fork": "allowed",
+      "start a thread": "allowed",
+      "make a POSIX semaphore (multiprocessing)": "refused (EPERM)",
+      "signal the parent": "refused (EPERM)",
+      "make an asyncio event loop": "allowed",
+      "write to an inherited descriptor": "allowed"
+    },
+    "confined, network internet: the kernel's refusals": [
+      "file-read-data /Library/Preferences/Logging/com.apple.diagnosticd.filter.plist",
+      "file-read-data /Library/Preferences/com.apple.networkd.plist",
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/passwd",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data <scratch>/private",
+      "file-read-data <scratch>/private/secret.txt",
+      "file-read-data ~",
+      "file-write-create <scratch>/granted/probe.txt",
+      "file-write-create <scratch>/private/probe.txt",
+      "ipc-posix-sem-create /mp-pwko08_z",
+      "mach-lookup com.apple.diagnosticd",
+      "mach-lookup com.apple.logd",
+      "mach-lookup com.apple.system.notification_center",
+      "mach-lookup com.apple.system.opendirectoryd.libinfo",
+      "mach-priv-task-port self",
+      "network-outbound",
+      "network-outbound <unix-socket>/agent.sock"
+    ],
+    "confined, libinfo only": {
+      "read a granted file": "allowed",
+      "read a file outside the grants": "refused (EPERM)",
+      "list a folder outside the grants": "refused (EPERM)",
+      "list the home folder": "refused (EPERM)",
+      "write in the write grant": "allowed",
+      "write in a read-only grant": "refused (EPERM)",
+      "write outside the grants": "refused (EPERM)",
+      "connect over TCP": "refused (EPERM)",
+      "send over UDP": "refused (EPERM)",
+      "open a UDP socket": "allowed",
+      "connect to a Unix socket outside the grants": "refused (EPERM)",
+      "resolve localhost": "refused (resolver error 8)",
+      "resolve an internet name": "refused (resolver error 8)",
+      "look up the user (getpwuid)": "allowed",
+      "start a system tool": "allowed",
+      "fork": "allowed",
+      "start a thread": "allowed",
+      "make a POSIX semaphore (multiprocessing)": "refused (EPERM)",
+      "signal the parent": "refused (EPERM)",
+      "make an asyncio event loop": "allowed",
+      "write to an inherited descriptor": "allowed"
+    },
+    "confined, libinfo only: the kernel's refusals": [
+      "file-read-data /Library/Preferences/Logging/com.apple.diagnosticd.filter.plist",
+      "file-read-data /Library/Preferences/com.apple.networkd.plist",
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/hosts",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data <scratch>/private",
+      "file-read-data <scratch>/private/secret.txt",
+      "file-read-data ~",
+      "file-write-create <scratch>/granted/probe.txt",
+      "file-write-create <scratch>/private/probe.txt",
+      "ipc-posix-sem-create /mp-6af_6m5t",
+      "ipc-posix-shm-read-data apple.shm.notification_center",
+      "mach-lookup com.apple.diagnosticd",
+      "mach-lookup com.apple.logd",
+      "mach-priv-task-port self",
+      "network-outbound /private/var/run/mDNSResponder",
+      "network-outbound <unix-socket>/agent.sock",
+      "network-outbound remote:*:<test-port>",
+      "network-outbound remote:*:<test-port>"
+    ],
+    "confined, network internet, libinfo and resolver services": {
+      "read a granted file": "allowed",
+      "read a file outside the grants": "refused (EPERM)",
+      "list a folder outside the grants": "refused (EPERM)",
+      "list the home folder": "refused (EPERM)",
+      "write in the write grant": "allowed",
+      "write in a read-only grant": "refused (EPERM)",
+      "write outside the grants": "refused (EPERM)",
+      "connect over TCP": "allowed",
+      "send over UDP": "allowed",
+      "open a UDP socket": "allowed",
+      "connect to a Unix socket outside the grants": "refused (EPERM)",
+      "resolve localhost": "allowed",
+      "resolve an internet name": "allowed",
+      "look up the user (getpwuid)": "allowed",
+      "start a system tool": "allowed",
+      "fork": "allowed",
+      "start a thread": "allowed",
+      "make a POSIX semaphore (multiprocessing)": "refused (EPERM)",
+      "signal the parent": "refused (EPERM)",
+      "make an asyncio event loop": "allowed",
+      "write to an inherited descriptor": "allowed"
+    },
+    "confined, network internet, libinfo and resolver services: the kernel's refusals": [
+      "file-read-data /Library/Preferences/Logging/com.apple.diagnosticd.filter.plist",
+      "file-read-data /Library/Preferences/com.apple.networkd.plist",
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data <scratch>/private",
+      "file-read-data <scratch>/private/secret.txt",
+      "file-read-data ~",
+      "file-write-create <scratch>/granted/probe.txt",
+      "file-write-create <scratch>/private/probe.txt",
+      "ipc-posix-sem-create /mp-el9dtbg6",
+      "ipc-posix-shm-read-data apple.shm.notification_center",
+      "mach-lookup com.apple.diagnosticd",
+      "mach-lookup com.apple.logd",
+      "mach-priv-task-port self",
+      "network-outbound",
+      "network-outbound <unix-socket>/agent.sock"
+    ],
+    "confined, processes none": {
+      "read a granted file": "allowed",
+      "read a file outside the grants": "refused (EPERM)",
+      "list a folder outside the grants": "refused (EPERM)",
+      "list the home folder": "refused (EPERM)",
+      "write in the write grant": "allowed",
+      "write in a read-only grant": "refused (EPERM)",
+      "write outside the grants": "refused (EPERM)",
+      "connect over TCP": "refused (EPERM)",
+      "send over UDP": "refused (EPERM)",
+      "open a UDP socket": "allowed",
+      "connect to a Unix socket outside the grants": "refused (EPERM)",
+      "resolve localhost": "refused (resolver error 8)",
+      "resolve an internet name": "refused (resolver error 8)",
+      "look up the user (getpwuid)": "failed (KeyError)",
+      "start a system tool": "refused (EPERM)",
+      "fork": "refused (EPERM)",
+      "start a thread": "allowed",
+      "make a POSIX semaphore (multiprocessing)": "refused (EPERM)",
+      "signal the parent": "refused (EPERM)",
+      "make an asyncio event loop": "allowed",
+      "write to an inherited descriptor": "allowed"
+    },
+    "confined, processes none: the kernel's refusals": [
+      "file-read-data /Library/Preferences/Logging/com.apple.diagnosticd.filter.plist",
+      "file-read-data /Library/Preferences/com.apple.networkd.plist",
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/hosts",
+      "file-read-data /private/etc/passwd",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data <scratch>/private",
+      "file-read-data <scratch>/private/secret.txt",
+      "file-read-data ~",
+      "file-write-create <scratch>/granted/probe.txt",
+      "file-write-create <scratch>/private/probe.txt",
+      "ipc-posix-sem-create /mp-gmjd00mm",
+      "mach-lookup com.apple.diagnosticd",
+      "mach-lookup com.apple.logd",
+      "mach-lookup com.apple.system.notification_center",
+      "mach-lookup com.apple.system.opendirectoryd.libinfo",
+      "mach-priv-task-port self",
+      "network-outbound /private/var/run/mDNSResponder",
+      "network-outbound <unix-socket>/agent.sock",
+      "network-outbound remote:*:<test-port>",
+      "network-outbound remote:*:<test-port>",
+      "process-fork"
+    ]
+  },
+  "learn": {
+    "default worker": {
+      "spawn_to_listed_ms": 1413.4,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "resident MB": 31.4,
+      "exit": 0
+    },
+    "worker denials": [
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/passwd",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data /usr/share/locale/UTF-8/LC_CTYPE",
+      "mach-lookup com.apple.system.notification_center",
+      "mach-lookup com.apple.system.opendirectoryd.libinfo"
+    ],
+    "log settle s": 2.0
+  },
+  "worker": {
+    "bare": {
+      "spawn_to_listed_ms": 1070.2,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "allowed",
+        "write beside that file": "allowed",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "allowed",
+        "start a system tool": "allowed"
+      },
+      "resident MB": 31.7,
+      "exit": 0
+    },
+    "confined": {
+      "spawn_to_listed_ms": 730.3,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "denied",
+        "write beside that file": "denied",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "denied",
+        "start a system tool": "allowed"
+      },
+      "resident MB": 27.3,
+      "exit": 0
+    },
+    "confined, network internet": {
+      "spawn_to_listed_ms": 2353.5,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "denied",
+        "write beside that file": "denied",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "allowed",
+        "start a system tool": "allowed"
+      },
+      "resident MB": 27.9,
+      "exit": 0
+    },
+    "a confined worker ends when its request pipe closes": {
+      "ended": true,
+      "exit": 0,
+      "after ms": 32.3
+    }
+  },
+  "cost": {
+    "interpreter start, bare": {
+      "median_ms": 47.0,
+      "max_ms": 167.8
+    },
+    "interpreter start, confined": {
+      "median_ms": 133.9,
+      "max_ms": 265.0
+    },
+    "worker spawn to listed, bare, median ms": 872.9,
+    "worker spawn to listed, confined, median ms": 823.5
+  },
+  "descriptors": {
+    "bare": {
+      "dup2 to a different number": "open",
+      "dup2 to the same number": "closed",
+      "no action, close-on-exec": "closed",
+      "no action, inheritable": "open",
+      "subprocess pass_fds": "open"
+    },
+    "behind the prefix": {
+      "dup2 to a different number": "open",
+      "dup2 to the same number": "closed",
+      "no action, close-on-exec": "closed",
+      "no action, inheritable": "open",
+      "subprocess pass_fds": "open"
+    }
+  },
+  "nested": {
+    "inside an allow-default sandbox": {
+      "inner sandbox-exec": "sandbox-exec: sandbox_apply: Operation not permitted",
+      "the PDF preview's probe": "found no backend"
+    },
+    "inside the plan's worker profile": {
+      "inner sandbox-exec": "sandbox-exec: sandbox_apply: Operation not permitted"
+    }
+  },
+  "real": {
+    "bare": {
+      "spawn_to_listed_ms": 5594.3,
+      "plugins listed": 3,
+      "errors": [],
+      "info": 200,
+      "viz-model": {
+        "status": 200,
+        "bytes": 6513,
+        "sha256": "2d842cf0065bd259969b59eede205614baaed00026fa637b9d92fe12daf5baec",
+        "handler_ms": 18079.7
+      },
+      "resident MB": 105.2,
+      "exit": 0,
+      "charts": {
+        "pool.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 2,
+          "sha256": "b3b980b3c9eb1c05e188549fcf7775ee3a396ecd00734f4768c86211c13526f1"
+        },
+        "agent.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 1,
+          "sha256": "689f0ee655f18895816ef0c491ddcd40814d1dd1b8d336a09e66f6172526589c"
+        }
+      },
+      "chart host calls": ["host.detect_builtin", "host.agent_charts"]
+    },
+    "confined": {
+      "spawn_to_listed_ms": 4422.8,
+      "plugins listed": 3,
+      "errors": [],
+      "info": 200,
+      "viz-model": {
+        "status": 200,
+        "bytes": 6513,
+        "sha256": "2d842cf0065bd259969b59eede205614baaed00026fa637b9d92fe12daf5baec",
+        "handler_ms": 13421.8
+      },
+      "resident MB": 111.6,
+      "exit": 0,
+      "charts": {
+        "pool.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 2,
+          "sha256": "b3b980b3c9eb1c05e188549fcf7775ee3a396ecd00734f4768c86211c13526f1"
+        },
+        "agent.jsonl": {
+          "status": 200,
+          "has summary": true,
+          "charts": 1,
+          "sha256": "689f0ee655f18895816ef0c491ddcd40814d1dd1b8d336a09e66f6172526589c"
+        }
+      },
+      "chart host calls": ["host.detect_builtin", "host.agent_charts"]
+    },
+    "confined: the kernel's refusals": [
+      "file-read-data /dev/dtracehelper",
+      "file-read-data /private/etc/passwd",
+      "file-read-data /private/etc/ssl/openssl.cnf",
+      "file-read-data /usr/share/locale/C.UTF-8/LC_CTYPE",
+      "file-read-data /usr/share/locale/UTF-8/LC_CTYPE",
+      "mach-lookup com.apple.system.notification_center",
+      "mach-lookup com.apple.system.opendirectoryd.libinfo"
+    ],
+    "load_average": 325.1
+  },
+  "hardened launcher": {
+    "signature": "ad-hoc, Hardened Runtime enabled, codesign verified",
+    "backend": {
+      "macos": "26.5.2",
+      "sandbox_exec": true,
+      "applies": true
+    },
+    "confined worker": {
+      "spawn_to_listed_ms": 1493.2,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "denied",
+        "write beside that file": "denied",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "denied",
+        "start a system tool": "allowed"
+      },
+      "resident MB": 31.5,
+      "exit": 0
+    },
+    "worker pipe closure": {
+      "ended": true,
+      "exit": 0,
+      "after ms": 6.3
+    },
+    "descriptors behind the prefix": {
+      "dup2 to a different number": "open",
+      "dup2 to the same number": "closed",
+      "no action, close-on-exec": "closed",
+      "no action, inheritable": "open",
+      "subprocess pass_fds": "open"
+    }
+  },
+  "APFS identity": {
+    "file system": "apfs",
+    "reclone of another repository kept the device and inode": "0 of 5",
+    "the clone holds a back-pointer to its real linked worktree": true,
+    "after that worktree is moved by hand, to its new path": false
+  },
+  "watchdog": {
+    "running before the server is killed": {
+      "leader": true,
+      "target": true,
+      "its child": true
+    },
+    "running 0.5 s after": {
+      "leader": false,
+      "target": false,
+      "its child": false
+    }
+  }
+}
