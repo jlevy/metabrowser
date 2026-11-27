@@ -6,8 +6,8 @@ base:
     - linear
     - Bug
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: Stabilize the test suite under machine load
 bead_id: is-01m2gb3gpn7vcsw0as4xa243tg
 external_id: 0ec06507-cca1-4389-a123-11079aee3f0d
@@ -15,7 +15,7 @@ external_key: OS-607
 external_url: https://linear.app/finterm-ai/issue/OS-607/stabilize-the-test-suite-under-machine-load
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-27T10:03:55.974Z
+remote_updated_at: 2026-11-27T10:50:41.966Z
 state: linked
-synced_at: 2026-11-27T10:03:56.376Z
+synced_at: 2026-11-27T10:50:42.193Z
 type: lk
