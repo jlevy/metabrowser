@@ -119,13 +119,16 @@ def stacks_scenario(origin: Origin, *, long_author: bool = False) -> dict[str, A
 
     answers = files_scenario(origin)
     # Keep both stacks in the first viewport, with a newer standalone PR above them.
+    # Boost an open member: Open is scanned first, so the first stack snapshot already
+    # ranks #286 above #300 and assigns their shared #10 to #286. A later closed scan
+    # may move a heading without changing snapshot ownership.
     items = [
         *answers["api"][list_page("all")]["body"],
         *answers["api"][list_page("all", 2)]["body"],
     ]
     newest = parse_stamp(generated_item(106)["updated_at"])
     updates = {
-        8: utc_stamp(newest - timedelta(seconds=15)),
+        7: utc_stamp(newest - timedelta(seconds=15)),
         5: utc_stamp(newest - timedelta(seconds=30)),
         105: utc_stamp(newest - timedelta(seconds=5)),
     }
