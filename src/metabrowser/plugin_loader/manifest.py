@@ -407,13 +407,18 @@ class TableSourceSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: str = Field(..., description="A [[kind]].id this plugin declares.")
+    kind: str = Field(..., description="A [[kind]].id this plugin declares, or folder.")
     adapter: str = Field(
         ...,
         description=(
             "Python callable in ``module.path:callable`` form that takes a TableHandle and "
             "returns a TableSource. Recorded as text and imported on first use."
         ),
+    )
+    offer: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$",
+        description="For folder tables, a bounded predicate receiving the directory path.",
     )
 
 
@@ -579,7 +584,11 @@ class PluginManifest(BaseModel):
         local_kinds = {kr.id for kr in self.kind}
         source_kinds: set[str] = set()
         for spec in self.table_source:
-            if spec.kind not in local_kinds:
+            if spec.kind == "folder" and spec.offer is None:
+                problems.append("a folder table source requires an offer")
+            elif spec.kind != "folder" and spec.offer is not None:
+                problems.append("only a folder table source can declare an offer")
+            if spec.kind not in local_kinds and spec.kind != "folder":
                 problems.append(
                     f"table_source kind '{spec.kind}' is not a [[kind]] this plugin declares"
                 )

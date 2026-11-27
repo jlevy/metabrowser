@@ -11,4 +11,6 @@
 // view and table-model.js the decisions it draws; styles.css holds the view's own rules,
 // and static/styles.css the Data Tables component they build on
 // (docs/design-system.md, "Data Tables").
+
+export { renderTableCatalog } from "./table-catalog.js";
 export { mountTable } from "./table-view.js";

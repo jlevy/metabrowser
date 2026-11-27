@@ -50,7 +50,7 @@ route-backed selections of `cli/show_cli.py` register them.
 
 | Kind | Matches | Views (default first) and keys | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O` and Treemap `M` on every folder | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes |
+| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O`, Table where the SoftSchema collection offer accepts the folder, then Treemap `M` | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes; Table reads `softschema/collection` and the shared table routes |
 | `markdown` | `.md` | Document `V`, Source `S` | File envelope and KPress render. Frontmatter and verified YAML and JSON fences use `structured/parsed?projection=nodes` with `frontmatter=1` or `fence_line` for embedded Table, Tree and exact Source |
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
@@ -246,9 +246,10 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `agents/sessions`, `agents/session`, `agents/records`, and `agents/live`, the catalog of
 Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-catalog));
 `table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
-([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`, `sqlite/schema`,
-and `sqlite/children`, a SQLite database’s Info and Schema views and its tables as
-container children
+([Table Sources](arch-plugin-system.md#table-sources)); `softschema/collection`, which
+reports a served folder’s index state and contract tables; `sqlite/info`,
+`sqlite/schema`, and `sqlite/children`, a SQLite database’s Info and Schema views and
+its tables as container children
 ([Navigation Containers](arch-plugin-system.md#navigation-containers)); `pdf/preview`
 and `pdf/preview-image`, a PDF’s first page as a PNG the server draws
 ([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)); and

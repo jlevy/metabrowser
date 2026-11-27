@@ -108,6 +108,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "image",
         "markdown",
         "pdf",
+        "softschema",
         "sqlite",
         "structured",
         "table",
@@ -155,6 +156,9 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "builtin_plugins/markdown/markdown-worker-client.js",
         "builtin_plugins/markdown/markdown-worker-operations.js",
         "builtin_plugins/markdown/reconciliation-coordinator.js",
+        "builtin_plugins/softschema/manifest.toml",
+        "builtin_plugins/softschema/index.js",
+        "builtin_plugins/table/table-catalog.js",
         "data/file-diff-format/file-diff.schema.json",
         "builtin_plugins/folder/file_type_summary.css",
     )

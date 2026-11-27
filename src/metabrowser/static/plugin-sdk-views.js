@@ -305,14 +305,17 @@
    * (builtin_plugins/github/urls.py). Null leaves the choice to the file's views.
    *
    * @param {Target | null | undefined} target
-   * @returns {"source" | null}
+   * @returns {"source" | "table" | null}
    */
   function preferredView(target) {
     if (!target) {
       return null;
     }
     const plain = (target.query || "").split("&").includes("plain=1");
-    return plain || parse(target.fragment) ? "source" : null;
+    if (plain || parse(target.fragment)) {
+      return "source";
+    }
+    return new URLSearchParams(target.query).has("table") ? "table" : null;
   }
 
   /**
@@ -2959,6 +2962,32 @@
     return url ? new URL(url, global.location.href).href : null;
   }
 
+  /**
+   * Paint an inline index status with the same spinner and typography as the Files scan.
+   * Repeated calls keep the nodes and change the live text only when needed.
+   * @param {HTMLElement} container
+   * @param {string} message
+   */
+  function renderIndexProgress(container, message) {
+    container.classList.add("index-progress");
+    const previous = container.querySelector(".index-progress-text");
+    if (previous) {
+      if (previous.textContent !== message) {
+        previous.textContent = message;
+      }
+      return;
+    }
+    container.setAttribute("role", "status");
+    container.setAttribute("aria-live", "polite");
+    const spinner = container.ownerDocument.createElement("span");
+    spinner.className = "index-progress-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    const text = container.ownerDocument.createElement("span");
+    text.className = "index-progress-text";
+    text.textContent = message;
+    container.replaceChildren(spinner, text);
+  }
+
   /** @type {Window["metabrowser"]["mountStructuredNodeTable"]} */
   const mountStructuredNodeTable = async (...args) => {
     const { mountNodeTable } = await import("./structured-node-table.js");
@@ -3007,6 +3036,7 @@
     langForExtension: langForExtension,
     langForPath: langForPath,
     partialNoticeHtml: partialNoticeHtml,
+    renderIndexProgress,
     renderSourceView: renderSourceView,
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
     renderTextTruncationWarning: renderTextTruncationWarning,

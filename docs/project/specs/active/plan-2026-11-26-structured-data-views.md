@@ -68,6 +68,10 @@ Source exposes differences in spelling and layout.
   side.
   [Markdown diff](../../../../src/metabrowser/builtin_plugins/diff/diff-markdown.js) and
   [structured diff](../../../../src/metabrowser/builtin_plugins/diff/diff-structured.js).
+- The SoftSchema collection currently supplies the table plugin with an inline Tree
+  renderer for nested values.
+  A projected or conformed value can differ from the document it came from.
+  [Collection view](../../../../src/metabrowser/builtin_plugins/softschema/index.js).
 
 ## One Projection for Both Formats
 

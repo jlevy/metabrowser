@@ -79,6 +79,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown, diff
   markdown: requires pdf
+  softschema: requires structured, table
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents
@@ -103,7 +104,7 @@ $ metab --doctor --plugins-dir pair 2>/dev/null
 $ metab --doctor --json --plugins-dir pair 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 19,
+  "plugin_count": 20,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
   ],
@@ -145,7 +146,7 @@ so `N` alone is free in every kind, a pull request’s included, and the plugin 
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 18,
+  "plugin_count": 19,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -185,7 +186,7 @@ refuses a view that takes it, a Preview included.
 $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 17,
+  "plugin_count": 18,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -226,7 +227,7 @@ The plugin is not loaded, so `plugin_count` counts the built-in plugins alone.
 $ metab --doctor --json --plugins-dir reserved 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 17,
+  "plugin_count": 18,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -292,6 +293,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown, diff
   markdown: requires pdf
+  softschema: requires structured, table
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents

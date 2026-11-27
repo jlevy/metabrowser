@@ -19,11 +19,13 @@ knowledge base browser does, without a database server.
 
 The table reads from a **collection index** that a built-in `softschema` plugin keeps in
 Metabrowser’s cache.
-The index rolls up every record and every schema under the collection’s root once: it
-reads each record, resolves its schema, validates it, and repairs in memory what can be
-repaired. After that, it updates only what changed.
-A request reads the index, never the files, so a warm table opens as fast as any other
-table, and a bad record costs one row’s values, never the table.
+The folder preview reads a bounded eager SoftSchema scan.
+The first implementation may keep every admitted record, schema, value, body, and link
+in memory and serve the shared Table routes from that index.
+Universe is its real acceptance corpus.
+The later design targets collections of 100,000 to millions of rows.
+It projects values in bounded batches and can fetch full detail from the selected source
+revision.
 
 The format work lives in SoftSchema, not here.
 SoftSchema gains a collection API that scans a tree, binds each record to its schema,
@@ -32,6 +34,40 @@ plugin calls it and keeps only what is Metabrowser’s: where the index is store
 worker that builds it, the table mapping, references, and the views.
 Each SoftSchema release that makes this faster or more tolerant reaches Metabrowser as
 an upgrade, and Paraverse and the knowledge base pipelines can use the same API.
+
+## Shared Browser Components
+
+Use the Files scan progress component for the initial index.
+It supplies the same spinner, type and muted color.
+Keep the last published catalog and grid visible during refresh.
+Use the same table catalog and grid as SQLite, with addressable links to tables, records
+and their source files.
+Use the shared parent-navigation button for returns to the table or catalog.
+[Design system](../../../design-system.md#data-tables).
+
+Nested values will use the main app’s schema-free structured-data views.
+Equivalent JSON, flow YAML and block YAML get the same Table and Tree presentation.
+Source opens the original file or excerpt when a field has a reliable source address.
+The main app also shares these views with Markdown frontmatter, standalone files and
+diffs. [Structured data views plan](plan-2026-11-26-structured-data-views.md).
+
+Paraverse’s catalog pairs entity links with numeric totals.
+The shared Metabrowser catalog applies that pattern to database tables and collection
+contracts.
+Paraverse also keeps a record’s identity visible as columns disappear and uses
+compact sub-tables for lists of objects.
+Preserve the record address in Metabrowser’s windowed grid and carry the compact nested
+layout into the core structured views.
+Use on-demand drill-down for deeper values and large lists.
+Paraverse’s graph labels and edge groups belong to its domain model.
+[Paraverse browser architecture](https://github.com/jlevy/paraverse/blob/main/docs/project/architecture/arch-2026-10-24-kb-browser.md).
+
+Keep the shared catalog and grid in the Metabrowser Table plugin.
+Evaluate a cross-application package after the apps have a common model for row
+identity, paging, and navigation.
+Paraverse reads graph-specific routes and uses hash navigation.
+Metabrowser’s windowed table is also used for SQLite, delimited files and structured
+data.
 
 ## Goals
 
@@ -68,7 +104,8 @@ an upgrade, and Paraverse and the knowledge base pipelines can use the same API.
 - **Executing models.** Validation uses compiled schemas only; no Pydantic or Zod model
   is imported, so opening a folder runs no code from it.
 - **Collections on a Git pin.** The index reads a served folder.
-  A Git revision’s folders offer no view today, and this plan keeps that.
+  The first rollout serves filesystem folders.
+  Phase 5 covers cached Git revisions.
 - **Full-text search across collections**, and graph drawings of references.
 - **Domain styling.** Kind colors, groupings, and hand-picked columns belong to a
   downstream plugin (Paraverse’s), which can build on this one.
@@ -116,12 +153,13 @@ The facts that shape this plan:
        ▼
   collection index  ◄── background builder (single-flight per root)
   plugins/softschema/collections/<root-digest>/index.sqlite
-    files    one row per file seen: stat, profile, contract, schema, payload, state
-    schemas  one row per compiled schema: stat, sha256, contract, field model
-    links    record → record, by ID, with the field path that holds it
+    files    one row per observed path and revision
+    schemas  one row per compiled schema and binding identity
+    cells    projected row values and labels by stable row key
+    links    source row and field path to target ID
        │
        ▼
-  in-memory tables (one per contract) ──► TableSource ──► /api/plugin/table/*
+  indexed tables (one per contract) ───► TableSource ──► /api/plugin/table/*
                                       └─► /api/plugin/softschema/{collection,describe}
 ```
 
@@ -135,7 +173,7 @@ The facts that shape this plan:
 | In-memory repair and conform, record states | Yes | — |
 | Field model (types, lists, enums, `$defs`, patterns) | Yes, extending `SchemaView` | Maps it onto `TableField` |
 | Incremental refresh by stat and schema digest | Yes, as a refresh that reports what changed | Decides when to call it |
-| Persisting the index | A serializable snapshot | Stores it in the plugin cache directory |
+| Persisting the index | Runtime-local snapshot for eager scans, proposed stream of observations for larger trees | Owns SQLite generations, projected cells, ID lookups, and link indexes |
 | Collection root, folder offer, worker thread | — | Yes |
 | Tables per contract, references, `FieldRef`s | — | Yes |
 | Routes, views, goldens | `softschema` CLI over a folder, with its own goldens | Yes |
@@ -222,11 +260,10 @@ fails on a string type, `conform` with writing off.
 A repaired or conformed record shows the repaired values and is marked so.
 Nothing is written to the record’s file.
 
-Records are processed in an order that fills a table quickly (the opened folder first),
-and the index is committed in batches, so rows appear as the build runs.
-If the measured C-first build is still too slow for a first open, a schema-free read of
-the opened folder first, with verdicts after, is the fallback design; it is not planned
-until a measurement asks for it.
+Prioritize declarations and cells under the opened folder on a cold build.
+Publish the coverage of that folder separately from collection-wide validation and link
+resolution. A row can appear with validation pending.
+Only a completed structural check can give it a passing verdict.
 
 ### Record States (SoftSchema)
 
@@ -250,55 +287,81 @@ with a mismatch mark, filters and sorts as text, and never affects another cell.
 
 ### The Index
 
-SoftSchema’s collection API returns the index’s content (per file: stat, profile,
-metadata, payload, state, errors, repairs; per schema: digest, contract, field model)
-and refreshes it against the tree, reporting what changed.
-The plugin persists it: one SQLite database per collection root, at
-`plugin_cache_directory("softschema")/collections/<digest of the root's real path>/`.
-SQLite gives atomic incremental updates and survives a crash mid-build.
-The agents plugin’s summary store is the precedent.
-Key cache reuse by the resolved served boundary, collection root, and effective ignore
-policy.
-The same collection path can produce different results under a different boundary
-or policy. The tables below are the plugin’s storage; the invalidation rules are
-SoftSchema’s refresh, which the plugin runs.
+The preview stores one serialized eager scan in SQLite, restores it on startup, and
+groups its materialized records in memory.
+Its worker still opens every eligible file on a cold scan.
+An eager in-memory index is sufficient for the first implementation.
+The steps below describe the later large-collection index and depend on the proposed
+operations in `docs/softschema-collection-design.md` in
+[the SoftSchema collection change](https://github.com/jlevy/softschema/pull/78).
 
-- **`meta`**: the index format version, the plugin’s version, SoftSchema’s version, and
-  the root. A mismatch discards the index and rebuilds it.
-- **`files`**: one row per candidate file: relative path, device, inode, size,
-  modification time, kind (record, schema, other), profile, contract, envelope, declared
-  status, schema path, host keys, payload as JSON, state, error records, repairs, and
-  the digest of the schema its verdict was computed against.
-- **`schemas`**: path, stat, SHA-256 of its content, contract, load error, and its field
-  model (below).
-- **`links`**: source record, field path, target ID; resolved to target rows when the
-  tables load.
+1. **Open the catalog.** Keep the automatic folder offer bounded.
+   A host can opt a root into collection browsing and specify a fallback catalog, such
+   as `_schemas/` containing compiled YAML or JSON, or a JSON-only catalog in a tree
+   that guarantees that convention.
+   Key the index by served boundary, collection root, effective ignore and catalog
+   policies, and storage and reader versions.
+   An ordinary folder pays only for the offer.
+   The default discovers all supported schema suffixes within the root.
+   A safe explicit record pointer can bind outside a narrow fallback catalog.
+   Publish known schemas early with count and membership marked unknown.
+   Unbound records can introduce additional contracts.
+2. **Index references.** Stream candidate paths and revisions to the staging database.
+   Ask SoftSchema to inspect each declaration and record its profile, contract,
+   envelope, status, and pointer.
+   Preserve unknown membership and per-file diagnostics.
+   Inspection of pure YAML and JSON can require reading the whole file.
+   Discard parsed values as each file finishes.
+   Markdown inspection can stop at the closing fence when the body is outside the
+   request. No full-tree list or collection-sized payload buffer should be needed to
+   serve the first page.
+3. **Project values and links.** For each record needed by the table, ask SoftSchema for
+   its payload at the observed revision.
+   Write the requested or indexed cells, label, source path, state, diagnostics, and
+   binding identity. Retain enough source material to reconform after a schema change, or
+   reread the affected file.
+   Store IDs with all matching row keys and outgoing target IDs with source row keys and
+   nested field paths. Index target IDs for backlink and `ref=` queries.
+   See [References](#references) for duplicate IDs and cross-folder lookup.
+   Exact sorting, filtering, and counts require coverage of all relevant rows.
+4. **Publish a generation.** Write batches under a staging generation.
+   On the first build a published partial generation can serve the opened folder, with
+   explicit coverage for rows, ordering, links, and counts.
+   During refresh keep the previous generation readable until the replacement is
+   published atomically.
+   A cancelled walk cannot remove unseen members.
+   Reconcile deletions only within a fully listed scope.
+   Rebind fallback records when the set of eligible schema digests changes, even if
+   their source files did not change.
+   Bind rows, cursors, link targets, and diagnostics in each response to the same
+   published generation.
+5. **Refresh one changed file.** A watcher can mark a path dirty and coalesce repeat
+   notifications. Verify its current revision and inspect it through the same SoftSchema
+   reader used for a cold build.
+   In one transaction, remove that path’s old contract membership, projected cells, ID,
+   and outgoing edges, then insert its new facts.
+   Update the affected contract counts and indexes.
+   Record target ID changes on both sides so incoming links and duplicate-target status
+   resolve correctly when a file is renamed, changes ID, or changes contract.
+   A schema change uses the reverse binding index to revalidate affected rows.
+   A changed fallback catalog can also affect records that previously had an ambiguous
+   or missing binding. Update only the relevant rows and advance the published
+   generation. Retain hot metadata and pages over the durable SQLite index and invalidate
+   dependent pages, sort indexes, and backlinks.
+   Readers already using the previous generation finish against it.
+   A periodic reconciliation catches missed events.
+   An overflow or loss of coverage schedules a scan of the affected scope.
+6. **Load detail.** Pages, cards, and backlinks read the projection.
+   When full values or the Markdown body are requested, materialize just the selected
+   record through SoftSchema’s revision-checked reader.
+   A changed or missing source must yield a stale or gone result and schedule a refresh.
+   A cached old revision can supply detail only when its bytes and binding match the
+   requested generation.
 
-**Invalidation**, all by comparing what is stored with what is there:
-
-- A file whose stat changed is reread and revalidated.
-- A file that appeared is sniffed; one that disappeared loses its row and its links.
-- A schema whose digest changed sets its records’ verdicts to `pending`; their payloads
-  are kept, so no record is reread.
-- Records whose schema pointer or contract changed are rebound.
-
-**Freshness.** The source’s `generation()` identifies the snapshot the worker published.
-Filesystem changes and scheduled checks trigger the worker’s stat walk.
-Requests read the generation alongside the corresponding rows and links.
-A walk bounded by a measured file cap stops there, and the overview says the collection
-was cut.
-
-**Unavailable cache.** When `plugin_cache_directory` raises, the index lives in memory
-for the server’s life and the overview says `cache: unavailable`, as the agents catalog
-does.
-
-**Builder.** One worker thread per root, single-flight, tied to the served root with
-`register_root_callback`, and stopped at its next file when the root changes.
-Requests never wait for it: a request answers from the index as it stands, and a page
-built from an incomplete index says so (a new `PageReason`, `indexing`), so the view
-shows progress and refetches.
-`metab --api` and the goldens wait for a complete index, bounded, as the agents catalog
-`complete()` does.
+Keep a bounded in-memory index available for small collections when the plugin cache is
+unavailable. If a large collection cannot spool to disk, report the cache condition and
+extent of coverage. Record the time to first useful page and peak memory before choosing
+batch sizes and retained fields.
 
 ### Tables and Fields
 
@@ -413,7 +476,9 @@ one commit.
 | `/api/plugin/softschema/collection?path=<folder>` | Root, build and cache state, tables with counts and coverage, schemas, problem counts |
 | `/api/plugin/softschema/describe?path=<folder>&table=<contract>` | The field model with `$defs`, for the record view |
 
-Each answers from the index; none reads a record on the request path.
+Table lists, schemas, row pages, cards, and indexed relationships read the published
+generation. Full record detail may load its observed source revision as described in
+[The Index](#the-index).
 
 ### Bounds
 
@@ -446,8 +511,10 @@ inside their functions, as the GitHub sidekick does.
 4. **The collection API goes in SoftSchema first**, with the shared contract and CLI
    tested on Python and TypeScript under SoftSchema’s parity process.
    The plugin starts once a release has it.
-5. **Three phases:** upgrade and measure; the collection API in SoftSchema; then the
-   plugin, its table, overview, and record view.
+5. **Ship the folder table on the eager collection API.** The first implementation may
+   keep all admitted data in memory.
+   Deliver disk-backed projection, bounded scrolling, and incremental maintenance for
+   larger collections in a subsequent phase.
 
 ## Implementation Plan
 
@@ -509,25 +576,52 @@ What Metabrowser needs from it:
 The table works end to end over any folder of records, with every state visible, and
 browses as Paraverse’s does.
 
+The folder preview uses the API in the
+[SoftSchema collection change](https://github.com/jlevy/softschema/pull/78). The shared
+grid opened nine contract tables covering 132 records on Patch the Conference and 18
+contract tables covering 4,971 records on Universe.
+The first Universe scan under concurrent test load exceeded the CLI request deadline.
+The background index subsequently supplied all 18 cached tables while another refresh
+ran.
+The preview tests pin cross-folder links, exact inbound relationship filters, source
+links, and stable generations.
+The full rollout requires a released SoftSchema dependency.
+
+Use the bounded eager snapshot for this phase.
+It can retain a complete collection in memory and rebuild its table projection on
+refresh. The first deliverable is a working path from the folder offer through a linked
+row and back on Universe.
+A narrow schema catalog, disk-backed row projection, page eviction, and single-row index
+updates belong to the later phase.
+
+**Checked in the preview**
+
+- [x] The shared Table routes return a folder schema, rows, and a record with a source
+  path. The
+  [CLI golden](../../../../tests/golden/cli-api-softschema-collection.tryscript.md)
+  exercises the normal entry points.
+- [x] The folder source registers its offer, folder handle, table adapter, collection
+  data hook, and indexing state through the existing plugin and shared Table surfaces.
+- [x] The [folder source tests](../../../../tests/test_softschema_table_source.py) cover
+  cross-folder references, inbound filters, and generation changes.
+- [x] The preview opened the contract tables on Universe and Patch the Conference.
+  The cold-start limitation above is recorded separately from the warm result.
+- [x] The
+  [Universe route run](../../../../explorations/softschema-projection/actual-routes.md)
+  exercised an edit that changed both a displayed value and a reference.
+  The next generation preserved the row key and updated both inbound counts.
+
+**Remaining first implementation work**
+
 - [ ] Fixture collection `tests/fixtures/softschema-collection/`: a small knowledge base
   with schemas in `_schemas/`, records nested in subfolders, Markdown and YAML and JSON
   records, references between tables, two versions of one contract, and one record of
   each bad kind: unparseable, repairable, conformable, invalid, unbound, malformed
   metadata, ambiguous envelope, a schema pointer leaving the served root, a
   contract-only record, and an invalid schema.
-- [ ] Core: a `folder` table source with an offer in the manifest model and validator;
-  the directory branch of `open_table_source` and the directory `TableHandle`; the
-  `table` query key in the table routes and the table view’s address; the `indexing`
-  page reason in the protocol and the view.
-- [ ] `builtin_plugins/softschema/`: manifest, the offer, collection root resolution,
-  the index store over SoftSchema’s collection API, the builder thread, learned prefixes
-  and links, and the `TableSource` over the in-memory tables (on the table plugin’s
-  `memory.py`).
-- [ ] The `collection` route, and `complete()` for `metab --api`.
-- [ ] Goldens: `--api` over the table routes and the `collection` route on the fixture,
-  including the Problems table and a subfolder filter; `--show` on the fixture’s folder;
-  an incremental case that edits a record, a schema, and adds and removes a file between
-  requests.
+- [ ] Extend the existing goldens with the full diagnostic fixture, including the
+  Problems table and a subfolder filter.
+  Cover a schema edit and file additions and removals between requests.
 - [ ] The Overview: tables, counts, coverage, schemas, problems, build and cache state.
 - [ ] The `describe` route and the SoftSchema record view: nested shapes, sub-tables,
   references and back-references with their paths, errors at fields, repairs, the body,
@@ -535,29 +629,130 @@ browses as Paraverse’s does.
 - [ ] Hover cards for references, from the table plugin’s card route.
 - [ ] Interaction sessions over the production modules for the overview’s and record
   view’s states, with goldens; paint exemptions only for what is paint.
-- [ ] A check against both real knowledge bases (Universe and Patch the Conference),
-  recorded in the plan, without committing their data.
-- [ ] Parity rows, the
-  [views, models, and routes map](../../architecture/arch-views-models-routes.md), a
-  user guide section, and a changelog fragment.
+- [ ] Complete the rollout documentation and add parity evidence for the planned
+  Overview and SoftSchema record detail where they introduce new surfaces.
 
-Phase 3 is the largest; if its stack passes eight pull requests, the overview and record
-view split into a fourth phase.
+### Phase 4: Bounded Tables for 100,000 to Millions of Rows
+
+This phase is proposed.
+The goal is continuous scrolling in either direction through a large table, with bounded
+work per page and efficient changes to individual rows.
+
+1. Use the proposed upstream catalog and reference operations to populate the staged
+   SQLite projection in [The Index](#the-index).
+   Index the sort and filter inputs used by the first measured queries.
+   Preserve the first phase’s row identity, null and missing semantics, query ordering,
+   link behavior, and count coverage.
+2. Keep the existing [row route contract](../../../../src/metabrowser/table_source.py).
+   A request supplies its sort, filters, selected columns, `after`, and `limit`. The
+   response supplies `next_after`, generation, effective limit, and count coverage.
+   The [Table view](../../../../src/metabrowser/builtin_plugins/table/table-view.js)
+   already prefetches as the viewport approaches the held rows and renders a window with
+   overscan. Its
+   [page model](../../../../src/metabrowser/builtin_plugins/table/table-model.js)
+   currently appends every decoded page and stops a join when the generation changes.
+   Windowing bounds mounted DOM rows today.
+   A long scroll still retains all its cells.
+3. Use the
+   [commit-history window](../../../../src/metabrowser/static/git-history-window.js) as
+   the working precedent.
+   Commits keeps a bounded decoded-page cache and rebases logical ordinals onto shorter
+   physical scroll segments.
+   Its [panel](../../../../src/metabrowser/static/git-panel.js) remembers visited page
+   cursors for direct replay and follows page links into new territory.
+   Give Table a measured row and byte budget for retained pages.
+   Keep page anchors for the active query and generation so an evicted page can be
+   fetched again when scrolling back.
+   Resolve a row by its stable key when restoring focus after opening detail.
+   Measure whether saved forward cursors suffice or an indexed seek is needed.
+   Commit graph lane checkpoints are specific to the history view.
+4. Implement the single-file transaction in [The Index](#the-index), including ID and
+   backlink changes. A refresh invalidates affected query pages and marks an old
+   continuation expired if it cannot be resumed consistently.
+5. Run the [scale acceptance](#end-to-end-scale-acceptance) with a wide fixture at
+   100,000 rows and then at million-row scale on suitable hardware.
+   Scroll far past the page cache, reverse across an eviction, open a linked row, and
+   return to the original position.
+   Measure retained client cells and bytes, mounted rows, peak worker memory, and reads
+   per page. Repeat a one-file update and compare changes to rows and links with a fresh
+   build.
+
+### Phase 5: Tables over Cached Git Revisions
+
+Add a bounded collection reader that enumerates regular blobs from the selected Git tree
+and opens their content through the existing blob window reader.
+SoftSchema’s reader contract supplies paths and bytes to its existing discovery,
+binding, and validation steps.
+A missing blob or an exhausted budget makes the scan incomplete.
+Keep the existing deferred-binding behavior for incomplete scans.
+Symlinks and submodules remain outside the collection.
+
+Give the folder offer, collection route, and table routes one pinned-folder handle.
+The offer probes bounded prefixes.
+Opening Table starts the index.
+Key the published index by repository identity, pinned revision and root tree, and the
+collection policy. Reuse it for the immutable pin.
+Scope each table to the opened folder while retaining the collection-wide identities
+needed for references.
+Carry encoded Git paths through table and source links so navigation stays in the
+selected revision.
+
+Exercise the same Universe People table in a filesystem checkout and in a cached Git
+repository at its exact revision.
+Verify sibling-schema discovery, a cross-folder reference and backlink, a source
+permalink, a second revision, and a missing blob.
+[Git architecture](../../architecture/arch-git.md).
 
 ## Testing Strategy
 
 - **Golden transcripts** over the fixture for every route and every record state, as the
   parity registry requires.
-- **Invariant tests**, not restatements: a bad record never removes another record’s
-  row; a changed schema revalidates without rereading records; a second request on an
-  unchanged tree does no parse; the index after an incremental update equals a fresh
-  build of the same tree; no route reads a record file.
-  The collection API’s own invariants are tested in SoftSchema.
+- **Invariant tests.** A bad record leaves other rows available.
+  A schema-only edit revalidates affected records and preserves unrelated projections.
+  Warm table pages perform no payload reads.
+  Opening full detail performs at most one record read.
+  After a complete refresh, the index agrees with a fresh build of the same tree.
 - **Fault injection:** a cache directory that cannot be created, a build cancelled
   mid-pass, a file deleted between the walk and the read, a schema that changes during a
   build.
 - **Browserless sessions** for the view states, over the exact production JavaScript.
 - **The benchmark** is rerun before any bound changes.
+
+### End-to-End Scale Acceptance
+
+Use the GitHub Universe `kb/` revision pinned in the
+[research brief](../../research/research-2026-11-26-softschema-collection-tables.md#real-collections)
+as the primary real acceptance benchmark.
+Run `metab` against the corpus and open its Table view.
+For the first implementation, exercise folder offer, table discovery, schema, paged
+rows, and navigation to a linked row and back.
+Record cold start and a warm reopen.
+The later scale phase must also meet the early-page, bounded-memory, partial-coverage,
+and incremental-update criteria below.
+Capture the corpus revision, scan policy, parser mode, cache state, and route timings.
+Keep corpus contents out of the repository.
+See the
+[Universe projection and route measurements](../../../../explorations/softschema-projection/README.md)
+for the eager baseline and the reference-first experiment.
+
+| User action | Acceptance evidence |
+| --- | --- |
+| Open `people/` with an empty cache | `--show people` offers Table. Call `/api/plugin/softschema/collection` and `/api/plugin/table/tables` without waiting for the full scan. Observe the catalog and indexing status, then the first usable Person page. Reconcile final per-contract counts and problem paths against an eager scan under the same policy. |
+| Browse and sort people | Use `/api/plugin/table/schema` and `/api/plugin/table/rows` with the returned contract ID and folder path. Project named columns, sort, filter, and follow the returned cursor. Compare the completed result with the eager ordering, including a stable tie-breaker. Repeat warm and record payload reads. |
+| Open a linked organization | Follow an actual affiliation from a Person row to its Organization using the returned table and key. Read the target card and record. Follow a backlink using the rows route with `ref` and `via`. Verify nested field identity, source path, visible folder scope, and collection-wide link resolution. Inspect only the selected record for full detail. |
+| Edit one linked record | On a disposable fixture, change a person’s ID, sort field, and organization in one edit. Repeat the rows, card, record, and filtered inbound-link queries against the newly published generation. Verify that the row moves, the old target loses its backlink, and the new target gains it. Count source reads and row updates to establish that only the changed record was read and its dependent facts were updated. Repeat after a worker restart to check the durable index. |
+| Interrupt and resume a refresh | On a disposable corpus fixture, edit a record and schema, introduce a conflicting fallback schema, remove a target, and cancel midway. Check the normal table routes against a single generation during the refresh, then against a fresh build. Ambiguous, missing, stale, and partially covered targets remain distinguishable. |
+
+Complement Universe with a generated wide tree exceeding the eager scan’s aggregate byte
+or entry bound. Include mixed profiles, late JSON declarations, large Markdown bodies,
+and cross-folder IDs.
+Increase corpus size with the displayed page and worker budgets held fixed.
+Report time to first reference and first usable page, time to complete coverage, source
+bytes and payloads read, peak resident memory, SQLite size, and warm refresh cost.
+The first page must arrive while unrelated records remain unmaterialized.
+Subsequent pages, cards, and backlink queries must use the published projection.
+Reserve `wait=1` for final equivalence checks so it cannot hide the cost of opening the
+first page.
 
 ## Rollout Plan
 

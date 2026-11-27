@@ -5583,7 +5583,9 @@ def _table_source_declarations() -> list[TableSourceDeclaration]:
             )
             continue
         out.extend(
-            TableSourceDeclaration(plugin=plugin.name, kind=spec.kind, adapter=spec.adapter)
+            TableSourceDeclaration(
+                plugin=plugin.name, kind=spec.kind, adapter=spec.adapter, offer=spec.offer
+            )
             for spec in plugin.manifest.table_source
         )
     return out
@@ -5663,8 +5665,15 @@ def _views_for_kind(
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
-    if kind == "folder" and _FOLDER_OFFERS:
-        out = _offered_folder_views(out, target)
+    if kind == "folder":
+        if _FOLDER_OFFERS:
+            out = _offered_folder_views(out, target)
+        # The folder's tab strip groups the two data views before the Treemap.
+        positions = {view["id"]: index for index, view in enumerate(out)}
+        table = positions.get("table")
+        treemap = positions.get("treemap")
+        if table is not None and treemap is not None and table > treemap:
+            out.insert(treemap, out.pop(table))
     elif kind in _FILE_OFFER_KINDS:
         if prefix is None and target is None:
             _warn_offers_never_read(kind)

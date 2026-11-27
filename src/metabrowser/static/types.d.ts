@@ -1065,7 +1065,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
   nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
   normalizeLineEndings(text: string, afterCarriageReturn?: boolean): string;
   parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
-  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | "table" | null;
   refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
   spoken(state: MetabrowserSourceLineAnchorState): string;
 }>;
@@ -2110,6 +2110,8 @@ type MetabrowserSdk = {
     state: { printable: boolean; profile?: string; runtime?: string },
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
+  /** Paint the shared Files-scan progress row. The caller controls visibility and live status. */
+  renderIndexProgress(container: HTMLElement, message: string): void;
   renderTextLoadMoreFooter(data: Record<string, unknown>): string;
   loadStructuredTree(): Promise<StructuredPreviewGlobal & StructuredTreeGlobal>;
   mountStructuredNodeTable(

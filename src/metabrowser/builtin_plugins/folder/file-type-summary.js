@@ -145,6 +145,7 @@ export function mountFileTypeSummary(
         if (envelope?.totals) {
           const status = view.body.querySelector(".file-type-summary-status");
           if (status) {
+            status.classList.remove("index-progress");
             status.textContent = "Could not refresh file types; showing the previous totals.";
             setStatusNotice(status, "warning");
           }

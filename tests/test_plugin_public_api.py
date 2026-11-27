@@ -78,6 +78,8 @@ PLUGIN_API_EXPORTS = {
     "FieldType",
     "Filter",
     "FilterOp",
+    "FolderTableHandle",
+    "FolderTableSourceAdapter",
     "Order",
     "PageReason",
     "RecordNotFoundError",

@@ -71,7 +71,7 @@ assets in static_root:
 ```console
 $ metab --plugins-dir ok --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 18 plugin(s) OK
+metab --doctor: 19 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
@@ -81,6 +81,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown, diff
   markdown: requires pdf
+  softschema: requires structured, table
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents
@@ -128,6 +129,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown, diff
   markdown: requires pdf
+  softschema: requires structured, table
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents
@@ -155,6 +157,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown, diff
   markdown: requires pdf
+  softschema: requires structured, table
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents

@@ -76,12 +76,13 @@ It links each document below and the contributor standards in `docs/`.
   a draft for opening a folder of SoftSchema records as linked tables, one per contract,
   from a cached collection index that a SoftSchema collection API builds and a
   background worker keeps current, so one bad record costs a row, never the table
+- [Shared Table, Tree, and Source views](specs/active/plan-2026-11-26-structured-data-views.md):
+  the main app’s schema-free renderer and navigation for YAML, JSON, Markdown
+  frontmatter, diffs, and collection values
 - [Pull request merge readiness](specs/active/plan-2026-11-26-pull-request-merge-readiness.md):
   a readiness verdict for every open pull request in GitHub’s colors, on its page and in
   the Pulls tab, with operational status (checks, conflicts, reviews, the merge queue)
   modeled apart from the core record, after the background of GitHub’s own model
-- [Shared Table, Tree, and Source views](specs/active/plan-2026-11-26-structured-data-views.md):
-  shared renderers for structured files and Markdown.
 - [Lean language support](specs/active/plan-2026-11-25-lean-language-support.md): Lean
   as a code family with GitHub’s color and a tested port of the official Lean 4 grammar,
   and the [Adding a Language](../adding-a-language.md) recipe and the `mb-*` skills that

@@ -233,6 +233,7 @@ class TableField:
     sort_note: str | None = None
     filterable: bool = False
     numeric: bool = False
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -357,6 +358,8 @@ class TableRecord:
     positional: bool
     referenced_by: tuple[BackrefCount, ...] = ()
     label: str | None = None
+    source_path: str | None = None
+    diagnostics: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,6 +415,16 @@ class TableHandle:
         return future.result()
 
 
+@dataclass(frozen=True, slots=True)
+class FolderTableHandle:
+    """A served directory selected for a folder table source."""
+
+    identity: str
+    path: Path
+    root: Path
+    wait: bool = False
+
+
 class TableSource(Protocol):
     """What a source answers for one file. Every method is synchronous and bounded."""
 
@@ -433,6 +446,7 @@ class TableSource(Protocol):
 
 
 TableSourceAdapter = Callable[[TableHandle], TableSource]
+FolderTableSourceAdapter = Callable[[FolderTableHandle], TableSource]
 
 
 # ── Generations ────────────────────────────────────────────────
@@ -656,7 +670,7 @@ def parse_positional_cursor(after: str) -> tuple[int, str] | None:
 # Parameters the routes read; any other parameter except `f.<field>` is refused, so a
 # misspelled one is an error rather than a silently ignored filter.
 _QUERY_PARAMS = frozenset({"sort", "order", "q", "ref", "via", "cols", "after", "limit"})
-_ROUTE_PARAMS = frozenset({"path", "key", "generation"})
+_ROUTE_PARAMS = frozenset({"path", "table", "key", "generation", "wait"})
 
 
 def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
@@ -861,10 +875,13 @@ def field_wire(item: TableField) -> dict[str, Any]:
         "sort_note": item.sort_note,
         "filterable": item.filterable,
         "numeric": item.numeric,
+        **({"description": item.description} if item.description else {}),
     }
 
 
-def tables_wire(path: str, generation: str, tables: Sequence[TableInfo]) -> dict[str, Any]:
+def tables_wire(
+    path: str, generation: str, tables: Sequence[TableInfo], *, folder: bool = False
+) -> dict[str, Any]:
     return {
         "type": "table_list",
         "path": path,
@@ -876,7 +893,7 @@ def tables_wire(path: str, generation: str, tables: Sequence[TableInfo]) -> dict
                 "group": info.group,
                 "keyed": info.keyed,
                 "estimate": info.estimate,
-                "path": table_address(path, info.id),
+                "path": path if folder else table_address(path, info.id),
             }
             for info in tables
         ],
@@ -942,6 +959,8 @@ def record_wire(
         ),
         "cells": dict(record.cells),
         **({"label": record.label} if record.label else {}),
+        **({"source_path": record.source_path} if record.source_path is not None else {}),
+        **({"diagnostics": list(record.diagnostics)} if record.diagnostics else {}),
         "referenced_by": [
             {**_ref_wire(item.ref), "count": item.count, "count_complete": item.count_complete}
             for item in record.referenced_by
@@ -990,6 +1009,7 @@ class TableSourceDeclaration:
     plugin: str
     kind: str
     adapter: str
+    offer: str | None = None
 
 
 ContentKindClassifier = Callable[[ContentRef], Awaitable[str | None]]
@@ -1003,6 +1023,7 @@ class _Registry:
     classify: ContentKindClassifier | None = None
     container_kinds: frozenset[str] = frozenset()
     adapters: dict[str, TableSourceAdapter] = field(default_factory=dict[str, TableSourceAdapter])
+    folder_sources: tuple[TableSourceDeclaration, ...] = ()
 
 
 _REGISTRY = _Registry()
@@ -1022,7 +1043,9 @@ def install_table_sources(
     address tables as file children.
     """
 
-    _REGISTRY.declarations = {item.kind: item for item in declarations}
+    sources = tuple(declarations)
+    _REGISTRY.declarations = {item.kind: item for item in sources if item.kind != "folder"}
+    _REGISTRY.folder_sources = tuple(item for item in sources if item.kind == "folder")
     _REGISTRY.classify = classify
     _REGISTRY.container_kinds = frozenset(container_kinds)
     _REGISTRY.adapters = {}
@@ -1050,19 +1073,42 @@ class OpenedTableSource:
     inner path of a container child, `<file>/<table>`, as the source's table ids name
     its tables."""
 
-    ref: ContentRef
+    identity: str
     kind: str
     source: TableSource
     table: str
+    folder: bool = False
 
     @property
     def address(self) -> str:
         """The address the path named: the table's own (:func:`table_address`)."""
 
-        return table_address(self.ref.identity, self.table)
+        return self.identity if self.folder else table_address(self.identity, self.table)
 
 
-async def open_table_source(path: str) -> OpenedTableSource:
+def _open_folder_table_source(
+    path: str, table: str | None, root: Path, wait: bool
+) -> OpenedTableSource | None:
+    target = resolve_session_identity(path)
+    if target is None or not target.is_dir():
+        return None
+    handle = FolderTableHandle(path, target, root, wait)
+    for declaration in _REGISTRY.folder_sources:
+        if declaration.offer is None:
+            continue
+        module, _, name = declaration.offer.partition(":")
+        offer = getattr(importlib.import_module(module), name)
+        if not offer(target):
+            continue
+        module, _, name = declaration.adapter.partition(":")
+        adapter = cast(FolderTableSourceAdapter, getattr(importlib.import_module(module), name))
+        return OpenedTableSource(path, "folder", adapter(handle), table or "", folder=True)
+    return None
+
+
+async def open_table_source(
+    path: str, *, selected_table: str | None = None, wait: bool = False
+) -> OpenedTableSource:
     """Resolve *path* to a table source: the content there, the kind it classifies as,
     and that kind's adapter applied to a handle on it.
 
@@ -1075,6 +1121,16 @@ async def open_table_source(path: str) -> OpenedTableSource:
     propagate.
     """
 
+    root = get_source_session().subject.filesystem_root
+    if root is not None and _REGISTRY.folder_sources:
+        folder = await asyncio.to_thread(
+            _open_folder_table_source, path, selected_table, root, wait
+        )
+        if folder is not None:
+            return folder
+    if selected_table is not None or wait:
+        param = "table" if selected_table is not None else "wait"
+        raise TableQueryError(f"{param} is only accepted for a folder table source", param=param)
     table = ""
     ref = await resolve_content(path)
     if ref is None:
@@ -1097,7 +1153,9 @@ async def open_table_source(path: str) -> OpenedTableSource:
         local_path=await asyncio.to_thread(_local_path, ref),
         loop=asyncio.get_running_loop(),
     )
-    return OpenedTableSource(ref=ref, kind=kind or "", source=adapter(handle), table=table)
+    return OpenedTableSource(
+        identity=ref.identity, kind=kind or "", source=adapter(handle), table=table
+    )
 
 
 def _display_name(ref: ContentRef) -> str:
@@ -1139,6 +1197,8 @@ __all__ = [
     "Budget",
     "Cell",
     "FieldRef",
+    "FolderTableHandle",
+    "FolderTableSourceAdapter",
     "FieldType",
     "Filter",
     "FilterOp",

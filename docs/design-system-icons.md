@@ -370,7 +370,7 @@ The title carries the meaning; the symbol only marks the tab.
 | `↓` | Text | A table column sorted descending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
 | `▾` | Text | A table column’s menu, to sort, filter, or hide it, after its header’s label | `builtin_plugins/table/table-view.js` | The header’s, `--text` on hover | The header’s |
 | `×` | Text | Removes a table’s filter, at the end of its chip | `builtin_plugins/table/table-view.js` | `--muted`, `--text` on hover | The chip’s |
-| `←` | Text | Back to the table, before a record’s link | `builtin_plugins/table/table-view.js` | The link’s | The link’s |
+| `←` | Text | Return to the parent table or table catalog | `builtin_plugins/table/table-view.js` | The link’s | The link’s |
 
 ### Keyboard Hints
 

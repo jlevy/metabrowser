@@ -1,0 +1,27 @@
+[plugin]
+name = "softschema"
+display_name = "SoftSchema Collections"
+version = "0.0.1"
+sdk_version = "0.8"
+requires = ["structured", "table"]
+python_requires = ["softschema", "starlette"]
+
+[[view]]
+kind = "folder"
+id = "table"
+label = "Table"
+offer = "metabrowser.builtin_plugins.softschema.offer:offers_collection"
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+render_runtime = "client"
+
+[[table_source]]
+kind = "folder"
+offer = "metabrowser.builtin_plugins.softschema.offer:offers_collection"
+adapter = "metabrowser.builtin_plugins.softschema.source:adapter"
+
+[[data_hook]]
+route = "collection"
+sidekick = "metabrowser.builtin_plugins.softschema.routes:collection_handler"
+methods = ["GET"]

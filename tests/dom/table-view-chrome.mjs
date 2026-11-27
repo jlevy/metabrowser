@@ -166,6 +166,22 @@ async function main() {
     // One line a row: every row one height, a long value cut on its line, its whole text
     // in the tooltip, and no tooltip for a value shown whole.
     await open("short.csv", 3);
+    measured.progressPaint = await chrome.evaluate(`(() => {
+      const sidebar = document.querySelector("#index-progress");
+      const inline = document.createElement("div");
+      document.querySelector("#preview-pane").append(inline);
+      window.metabrowser.renderIndexProgress(inline, "Indexing collection…");
+      const paint = (status) => {
+        const text = getComputedStyle(status.querySelector(".index-progress-text"));
+        const spinner = getComputedStyle(status.querySelector(".index-progress-spinner"));
+        return [text.color, text.fontFamily, text.fontSize, text.lineHeight, spinner.width,
+          spinner.height, spinner.borderTop, spinner.borderRight, spinner.animationName,
+          spinner.animationDuration];
+      };
+      const equal = JSON.stringify(paint(sidebar)) === JSON.stringify(paint(inline));
+      inline.remove();
+      return equal;
+    })()`);
     measured.short = await chrome.evaluate(ROWS);
     measured.short.tip = await hover(
       `__t().qa(".table-cell").find((cell) => cell.textContent.startsWith("表表"))`,

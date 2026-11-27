@@ -289,6 +289,7 @@ def _check_a_record_list_draws_its_records_and_their_trees(measured: dict[str, A
 
 def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     measured = _measure(tmp_path, chrome_profile)
+    assert measured["progressPaint"] is True
     # Review A of #675, A11: the Live pill and the offer sit between the fit note and
     # Columns, and a hidden one keeps its slot, so neither moves those or the toolbar's
     # height, and with it the grid (Columns, then the fit note, then the toolbar height).
