@@ -8673,8 +8673,8 @@ pre.code-block.metabrowser-source-lines > code {
 }
 /* The hover ground: `--chip-hover-overlay` over the whole chip, its fill and its ink, which
    it darkens together, or in the dark theme lightens, so the ink keeps its contrast on any
-   fill (the token's comment has the figures). It fills the chip inside its border, and a
-   chip with corners clips it to them (`overflow: hidden`), a tag to its notch. */
+   fill (the token's comment has the figures). It fills the chip inside its border, within
+   the chip's corners (below), and a tag's `clip-path` clips it to the tag's notch. */
 :where(a:any-link, button:enabled):not([aria-disabled="true"]):hover
   > :is(.file-header-badge, .git-ref, .mb-image-fallback)::after,
 :is(.file-header-badge, .git-ref, .mb-image-fallback):is(a:any-link, button:enabled):not(
@@ -8685,6 +8685,15 @@ pre.code-block.metabrowser-source-lines > code {
   inset: 0;
   background: var(--chip-hover-overlay);
   pointer-events: none;
+}
+/* A badge clips nothing, so its layer takes the badge's corners, square while
+   `--radius-chrome` is 0 and whatever they become; a ref chip and an image's chip clip
+   their own (`overflow: hidden`), and a tag its notch, which no rule here may reshape
+   ("One Size"). tests/dom/chip-affordance-chrome.mjs holds every hover layer inside its
+   chip's shape. */
+:where(a:any-link, button:enabled):hover > .file-header-badge::after,
+.file-header-badge:is(a:any-link, button:enabled):hover::after {
+  border-radius: inherit;
 }
 /* A control whose content is a chip draws its ring on the chip, whose box is what the
    reader sees: an inline link's own box is its line's, not the chip's. The user agent's

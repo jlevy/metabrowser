@@ -292,6 +292,18 @@ const READ = `((index, path, middle) => {
     underlined,
     ink,
     rings: [ringStyle(ringed), ringStyle(chip)],
+    // The chip's shape and its hover layer's: a layer stays inside the chip when the chip
+    // clips it, or when it takes the chip's corners.
+    shape: (() => {
+      const own = getComputedStyle(chip);
+      const layer = getComputedStyle(chip, "::after");
+      return {
+        layered: layer.content !== "none" && layer.content !== "normal",
+        clips: own.overflow !== "visible" || own.clipPath !== "none",
+        corners: own.borderRadius,
+        layerCorners: layer.borderRadius,
+      };
+    })(),
   };
 })`;
 
@@ -474,6 +486,13 @@ async function main() {
                 hover: hoverGround,
                 beside: [restBeside, hoverBeside],
               }),
+            );
+          }
+          if (hover.shape.layered) {
+            check(
+              `${where}: its hover layer stays inside the chip's shape`,
+              hover.shape.clips || hover.shape.layerCorners === hover.shape.corners,
+              JSON.stringify(hover.shape),
             );
           }
           // A selected chip keeps its selected look under the pointer, which this rule does
