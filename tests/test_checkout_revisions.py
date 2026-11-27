@@ -211,6 +211,7 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
 def test_checkout_branch_lists_promote_primary_and_configured_defaults(
     served: TestClient, checkout: Path
 ) -> None:
+    remote = "origin"
     for name, commit in (
         ("main", FIRST),
         ("master", FEATURE),
@@ -218,9 +219,14 @@ def test_checkout_branch_lists_promote_primary_and_configured_defaults(
         ("pr/main", "local-work"),
     ):
         git(checkout, "branch", name, commit)
-        git(checkout, "update-ref", f"refs/remotes/origin/{name}", commit)
+        git(checkout, "update-ref", f"refs/remotes/{remote}/{name}", commit)
     git(checkout, "update-ref", "refs/remotes/upstream/master", SECOND)
-    git(checkout, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/release/next")
+    git(
+        checkout,
+        "symbolic-ref",
+        f"refs/remotes/{remote}/HEAD",
+        f"refs/remotes/{remote}/release/next",
+    )
     git(checkout, "remote", "add", "team/upstream", str(checkout.parent / "origin.git"))
     git(checkout, "branch", "stable", SECOND)
     git(checkout, "update-ref", "refs/remotes/team/upstream/stable", SECOND)
@@ -247,27 +253,27 @@ def test_checkout_branch_lists_promote_primary_and_configured_defaults(
     assert [row["name"] for row in local["refs"] if row["checked_out"]] == ["topic"]
     assert _names(_refs(served, q="MAIN")) == ["main", "pr/main"]
     assert _names(_refs(served, kind="remote")) == [
-        "origin/master",
-        "origin/release/next",
+        f"{remote}/master",
+        f"{remote}/release/next",
         "team/upstream/stable",
         "upstream/master",
-        "origin/main",
+        f"{remote}/main",
         "team/upstream/main",
-        "origin/pr/main",
+        f"{remote}/pr/main",
         "team/upstream/pr/main",
-        "origin/feature",
-        "origin/topic",
+        f"{remote}/feature",
+        f"{remote}/topic",
     ]
 
     # A symbolic HEAD can move while the branches themselves stay at the same commits.
-    git(checkout, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/topic")
+    git(checkout, "symbolic-ref", f"refs/remotes/{remote}/HEAD", f"refs/remotes/{remote}/topic")
     assert _names(_refs(served))[:4] == ["master", "stable", "topic", "main"]
     assert _names(_refs(served, kind="remote"))[:5] == [
-        "origin/master",
-        "origin/topic",
+        f"{remote}/master",
+        f"{remote}/topic",
         "team/upstream/stable",
         "upstream/master",
-        "origin/main",
+        f"{remote}/main",
     ]
 
 
