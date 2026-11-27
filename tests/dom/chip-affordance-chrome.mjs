@@ -36,7 +36,8 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { launchChrome } from "./chrome-session.mjs";
 
-const [githubBase, metab, root, port, state] = process.argv.slice(2);
+// The theme to read, or both: each is its own test (tests/test_chip_affordance_chrome.py).
+const [githubBase, metab, root, port, state, onlyTheme] = process.argv.slice(2);
 if (!githubBase || !metab || !root || !port || !state) {
   throw new Error("usage: chip-affordance-chrome.mjs GITHUB_BASE METAB ROOT PORT STATE_DIR");
 }
@@ -695,7 +696,7 @@ async function main() {
           ),
       },
     ];
-    for (const theme of ["light", "dark"]) {
+    for (const theme of onlyTheme ? [onlyTheme] : ["light", "dark"]) {
       await send("Emulation.setEmulatedMedia", {
         features: [{ name: "prefers-color-scheme", value: theme }],
       });

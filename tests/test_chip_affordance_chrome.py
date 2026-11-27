@@ -5,7 +5,7 @@ whole content of one, shows the pointer, is never underlined, paints another gro
 the pointer, keeps its text's contrast there, and draws the one focus ring; a static chip
 shows nothing under the pointer. ``tests/dom/chip-affordance-chrome.mjs`` finds every chip
 by its shape on the surfaces that draw chips and holds each to its side of that rule, in
-the light theme and the dark: a pull request's header, its Checks and Changes tabs, the
+the light theme and the dark, each a test of its own: a pull request's header, its Checks and Changes tabs, the
 Pulls tab, and a stack's page, served from the GitHub stand-in with native stacks (as
 ``tests/test_github_stack_page_chrome.py`` serves it), and the Files tab, the revision
 chooser, the Commits tab, a commit's page, a table whose rows reference another's, the same
@@ -114,8 +114,12 @@ def _write_folder(root: Path) -> None:
         subprocess.run([git, *command], cwd=root, env=env, check=True, capture_output=True)
 
 
+# Each theme is a test of its own: the two together took 86 to 90 s in CI's Chrome tier
+# (run 45916053261), more than a shard's room beside its other tests, and two halves let the
+# tier's dealer put them in different parts (devtools/shard_weights.py).
+@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_every_chip_says_whether_it_is_clickable_in_chrome(
-    tmp_path: Path, chrome_profile: Path
+    tmp_path: Path, chrome_profile: Path, theme: str
 ) -> None:
     chrome = require_chrome()
     node = require_node()
@@ -173,6 +177,7 @@ def test_every_chip_says_whether_it_is_clickable_in_chrome(
                 str(folder),
                 str(_free_port()),
                 str(folder_state),
+                theme,
             ],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
