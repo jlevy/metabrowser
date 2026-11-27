@@ -108,14 +108,14 @@ commit has it, or at the root when it does not.
 Chosen on the Commits tab, it reloads the page on Commits, at the newest commit of the
 new history. The switch lasts until the server stops.
 
-The foot of the navigation pane says when the mirror was last fetched from its origin.
-**Refresh**, the circular arrow at the top of the navigation pane, fetches it now and
-then reads the files and history again, what is on screen first.
-A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
-when a fetch moves the served branch, the page follows it to the new commit by itself,
-on the same file or folder when the new commit has it, or at the root when it does not.
-A commit you opened by its ID stays put, also when it is a branch’s tip; when that
-branch moves on, the foot offers its new commit with **Switch**.
+Hover over **Refresh**, the circular arrow at the top of the navigation pane, to see
+when the mirror was last fetched.
+Press it to fetch again and update the files and history, starting with what is on
+screen. A branch or tag is shown as the mirror last fetched it, as github.com shows a
+branch: when a fetch moves the served branch, the page follows it to the new commit by
+itself, on the same file or folder when the new commit has it, or at the root when it
+does not. A commit you opened by its ID stays put, also when it is a branch’s tip; when
+that branch moves on, the foot offers its new commit with **Switch**.
 
 ## Branches and Tags of a Local Checkout
 
@@ -153,10 +153,8 @@ The list has four tabs, and opens on the one that holds what the page shows.
   at another commit, which is a branch you have not fetched since it moved, or have
   pushed since Metabrowser last fetched, and “not in checkout” when you have never
   fetched it; hover over the row for your commit and which of the two was committed
-  later. On a branch’s or tag’s page, the row at the foot of the navigation pane says
-  when the origin was last fetched, and **Refresh** at the top of the navigation pane
-  fetches it again; it fetches Metabrowser’s store, never your checkout.
-  The working tree’s page has no such row.
+  later. On a branch’s or tag’s page, the **Refresh** tooltip shows when the origin was
+  last fetched. Press it to update Metabrowser’s copy of the origin.
   **Refresh** there reads your files and history again first, and then fetches the
   origin in the background, so Remotes and Tags are current the next time you look; an
   open list updates in place.

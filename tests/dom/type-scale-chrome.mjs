@@ -178,7 +178,7 @@ try {
     document.getElementById("tree-pane").append(element);
     const label = document.createElement("span");
     label.className = "source-freshness-label";
-    label.textContent = "Fetched just now";
+    label.textContent = "Refreshing…";
     element.replaceChildren(label);
     const size = (node) => Number.parseFloat(getComputedStyle(node).fontSize);
     const row = [...document.querySelectorAll("#tab-pulls .github-pulls-title")].find((e) => e.getClientRects().length);
