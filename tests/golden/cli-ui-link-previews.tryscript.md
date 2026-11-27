@@ -518,8 +518,8 @@ $ node tests/dom/link-previews-session.js
   {
    "label": "an author's title in the app's words",
    "linkText": "docs/guide.md",
-   "authorTitle": "Not in the served files",
-   "text": "[md] docs/guide.md | “Not in the served files” | Opens here in Metabrowser"
+   "authorTitle": "Not in this repository",
+   "text": "[md] docs/guide.md | “Not in this repository” | Opens here in Metabrowser"
   },
   {
    "label": "an author's title where the link's text is its identity",

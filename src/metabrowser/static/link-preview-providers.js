@@ -8,18 +8,18 @@
 // `prefetch` once it has rested there. A summary is plain text, never markup, and says only
 // what its data gives: a pull request's title and state from the catalog's exact-number
 // search, a stack's top member and size from the stacks snapshot, a commit's subject,
-// author, and age from the Commits panel's own detail cache, whether the served files hold
-// a file and a folder's totals from what the page already holds, and nothing for the list.
-// A
-// prefetch starts what the click opens: the page's plugin assets, a pull request's record, a
-// commit prepared as a hover on its row prepares it, and a file's or folder's View on GitHub
-// answer.
+// author, and age from the Commits panel's own detail cache, a folder's totals from what the
+// page already holds, and nothing for a file or the list. Only a commit's card says its
+// object is missing: nothing the page holds lists every file a link can open (`knownPath`).
+// A prefetch starts what the click opens: the page's plugin assets, a pull request's record,
+// a commit prepared as a hover on its row prepares it, and a file's or folder's View on
+// GitHub answer.
 //
 // The registry keeps no answer, so each provider keeps what it reads only for as long as it
 // stays true, and reads again what failed or was not yet known: a pull request's summary and
 // the stacks snapshot for as long as the Pulls tab's pollers wait between their reads, a
-// commit's for as long as the Commits panel keeps it, and a file's or folder's never, since
-// the page's own state answers at once. What is kept is bounded.
+// commit's for as long as the Commits panel keeps it, and a folder's never, since the page's
+// own state answers at once. What is kept is bounded.
 //
 // Every read is one the app already makes for that object, from the cache alone: none asks
 // GitHub, fetches from origin, or counts a view, and none is aborted, since an aborted
@@ -49,7 +49,7 @@
    */
   /**
    * @typedef {Pick<MetabrowserPublicSdk,
-   *   | "directoryTotals" | "ensureKindAssets" | "fetchPluginData" | "fileCatalog"
+   *   | "directoryTotals" | "ensureKindAssets" | "fetchPluginData"
    *   | "formatAge" | "formatFileCount" | "formatSize" | "navigation"
    *   | "prefetchCounterpart" | "repository">} Sdk
    * @typedef {Awaited<ReturnType<Sdk["fetchPluginData"]>>} PluginData
@@ -455,33 +455,35 @@
 
   // ── Files and folders ──────────────────────────────────────
 
-  const FILE_MISSING = "Not in the served files";
-
   /**
-   * Whether the served tree has a file, and a folder's file count and size where the tree
-   * has totaled them: from the page's own state at the moment it is asked, so nothing is
-   * read or kept and the card says what the tree holds now. The file catalog's snapshot
-   * proves a file absent only when it covers the whole root, and a folder is never called
-   * absent, since the catalog holds only files and a folder may hold none. A file's type is
-   * its mark's to say (`fileTypeIcon`) and its name's extension, so no line repeats it.
+   * A folder's file count and size where the tree has totaled it, from the page's own state
+   * at the moment it is asked, so nothing is read or kept and the card says what the tree
+   * holds now; nothing for a file, whose type is its mark's to say (`fileTypeIcon`) and its
+   * name's extension, so no line repeats it.
+   *
+   * No card says a file or folder is missing, because nothing the page holds is every path
+   * a link can open, so the absence of one from it proves nothing. A served folder's Quick
+   * File catalog, even whole, leaves out what the server still opens: a symbolic link and a
+   * gitignored file (`_catalog_entry_filter` in inventory_engine/providers/python_inventory.py)
+   * and whatever the walker hides, a dot-named file or anything under a dot-named folder
+   * (`is_visible` in fs_paths.py). A pin's lists its blobs alone, and its file route opens a
+   * folder or a submodule named with no closing slash, which a link names as a file
+   * (git/content_routes.py, `git_revision_catalog` and `git_revision_file`). So the
+   * providers read no catalog (`Sdk` picks none).
    *
    * @param {PathSubject} subject
    * @param {{mb: Sdk}} how
    * @returns {Summary | null}
    */
   function knownPath(subject, { mb }) {
-    const path = servedPath(subject);
-    if (subject.kind === "folder") {
-      const totals = mb.directoryTotals.get(path);
-      return totals?.state === "complete"
-        ? {
-            detail: `${mb.formatFileCount(totals.totalFiles)} · ${mb.formatSize(totals.totalBytes)}`,
-          }
-        : null;
+    if (subject.kind !== "folder") {
+      return null;
     }
-    const catalog = mb.fileCatalog.snapshot();
-    return catalog.complete && !catalogHolds(catalog.files, path)
-      ? { missing: FILE_MISSING }
+    const totals = mb.directoryTotals.get(servedPath(subject));
+    return totals?.state === "complete"
+      ? {
+          detail: `${mb.formatFileCount(totals.totalFiles)} · ${mb.formatSize(totals.totalBytes)}`,
+        }
       : null;
   }
 
@@ -495,30 +497,10 @@
   }
 
   /**
-   * Whether *files*, in ascending UTF-16 code-unit order, holds *path*.
-   *
-   * @param {ReturnType<Sdk["fileCatalog"]["snapshot"]>["files"]} files
-   * @param {string} path
-   */
-  function catalogHolds(files, path) {
-    let low = 0;
-    let high = files.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if (files[middle].path < path) {
-        low = middle + 1;
-      } else {
-        high = middle;
-      }
-    }
-    return files[low]?.path === path;
-  }
-
-  /**
-   * The subject's path as the served tree's inventory spells it, the identity its catalog,
-   * its totals, and its addresses use: the path of the navigation target the resolver gave
-   * the link (static/repository-links.js, `viewTarget`), on a pin the GitPath wire, less a
-   * folder's closing slash. The spelling is the resolver's alone.
+   * The subject's path as the served tree's inventory spells it, the identity its totals
+   * and its addresses use: the path of the navigation target the resolver gave the link
+   * (static/repository-links.js, `viewTarget`), on a pin the GitPath wire, less a folder's
+   * closing slash. The spelling is the resolver's alone.
    *
    * @param {PathSubject} subject
    * @returns {string}

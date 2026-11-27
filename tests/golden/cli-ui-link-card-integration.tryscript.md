@@ -32,8 +32,12 @@ the element the tooltip is placed on (`on`).
   comes back when it answers.
 - `a failed read, then the next rest`: the first read fails, and the next rest reads
   again and says the title.
-- `a file the tree gains`: a file the served tree lacks is called missing, and once the
-  tree has it, the next rest says where it opens.
+- `files the catalog leaves out`: a plain folder’s document links each of its files, and
+  one the page’s Quick File catalog leaves out (`unlisted`: a hidden, a gitignored, and
+  a symlinked file, which the folder opens all the same) has the card a file it lists
+  (`listed`) has, but for its path: none is called missing.
+- `a folder the tree totals`: a rest on a folder’s link before the tree has totaled it,
+  then the next rest, once it has, says its totals.
 - `an image inside a link`: the pointer crosses from a link’s words onto the chip of an
   image the page did not load and back; the card, saying the image’s address, is the one
   tooltip throughout.
@@ -207,10 +211,35 @@ $ node tests/dom/link-card-integration-session.js
    "on": "#15"
   }
  ],
- "a file the tree gains": [
+ "files the catalog leaves out": [
   {
    "at": 0,
-   "pointer": "the old guide"
+   "registered": "listed README.md",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "listed docs/guide.md",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "unlisted .github/CONTRIBUTING.md",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "unlisted build/report.md",
+   "card": true
+  },
+  {
+   "at": 0,
+   "registered": "unlisted alias.md",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "listed README.md"
   },
   {
    "at": 0,
@@ -222,8 +251,8 @@ $ node tests/dom/link-card-integration-session.js
   },
   {
    "at": 700,
-   "sees": "docs/old-guide.md | Not in the served files",
-   "on": "the old guide"
+   "sees": "README.md | Opens here in Metabrowser",
+   "on": "listed README.md"
   },
   {
    "at": 800,
@@ -231,12 +260,92 @@ $ node tests/dom/link-card-integration-session.js
   },
   {
    "at": 1000,
-   "pointer": "the old guide"
+   "pointer": "listed docs/guide.md"
   },
   {
    "at": 1700,
-   "sees": "docs/old-guide.md | Opens in the served working tree",
-   "on": "the old guide"
+   "sees": "docs/guide.md | Opens here in Metabrowser",
+   "on": "listed docs/guide.md"
+  },
+  {
+   "at": 1800,
+   "pointer": "the body"
+  },
+  {
+   "at": 2000,
+   "pointer": "unlisted .github/CONTRIBUTING.md"
+  },
+  {
+   "at": 2700,
+   "sees": ".github/CONTRIBUTING.md | Opens here in Metabrowser",
+   "on": "unlisted .github/CONTRIBUTING.md"
+  },
+  {
+   "at": 2800,
+   "pointer": "the body"
+  },
+  {
+   "at": 3000,
+   "pointer": "unlisted build/report.md"
+  },
+  {
+   "at": 3700,
+   "sees": "build/report.md | Opens here in Metabrowser",
+   "on": "unlisted build/report.md"
+  },
+  {
+   "at": 3800,
+   "pointer": "the body"
+  },
+  {
+   "at": 4000,
+   "pointer": "unlisted alias.md"
+  },
+  {
+   "at": 4700,
+   "sees": "alias.md | Opens here in Metabrowser",
+   "on": "unlisted alias.md"
+  },
+  {
+   "at": 4800,
+   "pointer": "the body"
+  }
+ ],
+ "a folder the tree totals": [
+  {
+   "at": 0,
+   "registered": "the docs",
+   "card": true
+  },
+  {
+   "at": 0,
+   "pointer": "the docs"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 700,
+   "sees": "docs/ | Opens here in Metabrowser",
+   "on": "the docs"
+  },
+  {
+   "at": 800,
+   "pointer": "the body"
+  },
+  {
+   "at": 1000,
+   "pointer": "the docs"
+  },
+  {
+   "at": 1700,
+   "sees": "docs/ | 1 files · 48 B | Opens here in Metabrowser",
+   "on": "the docs"
   }
  ],
  "an image inside a link": [

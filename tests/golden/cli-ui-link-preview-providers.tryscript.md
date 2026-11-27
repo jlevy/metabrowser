@@ -38,11 +38,13 @@ A read with no recorded answer fails the session.
   while the snapshot is being refreshed.
   A commit’s come from the Commits panel’s detail cache, which asks once for a commit
   the repository lacks, until the panel lets go of what it knew.
-  A file’s and a folder’s come from what the page holds when it is asked, with no read
-  and nothing kept, and `catalog` says whether the file catalog covered the whole root.
+  A folder’s come from what the page holds when it is asked, with no read and nothing
+  kept, and `listed` says whether the page’s whole Quick File catalog lists a file.
 - No summary says what its data does not give: a pull request the catalog does not hold,
-  a stack the snapshot does not, a folder the tree has not totaled, and the list have
-  none, and a file is missing only from a catalog of the whole root.
+  a stack the snapshot does not, a folder the tree has not totaled, a file, and the list
+  have none. No file is called missing, whether its catalog lists it or not: a served
+  folder’s leaves out its hidden, gitignored, and symlinked files, and a pin’s lists no
+  folder, so a folder linked with no closing slash is one it lacks.
 - Each of `prefetches` is what one rest started: the reads it made, the plugin assets it
   loaded, and the pages whose View on GitHub answer it asked for.
   A pull request’s record is read with `warm=1`, once a page; a commit is prepared as a
@@ -401,7 +403,7 @@ $ node tests/dom/link-preview-providers-session.js
       "known": null,
       "summary": null,
       "asked": [],
-      "catalog": "whole"
+      "listed": true
     },
     "the same file, opened in the served working tree": {
       "subject": {
@@ -415,27 +417,51 @@ $ node tests/dom/link-preview-providers-session.js
       "known": null,
       "summary": null,
       "asked": [],
-      "catalog": "whole"
+      "listed": true
     },
-    "a file a whole catalog lacks": {
+    "a served file the catalog leaves out, .github/CONTRIBUTING.md": {
       "subject": {
         "kind": "file",
-        "path": "docs/old-guide.md",
+        "path": ".github/CONTRIBUTING.md",
         "opens": "here",
         "target": {
-          "path": "docs/old-guide.md"
+          "path": ".github/CONTRIBUTING.md"
         }
       },
-      "known": {
-        "missing": "Not in the served files"
-      },
-      "summary": {
-        "missing": "Not in the served files"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
-      "catalog": "whole"
+      "listed": false
     },
-    "the same, while the catalog is still filling": {
+    "a served file the catalog leaves out, build/report.md": {
+      "subject": {
+        "kind": "file",
+        "path": "build/report.md",
+        "opens": "here",
+        "target": {
+          "path": "build/report.md"
+        }
+      },
+      "known": null,
+      "summary": null,
+      "asked": [],
+      "listed": false
+    },
+    "a served file the catalog leaves out, alias.md": {
+      "subject": {
+        "kind": "file",
+        "path": "alias.md",
+        "opens": "here",
+        "target": {
+          "path": "alias.md"
+        }
+      },
+      "known": null,
+      "summary": null,
+      "asked": [],
+      "listed": false
+    },
+    "a file the served folder lacks": {
       "subject": {
         "kind": "file",
         "path": "docs/old-guide.md",
@@ -447,21 +473,7 @@ $ node tests/dom/link-preview-providers-session.js
       "known": null,
       "summary": null,
       "asked": [],
-      "catalog": "filling"
-    },
-    "the same, once the served tree has it": {
-      "subject": {
-        "kind": "file",
-        "path": "docs/old-guide.md",
-        "opens": "here",
-        "target": {
-          "path": "docs/old-guide.md"
-        }
-      },
-      "known": null,
-      "summary": null,
-      "asked": [],
-      "catalog": "whole"
+      "listed": false
     },
     "a name with a percent sign": {
       "subject": {
@@ -475,7 +487,7 @@ $ node tests/dom/link-preview-providers-session.js
       "known": null,
       "summary": null,
       "asked": [],
-      "catalog": "whole"
+      "listed": true
     },
     "a folder the tree has totaled": {
       "subject": {
@@ -492,8 +504,7 @@ $ node tests/dom/link-preview-providers-session.js
       "summary": {
         "detail": "1 file · 48 B"
       },
-      "asked": [],
-      "catalog": "whole"
+      "asked": []
     },
     "the served root": {
       "subject": {
@@ -510,8 +521,7 @@ $ node tests/dom/link-preview-providers-session.js
       "summary": {
         "detail": "3 files · 112 B"
       },
-      "asked": [],
-      "catalog": "whole"
+      "asked": []
     },
     "a folder it has not": {
       "subject": {
@@ -524,8 +534,7 @@ $ node tests/dom/link-preview-providers-session.js
       },
       "known": null,
       "summary": null,
-      "asked": [],
-      "catalog": "whole"
+      "asked": []
     },
     "a file of a pinned revision": {
       "subject": {
@@ -539,7 +548,21 @@ $ node tests/dom/link-preview-providers-session.js
       "known": null,
       "summary": null,
       "asked": [],
-      "catalog": "whole"
+      "listed": true
+    },
+    "a pinned revision's folder, linked with no closing slash": {
+      "subject": {
+        "kind": "file",
+        "path": "docs",
+        "opens": "here",
+        "target": {
+          "path": "g1-ZG9jcw"
+        }
+      },
+      "known": null,
+      "summary": null,
+      "asked": [],
+      "listed": false
     },
     "a file the pinned revision lacks": {
       "subject": {
@@ -550,14 +573,10 @@ $ node tests/dom/link-preview-providers-session.js
           "path": "g1-ZG9jcw/g1-b2xkLWd1aWRlLm1k"
         }
       },
-      "known": {
-        "missing": "Not in the served files"
-      },
-      "summary": {
-        "missing": "Not in the served files"
-      },
+      "known": null,
+      "summary": null,
       "asked": [],
-      "catalog": "whole"
+      "listed": false
     },
     "the pull request list": {
       "subject": {

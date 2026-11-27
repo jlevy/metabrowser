@@ -7297,9 +7297,14 @@ tooltip does:
 5. **Where it opens**, in `.tip-detail`, always: “Opens here in Metabrowser”, or, for a
    link to a branch, which opens whatever the page serves rather than what it named,
    what that is: “Opens in the served working tree” on a folder’s page and “Opens at the
-   served revision” on a pin’s or a mirror’s; or what its data says is missing, such as
-   “Not in this repository”.
-   The words are `OPENS` in `static/link-previews.js`.
+   served revision” on a pin’s or a mirror’s; or, for a commit the Commits panel found
+   the repository lacks, “Not in this repository”.
+   The words are `OPENS` in `static/link-previews.js`. Only a commit is ever called
+   missing. A file’s or folder’s card says where it opens whether or not the page lists
+   it, since nothing the page holds is every path a link can open: a served folder’s
+   Quick File catalog leaves out hidden, gitignored, and symlinked files that the folder
+   still opens, and a pin’s lists no folder, though a link with no closing slash can
+   name one (`knownPath` in `static/link-preview-providers.js`).
 
 A line that is the link’s own text, in any case and spacing, or a line above it, is left
 out: a card never says its link’s words again, as a Files row’s tooltip leaves out the

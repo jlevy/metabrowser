@@ -313,6 +313,32 @@ const GITHUB_REPOSITORY = Object.freeze({
 });
 const READ_MS = 40;
 
+/**
+ * What the served folder holds, each a file a link can open (`/api/file` serves every one),
+ * and what of it the page's Quick File catalog lists. As the real catalog does, the stand-in
+ * lists only a file the walker indexed and the catalog keeps: no symbolic link, since it
+ * keeps an entry of type `file` alone, no gitignored file
+ * (`_catalog_entry_filter` in inventory_engine/providers/python_inventory.py), and nothing
+ * the walker hides, a dot-named file or anything under a dot-named folder (`is_visible` in
+ * fs_paths.py). So a complete catalog is not every file a link can open.
+ */
+const SERVED_FILES = Object.freeze([
+  Object.freeze({ path: "README.md" }),
+  Object.freeze({ path: "docs/guide.md" }),
+  Object.freeze({ path: ".github/CONTRIBUTING.md" }),
+  Object.freeze({ path: "build/report.md", gitignored: true }),
+  Object.freeze({ path: "alias.md", symlink: true }),
+]);
+
+/** Whether the page's Quick File catalog lists *file*, one of the served files. */
+function catalogLists(file) {
+  return (
+    file.symlink !== true &&
+    file.gitignored !== true &&
+    !file.path.split("/").some((segment) => segment.startsWith("."))
+  );
+}
+
 /** A card's lines as text: what a reader sees. */
 function lines(html) {
   return html
@@ -349,8 +375,11 @@ function createPage(options = {}) {
   document.body = body;
   document.createElement = (tag) => new FakeElement(tag);
 
-  // The served files, the catalog's snapshot of them, and the reads a provider makes.
-  let files = ["README.md", "docs/guide.md"];
+  // The catalog's snapshot of the served files, the tree's folder totals, and the reads a
+  // provider makes.
+  const listed = SERVED_FILES.filter(catalogLists).map((file) => file.path);
+  /** @type {Map<string, {files: number, bytes: number}>} */
+  const totals = new Map();
   const failing = new Set();
   let context = null;
   const sdk = {
@@ -404,17 +433,34 @@ function createPage(options = {}) {
     },
     ensureKindAssets: async () => {},
     prefetchCounterpart() {},
+    // Whole, as a served folder's is once its feed is in: a catalog still filling would
+    // hide a reading that takes it for every file a link can open.
     fileCatalog: {
       snapshot: () => ({
         complete: true,
         truncated: false,
-        files: [...files].sort().map((file) => ({ path: file })),
-        observedCount: files.length,
+        files: [...listed].sort().map((file) => ({ path: file })),
+        observedCount: listed.length,
         revision: 1,
         sourceSummary: {},
       }),
     },
-    directoryTotals: { get: () => null },
+    directoryTotals: {
+      get(folder) {
+        const known = totals.get(folder);
+        return known === undefined
+          ? null
+          : {
+              path: folder,
+              revision: 1,
+              state: "complete",
+              totalFiles: known.files,
+              totalBytes: known.bytes,
+              unignoredFiles: known.files,
+              unignoredBytes: known.bytes,
+            };
+      },
+    },
     formatAge: () => ({ label: "" }),
     formatFileCount: (count) => `${count} files`,
     formatSize: (bytes) => `${bytes} B`,
@@ -607,12 +653,17 @@ function createPage(options = {}) {
     log.push({ at: clock.now, press: under.name });
     dispatch(under, "pointerdown");
   }
-  /** What the reader sees now: the tooltip's lines, and the element it is placed on. */
+  /**
+   * What the reader sees now: the tooltip's lines, and the element whose markup they are,
+   * which the tooltip was placed on (`tooltipShown` in app.js). The element the last show
+   * named (`tooltipAnchor`) is not it: it is named before its markup is up, so it would name
+   * the next link while the last link's card is still the one shown.
+   */
   async function look(time) {
     await clock.to(time);
     const up = tooltip.style.display === "block" && tooltip.classList.contains("visible");
     const seen = up ? lines(tooltip.innerHTML) : null;
-    log.push({ at: clock.now, sees: seen, ...(up ? { on: context.tooltipAnchor?.name } : {}) });
+    log.push({ at: clock.now, sees: seen, ...(up ? { on: context.tooltipShown?.name } : {}) });
     return seen;
   }
 
@@ -633,8 +684,9 @@ function createPage(options = {}) {
     loaded: () => context.MetabrowserLinkPreviews !== undefined,
     appearDelay: Number(appSource.match(/\nvar TOOLTIP_APPEAR_DELAY = (\d+);/)?.[1]),
     fail: (name) => failing.add(name),
-    serve: (list) => {
-      files = list;
+    /** The tree totals *folder*, as its walk finishing there does. */
+    total: (folder, known) => {
+      totals.set(folder, known);
     },
   };
 }
@@ -643,7 +695,9 @@ module.exports = {
   FakeElement,
   GITHUB_REPOSITORY,
   LINK_PREVIEWS_BUNDLE,
+  SERVED_FILES,
   assert,
+  catalogLists,
   createPage,
   lines,
   recorded,

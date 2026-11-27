@@ -18,7 +18,14 @@
 // holds its invariants, and this file exits 1 on a failed one, naming each session that
 // failed. Name sessions on the command line to run only those.
 
-const { FakeElement, assert, createPage, recorded } = require("./link-card-page.js");
+const {
+  FakeElement,
+  SERVED_FILES,
+  assert,
+  catalogLists,
+  createPage,
+  recorded,
+} = require("./link-card-page.js");
 
 const CANONICAL = "https://github.com/octo/demo";
 const BADGE = "https://img.example/badge.svg";
@@ -96,21 +103,63 @@ async function retry() {
   return page.log;
 }
 
-/** A file the served tree gains after a rest that found it missing is not missing after. */
-async function staleFile() {
-  const page = createPage();
-  const { anchors } = page.text(["the old guide", `${CANONICAL}/blob/main/docs/old-guide.md`]);
-  await page.point(0, anchors["the old guide"]);
+/** A served file's link, as the Markdown enhancer registers a document's link to it. */
+const fileLink = (name, file) => ({
+  name,
+  href: `/view/${file}`,
+  target: { kind: "view", target: { path: file }, localization: "revision" },
+});
+
+/**
+ * A plain folder's document links each of its files, and a rest on each shows its card: one
+ * the page's Quick File catalog leaves out, as it leaves out a hidden, a gitignored, and a
+ * symlinked file, opens all the same, so its card says what a listed file's says.
+ */
+async function unlistedFiles() {
+  const page = createPage({ repository: null });
+  const links = SERVED_FILES.map((file) =>
+    fileLink(catalogLists(file) ? `listed ${file.path}` : `unlisted ${file.path}`, file.path),
+  );
+  const { anchors } = page.markdown("the README", ...links);
+  const cards = {};
+  let time = 0;
+  for (const link of links) {
+    await page.point(time, anchors[link.name]);
+    cards[link.name] = await page.look(time + 700);
+    await page.point(time + 800, page.body);
+    time += 1000;
+  }
+  const [listed] = links.filter((link) => link.name.startsWith("listed "));
+  const where = cards[listed.name]?.split(" | ").slice(1).join(" | ");
+  assert(where, `a listed file's card said nothing of where it opens: ${cards[listed.name]}`);
+  for (const link of links) {
+    assert(
+      cards[link.name] === `${link.target.target.path} | ${where}`,
+      `${link.name}'s card is not a listed file's: ${cards[link.name]}`,
+    );
+  }
+  return page.log;
+}
+
+/** A folder the tree totals after a rest on its link: the next rest says its totals. */
+async function folderTotaled() {
+  const page = createPage({ repository: null });
+  const docs = {
+    name: "the docs",
+    href: "/view/docs/",
+    target: { kind: "view", target: { path: "docs/" }, localization: "revision" },
+  };
+  const { anchors } = page.markdown("the README", docs);
+  await page.point(0, anchors[docs.name]);
   const before = await page.look(700);
   await page.point(800, page.body);
-  page.serve(["README.md", "docs/guide.md", "docs/old-guide.md"]);
-  await page.point(1000, anchors["the old guide"]);
+  page.total("docs", { files: 1, bytes: 48 });
+  await page.point(1000, anchors[docs.name]);
   const after = await page.look(1700);
-  assert(before?.endsWith("Not in the served files"), `the missing file was not said: ${before}`);
-  // A link to the served branch's file, which opens in the served working tree.
+  const gained = (after ?? "").split(" | ").filter((line) => !before?.split(" | ").includes(line));
   assert(
-    after?.endsWith(page.opens()["working-tree"]) && !after.includes("Not in the served files"),
-    `a file the tree gained was still called missing: ${after}`,
+    before !== null && gained.length === 1 && after?.startsWith("docs/ | "),
+    `the next rest did not say the totals the tree gained: ${before} then ${after}`,
   );
   return page.log;
 }
@@ -166,7 +215,8 @@ const SESSIONS = {
   handover,
   "focus during the read": focusDuringRead,
   "a failed read, then the next rest": retry,
-  "a file the tree gains": staleFile,
+  "files the catalog leaves out": unlistedFiles,
+  "a folder the tree totals": folderTotaled,
   "an image inside a link": imageInLink,
   "a link to another site": outside,
 };

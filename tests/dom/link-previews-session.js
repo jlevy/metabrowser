@@ -646,7 +646,7 @@ function cards(page) {
   // never in place of what the link opens, even where the link's text is that identity and
   // the title says what the app would.
   for (const [name, subject, linkText, authorTitle] of [
-    ["an author's title in the app's words", file, "docs/guide.md", "Not in the served files"],
+    ["an author's title in the app's words", file, "docs/guide.md", "Not in this repository"],
     ["an author's title where the link's text is its identity", pull, "Pull request #12", "Go"],
   ]) {
     const html = previews.card(subject, null, { linkText, authorTitle });

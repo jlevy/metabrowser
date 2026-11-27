@@ -241,17 +241,25 @@ def test_a_card_says_what_its_records_say_and_nothing_more() -> None:
             assert summary["detail"].startswith(f"{len(stack['pulls'])} "), rest
 
 
-def test_a_file_is_missing_only_from_a_catalog_of_the_whole_root() -> None:
-    """A file the catalog lacks is called missing only when the catalog covers the root, and
-    a folder, which the catalog of files cannot prove absent, never is."""
+def test_no_file_or_folder_is_called_missing() -> None:
+    """No list the page holds is every file a link can open: a served folder's whole Quick
+    File catalog leaves out its hidden, gitignored, and symlinked files, and a pin's lists no
+    folder. So a file's card says nothing a catalog's not listing it would give, whether the
+    catalog lists the file or not, and a folder's never says it is missing."""
 
     held = [rest for rest in _rests() if rest["subject"]["kind"] in {"file", "folder"}]
-    assert any("missing" in (rest["summary"] or {}) for rest in held)
+    files = [rest for rest in held if rest["subject"]["kind"] == "file"]
+    listed = [rest for rest in files if rest["listed"]]
+    unlisted = [rest for rest in files if not rest["listed"]]
+    assert listed and len(unlisted) >= 4, files
     for rest in held:
-        if "missing" in (rest["summary"] or {}):
-            assert rest["subject"]["kind"] == "file", rest
-            assert rest["catalog"] == "whole", rest
-    assert any(rest["catalog"] == "filling" for rest in held)
+        assert "missing" not in (rest["known"] or {}), rest
+        assert "missing" not in (rest["summary"] or {}), rest
+    for rest in unlisted:
+        same_kind = [
+            other for other in listed if other["subject"]["opens"] == rest["subject"]["opens"]
+        ]
+        assert all(rest["summary"] == other["summary"] for other in same_kind), rest
 
 
 def test_every_read_is_one_the_app_makes_from_the_cache() -> None:
@@ -310,9 +318,6 @@ def test_what_failed_or_was_not_yet_known_is_read_again() -> None:
     assert refreshing["known"] is None and refreshing["asked"], refreshing
     let_go = summaries["the missing commit, once the panel let go of what it knew"]
     assert let_go["known"] is None and let_go["asked"] == summaries["a commit it lacks"]["asked"]
-    gained = summaries["the same, once the served tree has it"]
-    assert "missing" not in (gained["summary"] or {}), gained
-    assert summaries["a file a whole catalog lacks"]["summary"]["missing"]
 
 
 def _constant(path: Path, name: str) -> int:

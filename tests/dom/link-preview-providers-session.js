@@ -131,9 +131,13 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 
-// What a page holds of its files: the catalog's snapshot and the tree's folder totals, by
-// each path as the inventory spells it, `%` as `%25` in a folder's.
+// What a page holds of its files: the Quick File catalog's snapshot, whole, and the tree's
+// folder totals, by each path as the inventory spells it, `%` as `%25` in a folder's. As the
+// real catalog does, the stand-in lists only what the walker indexed and the catalog keeps, so
+// a served folder's hidden, gitignored, and symlinked files, which a link opens all the same,
+// are not in it (tests/dom/link-card-page.js, `SERVED_FILES`, says where each is left out).
 const servedFiles = ["README.md", "docs/guide.md", "notes/100%25.md"];
+const unlistedFiles = [".github/CONTRIBUTING.md", "build/report.md", "alias.md"];
 const catalogOf = (paths) =>
   paths
     .map((file) => ({
@@ -144,7 +148,6 @@ const catalogOf = (paths) =>
     }))
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
 let knownFiles = catalogOf(servedFiles);
-let catalogComplete = true;
 const folderTotals = new Map([
   ["", { files: 3, bytes: 112 }],
   ["docs", { files: 1, bytes: 48 }],
@@ -193,7 +196,7 @@ const mb = {
   },
   fileCatalog: {
     snapshot: () => ({
-      complete: catalogComplete,
+      complete: true,
       truncated: false,
       files: knownFiles,
       observedCount: knownFiles.length,
@@ -266,15 +269,12 @@ async function rest(subject) {
   } catch (error) {
     summary = { rejected: error?.name ?? String(error) };
   }
-  // What a file's or folder's card could know: whether the catalog covered the whole root.
-  const held = subject.kind === "file" || subject.kind === "folder";
-  return {
-    subject,
-    known,
-    summary,
-    asked,
-    ...(held ? { catalog: catalogComplete ? "whole" : "filling" } : {}),
-  };
+  // A file's card, and whether the page's whole catalog lists the file it opens.
+  const listed =
+    subject.kind === "file"
+      ? { listed: knownFiles.some((each) => each.path === subject.target.path) }
+      : {};
+  return { subject, known, summary, asked, ...listed };
 }
 
 /** A prefetch on a rest: the reads it made, the assets it loaded, and the answers it asked. */
@@ -389,15 +389,12 @@ async function run() {
   summaries["the same file, opened in the served working tree"] = await rest(
     file("docs/guide.md", "working-tree"),
   );
-  summaries["a file a whole catalog lacks"] = await rest(file("docs/old-guide.md"));
-  catalogComplete = false;
-  summaries["the same, while the catalog is still filling"] = await rest(file("docs/old-guide.md"));
-  catalogComplete = true;
-  // The page's own state, read as it is asked: a file the tree gains after a rest that found
-  // it missing is not missing at the next.
-  knownFiles = catalogOf([...servedFiles, "docs/old-guide.md"]);
-  summaries["the same, once the served tree has it"] = await rest(file("docs/old-guide.md"));
-  knownFiles = catalogOf(servedFiles);
+  // Files the served folder opens and its whole catalog leaves out: a hidden one, a
+  // gitignored one, and a symbolic link.
+  for (const unlisted of unlistedFiles) {
+    summaries[`a served file the catalog leaves out, ${unlisted}`] = await rest(file(unlisted));
+  }
+  summaries["a file the served folder lacks"] = await rest(file("docs/old-guide.md"));
   summaries["a name with a percent sign"] = await rest(file("notes/100%.md"));
   summaries["a folder the tree has totaled"] = await rest(folder("docs/"));
   summaries["the served root"] = await rest(folder(""));
@@ -406,6 +403,9 @@ async function run() {
   sourceKind = "git_revision";
   knownFiles = catalogOf(["README.md", "docs/guide.md"].map(sandbox.MetabrowserGitPath.wire));
   summaries["a file of a pinned revision"] = await rest(file("docs/guide.md"));
+  // A pin's catalog is its blobs alone, and a link with no closing slash is a file's link,
+  // so its folder's, which the pin opens as a folder, is one the catalog lacks.
+  summaries["a pinned revision's folder, linked with no closing slash"] = await rest(file("docs"));
   summaries["a file the pinned revision lacks"] = await rest(file("docs/old-guide.md"));
   knownFiles = catalogOf(servedFiles);
   sourceKind = "filesystem";

@@ -126,6 +126,9 @@ It uses the tooltip’s existing content classes (`.tip-name`, `.tip-detail` in
    folder’s page and “Opens at the served revision” on a pin’s or a mirror’s, which
    replace `WORKING_TREE_TITLE`. A commit the repository lacks says “Not in this
    repository” instead, and the card makes no fetch for it.
+   No other card says its object is missing: a file’s or folder’s says where it opens
+   whether or not a list the page holds names it, since none is every path a link can
+   open (Data and Prefetch).
 
 As built, a line that is the link’s own text, in any case and spacing, or a line above
 it, is left out, the identity included, and the first line kept leads with the mark, so
@@ -153,7 +156,7 @@ What a provider keeps is bounded.
 | Pull request, its tabs and files | `pulls?q=<n>`, kept by number for as long as the Pulls tab waits between its reads; a failed read, and a number a catalog not yet whole lacks, are read again | The github plugin’s page assets, and the record read with `warm=1`, which counts no view, once a page for each number |
 | Stack | One read of the cache-only stacks route, reused for as long as the Pulls tab’s poller waits between its reads, a second while the snapshot is being refreshed; that poller is the plugin’s own and asks GitHub to refresh a snapshot that is due | The page’s assets |
 | Commit | `MetabrowserGitPanel.commitSummary` and `keptCommitSummary`, which share `fetchCommitDetail`’s cache and its missing set, so the card follows what the panel keeps and clears | `MetabrowserGitPanel.prefetchCommit`: the detail first, then `prepareRevision(…, true)`, nothing for a commit the repository lacks, and never in place of a preparation still on its way |
-| File or folder | Whether a complete file catalog holds a file, and the folder’s totals already known, read from the page each time and never kept; a file’s type is its mark’s to say | `prefetchCounterpart` for its page; not its body (Follow-ups) |
+| File or folder | The folder’s totals already known, read from the page each time and never kept; nothing for a file, whose type is its mark’s to say. No file is called missing: a served folder’s whole Quick File catalog leaves out hidden, gitignored, and symlinked files the folder still opens, and a pin’s lists only blobs, while its file route opens a folder or submodule a link names with no closing slash, so neither proves a path absent (`knownPath`) | `prefetchCounterpart` for its page; not its body (Follow-ups) |
 | The pull request list | Static | The list view’s assets, `ensureKindAssets("pull-request-list")` |
 
 A link starts its read and its prefetch once the pointer has rested on it for the tree’s

@@ -6,8 +6,9 @@ listeners, the resolver's ``enhance``, the card's registry, and its providers in
 each read replaying the server's recorded answer. These hold, from that transcript, the
 rules the review found broken at those boundaries: a card is placed on the link the pointer
 rests on, and another link's card replaces it; focus brings no card back; a read that failed
-and a page state that changed are read again at the next rest; an image inside a link shows
-no tooltip of its own; and a link to another site says where it goes.
+and a page state that changed are read again at the next rest; a file the Quick File
+catalog leaves out is not called missing; an image inside a link shows no tooltip of its
+own; and a link to another site says where it goes.
 """
 
 from __future__ import annotations
@@ -64,9 +65,29 @@ def test_what_failed_or_changed_is_read_again_at_the_next_rest() -> None:
     assert len(reads) == 2, reads
     first, second = (entry["sees"] for entry in _seen(retried))
     assert first != second and second.startswith(first.split(" | ")[0]), (first, second)
-    gained = [entry["sees"] for entry in _seen(session["a file the tree gains"])]
-    assert gained[0].endswith("Not in the served files"), gained
-    assert "Not in the served files" not in gained[-1], gained
+    before, after = (
+        entry["sees"].split(" | ") for entry in _seen(session["a folder the tree totals"])
+    )
+    assert set(before) < set(after), (before, after)
+
+
+def test_a_file_the_catalog_leaves_out_reads_as_one_it_lists() -> None:
+    """The page's Quick File catalog is not every file a link can open: it leaves out a
+    hidden, a gitignored, and a symlinked file, which the served folder opens all the same.
+    So a card on a link to one says what a card on a file the catalog lists says, but for
+    the file's path: no line of it is drawn from the catalog's not holding it."""
+
+    log = _session()["files the catalog leaves out"]
+    cards: dict[str, list[str]] = {}
+    for entry in log:
+        if entry.get("sees"):
+            cards[entry["on"]] = entry["sees"].split(" | ")
+    listed = [lines for name, lines in cards.items() if name.startswith("listed ")]
+    unlisted = {name: lines for name, lines in cards.items() if name.startswith("unlisted ")}
+    assert listed and len(unlisted) >= 3, cards
+    for name, lines in unlisted.items():
+        assert lines[0] == name.removeprefix("unlisted "), (name, lines)
+        assert all(lines[1:] == other[1:] for other in listed), (name, lines, listed)
 
 
 def test_an_image_inside_a_link_shows_one_tooltip_the_link_card() -> None:
