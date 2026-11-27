@@ -5,7 +5,7 @@ title: Refresh the post-load navigation and fetch performance campaign
 kind: epic
 status: in_progress
 priority: 1
-version: 28
+version: 29
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
@@ -59,10 +59,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T20:37:58.326Z
-updated_at: 2026-11-27T09:49:00.853Z
+updated_at: 2026-11-27T11:22:34.673Z
 started_at: 2026-11-26T20:38:34.641Z
 extensions:
   linear:
     id: 83946ca1-f902-4d2b-8df2-2988e9b02f48
     linked_at: 2026-11-26T20:56:08.806Z
 ---
+
+## Notes
+
+The reviewed eight-layer stack #899 merged at 4313286. Accepted preparation and provider fixes are in main. Matched quiet-host post-load acceptance, the remaining live PR timing, and follow-up experiments remain open under this effort.

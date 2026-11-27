@@ -3,9 +3,9 @@ type: is
 id: is-01m8d3zanve7vz9fwprcdcjt8g
 title: Measure exact-first origin acquisition and pack negotiation
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
@@ -17,7 +17,11 @@ parent_id: is-01m8cs8jdw8yh0hvdy6449jm9j
 child_order_hints:
   - is-01m8d6341yzhweagpbaq2gjf8k
 created_at: 2026-11-26T23:45:09.815Z
-updated_at: 2026-11-27T00:22:11.254Z
+updated_at: 2026-11-27T11:22:32.752Z
+closed_at: 2026-11-27T11:22:32.752Z
+close_reason: "Merged in the exact reviewed performance stack #899 at main 4313286. Each owning layer passed its hosted workflow."
+resolution: null
+duplicate_of: null
 ---
 H132 and H133. Compare exact-first versus broad-first origin fetching at identical diff and refs. Retain object storage and elapsed times. Any later publication experiment must preserve ownership and prove actual visible Changes improvement.
 
