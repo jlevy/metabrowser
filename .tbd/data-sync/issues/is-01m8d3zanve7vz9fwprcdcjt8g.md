@@ -5,7 +5,7 @@ title: Measure exact-first origin acquisition and pack negotiation
 kind: task
 status: in_progress
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-26-post-load-performance.md
 refs:
   - kind: pr
@@ -14,8 +14,10 @@ refs:
 labels: []
 dependencies: []
 parent_id: is-01m8cs8jdw8yh0hvdy6449jm9j
+child_order_hints:
+  - is-01m8d6341yzhweagpbaq2gjf8k
 created_at: 2026-11-26T23:45:09.815Z
-updated_at: 2026-11-26T23:58:44.685Z
+updated_at: 2026-11-27T00:22:11.254Z
 ---
 H132 and H133. Compare exact-first versus broad-first origin fetching at identical diff and refs. Retain object storage and elapsed times. Any later publication experiment must preserve ownership and prove actual visible Changes improvement.
 

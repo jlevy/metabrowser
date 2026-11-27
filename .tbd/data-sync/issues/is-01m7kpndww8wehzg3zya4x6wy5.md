@@ -5,16 +5,18 @@ title: "Chrome flake: tests/test_github_pulls_stacks_chrome.py stalls at 'phase 
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-17T02:51:33.147Z
-updated_at: 2026-11-20T17:19:05.836Z
+updated_at: 2026-11-27T00:47:20.158Z
 ---
 Found by the CI speed assessment (research-2026-11-16-ci-speed.md). Run 43987478737 attempt 1, test (3.13), on a pull request where another full-suite job passed on the same commit; and run 43981811898, test (3.13), on main. Both: test_the_pulls_stack_groups_share_the_stack_menus_design_in_chrome, AssertionError listing phases chrome 280, shell 1009, first row 1897, grouped 2074, keys 4232. Reproduce under load and fix the cause.
 
 ## Notes
 
 2026-11-17: the same test failed again with another symptom, in chrome (3.13, 3/4) of run 44037230262 (jlevy/metabrowser#504, the first run of the split workflow): phases chrome 255, shell 967, then 'timed out waiting for document.querySelector(".github-pulls-item") !== null' with the list reading 'The repository could not be recorded in the cache.' while the stacks route answered current. The test is the only one in its module, so it is not a shard-order dependence. Not rerun; the run was superseded.
+
+2026-11-26: performance stack PR 894 at be2228392, run 45915613821 Chrome 3.12 shard 3/4, job 140234062528. The third keyboard step focused #105 while #106 was transiently absent (its aria-expanded read was null rather than false). All 21 other shard tests passed. On local arm64 under high load, the same exact branch once failed earlier when #10 moved from stack 286 to 300. The matched upstream 71dded6d test passed once. Requested one retry of the failed hosted shard. The PR changes only the image preview at runtime; no Pulls keyboard or grouping change.
