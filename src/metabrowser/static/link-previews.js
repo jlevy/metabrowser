@@ -98,7 +98,7 @@
   /** @typedef {MetabrowserLinkPreviewSubject} Subject */
   /** @typedef {MetabrowserLinkPreview} Preview */
   /** @typedef {MetabrowserLinkPreviewProvider} Provider */
-  /** @typedef {MetabrowserPublicSdk} Sdk */
+  /** @typedef {MetabrowserLinkCardSdk} Sdk */
   /**
    * What `card` reads beside its subject and data: the link's own text, its author's
    * title, whether it opens a new tab, and the addresses of the images inside it that the

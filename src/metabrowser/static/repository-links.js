@@ -646,7 +646,7 @@
    * text wrote it and moves its one click handler and its card to the new answer.
    *
    * @param {Element} root
-   * @param {MetabrowserPublicSdk} mb The page's SDK, which a link's card is drawn with.
+   * @param {MetabrowserLinkCardSdk} mb The page's SDK, which a link's card is drawn with.
    * @param {{
    *   text?: TextContext,
    *   open?: (route: RouteTarget) => boolean,
@@ -768,7 +768,7 @@
    * @param {Element} root
    * @param {Element} anchor
    * @param {MetabrowserLinkPreviewTarget} target
-   * @param {MetabrowserPublicSdk} mb
+   * @param {MetabrowserLinkCardSdk} mb
    * @param {{authorTitle?: string | null}} [options]
    * @returns {boolean}
    */
@@ -783,7 +783,7 @@
    *
    * @param {Element} root
    * @param {Element} anchor
-   * @param {MetabrowserPublicSdk} mb
+   * @param {MetabrowserLinkCardSdk} mb
    */
   function previewOutside(root, anchor, mb) {
     previewLink(root, anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" }, mb);

@@ -962,6 +962,20 @@ async function headLinkChecks(mountDiffView, byName) {
   }
   // The page's one tooltip, which draws a card.
   const tooltip = { show() {}, hide() {} };
+  // The rest of what the SDK the plugin mounts its view with gives a rendered file's links'
+  // cards to be read with (`MetabrowserLinkCardSdk`): the cards here are a recording
+  // stand-in, which reads none of it.
+  const linkCardSdk = {
+    tooltip,
+    plugins: { load: async () => ({}) },
+    fetchPluginData: async () => ({}),
+    ensureKindAssets: async () => {},
+    fileCatalog: { snapshot: () => ({ complete: false, files: [] }) },
+    directoryTotals: { get: () => null },
+    formatAge: () => ({ label: "" }),
+    formatFileCount: (count) => `${count} files`,
+    formatSize: (bytes) => `${bytes} B`,
+  };
   // A rendered file's links into the served repository open its pages in place, as every
   // text's do: the view hands static/repository-links.js, run whole, the SDK's navigation, so
   // a plain click on a commit's page, the list, or another pull request's opens it through
@@ -1004,7 +1018,7 @@ async function headLinkChecks(mountDiffView, byName) {
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
-        tooltip,
+        ...linkCardSdk,
         // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
         loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
         repository: {
@@ -1478,7 +1492,7 @@ async function headLinkChecks(mountDiffView, byName) {
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
-        tooltip,
+        ...linkCardSdk,
         loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
         repository: {
           branch: "feature",
@@ -1644,7 +1658,7 @@ async function headLinkChecks(mountDiffView, byName) {
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
-        tooltip,
+        ...linkCardSdk,
         loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
         repository: headRepository,
         sourceKind: () => "git_revision",

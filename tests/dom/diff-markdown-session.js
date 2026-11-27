@@ -442,6 +442,17 @@ globalThis.window = {
     },
     loadChangedFilesTree: async () => null,
     navigation,
+    // The rest of what a rendered file's links' cards are read with (`MetabrowserLinkCardSdk`):
+    // the cards here are a recording stand-in, which reads none of it.
+    tooltip: { show() {}, hide() {} },
+    plugins: { load: async () => ({}) },
+    fetchPluginData: async () => ({}),
+    ensureKindAssets: async () => {},
+    fileCatalog: { snapshot: () => ({ complete: false, files: [] }) },
+    directoryTotals: { get: () => null },
+    formatAge: () => ({ label: "" }),
+    formatFileCount: (count) => `${count} files`,
+    formatSize: (bytes) => `${bytes} B`,
     sourceKind: () => pageSource.kind,
     get repository() {
       return pageSource.repository;

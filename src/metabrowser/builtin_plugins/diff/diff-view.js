@@ -47,7 +47,73 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
  * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
  * @property {MetabrowserPublicSdk["loadRepositoryLinks"]} [loadRepositoryLinks]
+ * @property {MetabrowserPublicSdk["tooltip"]} [tooltip] The rest of what a rendered file's
+ *   links' cards are read and drawn with (`MetabrowserLinkCardSdk`, `linkCardSdk`).
+ * @property {MetabrowserPublicSdk["fetchPluginData"]} [fetchPluginData]
+ * @property {MetabrowserPublicSdk["fileCatalog"]} [fileCatalog]
+ * @property {MetabrowserPublicSdk["directoryTotals"]} [directoryTotals]
+ * @property {MetabrowserPublicSdk["prefetchCounterpart"]} [prefetchCounterpart]
+ * @property {MetabrowserPublicSdk["formatAge"]} [formatAge]
+ * @property {MetabrowserPublicSdk["formatFileCount"]} [formatFileCount]
+ * @property {MetabrowserPublicSdk["formatSize"]} [formatSize]
  */
+
+/**
+ * *api* as what a rendered file's links are read and their cards drawn with, or null where
+ * the view was mounted without it, as a diff drawn with the plain syntax api is: the SDK the
+ * plugin mounts the view with has every member (index.js).
+ *
+ * @param {DiffViewApi | undefined} api
+ * @returns {MetabrowserLinkCardSdk | null}
+ */
+function linkCardSdk(api) {
+  if (
+    !api?.repository ||
+    !api.sourceKind ||
+    !api.navigation ||
+    !api.tooltip ||
+    !api.plugins ||
+    !api.fetchPluginData ||
+    !api.ensureKindAssets ||
+    !api.fileCatalog ||
+    !api.directoryTotals ||
+    !api.formatAge ||
+    !api.formatFileCount ||
+    !api.formatSize
+  ) {
+    return null;
+  }
+  const {
+    repository,
+    sourceKind,
+    navigation,
+    tooltip,
+    plugins,
+    fetchPluginData,
+    ensureKindAssets,
+    fileCatalog,
+    directoryTotals,
+    prefetchCounterpart,
+    formatAge,
+    formatFileCount,
+    formatSize,
+  } = api;
+  return {
+    repository,
+    sourceKind,
+    navigation,
+    tooltip,
+    plugins,
+    fetchPluginData,
+    ensureKindAssets,
+    fileCatalog,
+    directoryTotals,
+    prefetchCounterpart,
+    formatAge,
+    formatFileCount,
+    formatSize,
+  };
+}
 
 /**
  * @typedef {object} FileViewState
@@ -5571,9 +5637,8 @@ export function mountDiffView(container, document_, api, options = {}) {
         enhanceLinks(prose) {
           const navigation = api?.navigation;
           const links = loadedLinks();
-          // The plugin mounts the view with its SDK (index.js), which draws the cards.
-          const mb = /** @type {MetabrowserPublicSdk} */ (/** @type {unknown} */ (api));
-          if (links && navigation && api?.sourceKind && api?.repository) {
+          const mb = linkCardSdk(api);
+          if (links && mb) {
             links.enhance(prose, mb, { views: headLinksOpen?.() === true });
           }
           if (navigation && headLinksOpen) {
@@ -5581,7 +5646,8 @@ export function mountDiffView(container, document_, api, options = {}) {
               navigation,
               linksOpen: headLinksOpen,
               isPlainClick: (event) => loadedLinks()?.isPlainClick(event) === true,
-              preview: (link, target) => loadedLinks()?.previewLink(prose, link, target, mb),
+              preview: (link, target) =>
+                mb ? loadedLinks()?.previewLink(prose, link, target, mb) : undefined,
             });
           }
           for (const link of prose.querySelectorAll('a[target="_blank"]')) {

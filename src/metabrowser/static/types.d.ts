@@ -3977,10 +3977,10 @@ declare global {
         views?: boolean;
       },
     ): MetabrowserRepositoryLinkTarget | null;
-    /** Each in-app link it makes has its link card, registered with *root*. */
+    /** Each link it reads has its link card, registered with *root*. */
     enhance(
       root: Element,
-      mb: MetabrowserPublicSdk,
+      mb: MetabrowserLinkCardSdk,
       options?: {
         text?: MetabrowserRepositoryTextContext;
         open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
@@ -3996,7 +3996,7 @@ declare global {
       root: Element,
       anchor: Element,
       target: MetabrowserLinkPreviewTarget,
-      mb: MetabrowserPublicSdk,
+      mb: MetabrowserLinkCardSdk,
       options?: { authorTitle?: string | null },
     ): boolean;
     /** The link has no card any more. */
@@ -4024,6 +4024,28 @@ declare global {
    * answer, a rendered diff's link to a file of its head, a pin's `/view/<GitPath
    * wire>[#fragment]` address, or a page on another site, by its address.
    */
+  /**
+   * What a link's card is read and drawn with: the SDK members the resolver's `enhance`, the
+   * card's registry, and its providers call, which the surface that drew the link passes.
+   */
+  type MetabrowserLinkCardSdk = Pick<
+    MetabrowserPublicSdk,
+    | "directoryTotals"
+    | "ensureKindAssets"
+    | "fetchPluginData"
+    | "fileCatalog"
+    | "formatAge"
+    | "formatFileCount"
+    | "formatSize"
+    | "navigation"
+    | "plugins"
+    | "repository"
+    | "sourceKind"
+    | "tooltip"
+  > &
+    /** The view helpers bring it, so a page that has drawn no view has none yet. */
+    Partial<Pick<MetabrowserPublicSdk, "prefetchCounterpart">>;
+
   type MetabrowserLinkPreviewTarget =
     | Extract<MetabrowserRepositoryLinkTarget, { kind: "view" | "route" }>
     | Readonly<{ kind: "view-head"; href: string }>
@@ -4068,15 +4090,15 @@ declare global {
   type MetabrowserLinkPreviewProvider = Readonly<{
     summary(
       subject: MetabrowserLinkPreviewSubject,
-      context: { mb: MetabrowserPublicSdk },
+      context: { mb: MetabrowserLinkCardSdk },
     ): Promise<MetabrowserLinkPreview | null> | MetabrowserLinkPreview | null;
     known?(
       subject: MetabrowserLinkPreviewSubject,
-      context: { mb: MetabrowserPublicSdk },
+      context: { mb: MetabrowserLinkCardSdk },
     ): MetabrowserLinkPreview | null;
     prefetch?(
       subject: MetabrowserLinkPreviewSubject,
-      context: { mb: MetabrowserPublicSdk },
+      context: { mb: MetabrowserLinkCardSdk },
     ): unknown;
   }>;
 
@@ -4090,7 +4112,7 @@ declare global {
       root: Element,
       anchor: Element,
       target: MetabrowserLinkPreviewTarget,
-      mb: MetabrowserPublicSdk,
+      mb: MetabrowserLinkCardSdk,
       options?: { authorTitle?: string | null },
     ): boolean;
     forget(anchor: Element): void;
