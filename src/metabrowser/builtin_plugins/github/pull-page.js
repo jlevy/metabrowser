@@ -9097,6 +9097,9 @@ export function mountPullPage(container, ctx, mb) {
             }
             return (html) => inertProse(inert, html);
           },
+          // A note the guide lets go, its step left for another, takes its links' cards with
+          // it, as a text the conversation drops does.
+          releaseProse: (prose) => repositoryLinks?.disposePreviews(prose),
           // A refused note says why in a description's words.
           refusalNote: textRefusalNote,
           // The overview shows the description once its Markdown is drawn, or its source

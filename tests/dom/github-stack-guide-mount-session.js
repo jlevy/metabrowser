@@ -1077,8 +1077,24 @@ async function noteLinks(page, mb) {
     );
     return `${link.textContent}: ${card.target.kind}`;
   });
+  // The next step replaces the note: the first note's links take their cards with them.
+  [...container.descendants()]
+    .find((node) => node.tag === "button" && node.getAttribute("aria-label") === "Next step")
+    .events.get("click")();
+  await settle();
+  reads.at(-1).answer({
+    ...step(revision(4), 2, pinsOf(drawn)),
+    note_html: '<p><a href="https://github.com/octo/demo/pulls">the pull requests</a></p>',
+  });
+  await settle();
+  assert.notEqual(note(), drawnFirstNote, "the next step draws its own note");
+  said.cards_left_once_the_step_changes = drawnLinks.filter((link) => cards.has(link)).length;
+  assert.equal(said.cards_left_once_the_step_changes, 0, "a note the guide let go kept cards");
+  const nextLinks = note().querySelectorAll("a[href]");
   handle.dispose?.();
-  said.cards_left_once_the_page_ends = drawnLinks.filter((link) => cards.has(link)).length;
+  said.cards_left_once_the_page_ends = [...drawnLinks, ...nextLinks].filter((link) =>
+    cards.has(link),
+  ).length;
   window.MetabrowserInertHtml = allowlist;
   return said;
 }

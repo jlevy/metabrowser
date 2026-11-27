@@ -2520,6 +2520,8 @@ export function mountStackPage(container, ctx, mb) {
           return prose;
         };
       },
+      // A note the guide lets go, its step left for another, takes its links' cards with it.
+      releaseProse: (prose) => repositoryLinks?.disposePreviews(prose),
       refusalNote: textRefusalNote,
       // The comparison drawn has moved, and may be gone: the stack is read now, so the
       // page draws its own comparison in its place or offers it (`answerAction`).
