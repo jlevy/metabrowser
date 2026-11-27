@@ -50,9 +50,12 @@ invalid.
 
 ## Measurement Contract
 
-Every browser run is one flat JSON envelope.
-The generic fields form `web-performance-profile/v1`; an adapter may add fields but may
-not redefine them.
+Navigation-time profiles use the flat `web-performance-profile/v1` envelope.
+The stateful transition recorder has its own versioned records, with trusted input, the
+exact destination’s first useful frame, and per-region continuity and convergence.
+See the
+[transition scenario](../explorations/performance-loop/README.md#transition-navigation-scenario)
+for its evidence checks and cache regimes.
 
 ### Evidence Before Metrics
 
@@ -164,7 +167,7 @@ round.
 | Progressive load | Large or streaming data source; interact while updates arrive | Long Task and frame maxima, Event Timing, blocked share | Completion, final state, dropped and resync signals |
 | Churn and recovery | Burst updates, disconnect, reconnect, and force resynchronization | Convergence time, dropped events, resync count, update coalescing | Interaction latency during churn, final semantic equivalence, bounded caches |
 | Steady interaction | Settled application; repeat one scripted user journey | p50, p95, maximum interaction latency; named handler spans | Correct outcome, DOM and heap before and after |
-| Stateful navigation | Settled application; move between already rendered subjects with trusted input | Intent-to-ready and selection-to-painted-ready time; blank or placeholder frames; server and client phase spans | Exact selected subject, continuous useful content, one mounted owner, bounded preparation, disposal, and heap |
+| Stateful navigation | Settled application; first-open, prepared, and revisited subjects with trusted input | Exact subject’s painted-ready time, blank and placeholder frames, changes to visible regions, and server and client phases | Continuous useful content, one active owner, bounded preparation, disposal, and heap |
 | Large retained view | Open a bounded but DOM-heavy source such as a large comparison; collapse, expand, and replace | Projection spans, Long Tasks, DOM and heap before and after | Hidden content is not mounted, expansion yields, cancellation and final content are exact |
 | Visual stability | Fixed viewport; capture shipped, intermediate, and final states | CLS, direct region movement, visual-state and repaint counts | First usable time and responsiveness do not regress |
 | Endurance | Long-lived session with repeated navigation and updates | Heap slope, DOM ceiling, retained sample counts, listener and cache sizes | Interaction latency stays flat and attribution does not overflow |

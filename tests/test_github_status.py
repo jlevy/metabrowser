@@ -20,6 +20,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github import gh_status
+from metabrowser.builtin_plugins.github.gh import ENVIRONMENT_TOKENS
 from metabrowser.builtin_plugins.github.gh_status import (
     GithubStatus,
     github_status,
@@ -223,6 +224,10 @@ def test_the_checks_before_work_leave_the_version_out(logging_gh: Path) -> None:
 def test_a_kept_answer_is_dropped_when_gh_or_its_configuration_changes(
     logging_gh: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The key says only whether a token variable is set, so one the caller already set,
+    # as a cloud container sets GH_TOKEN, would hide the token this test sets below.
+    for variable in ENVIRONMENT_TOKENS:
+        monkeypatch.delenv(variable, raising=False)
     asyncio.run(github_status(version=False))
     assert kept_github_status() is not None
     monkeypatch.setenv("GH_CONFIG_DIR", str(tmp_path / "other-config"))

@@ -69,6 +69,7 @@ from tests.golden_harness import (
     quoted,
     run_metab,
 )
+from tests.mode_denials import require_mode_denials
 from tests.required_tools import needs_git
 
 pytestmark = [
@@ -335,6 +336,7 @@ def test_golden_a_changes_url_anchor_opens_the_file_it_names(
 def test_golden_pull_files_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
+    require_mode_denials()
     session = _Session(tmp_path, monkeypatch, pull_origin)
     online = files_scenario(session.origin)
     first = files_page(TREE_PULL, 1)

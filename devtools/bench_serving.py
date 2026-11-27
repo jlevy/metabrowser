@@ -549,7 +549,9 @@ class Server:
         build: MetabBuild,
         *,
         provider: str,
+        state_root: Path | None = None,
     ) -> None:
+        self._state_root = state_root
         self._root = root
         self._log_path = log_path
         self._build = build
@@ -568,6 +570,9 @@ class Server:
             port = probe.getsockname()[1]
         with self._log_path.open("wb") as handle:
             environment = os.environ.copy()
+            if self._state_root is not None:
+                for name in ("CACHE", "CONFIG", "STATE"):
+                    environment[f"METABROWSER_{name}_DIR"] = str(self._state_root / name.lower())
             environment["METABROWSER_INVENTORY_PROVIDER"] = self._provider
             environment["METABROWSER_DEBUG"] = "1"
             # A benchmark's server is not an open: it stays out of the recent targets,

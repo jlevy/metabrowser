@@ -1,0 +1,18 @@
+Exp-112 — the selected Conversation gets the next free provider slot
+Registered 2026-11-26 before the held-slot replay.
+
+H128: during the first checkout Git acquisition, selected Conversation metadata can use
+the next released provider slot ahead of already queued optional work. Preserve the
+configured cap, keep in-flight work running, and bound how many selected reads can pass
+ordinary waiters.
+
+Replay the same selected pull request through the existing ASGI golden-backed fixture.
+Hold the Git turn and one provider slot. Occupy the other slot, queue two optional jobs,
+and start the selected Conversation. Release the other slot. A candidate must publish
+the exact description before either queued optional job enters, keep the same viewer
+and one core query, finish both optional jobs in FIFO order, and preserve exact Changes
+after release. Test ordinary admission after a bounded number of preferential reads
+and cancellation at a slot handoff.
+
+The held-slot test measures causal order, without network or browser time. If judged
+timing is not available, retain the result as a diagnostic.

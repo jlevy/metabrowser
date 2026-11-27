@@ -32,6 +32,7 @@ import {
   harnessProvenance,
   provenanceChanges,
   serverFacts,
+  versionIdentity,
 } from "./provenance.mjs";
 import { DEFAULT_LOCK, lockHeld, releaseLock, takeLock } from "./wkprobe-lock.mjs";
 import {
@@ -647,7 +648,7 @@ async function oneRun(options) {
       indexed_files: server.progress.indexed_files,
       exit_on_eof: condition.exitOnEof,
     };
-    if (server.served !== row.build.version) {
+    if (versionIdentity(server.served) !== versionIdentity(row.build.version)) {
       row.refusals.push(["build_identity", `server reports ${server.served}`]);
     }
     if (!server.servingLine?.includes(`${corpus} at http://127.0.0.1:${serverPort}/`)) {

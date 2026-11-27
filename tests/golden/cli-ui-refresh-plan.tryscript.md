@@ -17,9 +17,9 @@ request’s page in the main pane, then the tabs, Files, Pulls, and Commits, and
 checkout’s working tree’s fetch of its origin.
 
 What is on screen is read from the tab in front and from what holds the main pane: the
-mirror’s freshness row is at the foot of the navigation on every tab; the pull request’s
-page while it holds the pane; and a tab’s part while it is in front, or, for Files and
-Commits, while the pane shows its file, folder, or commit.
+mirror’s source status belongs to every tab; the pull request’s page while it holds the
+pane; and a tab’s part while it is in front, or, for Files and Commits, while the pane
+shows its file, folder, or commit.
 The chooser’s list is on screen while it is open.
 A working tree’s fetch of its origin never is, since nothing its page shows waits for
 it: the page has no freshness row, so its press reads the disk and the history again and
@@ -34,8 +34,8 @@ The last steps run the module’s browser glue on a stand-in page, with the shel
 as app.js, the freshness row, and the Commits panel lend them, and the Pulls list’s two
 as pulls-panel.js does.
 The chooser cases use a revision and a working tree, with the list open and closed.
-The last case follows the tooltip across tabs and checks the spinner after a quick
-refresh.
+The last case follows the tooltip across tabs, checks that Pulls timing takes precedence
+over the source fetch age, and checks the spinner after a quick refresh.
 
 `tests/test_refresh_plan_session.py` holds the record to these invariants;
 `cli-ui-key-reveal.tryscript.md` shows the button numbered 1 on every screen.
@@ -481,6 +481,8 @@ $ node tests/dom/refresh-plan-session.js
       "pullsHint": "Refreshed 2 min ago in 300ms",
       "spokenHint": "Refreshed 2 min ago in 300ms",
       "filesHint": "Refresh",
+      "sourceHint": "Last fetched 3m ago",
+      "newerSourceHint": "Last fetched just now",
       "waitingForSource": true,
       "spinner": {
         "immediate": true,

@@ -651,19 +651,18 @@ def test_a_folders_row_names_its_store_of_the_origin_on_every_page() -> None:
         "GET /api/source/status",
         'POST /api/source/refresh {"for":"page"}',
     ]
-    assert stale["paint"]["label"].startswith("Origin fetched ")
-    assert stale["paint"]["tone"] == "quiet"
+    assert stale["paint"] is None
     pressed = by_name["the reader's own Refresh says so while it runs"]
     assert pressed["requests"] == ["POST /api/source/refresh {}"]
     assert pressed["paint"]["label"] == "Refreshing…"
-    fetched = by_name["the store was fetched; the row says when, and nothing reloads"]
-    assert fetched["paint"]["label"].startswith("Origin fetched ")
-    assert "without changing the checkout" in fetched["paint"]["detail"]
+    fetched = by_name["the store was fetched without showing the footer or reloading"]
+    assert fetched["paint"] is None
     failed = by_name["a fetch that failed says the checkout is unchanged"]
     assert failed["paint"]["label"].startswith("Refresh failed · origin fetched ")
     for step in folder["steps"]:
         assert "mirror" not in json.dumps(step["paint"]), step["step"]
-        assert step["paint"]["offer"] is None and step.get("reloads", 0) == 0, step["step"]
+        assert step["paint"] is None or step["paint"]["offer"] is None, step["step"]
+        assert step.get("reloads", 0) == 0, step["step"]
 
 
 def test_a_folders_page_follows_its_checkouts_own_branch() -> None:
@@ -752,7 +751,7 @@ def test_the_session_runs_on_the_recording() -> None:
     assert arrived_push["requests"][-1].startswith("POST /api/source/pin ")
     assert arrived_push["reloads"] == 1
     refused_ask = by_name["a refused ask says nothing, and the page polls instead"]
-    assert (refused_ask["timer"], refused_ask["paint"]["error"]) == ("slow", None)
+    assert (refused_ask["timer"], refused_ask["paint"]) == ("slow", None)
     after_refusal = by_name["the poll after a refused ask"]["requests"]
     assert len(after_refusal) == 1 and after_refusal[0].startswith("GET /api/source/status")
     silent = by_name["the server stopped answering the page's asks"]
@@ -766,7 +765,7 @@ def test_the_session_runs_on_the_recording() -> None:
     ):
         quiet = by_name[name]
         assert (quiet["repaints"], quiet["timer"]) == (0, timer), name
-        assert quiet["paint"]["tone"] == "quiet" and quiet["paint"]["label"].startswith("Fetched")
+        assert quiet["paint"] is None
     # The commit view does not wait for the page's first ask (review A4 of #721).
     unheld = by_name["a missing commit does not wait for the page's first ask"]
     assert unheld["answeredBeforeTheAsk"] is True
@@ -857,7 +856,8 @@ def test_the_session_runs_on_the_recording() -> None:
     # A refusal of the page's own refresh says nothing; the reader's press says why.
     own = by_name["a page's own refresh with no room in the queue says nothing"]
     assert own["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
-    assert (own["paint"]["tone"], own["paint"]["error"]) == ("stale", None)
+    assert (own["paint"]["label"], own["paint"]["error"]) == ("", None)
+    assert own["paint"]["pull"].startswith("Pull request #")
     pressed = by_name["a press with no room in the queue says why"]
     assert pressed["requests"] == ["POST /api/source/refresh {}"]
     # The answer's own words are the agent's; its code says waiting would help.

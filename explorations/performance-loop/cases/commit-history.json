@@ -1,0 +1,9 @@
+[
+  {
+    "name": "history",
+    "path": "/api/git/log?limit=250",
+    "expect": { "is_repo": true },
+    "compare": ["commits", "has_more"],
+    "revalidate": true
+  }
+]

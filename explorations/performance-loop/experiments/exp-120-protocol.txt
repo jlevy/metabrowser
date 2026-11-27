@@ -1,0 +1,7 @@
+Exp-120 — strict origin-warm first-visit Pulls smoke
+Prepare one real product server with a fresh application state and the same
+four public subjects of exp-118. Declare the checkout origin store ready
+before starting Chrome. Record its wait separately from the first visible
+Changes milestone, Conversation, and the later revisit. Compare the meaning
+of the two regimes, not their timing as a paired speed claim. This is one
+high-load diagnostic, and any refusal stops acceptance at this attempt.

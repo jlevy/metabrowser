@@ -1,0 +1,228 @@
+{
+  "session": {
+    "requests": 43,
+    "commands": {
+      "rest": 27,
+      "graphql": 16,
+      "other": 0
+    },
+    "statuses": {
+      "200": 31,
+      "304": 12
+    },
+    "no_status": {
+      "failed": 0,
+      "unread": 0,
+      "unrecorded": 0
+    },
+    "core": 15,
+    "graphql_points": 16,
+    "share_304": 0.444,
+    "conditional": 12,
+    "cache_hits": 12,
+    "duplicates": {
+      "in_flight": 0,
+      "repeated": 4
+    }
+  },
+  "lanes": {
+    "visible": {
+      "requests": 24,
+      "commands": {
+        "rest": 18,
+        "graphql": 6,
+        "other": 0
+      },
+      "statuses": {
+        "200": 16,
+        "304": 8
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 10,
+      "graphql_points": 6,
+      "share_304": 0.444,
+      "conditional": 8,
+      "cache_hits": 8,
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 3
+      }
+    },
+    "attended": {
+      "requests": 3,
+      "commands": {
+        "rest": 3,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {
+        "200": 1,
+        "304": 2
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 1,
+      "graphql_points": 0,
+      "share_304": 0.667,
+      "conditional": 2,
+      "cache_hits": 2,
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      }
+    },
+    "prefetch": {
+      "requests": 6,
+      "commands": {
+        "rest": 6,
+        "graphql": 0,
+        "other": 0
+      },
+      "statuses": {
+        "200": 4,
+        "304": 2
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 4,
+      "graphql_points": 0,
+      "share_304": 0.333,
+      "conditional": 2,
+      "cache_hits": 2,
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 1
+      }
+    },
+    "background": {
+      "requests": 10,
+      "commands": {
+        "rest": 0,
+        "graphql": 10,
+        "other": 0
+      },
+      "statuses": {
+        "200": 10
+      },
+      "no_status": {
+        "failed": 0,
+        "unread": 0,
+        "unrecorded": 0
+      },
+      "core": 0,
+      "graphql_points": 10,
+      "share_304": null,
+      "conditional": 0,
+      "cache_hits": 0,
+      "duplicates": {
+        "in_flight": 0,
+        "repeated": 0
+      }
+    }
+  },
+  "repeats": [
+    {
+      "asks": "gh api user",
+      "fingerprint": "…",
+      "in_flight": 0,
+      "repeated": 4
+    }
+  ],
+  "bursts": [
+    {
+      "steps": "open the Pulls tab / open the top row at once",
+      "visible": 10,
+      "attended": 0,
+      "prefetch": 0,
+      "background": 9,
+      "unknown": 0
+    },
+    {
+      "steps": "its page asks again",
+      "visible": 1,
+      "attended": 1,
+      "prefetch": 0,
+      "background": 0,
+      "unknown": 0
+    },
+    {
+      "steps": "switch to closed and open the first",
+      "visible": 8,
+      "attended": 0,
+      "prefetch": 0,
+      "background": 0,
+      "unknown": 0
+    },
+    {
+      "steps": "come back to the open list and scroll",
+      "visible": 2,
+      "attended": 0,
+      "prefetch": 6,
+      "background": 1,
+      "unknown": 0
+    },
+    {
+      "steps": "open the second",
+      "visible": 2,
+      "attended": 1,
+      "prefetch": 0,
+      "background": 0,
+      "unknown": 0
+    },
+    {
+      "steps": "revisit the first",
+      "visible": 1,
+      "attended": 1,
+      "prefetch": 0,
+      "background": 0,
+      "unknown": 0
+    }
+  ],
+  "notes": {
+    "open the Pulls tab": {
+      "cores": "ready",
+      "status_scan": "started"
+    },
+    "open the top row at once": {
+      "number": 10,
+      "refresh": "not_cached, then started"
+    },
+    "its page asks again": {
+      "number": 10,
+      "refresh": "not_due"
+    },
+    "switch to closed and open the first": {
+      "list": "not_due",
+      "number": 9,
+      "refresh": "not_cached, then started"
+    },
+    "come back to the open list and scroll": {
+      "refresh": "not_due",
+      "prefetch": "started",
+      "top": [
+        10,
+        7
+      ],
+      "cores": "ready",
+      "walk": "ready"
+    },
+    "open the second": {
+      "number": 7,
+      "refresh": "started"
+    },
+    "revisit the first": {
+      "number": 10,
+      "refresh": "not_due"
+    }
+  }
+}

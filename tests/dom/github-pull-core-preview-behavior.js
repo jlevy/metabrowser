@@ -516,7 +516,15 @@ async function run() {
     refreshing: false,
     core_preview: null,
   };
-  let current = absent,
+  const pendingPrefetch = { ...absent, state: "pending", reason: null, refreshing: true };
+  const promotable = { ...pendingPrefetch, promotable_prefetch: true };
+  const latePrefetch = process.argv.includes("late-prefetch");
+  const initial = latePrefetch
+    ? pendingPrefetch
+    : process.argv.includes("prefetch")
+      ? promotable
+      : absent;
+  let current = initial,
     releasePost,
     settlementSignal,
     markdownRequests = 0;
@@ -600,11 +608,20 @@ async function run() {
     ready = true;
   });
   await settle();
-  assert.equal(
-    ready,
-    false,
-    "initial absence does not replace useful content before selected fetch",
-  );
+  assert.equal(ready, false, "an unresolved selection holds the previous useful content");
+  if (latePrefetch) {
+    assert.deepEqual(posts, [], "an ordinary pending refresh does not ask to promote");
+    assert.equal(
+      [...timers].some(([, task]) => task.delay === 0),
+      false,
+    );
+    current = promotable;
+    const poll = [...timers].find(([, task]) => task.delay > 0 && task.delay <= 1000);
+    assert.ok(poll, "the page keeps polling while the ordinary refresh is pending");
+    timers.delete(poll[0]);
+    poll[1].callback();
+    await settle();
+  }
   const ask = [...timers].find(([, task]) => task.delay === 0);
   assert.ok(ask);
   timers.delete(ask[0]);

@@ -44,11 +44,6 @@ LARGE_FILE_BYTES = 1 << 20
 SMALL_FILES = 50
 
 
-def test_pytest_itself_keeps_every_tmp_path(pytestconfig: pytest.Config) -> None:
-    # pytest's "failed" would remove a directory before a teardown failure is known.
-    assert pytestconfig.getini("tmp_path_retention_policy") == "all"
-
-
 # ── release_dead_locks ─────────────────────────────────────────────────────────
 
 
@@ -194,10 +189,13 @@ def _nested(
     record = tmp_path / f"record-{len(list(tmp_path.glob('record-*')))}.tsv"
     record.touch()
     session = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:sugar"]
+    # Observe the repository's retention policy, including setup and teardown errors.
+    env = {**os.environ, "PYTEST_DEBUG_TEMPROOT": str(temproot), RECORD_ENV: str(record)}
+    env.pop("PYTEST_ADDOPTS", None)
     completed = subprocess.run(
         [*session, "-o", "python_functions=probe_*", "-k", probes, *workers, str(THIS)],
         cwd=ROOT,
-        env={**os.environ, "PYTEST_DEBUG_TEMPROOT": str(temproot), RECORD_ENV: str(record)},
+        env=env,
         capture_output=True,
         text=True,
         errors="replace",

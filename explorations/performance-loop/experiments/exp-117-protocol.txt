@@ -1,0 +1,13 @@
+Exp-117 — distinguish optional changed-lines badges from Pulls-list readiness
+This record follows the refused list convergence in exp-111.
+
+On the same public checkout, observe the first Pulls list after the Files
+landing. Retain the number of mounted rows, the preview prompt, and the on-screen
+placeholder classes. This is a readiness diagnostic with no timing goals.
+
+Keep the original benchmark's standard regime. In the first-visit regime,
+allow the list and its prompt to be useful while its aria-hidden changed-lines
+badge settles. Keep that badge in placeholder frame accounting and distinguish
+the new readiness regime in captured flags. Validate both paths in a Chrome
+fixture with useful rows and the optional badge, ordinary loading in its place,
+and a missing list.

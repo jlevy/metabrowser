@@ -519,6 +519,7 @@ const TRUNCATED = Object.freeze({
  *   record_revision: string | null,
  *   refreshing: boolean,
  *   preparing_comparison?: true,
+ *   promotable_prefetch?: true,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
  *   image_route: string | null,
@@ -2577,6 +2578,7 @@ export function createPullController(deps, options) {
   /** The reader's selection in the Pulls tab that opened this page, if one did. */
   const reader = options.reader ?? null;
   let readerAsked = false;
+  let selectedFetchRequested = false;
   /** Asked for by a reader's selection, and the ask is on its way. */
   let fetching = false;
   let refreshPending = false;
@@ -2650,15 +2652,18 @@ export function createPullController(deps, options) {
     }
   }
 
-  /** A direct link's cold miss, which the page asks to fill once it is visible. */
+  function promotablePrefetch() {
+    return shownTab() === "" && envelope?.promotable_prefetch === true;
+  }
+
+  /** A direct link's cold miss or queued prefetch, which it asks for once visible. */
   function coldMiss() {
     return (
       reader === null &&
       error === null &&
-      envelope?.state === "absent" &&
-      envelope.reason === "not_cached" &&
-      envelope.last_refresh === null &&
-      !envelope.refreshing
+      envelope?.last_refresh === null &&
+      (promotablePrefetch() ||
+        (envelope.state === "absent" && envelope.reason === "not_cached" && !envelope.refreshing))
     );
   }
 
@@ -2668,12 +2673,18 @@ export function createPullController(deps, options) {
 
   /** The selected fetch `fetchForReader` has still to ask for, once the page can. */
   function fetchQueued() {
-    if (readerAsked || envelope === null) {
+    if (selectedFetchRequested || envelope === null) {
       return false;
     }
-    return reader === null
-      ? coldMiss()
-      : envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing;
+    if (promotablePrefetch()) {
+      return deps.isVisible() && (reader !== null || coldMiss());
+    }
+    return (
+      !readerAsked &&
+      (reader === null
+        ? coldMiss()
+        : envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing)
+    );
   }
 
   /** Whether the address names Changes, which the automatic comparison waits for. */
@@ -3129,9 +3140,12 @@ export function createPullController(deps, options) {
     polling = true;
     if (!first && catalogScanDue()) {
       // Asked first, so the read below already sees the scan running and the record current.
+      // The list is read for this page's record, not shown on it: the attended lane.
       catalogAskedAt = deps.now();
       try {
-        await deps.request("POST", CATALOG_REFRESH_ROUTE, { body: { background: true } });
+        await deps.request("POST", CATALOG_REFRESH_ROUTE, {
+          body: { background: true, lane: "attended" },
+        });
       } catch {
         // The read below still answers; the next window asks again.
       }
@@ -3324,19 +3338,32 @@ export function createPullController(deps, options) {
    * and a row reached by keyboard waits for the reader to stop there.
    */
   function fetchForReader() {
-    if (readerAsked || envelope === null || (reader === null && !directColdMiss())) {
+    const promoting = promotablePrefetch();
+    if (
+      selectedFetchRequested ||
+      (readerAsked && !promoting) ||
+      envelope === null ||
+      (reader === null && !directColdMiss())
+    ) {
       return;
     }
+    const queued = fetchQueued();
     readerAsked = true;
-    if (envelope.state !== "absent" || envelope.reason === "not_github" || envelope.refreshing) {
+    if (!queued) {
       return;
     }
+    selectedFetchRequested = true;
     fetching = true;
     render();
     askAfter(() => {
       fetching = false;
-      if (reader === null && !directColdMiss()) {
+      if (
+        (reader === null && !directColdMiss()) ||
+        (promoting &&
+          (!deps.isVisible() || (!promotablePrefetch() && envelope?.state !== "absent")))
+      ) {
         readerAsked = false;
+        selectedFetchRequested = false;
         render();
         return;
       }
@@ -3882,6 +3909,7 @@ export function createPullController(deps, options) {
       if (fetching) {
         fetching = false;
         readerAsked = false;
+        selectedFetchRequested = false;
       }
       return;
     }

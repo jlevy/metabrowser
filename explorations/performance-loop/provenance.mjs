@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 
@@ -136,6 +137,15 @@ export function harnessProvenance() {
 
 /** Fields of a build whose change during a run refuses it (`build_changed`). */
 export const BUILD_FIELDS = ["version", "commit", "dirty", "content"];
+
+// The checkout annotation comes from best-effort Git subprocesses. Under load git
+// describe can time out while rev-parse succeeds. Fingerprint the actual source or
+// wheel separately and compare the installed version across processes.
+export function versionIdentity(display) {
+  return typeof display === "string"
+    ? display.trim().replace(/ \((?:\+\d+ commits, )?(?:[\da-f]{7}(?:, dirty)?|dirty)\)$/, "")
+    : display;
+}
 /** Fields of a corpus whose change during a run refuses it (`corpus_changed`). */
 export const CORPUS_FIELDS = ["commit", "dirty", "trunk", "refs"];
 
@@ -143,7 +153,8 @@ export const CORPUS_FIELDS = ["commit", "dirty", "trunk", "refs"];
 export function provenanceChanges(start, end) {
   const out = [];
   for (const k of BUILD_FIELDS) {
-    if (end.build[k] !== start.build[k]) {
+    const value = k === "version" ? versionIdentity : (x) => x;
+    if (value(end.build[k]) !== value(start.build[k])) {
       out.push(["build_changed", `${k} was ${start.build[k]} at start, ${end.build[k]} at end`]);
     }
   }
@@ -161,6 +172,45 @@ export async function getJson(url, timeoutMs = 30000) {
     throw new Error(`${url}: HTTP ${response.status}`);
   }
   return response.json();
+}
+
+// This endpoint observes an existing store. The harness does not request a fetch.
+export async function waitForOriginStore(base, timeoutMs) {
+  const started = performance.now();
+  for (
+    let remaining = timeoutMs;
+    remaining > 0;
+    remaining = timeoutMs - (performance.now() - started)
+  ) {
+    let status;
+    try {
+      status = await getJson(
+        `${base}/api/source/status`,
+        Math.max(1, Math.min(5000, Math.ceil(remaining))),
+      );
+    } catch (error) {
+      if (error.name !== "TimeoutError") {
+        throw error;
+      }
+    }
+    if (
+      status?.refreshable === true &&
+      status.refreshing === false &&
+      status.stale === false &&
+      Number.isFinite(Date.parse(status.last_fetch_at))
+    ) {
+      return {
+        ready: true,
+        wait_ms: Math.round(performance.now() - started),
+        last_fetch_at: status.last_fetch_at,
+      };
+    }
+    const left = timeoutMs - (performance.now() - started);
+    if (left > 0) {
+      await delay(Math.min(left, 250));
+    }
+  }
+  return { ready: false, wait_ms: Math.round(performance.now() - started), last_fetch_at: null };
 }
 
 /** Facts about the moving parts of the corpus, read from the server before measuring. */

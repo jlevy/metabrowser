@@ -18,6 +18,10 @@ reference engine’s measured costs are in
 
 Measurements taken once to set a design-system rule, in WebKit and Chrome, are in
 [Design Rule Measurements](design-rule-measurements.md).
+What one scripted session of browsing pull requests asks of GitHub, live against this
+repository, is in [GitHub Requests While Browsing](github-requests/README.md), with its
+driver, [`github_browsing.py`](github_browsing.py), which the in-process benchmark
+`tests/test_github_browsing_benchmark.py` runs against the stand-in.
 
 The browser half is the Metabrowser adapter for the reusable
 [Web Performance Framework](../../docs/web-performance-framework.md).
@@ -45,8 +49,84 @@ answer forever, and only the second one earns a place in the release gate.
 6. RECORD      experiments/exp-NNN-<slug>.md, and update the hypothesis status.
 ```
 
-Rejected rounds are worth as much as accepted ones and cost more to re-derive, so a
-refuted hypothesis gets the same write-up as a confirmed one.
+Rejected rounds get the same write-up as accepted ones.
+Record the change and its reason in the existing
+[Experiment contract](experiments/experiment.schema.yaml).
+Put chart annotations in `annotations`, using `change`, `finding`, or `limitation`. Keep
+accepted, rejected, and superseded verdicts in the ledger.
+
+A diagnostic round uses `verdict.decision: diagnostic` and records its readings as
+`observations`, with the phase, scenario, condition, unit, statistic, and sample count.
+Paired results keep their existing meaning and stay in `results`. A diagnostic has no
+paired results or acceptance decision.
+Its protocol states which runs, builds, and cache regimes were observed, and names any
+limit on comparison.
+
+### Short HTTP rounds
+
+Use the development guide’s
+[single-build command](../../docs/development.md#comparing-file-navigation-without-a-browser)
+for a short diagnostic.
+Run it against a clean, pinned checkout with a commit history.
+The committed case exercises the same first page as the Commits tab.
+Copy the case to scratch and change the route and checked fields when studying another
+destination.
+With `--baseline-metab`, the harness interleaves fresh control and candidate
+servers. It still waits for inventory readiness, then times only the named GETs with
+`--api-only`. Run the ordinary inventory and Files workload separately when it is a
+guard.
+
+Keep the protocol, both builds, and raw output for each round.
+Start with a short diagnostic to prove the response and locate the bottleneck.
+Take timings to the browser when the hypothesis is about useful paint or continuity, and
+run the acceptance series when the relevant guards can pass.
+If a retry cannot change a refusal, log the reason and advance to the next independent
+hypothesis. Hosted checks can run while that experiment proceeds on its own branch.
+
+A short diagnostic can start with the first checked response:
+
+```shell
+jq '.runs[] | {condition: .build, sample: .phases.first[]}' "$RESULT"
+```
+
+If the result passes the response checks, record the selected metrics as diagnostic
+observations with their actual sample counts and units.
+Keep the protocol and any limits under `method` and `annotations`. If the run fails a
+guard, record the refusal before moving on.
+For a worked record that separates preparation from later reads, see
+[exp-104](experiments/exp-104-history-startup.md).
+
+### GitHub and origin transport
+
+Read the [GitHub request report](../../docs/realtime-debugging.md#github-requests) for
+the server and time window that handled the trial.
+Use its provider call durations, queue time, response status, duplicate calls, and
+reported budget charges together.
+Keep those separate from Git subprocess time and the browser’s useful-paint clock.
+An authenticated quota snapshot describes the account and can include other callers.
+The coordinator’s slots limit refresh jobs.
+A job can launch several provider processes, which the report counts under
+`peak_in_flight`. See [exp-115](experiments/exp-115-live-provider-report.md).
+
+[Exp-112](experiments/exp-112-selected-provider-handoff.md) tests a provider-slot
+handoff with an exact ASGI response.
+[Exp-113](experiments/exp-113-origin-fetch-order.md) and
+[exp-114](experiments/exp-114-origin-negotiation-hints.md) compare Git transport in
+isolated stores. Verify the origin ref digest and the intended diff before using timing
+or storage differences to decide a round.
+
+### Exporting the Ledger
+
+```shell
+uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py report --format jsonl
+```
+
+Each line carries the repository-relative artifact, the complete YAML payload with its
+verdict and annotations, and a `structurally_valid` flag.
+Legacy records that fail the current contract are retained and flagged.
+Filter on that flag and the verdict before charting paired improvements.
+Chart diagnostic observations in their own series.
+`report` without a format flag regenerates the Markdown ledger.
 
 ## Building the corpus
 
@@ -642,7 +722,9 @@ Releases containing the current recorder can be measured directly.
 
 **`probe-server`** samples one route every second from the moment the socket answers
 until the walk ends, then again once settled.
-Use it for anything server-side.
+Use it when the question is about a route while the inventory is walking.
+Use the [short HTTP driver](#short-http-rounds) for golden-backed first and repeated
+requests after readiness.
 It exists because the browser cannot measure a server-side hypothesis honestly: the pane
 takes seconds to start, so whether a page load lands inside the walk or after it is
 luck, and a route that costs 1,500 ms scanning and 15 ms settled will report whichever
@@ -659,8 +741,7 @@ visible page rather than retyping it.
 **`server-time.mjs`** reports the time the server was busy over one landing, by phase,
 to the end of every body, and a warm serial time for its assets; see
 [Server Time over a Landing](#server-time-over-a-landing).
-Use it to say where a landing’s server time went before choosing which of the two above
-to time.
+Use it to say where a landing’s server time went before choosing the next measurement.
 
 Most rounds want both.
 exp-003 is the worked example of why: the route got 40% faster server-side and time to
@@ -883,12 +964,74 @@ moves under a series changes the list and resets the server’s caches.
 Each run records the corpus’s commit, cleanliness, trunk, and a hash of all its refs at
 its start and end, and refuses itself (`corpus_changed`) if any moved.
 
-`--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup`
-measures a cold server, `--keep-going` continues past refusals to list them all, and
+`--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup` skips
+the journey warm-up pass, `--keep-going` continues past refusals to list them all, and
 `--memory-after ID,...` reads retained memory after the named transitions (below).
+`--no-warmup` still reuses condition storage and reads the Git history and Pulls catalog
+before the browser pass.
+Use `--first-visit` for a fresh application cache.
 None of them is the standard regime: such a run says so when it starts, records
 `regime_flags`, and writes to `diagnostic.jsonl` instead of `runs.jsonl` unless `--out`
 names a file, and `compare` refuses to mix it with standard runs.
+
+### First Visits After Repository Load
+
+Use one journey per fresh server and one browser profile per journey.
+For example, with `CORPUS` set to the pinned clone and `PULL_SUBJECTS` set to four
+comma-separated merged PR numbers from the catalog.
+Add `--changes-hunks` when examining when the first visible source line arrives in
+Changes.
+
+```shell
+node explorations/performance-loop/transitions.mjs run --exp exp-NNN \
+  --corpus "$CORPUS" --condition baseline="$PWD/.venv/bin/metab" \
+  --journeys pulls --pull-subjects "$PULL_SUBJECTS" --first-visit --changes-hunks --runs 3
+```
+
+For `commits` and `maintabs`, pass `--expect-newest` with the full first commit ID from
+the pinned corpus’s default Git history.
+The recorder verifies it against the server after the journey.
+Each run gets fresh application cache, config, and event log state.
+Only ordinary product startup and setup within the journey can warm a target before
+input. The run waits for server inventory, then loads a Files landing and gives
+application startup work its setup interval.
+Startup timings live in `server.ready_ms` and `journeys[].facts.startup`. The startup
+facts report when the landing was observed ready, when browsing setup began, and the
+number of instrumented browser fetches still in flight at that boundary.
+This is a declared start of browsing, with any remaining preparation reported.
+Later clicks retain state created by earlier clicks.
+Report startup and after-startup click timings separately.
+
+Add `--wait-origin-ready` when you want the first Chrome visit after the checkout origin
+has warmed. This observes `/api/source/status` before starting Chrome.
+It requires a fresh completed origin fetch and refuses the run if the store stays
+unready for two minutes.
+The poll only observes product startup.
+Its duration and the last fetch timestamp are under `server.origin_warmup`, separate
+from the browser’s startup and click clocks.
+
+On a Pulls first visit, a usable list can still have an optional changed-lines tally
+loading beside a row.
+The readiness check admits the visible list and prompt during that tally.
+Frame telemetry still counts the badge as a navigation placeholder.
+New first-visit runs record `usable_pulls_before_tallies` in their regime flags so
+older, stricter first-visit runs do not enter that comparison.
+
+With `--changes-hunks`, each Changes transition also reports `prChangesHunk`. The
+milestone waits for visible hunk text on the active Changes page for the requested pull
+request. File-card readiness keeps its existing clock.
+A pull request with no visible text diff records a missing milestone.
+Compare runs with the same flag.
+
+Keep first-visit timings apart from the reused-state `--no-warmup` diagnostic and the
+standard warm-server comparison.
+First visits use live GitHub, so compare paired runs under the same regime and disclose
+catalog changes and machine load.
+A smoke run helps find broken predicates and candidate bottlenecks.
+A judged result also needs the recorded protocol, adequate samples, and the
+[accept rule](#the-accept-rule).
+
+### Standard Transition Regime
 
 **The regime.** Each run starts a fresh server from the condition’s `metab` on a free
 port in 8890–8899, waits for its inventory to complete, runs every journey once
@@ -926,6 +1069,10 @@ Closed list, past the rows a virtualized list mounts.
 A subject row that is not mounted is scrolled to, one screen at a time from the top of
 the list and before the clock starts, and the journey records where it sat (`facts`: its
 offset in the list and the screens scrolled), so a list that moved shows in the record.
+For a diagnostic against a current catalog, pass `--pull-subjects PR,PR,PR,PR` to pin
+four listed merged PRs.
+The override is recorded as part of the regime, and the comparator keeps it apart from
+the historical subjects.
 The open pull request count still moves the list that `pulls.first_show` and the
 main-tab Pulls rows land on.
 
@@ -2277,6 +2424,67 @@ uv --config-file uv.toml run --frozen python explorations/performance-loop/run.p
 ```
 
 `compare` prints each metric’s median with its range beside it.
+
+### Rendering Without Application Requests
+
+The [diff layout](../diff-layout/README.md) and
+[diff intraline](../diff-intraline/README.md) fixtures load inputs before starting their
+clocks and call the production renderer or its refinement directly.
+Run them without an application server by serving static files on loopback from the
+repository root:
+
+```shell
+uv --config-file uv.toml run --frozen python -m http.server 8412 --bind 127.0.0.1
+```
+
+In a second terminal run the headless fixture reader.
+It emits one JSON line per fixture and run, with a fresh Chrome profile and the
+fixture’s own timing.
+
+```shell
+node explorations/performance-loop/render-fixtures.mjs --runs 3
+```
+
+Use `--origin` if the static server is on another loopback port.
+Use `--fixture diff-layout` or `--fixture diff-intraline` to narrow the run.
+The fixture clocks exclude transport and startup.
+The headless HTTP cases cover server work and the full transition driver provides the
+separate navigation and paint check.
+
+### Measuring External Fetching
+
+Use the transition rows to find the clicks whose destination arrives late, then look at
+requests and the matching server log for those clicks.
+A request’s elapsed time includes client waiting and transfer.
+Its `Server-Timing` entries attribute instrumented work on the server.
+See [Git Route Pairs](#git-route-pairs) for an equal-answer HTTP comparison with Git
+process counts.
+
+The product’s [event log](../../src/metabrowser/event_log.py) records subprocess spans
+for `gh` and for Git commands.
+First-visit runs record the directory in `server.event_log`. Use the span’s start or end
+timestamp, duration, and parent to distinguish selected work from overlapping background
+work. Long-lived Git history processes and open spans need separate accounting.
+Use the PR probe’s subprocess shim only with its overhead called out.
+Keep raw logs with machine-local output.
+
+Run the bounded live GitHub probe with a working `gh` login:
+
+```shell
+node explorations/performance-loop/github-fetch-probe.mjs > github-fetch-probe.json
+```
+
+It measures a local `gh --version` invocation, identical REST reads in serial and at
+concurrency two, conditional REST reads, and one minimal GraphQL batch per round.
+The GraphQL results report query cost and price a small projection.
+Compare only matched REST workloads when reading the concurrency result.
+The probe stops on refusal or exhaustion signals and reports only allowlisted status,
+rate headers, and byte counts.
+Read the rate-limit resource and reset with each observation.
+An account’s counters include other clients, so adjacent counter changes cannot always
+be attributed to the probe.
+Use deterministic responses to exercise retry and hold handling without exhausting a
+live quota.
 
 ### How the browser half is driven
 

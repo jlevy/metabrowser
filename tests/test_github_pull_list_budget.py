@@ -47,7 +47,7 @@ def test_below_the_floor_the_periodic_scan_stops_and_a_change_a_probe_finds_is_s
     ask = RefreshRequest("all", background=True)
     probe = ListProbe()
     github.later(FULL_REFRESH_S + 1)
-    assert refresh_wanted(_view(repository, probe), ask) is True
+    assert refresh_wanted(_view(repository, probe), ask) == "scan"
     _low("graphql", github.now)
     try:
         # The scan every FULL_REFRESH_S is automatic work; the probe still runs.
@@ -84,7 +84,7 @@ def test_over_the_process_ceiling_list_probes_and_scans_slow_until_the_hour_roll
         github.later(60)
         assert refresh_wanted(_view(repository, None), ask) is False
         github.later(gh_budget.CEILING_FULL_READ_S - FULL_REFRESH_S - 60 + 1)
-        assert refresh_wanted(_view(repository, None), ask) is True
+        assert refresh_wanted(_view(repository, None), ask) == "scan"
         # An hour after the spending, everything is as it was.
         github.later(3600)
         assert not gh_budget.over_ceiling(github.now)

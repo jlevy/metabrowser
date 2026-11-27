@@ -1,0 +1,89 @@
+{
+  "kernel": "6.18.44",
+  "python": "3.13.18",
+  "load_average": 0.0,
+  "lifecycle": {
+    "request pipe closed while an async hook blocks the loop": {
+      "worker running 3 s later": true,
+      "exited after s": 7.5
+    },
+    "request pipe closed while a synchronous hook runs": {
+      "exited after ms": 1.8
+    },
+    "trivial hook beside a 3 s blocking async hook, ms": 2802,
+    "worker killed at a deadline": {
+      "another call in flight": "never answered",
+      "the hook's subprocess still running": true,
+      "that subprocess in the host's process group": true
+    },
+    "a forked child writes to the reply pipe": {
+      "that call": "never answered",
+      "the next call": "never answered",
+      "host reader thread ended": true
+    }
+  },
+  "transport": {
+    "0 bytes": {
+      "overhead_ms_median": 0.21,
+      "overhead_ms_max": 1.72
+    },
+    "429248 bytes": {
+      "overhead_ms_median": 0.72,
+      "overhead_ms_max": 1.18
+    },
+    "4194304 bytes": {
+      "overhead_ms_median": 4.83,
+      "overhead_ms_max": 7.62
+    },
+    "67108864 bytes": {
+      "overhead_ms_median": 122.24,
+      "overhead_ms_max": 127.19
+    },
+    "trivial hook issued behind a 64 MiB reply, ms": 31.2,
+    "worker resident MB after the 64 MiB replies": 31.8
+  },
+  "confined": {
+    "bare": {
+      "spawn_to_listed_ms": 59.2,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "allowed",
+        "write beside that file": "allowed",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "allowed",
+        "start a system tool": "allowed"
+      },
+      "exit": 0
+    },
+    "confined": {
+      "spawn_to_listed_ms": 88.8,
+      "info": 200,
+      "viz-model bytes": 140901,
+      "charts on a pool log": 200,
+      "charts on an agent log": 200,
+      "host calls made": ["host.detect_builtin", "host.agent_charts"],
+      "reach": {
+        "read the served root": "allowed",
+        "read a file outside its grants": "denied",
+        "write beside that file": "denied",
+        "write in its scratch folder": "allowed",
+        "connect over TCP": "denied",
+        "start a system tool": "allowed"
+      },
+      "exit": 0
+    }
+  },
+  "identity": {
+    "file system": "ext2/ext3",
+    "reclone of another repository kept the device and inode": "5 of 5",
+    "forged folder reports the trusted clone's common directory": true,
+    "the clone lists the forged folder as a worktree": false,
+    "the clone holds a back-pointer to the forged folder": false,
+    "the clone holds a back-pointer to its real linked worktree": true
+  }
+}
