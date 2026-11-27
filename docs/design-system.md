@@ -6836,13 +6836,14 @@ the rule is enforced rather than remembered.
 anywhere the app owns the markup**: browser sources, built-in plugins, and the HTML the
 server renders. `devtools/check_tooltips.py` fails the build on one, and runs in
 `make lint`. Its exemption list names each exception and why: an iframe’s accessible
-name, and a rendered document’s own links and embeds.
+name, a rendered document’s own links and embeds, and a link whose card’s code did not
+load, which gets back the title its author wrote.
 
 | Need | Use |
 | --- | --- |
 | A short string | `data-tip-text="…"` |
 | Rich content: counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
-| A link in authored text, in-app or to another site | The link card: register the link through the resolver’s runtime, `previewLink` ([Tooltips on Links](#tooltips-on-links)) |
+| A link in authored text, in-app or to another site | The link card: register the link through the SDK, `metabrowser.previewLink` ([Tooltips on Links](#tooltips-on-links)) |
 
 **A tooltip reads at body size**, `--tooltip-font-size`, and so do its subordinate
 lines, which set no size and read at the tooltip’s: a file’s size and age under its name
@@ -7013,9 +7014,14 @@ that each of those surfaces passes its own element.
 
 ### Tooltips on Links
 
-**Every link follows one rule for its tooltip, by where it goes and what its words
-say.** A link’s words in authored text are the author’s, and say nothing of whether it
-leaves the app; the app’s own chrome names what it opens.
+**Every link follows one rule for its tooltip, by where it goes and what its words say,
+on every page.** A link’s words in authored text are the author’s, and say nothing of
+whether it leaves the app; the app’s own chrome names what it opens.
+A page with no GitHub identity, a plain folder’s or a checkout with no github.com
+remote, keeps the rule too: its documents’ links to files and folders, and its links to
+other sites, have their cards.
+A pull request’s, a stack’s, or a commit’s card exists only where a repository identity
+makes such a link open here.
 
 | Link | Tooltip |
 | --- | --- |
@@ -7111,18 +7117,25 @@ budget
 ([performance budgets](../explorations/performance-loop/performance-budgets.toml)).
 
 **One renderer draws every card.** A surface registers each link it draws through the
-resolver’s runtime, `previewLink`, and puts its links away with `disposePreviews`
+SDK, `metabrowser.previewLink`, and puts its links away with `disposePreviews`
 ([docs/plugins.md](plugins.md)), never through the module’s window global; it never
 draws a card. `card` in `static/link-previews.js` draws every one from data, escaping
 every value, and each kind’s provider gives that data as plain text, never markup.
-`devtools/check_tooltips.py` fails any other browser source or stylesheet that writes
-the card’s classes or its words for where a link opens.
+The card’s code loads only at a page’s first rest on a link it registered, so a page
+whose pointer rests on none fetches none of it, and that first rest still shows its
+card, its appear delay counted from the code’s arrival (`previewLink` in
+`static/plugin-sdk-views.js`, and `server.py`’s `link-previews` bundle, which has the
+measurement). `devtools/check_tooltips.py` fails any other browser source or stylesheet
+that writes the card’s classes or its words for where a link opens.
 `tests/dom/link-previews-session.js` holds the lines, the timing, and the input modality
 on the module’s own code and app.js’s tooltip, and `tests/test_link_previews_js.py`
 holds its invariants; `tests/dom/link-card-integration-session.js` runs app.js’s tooltip
 and its delegated listeners, the resolver, the registry, and the providers on recorded
 answers together, and `tests/test_link_card_integration_session.py` holds the rules
 across those boundaries.
+`tests/dom/link-preview-loader-session.js` holds what a link registered before the
+card’s code loads does, on pages with no GitHub identity among them, and
+`tests/test_link_preview_loader_session.py` its invariants.
 
 ### Shared Overlay Lifecycle
 

@@ -1,6 +1,6 @@
 # Feature: Link Preview Tooltips
 
-**Date:** 2026-11-26 (last updated 2026-11-26)
+**Date:** 2026-11-26 (last updated 2026-11-27)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -168,24 +168,51 @@ aborting them, since an aborted request counts against the page’s `fetch_abort
 
 ### Where It Lives
 
-A new on-demand module, `static/link-previews.js`, in the `repository-links` bundle the
-resolver already loads, holds the registry, the delegated pointer listener, the intent
-timer, and the renderer; `static/link-preview-providers.js`, after it in the bundle,
-registers one provider for each kind (`provide(kind, {summary, known, prefetch})`).
-`enhance` and the Markdown enhancer register each in-app link they make by identity; the
-rendered diff registers its head links.
+An on-demand module, `static/link-previews.js`, holds the registry, the delegated
+pointer listener, the intent timer, and the renderer;
+`static/link-preview-providers.js`, after it, registers one provider for each kind
+(`provide(kind, {summary, known, prefetch})`). The two are the `link-previews` bundle,
+which a page loads at its first pointer rest on a link a surface registered, and never
+with the resolver (`repository-links`, now the GitPath codec and the resolver alone),
+whose wait every surface’s first render shares.
+A thin registration in the SDK’s view helpers (`previewLink`, `forgetPreview`, and
+`disposePreviews` in `static/plugin-sdk-views.js`, the `sdk-views` bundle every view
+already loads) keeps each link a surface registers, by identity, with one delegated
+pointer listener per root, on every page, with or without a repository identity.
+The first `pointerover` of a registered link from a pointer that is not a touch loads
+the bundle; its registry then takes every registration, and the rest that load began, as
+old as the load took (`rest`), so that rest’s card comes up for it; a press or a focus
+during the load ends that rest.
+From then on the SDK’s calls go straight to the registry.
+A bundle that does not load leaves every link without a card and gives back the author’s
+title the surface took off it, with one warning.
+`enhance` and the Markdown enhancer register each link they make by identity, through
+the SDK; the rendered diff registers its head links; a commit’s message on a page with
+no resolver registers each of its links as the outside link it is.
 Nothing is added to the startup scripts: a seam into the tree’s file prefetch does not
 fit (Follow-ups).
+
+As measured on 2026-11-27 (`server.py`, beside both bundles), the split took the
+resolver’s wait from medians of 40 to 41 ms to 23 to 25 ms on loopback, and the first
+rest on a fresh page, its bundle’s load included (20,039 bytes gzipped), comes up
+medians of 314 to 331 ms after the pointer arrived, inside every rest’s window;
+preloading the bundle in idle time brought that to 302 to 315 ms but costs every page
+with a link the bundle, so a page loads it at the rest.
 
 ### API
 
 - `window.MetabrowserLinkPreviews.register(root, anchor, target, mb, { authorTitle })`:
-  called by the resolver’s `enhance`, the Markdown enhancer, and the rendered diff for
-  each link; `target` is the resolver’s answer, a `view` or `route` target,
+  called by the SDK’s `previewLink` for each link the resolver’s `enhance`, the Markdown
+  enhancer, the rendered diff, and a commit’s message register; `target` is the
+  resolver’s answer, a `view` or `route` target, a document’s own link’s `view` target,
   `{kind: "view-head", href}` for a rendered diff’s link to a file of its head, or
   `{kind: "external", url}` for a link to another site.
   A later call replaces the entry; a target the card says nothing of, such as a mail
   link’s, is dropped. It answers whether the link has a card.
+- `window.MetabrowserLinkPreviews.rest(anchor, { elapsed, ended })`: the rest the SDK
+  saw begin before the module loaded, *elapsed* ms ago, which the registry takes as its
+  own: its card is asked for at once, and its summary and prefetch at the intent delay
+  less *elapsed*; *ended* says a press or a focus ended it meanwhile.
 - `window.MetabrowserLinkPreviews.forget(anchor)`: drops one link and puts its card
   away.
 - `window.MetabrowserLinkPreviews.dispose(root)`: forgets a root’s links, stops
@@ -210,11 +237,14 @@ fit (Follow-ups).
   new tab, which the registry reads from the link as the card is asked for.
 - `window.MetabrowserLinkPreviews.INTENT_MS`: the intent delay, the tree’s
   `FILE_PREFETCH_HOVER_DELAY_MS`.
-- A plugin reaches these through the resolver’s runtime, which
-  `metabrowser.loadRepositoryLinks()` already gives it, and never through the window
-  global (AGENTS.md, Browser and Plugin Boundary): `previewLink`, `forgetPreview`, and
-  `disposePreviews`, each a no-op where the cards are not loaded
-  ([docs/plugins.md](../../../plugins.md)).
+- A plugin reaches these through the SDK, never through the window global (AGENTS.md,
+  Browser and Plugin Boundary):
+  `metabrowser.previewLink(root, anchor, target, { authorTitle })`,
+  `metabrowser.forgetPreview(anchor)`, and `metabrowser.disposePreviews(root)`, which
+  keep each registration until the bundle loads
+  ([docs/plugins.md](../../../plugins.md)). Before then `previewLink` answers whether
+  the target is one a card is about, an in-app answer or an `http` or `https` address
+  with a host, and the registry decides once it loads.
 - `MetabrowserGitPanel.commitSummary(revision)`: the subject, author, time, and whether
   the repository has it, from the panel’s own cache, and
   `MetabrowserGitPanel.keptCommitSummary(revision)`: the same from what the panel holds
@@ -233,6 +263,9 @@ fit (Follow-ups).
   enhancer, and the rendered diff; authored titles move into the card; the working-tree
   tooltip goes
 - [x] A Chrome check of the card’s placement, delay, and content on a real page
+- [x] The card in a bundle of its own, loaded at the first rest, and every link’s card
+  on every page, with or without a GitHub identity (`mb-ezai`, review findings H3 and
+  H9)
 
 ## Testing Strategy
 
@@ -246,8 +279,13 @@ the review of 2026-11-26 found a card that came back after focus moved, an answe
 nothing kept for the page’s life, and an image’s tooltip fighting its link’s card, each
 with every session green.
 `tests/dom/link-card-integration-session.js` runs those boundaries for real, app.js’s
-tooltip and its delegated listeners, the resolver, the registry, and the providers on
-recorded answers, with a golden and a parity row of its own.
+tooltip and its delegated listeners, the resolver, the SDK’s registration, the registry,
+and the providers on recorded answers, with a golden and a parity row of its own.
+`tests/dom/link-preview-loader-session.js`, with its own golden and parity row, runs the
+SDK’s registration whole on pages with no GitHub identity and one with: registration
+before the bundle, the first rest loading it and keeping its time, a rest the pointer
+left or a press ended during the load, a link forgotten or a document disposed before
+it, a load that fails, and a touch.
 
 The Chrome check is `tests/test_link_card_chrome.py`, which drives
 `tests/dom/link-card-chrome.mjs`. It serves the GitHub stand-in’s checkout, whose
@@ -290,6 +328,43 @@ session, now false, would turn the step back into a record of what shows.
 
 With the renderer’s “Opens here in Metabrowser” line dropped, or `register` made a
 no-op, it fails on every rest.
+
+On that page and on a second, a plain folder with no GitHub identity whose document
+links another file, with its author’s title, and another site, the check also holds that
+the card’s bundle is not asked for before a rest, that the first rest on a file’s link
+of the fresh page, cache off, loads it and shows the card in every rest’s window moved
+by the time the load took, which it prints; on the plain folder’s page, that both links
+have their cards and that the resolver is never asked for.
+
+### Decisions in the Split (`mb-ezai`, 2026-11-27)
+
+The coordinator’s design for findings H3 and H9 was built as written, with these choices
+recorded:
+
+- **The resolver’s delegates are gone.** `previewLink`, `forgetPreview`, and
+  `disposePreviews` left `MetabrowserRepositoryLinks`; every surface calls the SDK’s,
+  and `enhance` registers through the SDK it is given.
+  Keeping both would have been two ways to one registry, and the delegates were
+  unreleased.
+- **The SDK’s answer before the bundle loads is a reading, not the registry’s.**
+  `namesLinkCard` accepts an in-app answer and an `http` or `https` address with a host,
+  so a mail link keeps its title; the registry’s `subject` decides at the hand-over, and
+  a link it turns down gets back the title the surface took.
+  Moving `subject` into the SDK would have made the answer exact at about 2 KB more on
+  every view’s critical path, for links no surface draws.
+- **The first rest keeps its time but not its appear delay.** The registry’s `rest` asks
+  for the summary when a rest that began on a loaded page would, and the tooltip waits
+  its whole appear delay from the hand-over, since `showTooltip` in `static/app.js`, a
+  startup script at its budget, takes no earlier start.
+- **No preload.** Measured, it brought the first card’s medians 0 to 28 ms sooner and
+  cost every page with a link the bundle.
+- **A commit’s message with no resolver registers its links as outside links**, which
+  they are there. A pull request’s and a stack’s pages exist only with a GitHub identity,
+  and keep registering through the resolver alone; their texts are read again when a
+  late resolver arrives.
+- **The rendered diff’s SDK narrows to what `enhance` reads** (`repositoryLinksSdk` in
+  `builtin_plugins/diff/diff-view.js`), since the registry now draws with the page’s
+  SDK, not the surface’s.
 
 ## Open Questions
 
