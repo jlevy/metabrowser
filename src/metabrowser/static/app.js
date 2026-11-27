@@ -5583,7 +5583,7 @@ var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || 
 // Each row wears the freshness colour the tree gives files of that
 // age, so the menu doubles as the legend for the ramp below it.
 // Longer windows take the colour of the bucket they top out at. Live
-// is an activity state that shares the freshest reddish-orange visual
+// is an activity state that shares the freshest amber visual
 // with under-one-minute files and spells out its exact server-owned
 // cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [

@@ -104,17 +104,23 @@ Each state owns two parallel OKLCH tokens in `static/styles.css`:
 - `--file-age-<state>` is an accessible text foreground
 - `--file-age-fill-<state>` is a translucent surface or area fill
 
-Live is an activity state, not an elapsed-age bucket, but it shares the freshest
-reddish-orange token and bold weight with the freshest tier.
-That warm family stays distinct from the deeper destructive red and from success green.
-The elapsed-age tiers are `AGE_TIERS` in `static/formatters.js`. They move from gold
+Live is an activity state, not an elapsed-age bucket, but it shares the freshest amber
+token and bold weight with the freshest tier.
+That warm family stays distinct from the deeper destructive red and from success green,
+and from the orange of the shell’s warning ink, which a merge conflict takes
+([Pull Request Status Vocabulary](#pull-request-status-vocabulary)): an age is never
+read as a warning. The freshest tier is a step before the minute tier’s yellow, near
+enough to read as the same ramp and far enough to be told from it at a glance; the
+comment beside `--file-age-live` in `static/styles.css` records the step and the
+distance from the warning ink.
+The elapsed-age tiers are `AGE_TIERS` in `static/formatters.js`. They move from amber
 through yellow-green while chroma and prominence fall monotonically toward a warm
 neutral.
 
 Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
 or adjacent color cue.
-Light-theme text takes the hues of the approved reference ramp, reddish orange for Live
-and the freshest tier, then a high-saturation yellow followed by progressively quieter
+Light-theme text takes the hues of the approved reference ramp, amber for Live and the
+freshest tier, then a high-saturation yellow followed by progressively quieter
 yellow-green and neutral endpoints, at a lightness dark enough to read as UI text and a
 chroma high enough to carry the color in the text alone.
 The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the

@@ -10,3 +10,8 @@
   See
   [Pull Request Status Vocabulary](docs/design-system.md#pull-request-status-vocabulary),
   which sets each mark beside the one GitHub draws.
+
+- **The freshest file age is amber.** “Just now”, “<1m”, and the Live badge move from a
+  bright orange to a warm amber a step before the minute tier’s yellow, so they still
+  stand out but no longer compete with a merge conflict’s orange
+  ([File Age](docs/design-system.md#file-age)).
