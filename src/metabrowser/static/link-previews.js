@@ -984,13 +984,14 @@
   /**
    * The reader pressed, or focus moved, which never shows a card (docs/design-system.md,
    * "Tooltip Input Modality"): the current rest asks for nothing more, and no answer that
-   * arrives later, no state glyph, and no later registration shows its card again. The shell
-   * has put the tooltip away on the focus (`hideTooltipOnFocus` in static/app.js). The rest
-   * stays the pointer's until it leaves the link, so moving within it changes nothing, and
-   * leaving puts away a card a focus repair kept. Listened for on the document, in the
-   * capture phase, so a press or focus a surface stops still ends it.
+   * arrives later, no state glyph, and no later registration shows its card again. A press
+   * dismisses the card even if focus stays put. For a focus change the shell handles
+   * dismissal and focus repair (`hideTooltipOnFocus` in static/app.js). The rest stays the
+   * pointer's until it leaves the link, so moving within it changes nothing. Listened for
+   * on the document in the capture phase, so a press or focus a surface stops still ends it.
+   * @param {Event} event
    */
-  function endOnInput() {
+  function endOnInput(event) {
     const rest = current;
     if (rest === null) {
       return;
@@ -1000,6 +1001,9 @@
       rest.timer = null;
     }
     rest.ended = true;
+    if (event.type === "pointerdown") {
+      rest.entry.mb.tooltip.hide(rest.anchor);
+    }
   }
 
   /**

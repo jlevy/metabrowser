@@ -21,8 +21,9 @@ fails, or never comes.
 
 Each log entry says when, in milliseconds, the pointer arrived on something (`pointer`),
 the SDK asked for the card’s bundle (`load`) and it ran (`loaded`), focus moved
-(`focus`), a provider read the server (`read`), and what the reader sees (`sees`), with
-the element the tooltip is placed on (`on`).
+(`focus`), the reader pressed a pointer button (`press`), a provider read the server
+(`read`), and what the reader sees (`sees`), with the element the tooltip is placed on
+(`on`).
 
 - `rest`: the card comes up on the tooltip’s own delay with the title its catalog row
   gives, and goes when the pointer leaves.
@@ -30,6 +31,8 @@ the element the tooltip is placed on (`on`).
   the next link’s card comes up on it.
 - `focus during the read`: focus moves onto the link while its read is out, and no card
   comes back when it answers.
+- `a press without moving focus`: one press dismisses the visible card and another
+  cancels a waiting card.
 - `a failed read, then the next rest`: the first read fails, and the next rest reads
   again and says the title.
 - `files the catalog leaves out`: a plain folder’s document links each of its files, and
@@ -160,6 +163,65 @@ $ node tests/dom/link-card-integration-session.js
   },
   {
    "at": 700,
+   "sees": null
+  }
+ ],
+ "a press without moving focus": [
+  {
+   "at": 0,
+   "pointer": "#12"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
+  },
+  {
+   "at": 250,
+   "read": "github/pulls?q=12"
+  },
+  {
+   "at": 250,
+   "read": "github/pull?number=12&warm=1"
+  },
+  {
+   "at": 400,
+   "sees": "Pull request #12 | feat(links): preview what a link opens | Opens here in Metabrowser",
+   "on": "#12"
+  },
+  {
+   "at": 420,
+   "press": "#12"
+  },
+  {
+   "at": 440,
+   "sees": null
+  },
+  {
+   "at": 700,
+   "pointer": "the body"
+  },
+  {
+   "at": 900,
+   "pointer": "#13"
+  },
+  {
+   "at": 1150,
+   "read": "github/pulls?q=13"
+  },
+  {
+   "at": 1150,
+   "read": "github/pull?number=13&warm=1"
+  },
+  {
+   "at": 1160,
+   "press": "#13"
+  },
+  {
+   "at": 1500,
    "sees": null
   }
  ],

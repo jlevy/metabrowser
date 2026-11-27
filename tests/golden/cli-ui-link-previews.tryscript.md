@@ -984,6 +984,10 @@ $ node tests/dom/link-previews-session.js
     "press": "twelve"
    },
    {
+    "at": 260,
+    "hide": "twelve"
+   },
+   {
     "at": 280,
     "tooltip": null
    },

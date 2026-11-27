@@ -3200,9 +3200,9 @@
   // Chrome's accessibility tree reads of the same markup.
 
   /**
-   * What `takeAuthorTitles` took off each link and what it added to it.
+   * What `takeAuthorTitles` took off the link and its descendants and what it added.
    *
-   * @typedef {{titles: ReadonlyArray<readonly [Element, string]>, added: ReadonlyArray<readonly [string, string]>}} HeldTitles
+   * @typedef {{titles: ReadonlyArray<readonly [Element, string]>, added: ReadonlyArray<readonly [Element, string, string]>}} HeldTitles
    * @type {WeakMap<Element, HeldTitles>}
    */
   const heldTitles = new WeakMap();
@@ -3213,33 +3213,47 @@
    * card, and keep *authorTitle* for assistive technology, which read it there: as the
    * link's `aria-label` where nothing else names the link, and otherwise as its
    * `aria-description`, unless it says the link's name again. Neither replaces one the link
-   * already has. A later call for the same link gives back what the last one took first.
+   * already has. A title that names an image stays with the image as its aria-label.
+   * A later call for the same link gives back what the last one took first.
    *
    * @param {Element} anchor
    * @param {string | null | undefined} authorTitle
    */
   function takeAuthorTitles(anchor, authorTitle) {
     giveAuthorTitlesBack(anchor);
+    const anchorTitle = anchor.getAttribute("title");
     /** @type {Array<readonly [Element, string]>} */
     const titles = [];
+    /** @type {Array<readonly [Element, string, string]>} */
+    const added = [];
     for (const element of [anchor, ...Array.from(anchor.querySelectorAll("[title]"))]) {
       const title = element.getAttribute("title");
       if (title !== null) {
         titles.push([element, title]);
         element.removeAttribute("title");
+        if (
+          element.tagName === "IMG" &&
+          !element.hasAttribute("alt") &&
+          !element.hasAttribute("aria-label") &&
+          !element.hasAttribute("aria-labelledby") &&
+          collapsedWords(title) !== ""
+        ) {
+          element.setAttribute("aria-label", title);
+          added.push([element, "aria-label", title]);
+        }
       }
     }
-    /** @type {Array<readonly [string, string]>} */
-    const added = [];
     const said = collapsedWords(authorTitle);
-    if (said !== "") {
+    const titleNamesImage =
+      anchorTitle === null && added.some(([, , value]) => collapsedWords(value) === said);
+    if (said !== "" && !titleNamesImage) {
       const name = nameWithoutTitles(anchor);
       const named = name !== "" || anchor.hasAttribute("aria-labelledby");
       const attribute = named ? "aria-description" : "aria-label";
       const described = anchor.hasAttribute("aria-describedby");
       if (!anchor.hasAttribute(attribute) && !(named && (described || said === name))) {
         anchor.setAttribute(attribute, said);
-        added.push([attribute, said]);
+        added.push([anchor, attribute, said]);
       }
     }
     if (titles.length > 0 || added.length > 0) {
@@ -3260,9 +3274,9 @@
       return;
     }
     heldTitles.delete(anchor);
-    for (const [attribute, value] of held.added) {
-      if (anchor.getAttribute(attribute) === value) {
-        anchor.removeAttribute(attribute);
+    for (const [element, attribute, value] of held.added) {
+      if (element.getAttribute(attribute) === value) {
+        element.removeAttribute(attribute);
       }
     }
     for (const [element, title] of held.titles) {
@@ -3274,7 +3288,7 @@
 
   /**
    * The words that name *anchor* apart from any title, as assistive technology reads a link:
-   * its `aria-label`, else its text, else the `alt` of each image inside it; "" for none.
+   * its `aria-label`, else its text, else the names of its images; "" for none.
    *
    * @param {Element} anchor
    */
@@ -3288,9 +3302,10 @@
       return text;
     }
     return collapsedWords(
-      Array.from(anchor.querySelectorAll("img[alt]"), (image) => image.getAttribute("alt")).join(
-        " ",
-      ),
+      Array.from(
+        anchor.querySelectorAll("img"),
+        (image) => image.getAttribute("aria-label") || image.getAttribute("alt"),
+      ).join(" "),
     );
   }
 

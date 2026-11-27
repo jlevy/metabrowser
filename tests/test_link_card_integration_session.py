@@ -58,6 +58,15 @@ def test_focus_during_a_read_brings_no_card_back() -> None:
     assert not _seen(log[focused:])
 
 
+def test_a_press_dismisses_visible_and_pending_cards_without_moving_focus() -> None:
+    log = _session()["a press without moving focus"]
+    visible, pending = (index for index, entry in enumerate(log) if "press" in entry)
+    assert _seen(log[:visible])[-1]["on"] == "#12"
+    assert any(entry.get("read") == "github/pulls?q=13" for entry in log[visible:pending])
+    assert not _seen(log[visible:])
+    assert not any("focus" in entry for entry in log)
+
+
 def test_what_failed_or_changed_is_read_again_at_the_next_rest() -> None:
     session = _session()
     retried = session["a failed read, then the next rest"]

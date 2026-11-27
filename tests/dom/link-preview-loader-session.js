@@ -104,6 +104,14 @@ const TITLED = Object.freeze([
     name: "the docs diagram",
     image: { title: "The docs, drawn" },
   }),
+  // The image names its part of the link, and the link has a description of its own.
+  Object.freeze({
+    ...TO_GUIDE,
+    name: "setup with build status",
+    textBeforeImage: "Setup ",
+    title: "Open the setup guide",
+    image: { title: "Build status" },
+  }),
   // `[![](badge.svg "Build status")](docs/guide.md)`: a title on an image with an empty
   // `alt` names nothing, so nothing named the link; its card says that title, and now so
   // does its name.
@@ -133,9 +141,10 @@ const TITLED = Object.freeze([
  * What assistive technology reads of *anchor*, a link: its name and its description, by
  * the rules Chrome's accessibility tree (`Accessibility.getPartialAXTree`) followed for each
  * markup above and for its `aria-label` and `aria-description` in place of its titles. Its
- * name is its `aria-label`, else what it holds (its text, and each image's `alt`, or the
- * image's `title` where it has no `alt`), else its own `title`; its description is its
- * `aria-description`, else its `title` where that is not its name.
+ * name is its `aria-label`, else what it holds (its text and the names of its images),
+ * else its own `title`. An image's name comes from its `aria-label`, `alt` or `title`, in
+ * that order. A link's description is its `aria-description`, else its `title` where
+ * that is not its name.
  */
 function reading(anchor) {
   const words = (value) =>
@@ -149,7 +158,12 @@ function reading(anchor) {
           return child.nodeValue;
         }
         if (child.tagName === "IMG") {
-          return child.getAttribute("alt") ?? child.getAttribute("title") ?? "";
+          return (
+            child.getAttribute("aria-label") ??
+            child.getAttribute("alt") ??
+            child.getAttribute("title") ??
+            ""
+          );
         }
         return held(child);
       })
@@ -375,6 +389,11 @@ async function authorTitlesForAssistiveTechnology() {
   read("as written", written);
   const { prose, anchors } = page.markdown("the README", ...links);
   read("registered", anchors);
+  const mixedLink = anchors["setup with build status"];
+  assert(
+    !mixedLink.hasAttribute("title") && mixedLink.querySelectorAll("[title]").length === 0,
+    "a link with a card kept a second, native tooltip",
+  );
   await page.point(1000, anchors.Setup);
   const card = await page.look(1600);
   assert(card?.includes("How to set it up"), `the card did not say the title: ${card}`);

@@ -693,6 +693,13 @@ $ node tests/dom/link-preview-loader-session.js
   },
   {
    "at": 0,
+   "reads": "setup with build status",
+   "stage": "as written",
+   "name": "Setup Build status",
+   "description": "Open the setup guide"
+  },
+  {
+   "at": 0,
    "reads": "the build badge",
    "stage": "as written",
    "name": "",
@@ -743,6 +750,11 @@ $ node tests/dom/link-preview-loader-session.js
   },
   {
    "at": 0,
+   "registered": "setup with build status",
+   "card": true
+  },
+  {
+   "at": 0,
    "registered": "the build badge",
    "card": true
   },
@@ -786,6 +798,13 @@ $ node tests/dom/link-preview-loader-session.js
    "stage": "registered",
    "name": "The docs, drawn",
    "description": ""
+  },
+  {
+   "at": 0,
+   "reads": "setup with build status",
+   "stage": "registered",
+   "name": "Setup Build status",
+   "description": "Open the setup guide"
   },
   {
    "at": 0,
@@ -856,6 +875,11 @@ $ node tests/dom/link-preview-loader-session.js
   },
   {
    "at": 1600,
+   "registered": "setup with build status",
+   "card": true
+  },
+  {
+   "at": 1600,
    "registered": "the build badge",
    "card": true
   },
@@ -899,6 +923,13 @@ $ node tests/dom/link-preview-loader-session.js
    "stage": "registered again",
    "name": "The docs, drawn",
    "description": ""
+  },
+  {
+   "at": 1600,
+   "reads": "setup with build status",
+   "stage": "registered again",
+   "name": "Setup Build status",
+   "description": "Open the setup guide"
   },
   {
    "at": 1600,
@@ -969,6 +1000,14 @@ $ node tests/dom/link-preview-loader-session.js
   },
   {
    "at": 1600,
+   "reads": "setup with build status",
+   "stage": "disposed",
+   "name": "Setup Build status",
+   "description": "Open the setup guide",
+   "asWritten": true
+  },
+  {
+   "at": 1600,
    "reads": "the build badge",
    "stage": "disposed",
    "name": "",
@@ -1009,7 +1048,6 @@ $ node tests/dom/link-preview-loader-session.js
   }
  ]
 }
-? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

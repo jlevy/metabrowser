@@ -279,6 +279,9 @@ function markdownLink(link) {
     anchor.append(link.name);
   } else {
     const { alt, title } = link.image;
+    if (link.textBeforeImage !== undefined) {
+      anchor.append(link.textBeforeImage);
+    }
     anchor.append(
       new FakeElement("img", `${link.name}'s image`, {
         src: "badge.svg",

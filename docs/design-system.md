@@ -7340,10 +7340,11 @@ names it and otherwise its description, so the titles leave through the SDK alon
 the link’s `aria-label` where it has no words, `aria-label`, or image `alt` of its own,
 and otherwise as its `aria-description`, unless that says its name again, never in place
 of one the link already has.
-Wherever the link’s card ends, when it is forgotten, its text disposed, a later
-registration gives it none, or the card’s code does not load, the SDK gives back exactly
-the titles it took and takes off only what it added (`giveAuthorTitlesBack`), so the
-link is as its author wrote it.
+When an image’s title supplies its accessible name, that name stays on the image as
+`aria-label`. Wherever the link’s card ends, when it is forgotten, its text disposed, a
+later registration gives it none, or the card’s code does not load, the SDK gives back
+exactly the titles it took and takes off only what it added (`giveAuthorTitlesBack`), so
+the link is as its author wrote it.
 An image the page does not load is a chip whose own tooltip says its address
 ([Images the Page Does Not Load](#images-the-page-does-not-load)); inside a link with a
 card, the card takes that tooltip off the chip as the link is registered, gives it back

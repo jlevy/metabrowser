@@ -88,6 +88,22 @@ async function focusDuringRead() {
   return page.log;
 }
 
+/** A press puts away a card even when the reader's focus stays where it is. */
+async function pressWithoutFocus() {
+  const page = createPage();
+  const { anchors } = page.text(pullLink(12), pullLink(13));
+  await page.point(0, anchors["#12"]);
+  assert(await page.look(400), "the first card was not already up when pressed");
+  await page.press(420);
+  assert((await page.look(440)) === null, "a press did not put away the visible card");
+
+  await page.point(700, page.body);
+  await page.point(900, anchors["#13"]);
+  await page.press(1160);
+  assert((await page.look(1500)) === null, "a press did not cancel the pending card");
+  return page.log;
+}
+
 /** A read that fails is read again at the next rest, which then says the title. */
 async function retry() {
   const page = createPage();
@@ -214,6 +230,7 @@ const SESSIONS = {
   rest,
   handover,
   "focus during the read": focusDuringRead,
+  "a press without moving focus": pressWithoutFocus,
   "a failed read, then the next rest": retry,
   "files the catalog leaves out": unlistedFiles,
   "a folder the tree totals": folderTotaled,
