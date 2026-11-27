@@ -522,16 +522,16 @@ try {
     pageErrors.push(exceptionDetails.exception?.description ?? exceptionDetails.text),
   );
   await send("Runtime.enable");
-  const waitFor = async (expression) => {
+  const waitFor = async (expression, description = expression, timeoutMs = STEP_MS) => {
     try {
-      return await chrome.waitFor(expression, STEP_MS);
+      return await chrome.waitFor(expression, timeoutMs);
     } catch (error) {
       const held = await evaluate(
         `[...document.querySelectorAll(".github-pulls-row")].slice(0, 8).map((r) => (r.dataset.stack ? "S" + r.dataset.stack : r.dataset.number) + ":" + r.getAttribute("aria-level")).join(" ") + " | " + (document.querySelector(".github-pulls-list")?.dataset.filter ?? "") + " | " + (document.querySelector(".github-pulls-connection")?.textContent ?? "")`,
       );
       const stacks = await evaluate(`fetch("/api/plugin/github/stacks").then((r) => r.text())`);
       throw new Error(
-        `${error.message}\nlist: ${held}\nstacks: ${stacks.slice(0, 600)}\npage errors: ${pageErrors.join("\n")}`,
+        `${description}: ${error.message}\nlist: ${held}\nstacks: ${stacks.slice(0, 600)}\npage errors: ${pageErrors.join("\n")}`,
       );
     }
   };
@@ -681,12 +681,21 @@ try {
     measured.badgesMs = Math.round((await now()) - asked);
     await shot("before-pulls-all", await paneClip());
   } else {
+    // All may have #8's new activity before the visible stack reader next polls.
+    // Wait for the four members to share a group, then check their order independently.
     await waitFor(
-      `document.querySelector(".github-pulls-stack-row")?.getAttribute("aria-label")?.startsWith("Stack #286, 4 pull requests") === true`,
-    );
-    await waitFor(
-      `[7, 9].every((number) => document.querySelector('a.github-pulls-row[data-number="' + number + '"][aria-level="2"]') !== null)`,
-      "all members of Stack #286 have reached the column",
+      `(() => {
+        const heading = document.querySelector('.github-pulls-stack-row[data-stack="286"]');
+        const members = new Set();
+        let item = heading?.parentElement.nextElementSibling;
+        while (item?.dataset.level === "2") {
+          members.add(item.dataset.number);
+          item = item.nextElementSibling;
+        }
+        return ["7", "8", "9", "10"].every((number) => members.has(number));
+      })()`,
+      "all four fixture members under Stack #286",
+      2 * STEP_MS,
     );
     await frames();
     const list = await evaluate(LIST);
