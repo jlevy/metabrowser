@@ -34,6 +34,12 @@ def _read_view_header_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("view-header.js").read_text()
 
 
+def _view_tab_markup() -> str:
+    composition = proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
+    start = composition.index("  function renderTabs(")
+    return composition[start : composition.index("\n  }\n", start)]
+
+
 def _builder_source(js: str, name: str) -> str:
     """One of view-header.js's builders, up to the next builder or the factory's return."""
 
@@ -67,9 +73,11 @@ def test_a_view_tab_is_selected_by_one_path_the_click_and_the_key_share() -> Non
 
 def test_the_view_tab_bar_is_a_tablist_carrying_each_declared_key() -> None:
     render = _function_source(_read_app_js(), "renderFile")
-    assert '<div class="tab-bar" role="tablist">' in render
-    assert 'role="tab" aria-selected="' in render
-    assert "data-view-key=" in render
+    assert "viewComposition.composition.renderTabs(" in render
+    markup = _view_tab_markup()
+    assert '<div class="tab-bar" role="tablist">' in markup
+    assert 'role="tab" aria-selected="' in markup
+    assert "data-view-key=" in markup
 
 
 def test_a_filter_number_opens_its_menu_through_the_triggers_path() -> None:
@@ -284,9 +292,9 @@ def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
 
 def test_the_view_tab_markup_carries_the_hooks_the_keymap_reads() -> None:
     """``committedBar()`` takes the pane's own `.tab-bar` child, and ``declaredTabs()`` reads
-    each `.tab-btn[data-view-key]` and its `data-tab`, all written by renderFile."""
+    each `.tab-btn[data-view-key]` and its `data-tab`, written by the view compositor."""
 
-    render = _function_source(_read_app_js(), "renderFile")
+    render = _view_tab_markup()
     keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
     assert '<div class="tab-bar" role="tablist">' in render
     assert "'<button class=\"tab-btn' +" in render

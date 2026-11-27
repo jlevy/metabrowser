@@ -102,6 +102,7 @@ SLACK_S = 0.5
 CHROME_TESTS = (
     "tests.test_agents_views_chrome",
     "tests.test_changed_file_rows_chrome",
+    "tests.test_chip_affordance_chrome",
     "tests.test_checkout_ref_selector_chrome",
     "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
@@ -125,6 +126,7 @@ CHROME_TESTS = (
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
     "tests.test_github_pull_timeline_chrome",
+    "tests.test_github_pulls_readiness_chrome",
     "tests.test_github_pulls_row_lines_chrome",
     "tests.test_github_pulls_stack_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",

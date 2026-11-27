@@ -85,10 +85,10 @@ def test_agent_log_helpers_gone_from_shell() -> None:
 def test_render_file_uses_unavailable_view_empty_state() -> None:
     """The fallback branch must explain an unavailable view rather than
     dispatching through a function table — proves the cut is real."""
-    src = _src()
-    assert "This view is unavailable." in src, "unavailable-view state must be present"
+    composition = APP_JS.with_name("view-composition.js").read_text(encoding="utf-8")
+    assert "This view is unavailable." in composition, "unavailable-view state must be present"
     # Negative: the fallback branch must NOT call into a function table.
-    assert "VIEW_RENDERERS[v.id]" not in src
+    assert all("VIEW_RENDERERS[v.id]" not in src for src in (_src(), composition))
 
 
 def test_no_legacy_for_now_comments_in_builtin_plugins() -> None:
@@ -128,7 +128,6 @@ def test_no_legacy_for_now_comments_in_builtin_manifests() -> None:
 def test_container_class_drives_outer_div_style() -> None:
     """View-level container_class field on [[view]] replaced the
     VIEW_CONTAINER_STYLES dict; the manifest classifier surfaces it
-    on the api/file response so the shell can pick it up at render
-    time."""
-    src = _src()
-    assert "view.container_class" in src
+    on the api/file response for the compositor to use at render time."""
+    composition = APP_JS.with_name("view-composition.js").read_text(encoding="utf-8")
+    assert "view.container_class" in composition

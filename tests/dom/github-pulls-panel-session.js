@@ -75,9 +75,11 @@ function summarize(model) {
     status: model.status,
     listName: model.listName,
     summary:
-      model.countNumber === null
-        ? model.repository
-        : model.countNumber + model.countSuffix + model.repository,
+      model.countSummary === null
+        ? null
+        : [...model.countSummary.total, ...(model.countSummary.scope ?? [])]
+            .map((part) => (typeof part === "string" ? part : (part.number ?? part.separator)))
+            .join(""),
     connection: model.connection,
     empty: model.empty,
     progress: model.progress,
@@ -344,10 +346,19 @@ async function run() {
   await page.answer(recorded.refresh_started);
   await page.fire(1000);
   await page.answer(recorded.pending);
+  assert(controller.refreshDetail() === null, "a pending scan is not a completed refresh");
   steps.push(page.observe("the catalog runs independently of the panel", controller));
   await page.fire(1000);
   await page.answer(recorded.current);
-  steps.push(page.observe("the top cache page arrives", controller));
+  const now = page.clock.now;
+  page.clock.now = Date.parse(recorded.current.body.refresh_timing.finished_at) + 120_000;
+  const refreshDetail = controller.refreshDetail();
+  page.clock.now = now;
+  assert(
+    refreshDetail === "Refreshed 2 min ago in 300ms",
+    "the hint reports completion and duration",
+  );
+  steps.push({ ...page.observe("the top cache page arrives", controller), refreshDetail });
   await page.answer(recorded.more_window);
   steps.push(page.observe("cached windows fill only the display budget", controller));
   assert(controller.snapshot().rows === 102, "the real catalog holds 102 rows");
@@ -368,6 +379,20 @@ async function run() {
   steps.push(page.observe("Open has its exact matching count", controller));
   controller.setFilter("closed");
   await settle();
+  const waitingForClosed = page.observe(
+    "Closed uses the known tally while its list loads",
+    controller,
+  );
+  assert(
+    waitingForClosed.paint.summary === "102 pull requests · 2 closed",
+    "the cached tally follows the new filter before its list arrives",
+  );
+  assert(
+    waitingForClosed.paint.status === "loading" &&
+      waitingForClosed.paint.connection.state === "working",
+    "the list still reports that it is loading",
+  );
+  steps.push(waitingForClosed);
   controller.setFilter("all", { fromAddress: true });
   await settle();
   await page.notModified();
@@ -431,8 +456,8 @@ async function run() {
   assert(
     moreCached.paint.connection.state === "connected" &&
       moreCached.paint.connection.refreshing === true &&
-      moreCached.paint.connection.text.startsWith("Updated "),
-    "the refresh still runs, under the rows' plain age and no spinner",
+      moreCached.paint.connection.text === "",
+    "the refresh still runs while the rows stay in place",
   );
   assert(moreCached.timer === "fast", "the append does not slow the refresh poll");
   assert(
@@ -1094,7 +1119,10 @@ async function paintStory(panel, selection = false) {
     }
     filterChips.at(-1).focus();
     await answer(first);
-    assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
+    assert(
+      spinner.hidden && !container.childNodes.includes(connection),
+      "the connection line leaves after a successful load",
+    );
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
     assert(
@@ -1418,6 +1446,7 @@ async function paintStory(panel, selection = false) {
       JSON.stringify(order) ===
         JSON.stringify([
           "github-pull-state-icon",
+          "github-pull-readiness-said",
           "github-pulls-title",
           "github-pulls-place",
           "github-pulls-sep",
@@ -1425,7 +1454,7 @@ async function paintStory(panel, selection = false) {
           "github-pulls-sep",
           "github-pulls-by",
         ]),
-      `the run is the state icon, the title, the place, a dot and the number, and a dot and the author: ${order}`,
+      `the run is the state icon, its readiness's words, the title, the place, a dot and the number, and a dot and the author: ${order}`,
     );
     // The author is its identity alone, hidden, since the link's name says it.
     assert(
@@ -1434,14 +1463,15 @@ async function paintStory(panel, selection = false) {
       `the author is its identity: ${classesOf(by)}`,
     );
     // The number holds its text alone, and the last line is the toggle, the lines, then the
-    // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), and the age
-    // at the row's end, hidden, since the link's name says it (mb-rb3n).
+    // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), then the
+    // readiness's column (mb-3n21), and the age at the row's end, hidden, since the link's
+    // name says it (mb-rb3n).
     const toggle = child(tail, "github-pulls-change");
     const tailAge = child(tail, "github-pulls-age");
     assert(
       classesOf(numberLabel).length === 0 &&
         JSON.stringify(classesOf(tail)) ===
-          JSON.stringify(["github-pulls-change", "github-pulls-age"]) &&
+          JSON.stringify(["github-pulls-change", "github-pulls-readiness", "github-pulls-age"]) &&
         tailAge.getAttribute("aria-hidden") === "true" &&
         JSON.stringify(classesOf(toggle)) ===
           JSON.stringify([
@@ -1464,7 +1494,7 @@ async function paintStory(panel, selection = false) {
       "one zone, the link: its run ends with the author, and its last line is the toggle, the lines, the chevron after them, and their words, which describe the row, and the age",
     );
     assert(
-      heading.childNodes[2].hidden && heading.childNodes[2].textContent === "",
+      heading.childNodes[3].hidden && heading.childNodes[3].textContent === "",
       "the place, after the title, is empty and hidden while no stack holds the row",
     );
     assert(
@@ -1483,8 +1513,8 @@ async function paintStory(panel, selection = false) {
       "the link says the number, the author, and the age, which its run shows hidden",
     );
     assert(
-      heading.childNodes[3].classList.contains("github-pulls-sep") &&
-        heading.childNodes[3].textContent === "\u00a0· ",
+      heading.childNodes[4].classList.contains("github-pulls-sep") &&
+        heading.childNodes[4].textContent === "\u00a0· ",
       "a part after the title carries the dot before it, kept to the part before by a no-break space",
     );
     const identity = child(by, "github-pull-identity");
@@ -1500,33 +1530,37 @@ async function paintStory(panel, selection = false) {
       node.classList?.contains("github-pulls-status"),
     );
     const total = status.firstElementChild;
-    // The count is the shell's metadata line, set as the Files and Commits totals are: the
-    // number bold, as every count summary's (docs/design-system.md, "Count Summaries Bold
-    // Their Numbers"), the words in the line's weight, and the repository name in its text
-    // role.
+    // The shared metadata line and tally painter keep both counts bold, the words
+    // regular, and the separator muted.
+    const [lead, scope] = total.childNodes;
+    const [allCount, noun] = lead.childNodes;
+    const [dot, pause, openCount, state] = scope.childNodes;
     assert(
       status.classList.contains("nav-metadata") &&
-        total.childNodes[0].localName === "span" &&
-        total.childNodes[0].classList.contains("summary-number") &&
-        total.childNodes[0].textContent === "102",
-      "the exact repository number is a count summary's bold number",
+        allCount.classList.contains("summary-number") &&
+        allCount.textContent === "102" &&
+        openCount.classList.contains("summary-number") &&
+        openCount.textContent === String(first.body.filter_totals.open),
+      "the repository and open totals are both bold",
     );
     assert(
-      total.childNodes[1].nodeName === "#text" &&
-        total.childNodes[1].textContent === " PRs on " &&
-        total.childNodes[2].localName === "strong" &&
-        total.childNodes[2].classList.contains("repository-name") &&
-        total.childNodes[2].textContent === "octo/demo",
-      "the words keep the line's weight, and the repository name is bold in its role",
+      noun.nodeName === "#text" &&
+        noun.textContent === " pull requests" &&
+        dot.classList.contains("summary-punctuation") &&
+        dot.getAttribute("aria-hidden") === "true" &&
+        pause.classList.contains("visually-hidden") &&
+        pause.textContent === "," &&
+        state.nodeName === "#text" &&
+        state.textContent === " open",
+      "the shared painter keeps plain words and a muted separator with a spoken pause",
     );
-    assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
       "lent to the one Refresh": lentWhileLoading,
       "the list's part while the list loads": listPartWhileLoading,
       landing: pane.textContent,
       "filter tallies": filterTallies,
-      "only the repository name is bold": total.childNodes.map((node) => ({
+      "both counts are bold": [...lead.childNodes, ...scope.childNodes].map((node) => ({
         node: node.nodeName,
         text: node.textContent,
       })),

@@ -731,9 +731,15 @@ async function rowStory(lines, totals = null) {
     for (const number of SHOWN) {
       const run = arrived[`#${number}`].run;
       assert.deepEqual(
-        run.slice(1, 5),
-        ["github-pulls-title", "github-pulls-place", "github-pulls-sep", "github-pulls-number"],
-        `#${number}'s run is the title, the place, and the number`,
+        run.slice(1, 6),
+        [
+          "sr-only github-pull-readiness-said",
+          "github-pulls-title",
+          "github-pulls-place",
+          "github-pulls-sep",
+          "github-pulls-number",
+        ],
+        `#${number}'s run is the readiness's words, the title, the place, and the number`,
       );
       assert.deepEqual(
         arrived[`#${number}`].last,
@@ -748,7 +754,7 @@ async function rowStory(lines, totals = null) {
     }
     for (const number of SHOWN.map((shown) => `#${shown}`)) {
       assert.deepEqual(
-        arrived[number].run.slice(5),
+        arrived[number].run.slice(6),
         ["github-pulls-sep", { "github-pulls-by": ["actor-identity github-pull-identity"] }],
         `${number}'s run ends with the dot and the author`,
       );

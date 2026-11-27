@@ -142,6 +142,159 @@
     return Object.freeze({ initialView, status: "ready", views: Object.freeze(views) });
   }
 
+  /** @param {MetabrowserPublicViewDescriptor} view @param {(value: unknown) => string} esc */
+  function viewMetaAttrs(view, esc) {
+    const printable = /** @type {unknown} */ (view.printable);
+    const isPrintable = printable === true || printable === "true" || printable === "1";
+    const profile = view.print_profile || "plain";
+    const runtime = view.render_runtime;
+    let attrs = ` data-printable="${isPrintable}" data-print-profile="${esc(profile)}"`;
+    if (runtime) {
+      attrs += ` data-render-runtime="${esc(runtime)}"`;
+    }
+    if (runtime === "kpress") {
+      attrs += ' data-kpress-enabled="true"';
+    }
+    return attrs;
+  }
+
+  /**
+   * The tabs and empty hosts for a file or folder's prepared views. A single tab
+   * keeps the same height as any other bar, without a shortcut for switching views.
+   *
+   * @param {MetabrowserPublicPreparedViewComposition["views"]} views
+   * @param {string | undefined} activeId
+   * @param {(value: unknown) => string} esc
+   */
+  function renderTabs(views, activeId, esc) {
+    if (views.length === 0) {
+      return '<div class="tab-bar" aria-hidden="true"><span class="tab-btn tab-slot">&nbsp;</span></div>';
+    }
+    const keyedBar = views.length > 1;
+    let html = '<div class="tab-bar" role="tablist">';
+    for (const { view } of views) {
+      const isActive = view.id === activeId;
+      const viewKey =
+        typeof view.key === "string" && view.key ? ` data-view-key="${esc(view.key)}"` : "";
+      html +=
+        '<button class="tab-btn' +
+        (isActive ? " active" : "") +
+        '" type="button" role="tab" aria-selected="' +
+        (isActive ? "true" : "false") +
+        '" data-tab="' +
+        esc(view.id) +
+        '"' +
+        (keyedBar ? viewKey : "") +
+        viewMetaAttrs(view, esc) +
+        ">" +
+        esc(view.label) +
+        "</button>";
+    }
+    html += "</div>";
+    for (const { renderer, view } of views) {
+      const containerClass = view.container_class || "content-body";
+      const hidden = view.id === activeId ? "" : "display:none;";
+      const padding = view.id === "raw" || view.id === "source" ? "padding-block:0;" : "";
+      html +=
+        '<div class="' +
+        containerClass +
+        '" data-tab-content="' +
+        view.id +
+        '"' +
+        (renderer ? ` data-plugin-view="${esc(view.id)}"` : "") +
+        viewMetaAttrs(view, esc) +
+        ' data-active-view="false"' +
+        (hidden || padding ? ` style="${hidden}${padding}"` : "") +
+        ">" +
+        (renderer
+          ? ""
+          : '<div class="preview-empty" role="alert">This view is unavailable. Reload the page to try again.</div>') +
+        "</div>";
+    }
+    return html;
+  }
+
+  /** @type {WeakMap<HTMLElement, NonNullable<MetabrowserPublicViewRenderHandle["refresh"]>>} */
+  const refreshers = new WeakMap();
+
+  /**
+   * @typedef {{
+   *   views: MetabrowserPublicPreparedViewComposition["views"],
+   *   context: {current: MetabrowserPublicRenderContext},
+   * }} InstalledViews
+   */
+  /** @type {WeakMap<HTMLElement, InstalledViews>} */
+  const installedViews = new WeakMap();
+
+  /**
+   * @param {HTMLElement} host
+   * @param {InstalledViews} installed
+   * @param {Array<() => void>} disposers
+   */
+  function retain(host, installed, disposers) {
+    installedViews.set(host, installed);
+    disposers.push(() => {
+      if (installedViews.get(host) === installed) {
+        installedViews.delete(host);
+      }
+    });
+  }
+
+  /**
+   * Check the tab descriptors and every mounted view before reusing the layout.
+   * A lazy view uses the retained context when its mount eventually starts.
+   *
+   * @param {HTMLElement} host
+   * @param {MetabrowserPublicPreparedViewComposition["views"]} views
+   * @param {MetabrowserPublicRenderContext} context
+   * @param {() => boolean} isCurrent
+   */
+  async function refresh(host, views, context, isCurrent) {
+    const installed = installedViews.get(host);
+    if (
+      !installed ||
+      views.length !== installed.views.length ||
+      !views.every(({ renderer, view }, index) => {
+        const before = installed.views[index];
+        return (
+          renderer === before.renderer &&
+          Object.keys(view).length === Object.keys(before.view).length &&
+          Object.entries(view).every(
+            ([key, value]) =>
+              Object.hasOwn(before.view, key) && Object.is(Reflect.get(before.view, key), value),
+          )
+        );
+      })
+    ) {
+      return false;
+    }
+    const active = host.querySelector(':scope > [data-active-view="true"]');
+    if (!(active instanceof HTMLElement) || !refreshers.has(active)) {
+      return false;
+    }
+    /** @type {Array<NonNullable<MetabrowserPublicViewRenderHandle["refresh"]>>} */
+    const mounted = [];
+    for (const container of host.querySelectorAll(":scope > [data-plugin-view]")) {
+      if (
+        !(container instanceof HTMLElement) ||
+        typeof container._metabrowserMount === "function"
+      ) {
+        continue;
+      }
+      const reread = refreshers.get(container);
+      if (reread === undefined) {
+        return false;
+      }
+      mounted.push(reread);
+    }
+    if (!isCurrent()) {
+      return false;
+    }
+    installed.context.current = context;
+    const outcomes = await Promise.all(mounted.map((reread) => isCurrent() && reread(context)));
+    return isCurrent() && outcomes.every((outcome) => outcome === true);
+  }
+
   /**
    * Mount one registered renderer and bind its handle to a staged or active
    * lifecycle. A cancellation owns a late async handle, while a render failure
@@ -159,13 +312,14 @@
    * @returns {Promise<"mounted" | "cancelled" | "error">}
    */
   async function mount(container, renderer, context, disposers, options = {}) {
-    /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
+    /** @type {{disposed: boolean, handle: MetabrowserPublicViewRenderHandle | null}} */
     const record = { disposed: false, handle: null };
     disposers.push(() => {
       if (record.disposed) {
         return;
       }
       record.disposed = true;
+      refreshers.delete(container);
       // The net runs before the view's own dispose, which may take its DOM, and the keys
       // attached inside it, out of the container. Detaching twice is harmless.
       releaseShortcutsWithin(container);
@@ -180,7 +334,7 @@
       const rendered = await Promise.resolve(renderer.render(container, context));
       const handle =
         rendered && typeof rendered === "object"
-          ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
+          ? /** @type {MetabrowserPublicViewRenderHandle} */ (rendered)
           : null;
       if (record.disposed) {
         // Rendered after the net ran: it is cast again over what this render attached.
@@ -196,6 +350,9 @@
         return "cancelled";
       }
       options.afterMount?.(container);
+      if (typeof handle?.refresh === "function") {
+        refreshers.set(container, handle.refresh.bind(handle));
+      }
       return "mounted";
     } catch (error) {
       // A render that failed may have attached keys first, and the error state below
@@ -499,6 +656,9 @@
     createLifecycle,
     mount,
     prepare,
+    refresh,
+    renderTabs,
+    retain,
     selectTab,
     setActiveView,
     settleFaces,

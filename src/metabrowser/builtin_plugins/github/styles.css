@@ -340,6 +340,9 @@
    strut holds the row at a chip's height, and a page with no record yet holds the line with
    no badge. The row positions the stack's menu, which hangs from its end. */
 .github-pull-opened {
+  /* What a narrow row's readiness badge is measured against (`.github-pull-readiness-slot`);
+     a stack's page names its own row (`github-pull-stack-opened`). */
+  container: github-pull-opened / inline-size;
   position: relative;
   display: flex;
   flex-wrap: nowrap;
@@ -451,6 +454,28 @@
   justify-self: stretch;
   text-align: center;
 }
+/* An open pull request's readiness follows the state's badge (mb-io36): a link to the Checks
+   tab's Merge status section, as wide as the widest label the server gives a verdict, by the
+   state slot's sizers (`SLOT_LABELS` in pull-readiness.js), so a verdict that changes as
+   checks finish moves nothing in the row. A closed or merged pull request has no slot.
+   Measured in headless Chrome for Testing 158, 2026-11-26: the slot is 118.48 px, the badge
+   of the widest label, "Changes requested", at every verdict and width, and the row keeps
+   Browse code whole at its limits, 420 px beside one stack's chip and 560 px beside two
+   stacks' named chips. So no label is shortened. But the ages give way first, and beside
+   one chip at 420 px the full badge left them 23.8 px of their 195, where they had 150.28
+   before the badge came; so a narrow row draws the verdict's glyph alone
+   (`@container github-pull-opened`, after the glyph's rules below). */
+.github-pull-readiness-slot {
+  display: inline-grid;
+  flex: none;
+}
+.github-pull-readiness-slot > .github-pull-readiness-link {
+  display: grid;
+}
+.github-pull-readiness-slot > .github-pull-readiness-link > .github-pull-badge {
+  text-align: center;
+}
+.github-pull-readiness-slot > .github-pull-badge-sizer,
 .github-pull-state-slot > .github-pull-badge-sizer {
   block-size: 0;
   padding-block: 0;
@@ -458,22 +483,23 @@
   overflow: hidden;
   visibility: hidden;
 }
-.github-pull-badge[data-state="success"],
+/* A check's badge is in the ink of its bucket, the server's (`state_bucket` in
+   pull_status.py), as `gh pr checks` colors its marks: pass green, fail red, pending yellow,
+   skipping and cancel muted. Pending is the readiness's attention, so waiting is one color
+   across the plugin, and the shell's warning ink stays a degraded result's. */
+.github-pull-badge[data-state="pass"],
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success-text);
 }
-.github-pull-badge[data-state="failure"],
+.github-pull-badge[data-state="fail"],
 .github-pull-badge[data-state="CHANGES_REQUESTED"] {
   color: var(--status-error-text);
 }
 .github-pull-badge[data-state="pending"] {
-  color: var(--status-warning-text);
+  color: var(--github-pull-attention);
 }
-.github-pull-badge[data-state="neutral"],
-.github-pull-badge[data-state="skipped"],
-.github-pull-badge[data-state="cancelled"],
-.github-pull-badge[data-state="stale"],
-.github-pull-badge[data-state="unknown"],
+.github-pull-badge[data-state="skipping"],
+.github-pull-badge[data-state="cancel"],
 .github-pull-badge[data-state="outdated"],
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
@@ -1060,8 +1086,71 @@
 .github-pull-checks .github-pull-external-action:focus-visible {
   color: var(--link);
 }
-.github-pull-merge[data-state="conflicting"] {
-  color: var(--status-error-text);
+/* A check a rule on the base branch requires: the compact outlined tag, in the row's muted
+   ink, after the name it qualifies, as the ref chooser's tags are (docs/design-system.md,
+   "Chip Sizes"). It sits on the row's baseline. */
+.github-pull-required {
+  flex: none;
+  padding: 0 var(--compact-chip-padding-inline);
+  border: var(--chip-border) solid var(--border);
+  border-radius: var(--radius-tag);
+  line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
+  color: var(--muted);
+}
+/* The Checks tab's Merge status section, which opens it: the verdict's badge and sentence,
+   then a row for each requirement, as a check's row is, its status's badge in a column as
+   wide as the widest status word, so the sentences line up. */
+.github-pull-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.github-pull-requirements {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
+  list-style: none;
+}
+.github-pull-requirements > li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: var(--body-font-size);
+}
+.github-pull-requirements > li > .github-pull-badge {
+  justify-self: stretch;
+  text-align: center;
+}
+/* Its sentence, then its link on the same line where it fits; auto-merge's row, which has
+   no status, starts in the sentences' column. */
+.github-pull-requirement-said {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  grid-column: 2;
+}
+.github-pull-requirements a {
+  color: var(--link);
+  text-decoration: none;
+}
+.github-pull-requirements a:hover {
+  text-decoration: underline;
+}
+.github-pull-requirements a:focus-visible,
+.github-pull-checks li:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.github-pull-requirements .github-pull-external-action {
+  color: var(--muted);
+}
+.github-pull-requirements .github-pull-external-action:hover,
+.github-pull-requirements .github-pull-external-action:focus-visible {
+  color: var(--link);
 }
 
 /* ── A pull request's state ──────────────────────────────────────
@@ -1119,6 +1208,78 @@
   height: 1em;
 }
 
+/* ── A pull request's readiness ──────────────────────────────────
+   One vocabulary for the page's header, its Checks tab, and a Pulls row: docs/design-system.md,
+   "A Pull Request’s Readiness". The server gives each verdict its tone (pull_readiness.py), and
+   the tone alone sets the color, never the verdict (pull-readiness.js). Success and danger are
+   the shell's status inks, which carry GitHub's green and red. Attention has a token of its
+   own: the shell's warning ink is orange and reserved for a degraded result, and GitHub's
+   pending and queued are yellow. It is Primer's `fgColor-attention`: its light value
+   exactly, and in dark the lightness and chroma of Primer's dark value, which sits at hue
+   80, held at the light hue, 75. It reads at 7.06:1 on the dark `--bg` and 6.18:1 on the
+   dark `--sidebar-bg`, and Primer's light value at 4.87:1 and 4.66:1 on the light ones
+   (2026-11-26). test_pull_state_colors_keep_their_hue_and_read_on_both_grounds holds the
+   hue and the contrast, and
+   test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn that the tone
+   alone colors a mark. */
+:root {
+  --github-pull-attention: oklch(55.4% 0.117 75);
+}
+[data-theme="dark"] {
+  --github-pull-attention: oklch(72% 0.14 75);
+}
+.github-pull-badge.github-pull-readiness[data-tone="success"],
+.github-pull-badge.github-pull-requirement[data-tone="success"],
+.github-pull-readiness-icon[data-tone="success"] {
+  color: var(--status-success-text);
+}
+.github-pull-badge.github-pull-readiness[data-tone="attention"],
+.github-pull-badge.github-pull-requirement[data-tone="attention"],
+.github-pull-readiness-icon[data-tone="attention"] {
+  color: var(--github-pull-attention);
+}
+.github-pull-badge.github-pull-readiness[data-tone="danger"],
+.github-pull-badge.github-pull-requirement[data-tone="danger"],
+.github-pull-readiness-icon[data-tone="danger"] {
+  color: var(--status-error-text);
+}
+/* The glyph at the app's one size. Where it sits is its surface's. */
+.github-pull-readiness-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+.github-pull-readiness-icon svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+/* The link's glyph, shown only in a narrow row's compact form (below): after the glyph's
+   own rule above, whose display it overrides. */
+.github-pull-readiness-link > .github-pull-readiness-icon {
+  display: none;
+}
+/* A narrow row of ages draws the verdict's glyph in its tone in the badge's place, and the
+   slot is the glyph's width: the link, its name, and its tooltip are the badge's, so it says
+   the same. The bound is where the full badge leaves the ages what they had before it, at
+   the row's 420 px limit: there the ages had 150.28 px beside one stack's chip, and the full
+   badge leaves them that much from a row of 488.48 px (a 546.48 px pane), 34.89em at the
+   row's 14 px type; the bound is 35em, 490 px, where it leaves them 151.8 px. Below it the
+   glyph costs the ages 22 px, its 14 px and the row's gap, so at 420 px they keep 128.28 px.
+   Measured in headless Chrome for Testing 158, 2026-11-26, by setting a pane's width a pixel
+   at a time; tests/dom/github-pull-header-chrome.mjs ("readiness" part) holds each form to
+   its side of the bound. Two stacks' named chips take 101.56 px more of the row, which the
+   bound does not answer: Browse code stays whole beside them from 560 px. */
+@container github-pull-opened (width < 35em) {
+  .github-pull-readiness-link > .github-pull-badge,
+  .github-pull-readiness-slot > .github-pull-badge-sizer {
+    display: none;
+  }
+  .github-pull-readiness-link > .github-pull-readiness-icon {
+    display: inline-flex;
+  }
+}
+
 /* ── The Pulls tab ───────────────────────────────────────────────
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
    primitives; what is here is their placement, and a row, which takes the row contract. */
@@ -1154,16 +1315,25 @@
 }
 /* The count and the connection are the shell's navigation metadata line (`.nav-metadata`
    in static/styles.css), which owns their box, type, and spacing: two lines of one band
-   under the toolbar, each always there and holding its line (pulls-panel.js). This
-   stylesheet lays out only their spans. The count, the line's one item, is cut short
-   rather than wrapped: it shrinks to its line and ellipsizes. The connection line, whose
+   under the toolbar, with the connection line only while it has a status (pulls-panel.js).
+   This stylesheet lays out only their spans. The count stays on one line: its repository
+   total can ellipsize, while the state tally keeps its width. The connection line, whose
    failures carry their remedy, wraps only for a message longer than the pane, as the pull
    request header's failure does. */
 .github-pulls-total-line {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.github-pulls-total-lead {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.github-pulls-total-scope {
+  flex: none;
+  white-space: pre;
 }
 /* The shared spinner beside "Fetching pull requests…", centred on the words. */
 .github-pulls-connection-text {
@@ -1198,6 +1368,11 @@
   --github-pull-row-avatar-size: 16px;
 }
 .github-pulls-list {
+  /* The readiness column's label follows its glyph where the list is wide enough
+     (`@container github-pulls`, after `.github-pulls-readiness`). The list, not a row, is
+     the container, so every row's column is one width, a stack's members' too, whose rows
+     are as wide as the rest and indented inside them. */
+  container: github-pulls / inline-size;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1248,6 +1423,11 @@
      13 px, "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds
      it whole). WebKit was not measured. */
   --github-pulls-age-column: 5ch;
+  /* The readiness's column (`.github-pulls-readiness`, below): the glyph's width, and where
+     the list is wide enough the glyph, a space's gap, and the room of the widest label. */
+  --github-pulls-readiness-column: var(--icon-glyph);
+  --github-pulls-readiness-gap: 0.25em;
+  --github-pulls-readiness-label-room: 8.1em;
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
@@ -1398,7 +1578,9 @@
    as no column. */
 .github-pulls-row > .github-pulls-tail {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--github-pulls-age-column);
+  grid-template-columns:
+    minmax(0, 1fr) var(--github-pulls-readiness-column)
+    var(--github-pulls-age-column);
   align-items: center;
   height: var(--github-pulls-change-line);
   padding: 0 0 2px var(--github-pull-row-text-column);
@@ -1439,8 +1621,8 @@
 /* The toggle's own hover, inside the item's: under the pointer, its chevron stands on a plate
    one step past the item's hover ground and takes the text's ink, as an icon button does on
    a plain ground (`.icon-btn:hover`). The plate is the chevron's slot alone, so the lines'
-   inks keep the ground their contrast is held on (`--hover-bg`, `--highlight-bg`). A Whole
-   stack row's toggle of its stack's changed files is this toggle too
+   inks keep the ground their contrast is held on (`--hover-bg`, `--highlight-bg`). A Stack
+   Overview row's toggle of its stack's changed files is this toggle too
    (`.github-pulls-whole-change`, mb-odt4), so its chevron has the same plate. */
 .github-pulls-change:hover > .github-pulls-toggle {
   background: var(--border);
@@ -1449,7 +1631,7 @@
   color: var(--text);
 }
 /* While the lines are read, the row holds the shell's pending placeholder where they will be,
-   as a stack's Whole stack row does (`.github-pulls-stack-change-pending`): the navigation tally's
+   as a stack's Stack Overview row does (`.github-pulls-stack-change-pending`): the navigation tally's
    gray block and slow pulse, after the quiet period, as wide as a row's lines nearly always
    are (`--github-pulls-lines-room`, measured on `.github-pulls-row`). */
 .github-pulls-change-pending {
@@ -1460,6 +1642,61 @@
 }
 .github-pulls-change-pending > .tally-pending {
   width: 100%;
+}
+/* An open pull request's readiness (mb-3n21; row-readiness.js), in a column of its own between
+   the lines and the age: the verdict's glyph in its tone, `.github-pull-readiness-icon`, at
+   the column's start, so the glyphs down the list read as a checks column, "+1,234 −567 › ⊗
+   3d". The column is one width on every row, the glyph's, and is there empty on a closed or
+   merged row and on one the server has no status of, so a glyph arriving moves nothing and the
+   ages stay in theirs. Its glyph and its label are hidden from assistive technology: the run
+   says the verdict after the state (stack-member-row.js). The column's width and the label's
+   room are on `.github-pulls-row`. */
+.github-pulls-readiness {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  gap: var(--github-pulls-readiness-gap);
+  min-width: 0;
+  overflow: hidden;
+}
+/* The label is in the text's ink, and the tone is the glyph's alone: a list of a hundred rows is
+   not a hundred colored words, and the label reads at the text's contrast on every ground a row
+   has, where the success ink reads 4.47:1 on the open row's highlight tint over the panel
+   (test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn). */
+.github-pulls-readiness-label {
+  display: none;
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Where the list is wide enough, the label follows the glyph, and the column
+   is as wide as the widest label the server gives a verdict, so every glyph and every label
+   start at one edge. The label's room, `--github-pulls-readiness-label-room` on
+   `.github-pulls-row`, is 8.1em: the widest label, "Changes requested", is 104 px at the row's
+   13 px (8em), and the next, "Ready for review", 90 px. The bound is where a stack's member,
+   a row a level in, has beside the column at that width and the age the room its lines need,
+   `--github-pulls-lines-room`, which 44 of this repository's 45 rows' lines take, and its
+   chevron: below it the label would cut short lines that fit beside the glyph alone. Measured
+   in headless Chrome for Testing 158 with KPress's faces, 2026-11-26, by setting the pane's
+   width a pixel at a time from 300 to 600 px: that row first has the room at a list 321 px
+   wide (a 322 px pane), 24.69em of the list's 13 px, so the bound is 24.65em, 320.45 px. The
+   nav's 299 px default pane draws the glyph alone; a flush row has a level's 20 px more.
+   tests/dom/github-pulls-readiness-chrome.mjs holds the label to that side of the bound at
+   every pixel, every label whole in its room, and the column one width on every row. WebKit
+   was not measured. */
+@container github-pulls (width >= 24.65em) {
+  .github-pulls-tail {
+    --github-pulls-readiness-column: calc(
+      var(--icon-glyph) +
+      var(--github-pulls-readiness-gap) +
+      var(--github-pulls-readiness-label-room)
+    );
+  }
+  .github-pulls-readiness-label {
+    display: inline;
+  }
 }
 
 /* A pull request's changed files, under its row: the Files tree's row contract, drawn a window
@@ -1630,9 +1867,9 @@
    replaced, a check then "1/6 · title · #N", wrapped a long title onto lines of its own, so
    members were of different heights; the line before this one led with the place, "14/15 ·
    title", and ended with the number.
-   The Whole stack row, the stack's own page, is in the members' row grid, though it is no
+   The Stack Overview row, the stack's own page, is in the members' row grid, though it is no
    member (mb-7cn4): the stack's Layers glyph in the state icon's slot, in the text's ink as its
-   words are, as the Pulls tab's Whole stack row and the stack page's title have it (mb-68uk),
+   words are, as the Pulls tab's Stack Overview row and the stack page's title have it (mb-68uk),
    and its words where every member's title starts. With the menu row's own gap and no icon,
    its words started 2 px past the titles. */
 .github-pull-stack-member,
@@ -1755,6 +1992,17 @@
 .github-pull-stack-member-by[hidden] {
   display: none;
 }
+/* A member's readiness (mb-3n21): the verdict's glyph in its tone, ending the line after the
+   author, in a cell as wide as the glyph, there empty for a member with no readiness, so every
+   member's place, number, and author end at one edge. Its words are the member's name's,
+   after the state (stack-member-row.js). */
+.github-pull-stack-member-readiness {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  width: var(--icon-glyph);
+}
 .github-pull-stack-member-by > .github-pull-identity {
   min-width: 0;
   overflow: hidden;
@@ -1788,7 +2036,7 @@
      .github-pull-stack-position  the bold position, "2/4".
      .github-pull-stack-other     the Layers glyph at the text's size, naming another
                                   stack in a badge before its number.
-   Grouped by stack, the Pulls list's first level is a stack's row, then its Whole stack
+   Grouped by stack, the Pulls list's first level is a stack's row, then its Stack Overview
    row and the rows of its pull requests a tree level in, top of the stack first, then the
    rows in no stack. A stack's row starts on the list's row inset, as every first-level row
    does, as a menu group's heading starts on the menu's row inset rather than on its rows'
@@ -1798,7 +2046,7 @@
   white-space: nowrap;
 }
 /* The rows under a stack's row, and their changed files, are a tree level in: one icon slot
-   and the rows' column gap, so a member's state icon and its Whole stack row's Layers glyph
+   and the rows' column gap, so a member's state icon and its Stack Overview row's Layers glyph
    sit where the stack's label starts (mb-3vil, mb-68uk). */
 .github-pulls-item[data-level="2"] {
   --github-pulls-indent: var(--github-pull-row-text-column);
@@ -1815,13 +2063,12 @@
   justify-self: end;
   white-space: nowrap;
 }
-/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the first under its open
+/* A stack's Stack Overview row (pulls-panel.js, `paintWholeRow`), the first under its open
    stack, beside its pull requests' rows, opens the stack's own page. It is one line in a
    member's row grid: the stack's Layers glyph, in the text's ink, as its words and the
    stack page's title glyph are (mb-68uk), in the state icon's slot; then its line in the
    members' title column, one --github-pull-row-gap (the tree's icon gap) past the glyph,
-   as the stack menu's Whole stack row has them (`.github-pull-stack-whole`): "Whole
-   stack", then the lines the stack changes and the chevron after them, the toggle of the
+   as the stack menu's Stack Overview row has them (`.github-pull-stack-whole`): "Stack Overview", then the lines the stack changes and the chevron after them, the toggle of the
    stack's changed files (`.github-pulls-whole-line`, `.github-pulls-whole-change`). It
    hovers, takes the focus ring, and takes the current-row mark as a pull request's row
    does, on its own ground, since no entry holds it (`.github-pulls-entry`). */
@@ -1846,14 +2093,14 @@
 .github-pulls-whole-row.selected {
   background: var(--highlight-bg);
 }
-/* A stack's heading and its Whole stack row's line are each one line whatever they hold, a
+/* A stack's heading and its Stack Overview row's line are each one line whatever they hold, a
    line of the row's content box, in the nav's type (docs/design-system.md, "Stacks"). The
    heading is "Stack #N" then, after a muted dot, the stack's size, "· 4 pulls", a count
-   summary with its number bold in the text's ink (`.summary-number`); the Whole stack row's
-   line is "Whole stack" then its toggle: after a muted dot, the stack's line totals,
+   summary with its number bold in the text's ink (`.summary-number`); the Stack Overview row's
+   line is "Stack Overview" then its toggle: after a muted dot, the stack's line totals,
    "· +1,234 −567", the shell's brief change line of its totals alone, with no file
    statuses, as a pull request's row says its own (mb-lqkb), then the chevron. The first
-   part, the label or "Whole stack", is never cut for the second or covered by it. Where the
+   part, the label or "Stack Overview", is never cut for the second or covered by it. Where the
    second has no room it goes whole, never cut short with an ellipsis. That is the wrap
    below: the second part's own floor, its smallest width (the count whole; for the toggle
    `min-width: min-content`, the dot, the totals, and the chevron, to which the note adds
@@ -1874,13 +2121,12 @@
   line-height: var(--github-pulls-stack-line);
 }
 /* The heading's dot follows the label a space's width on (0.25em, about 3 px at the nav's 13
-   px), as the space after it is; the Whole stack row's line keeps its dot's room in the
+   px), as the space after it is; the Stack Overview row's line keeps its dot's room in the
    change line's own box (`.github-pulls-stack-change`). */
 .github-pulls-stack-row > .github-pulls-stack-heading {
   column-gap: 0.25em;
 }
-/* The Whole stack row's line never wraps (mb-odt4, the owner's word of 2026-11-26): "Whole
-   stack" keeps its width, and the toggle after it takes what is left and gives way inside
+/* The Stack Overview row's line never wraps (mb-odt4, the owner's word of 2026-11-26): "Stack Overview" keeps its width, and the toggle after it takes what is left and gives way inside
    itself, as a pull request's row's toggle does, so its chevron is always right after its
    lines. */
 .github-pulls-whole-row > .github-pulls-whole-line {
@@ -1900,7 +2146,7 @@
   /* The row's grid places the heading; the menu's padding is its inset in a menu. */
   padding: 0;
 }
-/* "Whole stack" keeps its width: the toggle after it gives way first (mb-odt4). */
+/* "Stack Overview" keeps its width: the toggle after it gives way first (mb-odt4). */
 .github-pulls-whole-line > .github-pulls-whole-title {
   flex: none;
 }
@@ -1913,7 +2159,7 @@
   font-variant-numeric: var(--tabular-numerals);
   white-space: pre;
 }
-/* The Whole stack row's toggle (mb-odt4): the change line's box, then the registry's
+/* The Stack Overview row's toggle (mb-odt4): the change line's box, then the registry's
    chevron, a pull request's row's toggle exactly (`.github-pulls-change`, whose layout,
    pointer, chevron gap, and hover plate it has). It is as wide as what it holds and no
    wider, so the chevron is right after the lines, and the rest of the row's line stays the
@@ -1931,9 +2177,9 @@
    and the note are one line of a box that wraps: the note, the later item, wraps whole onto
    a second line, which the box's height leaves out of view, before the line gives anything
    up, and the line, never wider than the box, never wraps. The dot stands outside that flow
-   in the box's leading padding, so the box's floor is the dot and the line's totals. It is
-   the box's first child, which the SDK draws hidden from assistive technology; the shell
-   alone styles its punctuation class.
+   at the start of the box. The inline spacer after it keeps the totals in place and clips
+   with the text when the box gives way to keep the chevron visible. The dot is the box's
+   first child, which the SDK draws hidden from assistive technology.
    `--github-pulls-stack-dot` is the dot's width: measured in Chrome 152 in the nav's type,
    "·" is 3.24 px of its 13 px, 0.25 em. */
 .github-pulls-stack-change {
@@ -1944,10 +2190,14 @@
   min-width: 0;
   height: var(--github-pulls-stack-line);
   overflow: hidden;
-  padding-inline-start: calc(var(--github-pulls-stack-dot) + 6px);
   font-size: var(--nav-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.github-pulls-stack-change::before {
+  display: inline-block;
+  inline-size: calc(var(--github-pulls-stack-dot) + 6px);
+  content: "";
 }
 .github-pulls-stack-change
   > [aria-hidden="true"]:first-child:not(.github-pulls-stack-change-pending) {
@@ -1968,7 +2218,7 @@
   margin-inline-start: 6px;
   color: var(--muted);
 }
-/* While the line is read, the Whole stack row holds the shell's pending placeholder where it will
+/* While the line is read, the Stack Overview row holds the shell's pending placeholder where it will
    be: the navigation tally's gray block and slow pulse (`.tally-pending`), shown after the
    quiet period (`.mb-delayed-loading`), in the line's flow after the dot's room, where the
    totals will start; it is no dot, though the box's first child and hidden. It is as wide as

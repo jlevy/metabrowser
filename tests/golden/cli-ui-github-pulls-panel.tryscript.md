@@ -56,7 +56,6 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "absent",
         "listName": "Pull requests of octo/demo",
-        "summary": "octo/demo",
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
@@ -77,7 +76,6 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "absent",
         "listName": "Pull requests of octo/demo",
-        "summary": "octo/demo",
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
@@ -97,7 +95,6 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "pending",
         "listName": "Pull requests of octo/demo",
-        "summary": "octo/demo",
         "connection": {
           "state": "working",
           "text": "Fetching pull requests…",
@@ -110,7 +107,7 @@ $ node tests/dom/github-pulls-panel-session.js
       "step": "the top cache page arrives",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-3\"",
-        "GET /api/plugin/github/pulls?state=all&limit=100&after=7"
+        "GET /api/plugin/github/pulls?state=all&limit=100&after=9"
       ],
       "marks": [
         "anchor null -> 106"
@@ -120,10 +117,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "summary": "102 PRs on octo/demo",
+        "summary": "102 pull requests · 100 open",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 102 pull requests",
@@ -132,10 +129,11 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Open] Work item 106 | #106 · contributor | /pull/106",
           "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
-          "[Open] Count to two in the app | #7 · forker | /pull/7"
+          "[Draft] WIP: draft the next page | #10 · maintainer | /pull/10",
+          "[Closed] spam | #9 · ghost | /pull/9"
         ]
-      }
+      },
+      "refreshDetail": "Refreshed 2 min ago in 300ms"
     },
     {
       "step": "cached windows fill only the display budget",
@@ -148,10 +146,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "summary": "102 PRs on octo/demo",
+        "summary": "102 pull requests · 100 open",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 102 pull requests",
@@ -160,8 +158,8 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Open] Work item 106 | #106 · contributor | /pull/106",
           "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor | /pull/6",
-          "[Open] Work item 5 | #5 · contributor | /pull/5"
+          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
+          "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
       }
     },
@@ -196,10 +194,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "open",
         "status": "current",
         "listName": "Pull requests of octo/demo: 100 pull requests",
-        "summary": "102 PRs on octo/demo",
+        "summary": "102 pull requests · 100 open",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": true
         },
         "live": "Pull requests of octo/demo: 100 pull requests",
@@ -208,27 +206,48 @@ $ node tests/dom/github-pulls-panel-session.js
           "[Open] Work item 106 | #106 · contributor | /pull/106",
           "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor | /pull/6",
-          "[Open] Work item 5 | #5 · contributor | /pull/5"
+          "[Draft] WIP: draft the next page | #10 · maintainer | /pull/10",
+          "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
+      }
+    },
+    {
+      "step": "Closed uses the known tally while its list loads",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100"
+      ],
+      "timer": "fast",
+      "marks": [
+        "anchor 106 -> null"
+      ],
+      "filterChanged": [
+        "closed"
+      ],
+      "painted": 1,
+      "paint": {
+        "filter": "closed",
+        "status": "loading",
+        "listName": "Pull requests",
+        "summary": "102 pull requests · 2 closed",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "canRefresh": false
+        },
+        "live": "Fetching pull requests…"
       }
     },
     {
       "step": "leaving a filter aborts its read",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100",
         "aborted GET /api/plugin/github/pulls?state=closed&limit=100",
         "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\""
       ],
       "timer": "slow",
       "marks": [
-        "anchor 106 -> null",
         "anchor null -> 106"
       ],
-      "filterChanged": [
-        "closed"
-      ],
-      "painted": 2
+      "painted": 1
     },
     {
       "step": "500 shown while the catalog continues in the background",
@@ -250,10 +269,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "summary": "1,000 PRs on octo/demo",
+        "summary": "1,000 pull requests · 1,000 closed",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -279,10 +298,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "summary": "6,000 PRs on octo/demo",
+        "summary": "6,000 pull requests · 6,000 closed",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -308,10 +327,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "summary": "6,000 PRs on octo/demo",
+        "summary": "6,000 pull requests · 6,000 closed",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -341,10 +360,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "summary": "6,000 PRs on octo/demo",
+        "summary": "6,000 pull requests · 6,000 closed",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -379,10 +398,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
-        "summary": "6,001 PRs on octo/demo",
+        "summary": "6,001 pull requests · 6,001 closed",
         "connection": {
           "state": "connected",
-          "text": "Updated just now",
+          "text": "",
           "canRefresh": false,
           "refreshing": true
         },
@@ -569,7 +588,11 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "gh api graphql catalog state=all cursor=all-100"
     ],
     "cached windows, filters, scrolling and reopen": [
-      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1",
+      "gh api graphql statuses cursor=start",
+      "gh api graphql statuses cursor=statuses-25",
+      "gh api graphql statuses cursor=statuses-50",
+      "gh api graphql statuses cursor=statuses-75"
     ],
     "due metadata refresh": [
       "gh api user (If-None-Match)",
@@ -694,7 +717,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "step": "a current list is shown: its first probe ask is due at once",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100",
-        "GET /api/plugin/github/pulls?state=all&limit=100&after=7",
+        "GET /api/plugin/github/pulls?state=all&limit=100&after=9",
         "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
       ],
       "poll": "slow",
@@ -737,7 +760,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "step": "the scan's rows are read",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100",
-        "GET /api/plugin/github/pulls?state=all&limit=2&after=7",
+        "GET /api/plugin/github/pulls?state=all&limit=2&after=9",
         "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
       ],
       "poll": "slow",
@@ -892,7 +915,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a row with a current record is probed at once, and an unchanged probe fetches nothing",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "waits": [
         0,
@@ -913,7 +936,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a click on a row whose record is stale refreshes it at once",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "waits": [
         0,
@@ -934,7 +957,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a key stopping on a stale row refreshes it after the wait",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
       ],
       "waits": [
         500,
@@ -972,7 +995,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       },
       "once let go": {
         "asked": [
-          "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
+          "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"a9dfa5c72aff60d11d992707bfdd715db78cd3ffae4b076b64dc271ddaefb538\"}"
         ],
         "message": null,
         "revalidating": true
@@ -992,18 +1015,30 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "Closed 2",
       "All 102"
     ],
-    "only the repository name is bold": [
+    "both counts are bold": [
       {
         "node": "SPAN",
         "text": "102"
       },
       {
         "node": "#text",
-        "text": " PRs on "
+        "text": " pull requests"
       },
       {
-        "node": "STRONG",
-        "text": "octo/demo"
+        "node": "SPAN",
+        "text": " · "
+      },
+      {
+        "node": "SPAN",
+        "text": ","
+      },
+      {
+        "node": "SPAN",
+        "text": "100"
+      },
+      {
+        "node": "#text",
+        "text": " open"
       }
     ],
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",

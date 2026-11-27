@@ -13,7 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 
 from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
-from metabrowser.builtin_plugins.github.gh_lists import UnreadableItemError, as_dict
+from metabrowser.builtin_plugins.github.gh_lists import (
+    UnreadableItemError,
+    as_dict,
+    asked_repository,
+)
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     Timestamp,
@@ -166,19 +170,15 @@ def _event(raw: object) -> _Event | None:
 
 
 def _page(
-    data: dict[str, Any],
-    owner: str,
-    name: str,
-    record: PullRecord,
-    cursor: str | None,
+    data: dict[str, Any], record: PullRecord, cursor: str | None
 ) -> tuple[list[_Event], str | None]:
     repository = as_dict(data["repository"])
     request = as_dict(repository["pullRequest"])
-    repository_name = repository["nameWithOwner"]
+    # GitHub's answer for the name is the repository, renamed or not; the pull request's
+    # base and head are the record's.
     if (
         f"gh:{as_dict(data['viewer'])['login']}" != record.reader
-        or not isinstance(repository_name, str)
-        or repository_name.casefold() != f"{owner}/{name}".casefold()
+        or not asked_repository(repository, None)
         or type(request["number"]) is not int
         or request["number"] != record.number
         or request["baseRefName"] != record.pull.base.ref
@@ -230,7 +230,7 @@ async def _project(
                 events=tuple(events),
                 retryable=True,
             )
-        page, cursor = _page(data, owner, name, record, cursor)
+        page, cursor = _page(data, record, cursor)
         for event in page:
             key = (event.kind, event.oid if isinstance(event, _Commit) else event.id)
             if key not in seen:

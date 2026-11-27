@@ -103,8 +103,9 @@ the repository.
 | `/stack/<s>/changes/<path>` | One changed file in a stack’s changes |
 
 `--present` cannot name a stack’s page, so to show you a stack’s guide the agent either
-presents the top layer’s pull request, where **Whole stack** in the stack menu opens the
-stack’s page, or serves the repository and gives you its `/stack/<s>/guided` address.
+presents the top layer’s pull request, where **Stack Overview** in the stack menu opens
+the stack’s page, or serves the repository and gives you its `/stack/<s>/guided`
+address.
 
 The page stays live while the agent works: new and changed files appear in the tree, and
 a log being written tails in place ([live updates](browsing-files.md#live-updates)). The

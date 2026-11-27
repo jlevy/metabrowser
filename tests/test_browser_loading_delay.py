@@ -181,11 +181,7 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
 def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     css = (STATIC_ROOT / "styles.css").read_text(encoding="utf-8")
-    select_file = app[
-        app.index("async function selectFile(path, preferredViewId)") : app.index(
-            "// ── File rendering"
-        )
-    ]
+    select_file = app[app.index("async function selectFile(") : app.index("// ── File rendering")]
 
     begin = app[app.index("function beginPreviewNavigation") :][:900]
     end = app[app.index("function endPreviewNavigation") :][:700]

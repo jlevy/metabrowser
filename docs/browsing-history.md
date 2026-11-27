@@ -99,8 +99,9 @@ Click the branch or tag chip for its actions.
 Click the separate down chevron beside it, or press `W`, to choose another revision.
 
 The chooser lists every one of the mirror’s branches or tags.
-The default branch is first, and the rest are newest first, by the date of each one’s
-last commit, which its row shows as an age.
+The default branch, `main`, and `master` appear above other branches.
+Each group of branches is newest first by the age of its last commit.
+Tags are newest first.
 The filter box narrows either list by name.
 Choosing one serves it and reloads the page on the same file or folder when the new
 commit has it, or at the root when it does not.
@@ -136,18 +137,18 @@ The list has four tabs, and opens on the one that holds what the page shows.
   Space on it, does the same in one step.
   Arrow keys along the tabs only show each tab’s list, so they never leave the page you
   are on.
-- **Branches** are the checkout’s own, with the one you have checked out first and
-  marked “checked out”.
-  **Tags** are its tags.
-  **Remotes** are its remote-tracking branches, such as `origin/main`. Each list holds
-  every one, newest first by its last commit.
+- **Branches** are the checkout’s own.
+  The branch you have checked out is marked “checked out”.
+  **Remotes** are its remote-tracking branches, such as `origin/main`. Both lists show
+  primary and known default branches above the rest and sort each group newest first by
+  its last commit. **Tags** lists every tag newest first by its commit.
 - **The origin’s branches and tags are as Metabrowser last fetched them,** when the
   checkout’s `origin` is an `https` address.
   Metabrowser keeps a store of its own beside the checkout for them, which borrows the
   checkout’s objects and holds only what the checkout lacks, and fetches it in the
   background while the folder is served, so `origin/main` there is where the origin is,
   not where your own last `git fetch` left it.
-  The origin’s default branch is first and marked “default”.
+  The origin’s default branch is marked “default” and appears in the first group.
   A branch there is marked “yours differs” when your checkout’s own `origin/<branch>` is
   at another commit, which is a branch you have not fetched since it moved, or have
   pushed since Metabrowser last fetched, and “not in checkout” when you have never

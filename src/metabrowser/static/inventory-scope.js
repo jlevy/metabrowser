@@ -24,8 +24,12 @@
    */
   function createInventoryWatch(scopePath, options, onUpdate) {
     let disposed = false;
-    let pending = false;
     let staleValue = false;
+    /** @typedef {{done: Promise<void>, settle: () => void}} Cycle */
+    /** @type {Cycle | null} */
+    let pending = null;
+    /** @type {Cycle | null} */
+    let requested = null;
     /** @type {number | undefined} */
     let timer;
     // When the oldest change still waiting behind the debounce arrived. A
@@ -38,12 +42,29 @@
     /** @type {AbortController | undefined} */
     let controller;
 
-    async function refresh() {
-      if (disposed || pending) {
-        staleValue = !disposed;
-        return;
+    /** @returns {Cycle} */
+    function cycle() {
+      /** @type {() => void} */
+      let settle = () => {};
+      /** @type {Promise<void>} */
+      const done = new Promise((resolve) => {
+        settle = () => resolve();
+      });
+      return { done, settle };
+    }
+
+    function cancelTimer() {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
       }
-      pending = true;
+    }
+
+    /** @param {Cycle} read */
+    async function start(read) {
+      // This fetch covers every change observed before it starts.
+      cancelTimer();
+      pending = read;
       staleValue = false;
       controller = typeof AbortController === "function" ? new AbortController() : undefined;
       try {
@@ -56,12 +77,33 @@
           options.onError?.(error);
         }
       } finally {
-        pending = false;
+        pending = null;
         controller = undefined;
-        if (staleValue && !disposed && (!options.active || options.active())) {
-          void refresh();
+        read.settle();
+        if (!disposed && requested !== null) {
+          const next = requested;
+          requested = null;
+          void start(next);
+        } else if (!disposed && staleValue && (!options.active || options.active())) {
+          void start(cycle());
         }
       }
+    }
+
+    // An explicit reread waits for a fetch started after it was requested. Calls made
+    // during the same in-flight read share its successor.
+    function refresh() {
+      if (disposed) {
+        return Promise.resolve();
+      }
+      if (pending !== null) {
+        cancelTimer();
+        requested ??= cycle();
+        return requested.done;
+      }
+      const next = cycle();
+      void start(next);
+      return next.done;
     }
 
     /** @param {Event} event */
@@ -80,16 +122,19 @@
       const delay = Math.max(0, Math.min(windowMs, oldestPendingAt + windowMs - now));
       timer = window.setTimeout(() => {
         timer = undefined;
-        if (options.active && !options.active()) {
+        if (disposed) {
+          return;
+        }
+        if (pending !== null || (options.active && !options.active())) {
           staleValue = true;
           return;
         }
-        void refresh();
+        void start(cycle());
       }, delay);
     }
 
     window.addEventListener("metabrowser:inventory-change", handleChange);
-    void refresh();
+    void start(cycle());
     return Object.freeze({
       refresh,
       stale: () => staleValue,
@@ -99,10 +144,11 @@
         }
         disposed = true;
         window.removeEventListener("metabrowser:inventory-change", handleChange);
-        if (timer !== undefined) {
-          clearTimeout(timer);
-        }
+        cancelTimer();
         controller?.abort();
+        pending?.settle();
+        requested?.settle();
+        requested = null;
       },
     });
   }

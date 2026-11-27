@@ -778,6 +778,7 @@
     /** @param {MetabrowserSourceStatus} next */
     function accept(next) {
       status = next;
+      deps.observeStatus?.(next);
       if (shown === null && next.pin !== null) {
         shown = { pin: next.pin, ref: next.ref };
       }
@@ -1350,6 +1351,9 @@
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
         now: () => Date.now(),
         isVisible: () => document.visibilityState === "visible",
+        observeStatus(next) {
+          element.dataset.lastFetchAt = next.last_fetch_at ?? "";
+        },
         render: (model) => {
           noteRefresh(model);
           paint(element, model, actions, live);

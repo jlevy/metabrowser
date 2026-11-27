@@ -10,9 +10,13 @@ const files = fixture("github-pull-files-responses.json");
 const pages = fixture("github-pull-page-responses.json");
 for (const answer of Object.values(pages)) {
   for (const envelope of [answer.body, answer.body?.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = pages[holder].body.record;
+    for (const field of ["record", "status", "readiness", "checks"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        // Anything kept beside the name, a status's own time, is this answer's.
+        const { same_as: _held, ...own } = envelope[field];
+        envelope[field] = { ...pages[holder].body[field], ...own };
+      }
     }
   }
 }

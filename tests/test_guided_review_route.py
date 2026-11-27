@@ -152,7 +152,7 @@ def _pinned(stand: _Stand, *, merge_base: str | None = None, head: str | None = 
 def _ask(
     stand: _Stand, step: int = 1, number: int = 7, repository: ListedRepository | None = None
 ) -> dict[str, Any]:
-    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n, _a: "started")
     return _closing(guided_review.guided_review(host, number, step, repository))
 
 
@@ -549,7 +549,7 @@ def test_the_published_guides_notes_render_inert(
             guide.comparison.head, stand.origin["fork_head"]
         ),
     )
-    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n, _a: "started")
     steps = guide.flat_items()
 
     async def every_step() -> list[dict[str, object]]:
@@ -964,7 +964,7 @@ def test_a_commit_the_served_checkout_lacks_is_answered_with_no_address(
     git(checkout, "init", "-q", "-b", "main")
     git(checkout, "commit", "-q", "--allow-empty", "-m", "the checkout's own")
     links = GitLocation.filesystem(checkout)
-    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n, _a: "started")
     answer: Any = asyncio.run(guided_review.guided_review(host, 7, 2, None, links=links))
     commit = answer["references"][5]
     assert (commit["state"], commit["href"], commit["target"]) == (

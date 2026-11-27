@@ -10,9 +10,10 @@ a fake ``gh``, and ``tests/dom/nav-metadata-chrome.mjs`` measures each tab at th
 pane width and at a wide one: Files settled, pending, counting, filtered, and with its two
 other remarks; Commits settled, as the server ships it pending, and failed; and Pulls
 while its list loads, once it has rows, and when a refresh can reach neither GitHub nor a
-signed-in gh, nor any gh. On every line, a count summary's number is bold and inline with
-its words, the Files filter's remark reads as one run, and the Pulls count's one number
-is bold (docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-roa9).
+signed-in gh, nor any gh. On every line, count numerals are bold and inline with their
+words. The Files filter's remark reads as one run, and the Pulls state tally remains
+visible as the repository total clips (docs/design-system.md, "Count Summaries Bold Their
+Numbers"; mb-roa9).
 ``tests/test_nav_metadata_line.py`` holds the markup and the
 stylesheets to the component without a browser. In a pane too narrow for it, the
 Commits tally wraps between its phrases and the tab bar between its tabs: at every pane

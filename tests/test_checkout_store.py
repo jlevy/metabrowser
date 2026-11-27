@@ -27,6 +27,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import checkout_store, server
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.checkout_revisions import CHECKOUT_REFS_POLL_S
 from metabrowser.checkout_store import (
     ABSENCE_DETAIL,
@@ -989,6 +990,29 @@ def test_the_origins_default_branch_lists_first_and_is_marked(
     ]
     branch = _refs(served, "branch")["refs"][0]
     assert (branch["default"], branch["checked_out"]) == (False, True)
+
+
+def test_local_branches_reorder_when_the_mirrors_default_changes(
+    folder: _Folder, served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pinned_git(folder.checkout, "branch", "release", folder.replica["M2"])
+    _ready(served)
+    address = "/api/source/refs?kind=branch"
+    before = served.get(address)
+    assert [row["name"] for row in before.json()["refs"]] == ["trunk", "release"]
+    tag = before.headers["etag"]
+    assert served.get(address, headers={"If-None-Match": tag}).status_code == 304
+
+    async def default_ref(_mirror: StoreMirror) -> str:
+        return "refs/remotes/origin/release"
+
+    monkeypatch.setattr(StoreMirror, "default_ref", default_ref)
+    after = served.get(address, headers={"If-None-Match": tag})
+    assert after.status_code == 200
+    assert [(row["name"], row["checked_out"]) for row in after.json()["refs"]] == [
+        ("release", False),
+        ("trunk", True),
+    ]
 
 
 def test_a_short_name_is_read_from_the_store_and_the_answer_names_its_source(

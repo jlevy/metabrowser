@@ -15,10 +15,10 @@ and the Pulls controller in `builtin_plugins/github/pulls-panel.js` for the rows
 list draws and the keys that walk them.
 
 Each stack with a pull request in the list has a row, and under it, one level in, its
-Whole stack row, which opens the stack’s own page, and then the stack’s pull requests in
-the list, top of the stack first, as the pull request page’s stack menu lists them.
-The Whole stack row is one of the stack’s rows, so their places count it: “1/4” under a
-stack of three. No pull request is ever under the Whole stack row.
+Stack Overview row, which opens the stack’s own page, and then the stack’s pull requests
+in the list, top of the stack first, as the pull request page’s stack menu lists them.
+The Stack Overview row is one of the stack’s rows, so their places count it: “1/4” under
+a stack of three. No pull request is ever under the Stack Overview row.
 A stack’s row shows the stack’s size, “Stack #286 · 3 pulls”, the count its accessible
 name says first, and the age of the newest update among its pull requests the list
 holds.
@@ -31,18 +31,18 @@ Until stacks are known for the list’s own GitHub account, and while none of th
 pull requests is in one, the list stays flat; there is no option.
 The keys are a tree’s. A stack’s row is a row of the tree, as a folder is: J and K stop
 on it and open nothing, Enter opens or closes it, Right opens it or goes to its first
-row, Whole stack, and Left closes it, or from a row in it goes to it.
-The Whole stack row opens the stack’s page as a pull request’s row opens its own, on J,
-K, and Enter, and so does Right from the stack’s row.
+row, Stack Overview, and Left closes it, or from a row in it goes to it.
+The Stack Overview row opens the stack’s page as a pull request’s row opens its own, on
+J, K, and Enter, and so does Right from the stack’s row.
 A pull request’s row, its run and last line one item (mb-1z7j), is a folder too: Right
 opens its changed files, and Left closes them before it goes up.
-The Whole stack row is a folder in the same way, of the stack’s changed files, the
+The Stack Overview row is a folder in the same way, of the stack’s changed files, the
 combined ones its page’s Diff summary lists: its change line and the chevron after it
 are their toggle, as a pull request’s row’s last line is its own, and Space, Right, and
 Left on the row open and close them (mb-odt4). An address that names a pull request in a
 stack the reader closed opens the stack over it, and does so too when the list must
 first move to a filter that holds the pull request, as from Open to All for a closed
-one; one that names the stack’s page opens the stack and marks its Whole stack row.
+one; one that names the stack’s page opens the stack and marks its Stack Overview row.
 A stack the reader closed over the open pull request stays closed when the tab is hidden
 and shown again, on a landing that keeps the list’s place, and when a filter is picked:
 only an address that names the pull request again opens it.
@@ -51,21 +51,22 @@ rows it holds and with no request: every stack open, no changed files open, a pu
 request’s or a stack’s, and the Tab stop on the first row.
 
 Each step’s `rows` are what a reader sees: a stack’s row with its label, its size, the
-time its age tells, its place, and its accessible name; its Whole stack row and its pull
-requests a level in with their places; and then the ends of the rest.
+time its age tells, its place, and its accessible name; its Stack Overview row and its
+pull requests a level in with their places; and then the ends of the rest.
 After a walk, `read ahead after the last open` is what the open asks to read next: its
 neighbours as drawn, a stack’s row passed over, then the first pull requests drawn.
 `mounted` mounts the panel over a stand-in for the DOM and drives its handle, as Space,
-Right, and Left reach it, and a press on a stack’s row, on a Whole stack row, and on
+Right, and Left reach it, and a press on a stack’s row, on a Stack Overview row, and on
 that row’s change line and its chevron, which open and close the stack’s changed files
 and open no page, printing the tree’s roles, levels, places, expansion, and Tab stop at
-each step, with each row’s toggle under it; `the stack's files`, the Whole stack row’s
-`aria-expanded` after Right and after Left, and what opening them first reads, the stack
-alone, as its page reads it; `heading`, the stack’s row as first drawn, its text, its
-age, and its accessible name; the Whole stack row’s name; and each member’s title line
-as drawn: its title, then the stack menu’s muted dot and its place in its stack, and the
-number, “Say more in the guide · 3/3 · #8”, where a pull request in no stack has no
-place (mb-vkhd). `menu` is the page’s stack menu, mounted over a stand-in for the DOM:
+each step, with each row’s toggle under it; `the stack's files`, the Stack Overview
+row’s `aria-expanded` after Right and after Left, and what opening them first reads, the
+stack alone, as its page reads it; `heading`, the stack’s row as first drawn, its text,
+its age, and its accessible name; the Stack Overview row’s name; and each member’s title
+line as drawn: its title, then the stack menu’s muted dot and its place in its stack,
+and the number, “Say more in the guide · 3/3 · #8”, where a pull request in no stack has
+no place (mb-vkhd).
+`menu` is the page’s stack menu, mounted over a stand-in for the DOM:
 its heading is the stack’s label on the shared label classes, its trigger shows its bare
 position, a press opens it with focus on the current member, and its members are the
 group’s, in one order.
@@ -77,8 +78,8 @@ every member, the current one too.
 position, as its page draws them.
 Every step holds the session’s invariants: each listed pull request is drawn once, or
 held by its closed stack; a stack’s members are in the menu’s order; the rows under an
-open stack are its Whole stack row and its pull requests, one level in, each placed in
-the one set they make; a stack’s time is the newest of its listed pull requests’; its
+open stack are its Stack Overview row and its pull requests, one level in, each placed
+in the one set they make; a stack’s time is the newest of its listed pull requests’; its
 accessible name starts with the count its heading shows; and the rest keep the list’s
 order.
 
@@ -94,7 +95,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "#105",
         "#104",
         "…",
-        "#5"
+        "#7"
       ]
     },
     {
@@ -105,7 +106,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "#105",
         "#104",
         "…",
-        "#5"
+        "#7"
       ]
     },
     {
@@ -116,45 +117,51 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "#105",
         "#104",
         "…",
-        "#5"
+        "#7"
       ]
     },
     {
-      "step": "stacks known: Stack #286 first, open, top of the stack first",
+      "step": "stacks known: Stack #286 among the pull requests, top of the stack first",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
-      "tabStop": -286
+      "tabStop": 106
     },
     {
-      "step": "J walks into the stack, onto its Whole stack row first, which opens the stack's page, then its pull requests and out, and K steps back; the stack's row opens nothing",
+      "step": "J walks into the stack, onto its Stack Overview row first, which opens the stack's page, then its pull requests and out, and K steps back; the stack's row opens nothing",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
-        "focus Whole stack of #286",
+        "focus Stack Overview of #286",
         "focus #8",
         "focus #7",
         "focus #6",
-        "focus #106",
+        "focus #5",
         "focus #6"
       ],
       "opened": [
@@ -162,29 +169,35 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         8,
         7,
         6,
-        106,
+        5,
         6
       ],
       "read ahead after the last open": [
         7,
+        5,
         106,
-        8,
-        105
+        105,
+        104,
+        103,
+        102
       ]
     },
     {
       "step": "Left on a pull request in a stack goes to the stack's row",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
         "focus Stack #286"
@@ -194,62 +207,74 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Left on the stack's row closes it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "#106 [2/100]",
-        "#105 [3/100]",
+        "#106 [1/100]",
+        "#105 [2/100]",
         "…",
-        "#5 [100/100]"
+        "#11 [96/100]",
+        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ]
     },
     {
       "step": "J from a closed stack goes past it, and K comes back to it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "#106 [2/100]",
-        "#105 [3/100]",
+        "#106 [1/100]",
+        "#105 [2/100]",
         "…",
-        "#5 [100/100]"
+        "#11 [96/100]",
+        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
-        "focus #106",
+        "focus #5",
         "focus Stack #286"
       ],
       "opened": [
-        106
+        5
       ]
     },
     {
       "step": "Right opens it",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ]
     },
     {
-      "step": "Right again goes to its first row, Whole stack, which opens the stack's page",
+      "step": "Right again goes to its first row, Stack Overview, which opens the stack's page",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
-        "focus Whole stack of #286"
+        "focus Stack Overview of #286"
       ],
       "opened": [
         "Stack #286's page"
@@ -259,11 +284,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Enter on the stack's row closes it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "#106 [2/100]",
-        "#105 [3/100]",
+        "#106 [1/100]",
+        "#105 [2/100]",
         "…",
-        "#5 [100/100]"
+        "#11 [96/100]",
+        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
         "focus Stack #286"
@@ -276,53 +304,62 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "an address that names #7 opens the stack that holds it",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "closed": [],
       "tabStop": 7
     },
     {
-      "step": "the reader closes the stack; an address that names its page opens it and marks its Whole stack row",
+      "step": "the reader closes the stack; an address that names its page opens it and marks its Stack Overview row",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
         "focus Stack #286"
       ],
       "closed": [],
-      "current": "Whole stack of #286",
-      "tabStop": "Whole stack of #286"
+      "current": "Stack Overview of #286",
+      "tabStop": "Stack Overview of #286"
     },
     {
-      "step": "Left on the Whole stack row goes to its stack's row",
+      "step": "Left on the Stack Overview row goes to its stack's row",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
         "focus Stack #286"
@@ -330,37 +367,43 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "tabStop": "Stack #286"
     },
     {
-      "step": "Right on the Whole stack row does nothing; Enter opens the stack's page",
+      "step": "Right on the Stack Overview row does nothing; Enter opens the stack's page",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "opened": [
         "Stack #286's page"
       ],
-      "current": "Whole stack of #286"
+      "current": "Stack Overview of #286"
     },
     {
       "step": "an address that names #7 again takes the mark back",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "current": "#7"
     },
@@ -368,67 +411,75 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "the reader closes the stack and walks past it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "#106 [2/100]",
-        "#105 [3/100]",
+        "#106 [1/100]",
+        "#105 [2/100]",
         "…",
-        "#5 [100/100]"
+        "#11 [96/100]",
+        "▸ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "marks": [
         "focus Stack #286",
-        "focus #106"
+        "focus #5"
       ],
       "opened": [
-        106
+        5
       ],
       "closed": [
         286
       ],
-      "tabStop": 106
+      "tabStop": 5
     },
     {
       "step": "Home: every stack open, and the Tab stop on the first row",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "closed": [],
-      "tabStop": -286,
+      "tabStop": 106,
       "requests": 0
     },
     {
       "step": "Open: #8 is closed, so Stack #286 holds 2 of its 3",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
-        "    Whole stack [1/3]",
+        "#106 [1/99]",
+        "#105 [2/99]",
+        "…",
+        "#11 [96/99]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    Stack Overview [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
-        "#106 [2/99]",
-        "#105 [3/99]",
-        "…",
-        "#5 [99/99]"
+        "#5 [98/99]",
+        "#10 [99/99]"
       ]
     },
     {
-      "step": "#8 in two stacks: once, under the first listed, its badge naming the other",
+      "step": "#8 in two stacks: once, under the most recently updated stack, its badge naming the other",
       "grouped": true,
       "rows": [
-        "▾ Stack #290 · 3 pulls · updated 2026-09-16T17:39:01Z [1/99] · Stack #290, 3 pull requests",
-        "    Whole stack [1/4]",
+        "▾ Stack #290 · 3 pulls · updated 2026-09-17T12:20:05Z [1/99] · Stack #290, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #10 3/3 [2/4]",
         "    #9 2/3 [3/4]",
         "    #8 1/3 · ⧉286 3/3 [4/4]",
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [2/99] · Stack #286, 3 pull requests, 1 under Stack #290",
-        "    Whole stack [1/3]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T12:20:04Z [2/99] · Stack #286, 3 pull requests, 1 under Stack #290",
+        "    Stack Overview [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
         "#106 [3/99]",
@@ -441,8 +492,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Closed: #286's one listed pull request sits under #290, so #286 has no row",
       "grouped": true,
       "rows": [
-        "▾ Stack #290 · 3 pulls · updated 2026-09-16T17:39:01Z [1/1] · Stack #290, 3 pull requests, 2 in this list",
-        "    Whole stack [1/3]",
+        "▾ Stack #290 · 3 pulls · updated 2026-09-17T12:20:05Z [1/1] · Stack #290, 3 pull requests, 2 in this list",
+        "    Stack Overview [1/3]",
         "    #9 2/3 [2/3]",
         "    #8 1/3 · ⧉286 3/3 [3/3]"
       ]
@@ -451,15 +502,18 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "a failed refresh keeps the snapshot, which still groups",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ]
     },
     {
@@ -470,43 +524,49 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "#105",
         "#104",
         "…",
-        "#5"
+        "#7"
       ]
     },
     {
       "step": "an address of Stack #286's page before the stacks are known: its row is revealed when they draw it",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "revealed while flat": [],
       "revealed once grouped": [
-        "Whole stack of #286"
+        "Stack Overview of #286"
       ],
-      "current": "Whole stack of #286",
-      "tabStop": "Whole stack of #286"
+      "current": "Stack Overview of #286",
+      "tabStop": "Stack Overview of #286"
     },
     {
       "step": "stacks read again: the row is not revealed again",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "revealed": []
     },
@@ -518,7 +578,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "#105",
         "#104",
         "…",
-        "#5"
+        "#7"
       ]
     }
   ],
@@ -530,14 +590,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     ],
     "a pull request in no stack": "#106: Work item 106 · #106",
     "files": {
-      "Right on #8": "true",
+      "Right on #8": "false",
       "then Left": "false"
     },
     "the stack's files": {
-      "Right on the Whole stack row": "true",
+      "Right on the Stack Overview row": "false",
       "then Left": "false",
       "requests when first opened": [
-        "/api/plugin/github/stack?number=286"
+        "/api/plugin/github/pull-files?number=106&offset=0"
       ]
     },
     "label": {
@@ -549,23 +609,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "age": "1m",
       "name": "Stack #286, 3 pull requests · 1m"
     },
-    "Whole stack row": {
-      "name": "Whole stack, Stack #286"
+    "Stack Overview row": {
+      "name": "Stack Overview, Stack #286"
     },
     "steps": [
       {
-        "step": "mounted: Stack #286 open, its Whole stack row and its pull requests one level in",
+        "step": "mounted: Stack #286 open, its Stack Overview row and its pull requests one level in",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -573,8 +624,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "Space on the stack's row (the handle's toggleStack) closes it",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -582,70 +632,31 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "and again opens it",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
-        "step": "Right on the stack's row goes to its first row, Whole stack, which opens the stack's page",
+        "step": "Right on the stack's row goes to its first row, Stack Overview, which opens the stack's page",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · Tab stop · focused · /stack/286 · current",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's toggle · hidden · chevron collapsed"
-        ],
-        "opened": [
-          "Stack #286's page"
+          "#106 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "  #106's toggle · hidden · chevron expanded"
         ]
       },
       {
-        "step": "Right on the Whole stack row opens the stack's changed files, as on a pull request's row",
+        "step": "Right on the Stack Overview row opens the stack's changed files, as on a pull request's row",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded true · Tab stop · focused · /stack/286 · current",
-          "  Whole stack of #286's toggle · hidden · chevron expanded",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
-          "  #106's toggle · hidden · chevron collapsed"
+          "#106 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "  #106's toggle · hidden · chevron expanded"
         ]
       },
       {
-        "step": "Left first closes them, keeping the Whole stack row",
+        "step": "Left first closes them, keeping the Stack Overview row",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · Tab stop · focused · /stack/286 · current",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -653,36 +664,18 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "J goes to its first pull request, which opens",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false · Tab stop · focused",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
-          8
+          105
         ]
       },
       {
         "step": "Right on that pull request opens its files, as on a folder's",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded true · Tab stop · focused",
-          "  #8's toggle · hidden · chevron expanded",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -690,16 +683,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "Left first closes its files, keeping the pull request",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false · Tab stop · focused",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -707,16 +691,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "Left again goes to the stack's row",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -724,156 +699,80 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "Left on the stack's row closes it",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop · focused",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
         "step": "a press on the stack's row opens it",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
-        "step": "Right, Right, J, Right: the Whole stack row, the stack's files, then #8, then #8's files",
+        "step": "Right, Right, J, Right: the Stack Overview row, the stack's files, then #8, then #8's files",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded true · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron expanded",
-          "#8 · treeitem · level 2 · 2/4 · expanded true · Tab stop · focused",
-          "  #8's toggle · hidden · chevron expanded",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
-          "Stack #286's page",
-          8
+          104
         ]
       },
       {
-        "step": "K back to the Whole stack row, J down the stack, then Space on its row closes it",
+        "step": "K back to the Stack Overview row, J down the stack, then Space on its row closes it",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
-          "Stack #286's page",
-          6
+          102
         ]
       },
       {
         "step": "Home: every stack open, no files open, the Tab stop on the first row",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
-        "step": "Space on the Whole stack row (the handle's toggleStackFiles) opens the stack's changed files",
+        "step": "Space on the Stack Overview row (the handle's toggleStackFiles) opens the stack's changed files",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded true · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron expanded",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
         "step": "a press on its change line closes them, and opens no page",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · Tab stop · focused · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
         "step": "a press on the chevron after it opens them, and opens no page",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded true · Tab stop · focused · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron expanded",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
-        "step": "Left on the Whole stack row closes them",
+        "step": "Left on the Stack Overview row closes them",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · Tab stop · focused · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
-        "step": "a press on the Whole stack row opens the stack's page",
+        "step": "a press on the Stack Overview row opens the stack's page",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · Tab stop · focused · /stack/286 · current",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ],
         "opened": [
@@ -881,18 +780,9 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         ]
       },
       {
-        "step": "the stack's page is open: its Whole stack row is the current row",
+        "step": "the stack's page is open: its Stack Overview row is the current row",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · Tab stop · focused · /stack/286 · current",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
@@ -900,32 +790,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "Left on it goes to the stack's row",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286 · current",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       },
       {
         "step": "an address that names #8 takes the mark back",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · focused",
-          "Whole stack of #286 · treeitem · level 2 · 1/4 · expanded false · /stack/286",
-          "  Whole stack of #286's toggle · hidden · chevron collapsed",
-          "#8 · treeitem · level 2 · 2/4 · expanded false · Tab stop",
-          "  #8's toggle · hidden · chevron collapsed",
-          "#7 · treeitem · level 2 · 3/4 · expanded false",
-          "  #7's toggle · hidden · chevron collapsed",
-          "#6 · treeitem · level 2 · 4/4 · expanded false",
-          "  #6's toggle · hidden · chevron collapsed",
-          "#106 · treeitem · level 1 · 2/100 · expanded false",
+          "#106 · treeitem · level 1 · 1/100 · expanded false",
           "  #106's toggle · hidden · chevron collapsed"
         ]
       }
@@ -1001,15 +873,18 @@ $ node tests/dom/github-pulls-stack-groups-session.js reveal
       "step": "on Open the reader closes Stack #286; an address that names #8, which Open leaves out, moves the list to All and reveals it there",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/100] · Stack #286, 3 pull requests",
-        "    Whole stack [1/4]",
+        "#106 [1/100]",
+        "#105 [2/100]",
+        "…",
+        "#11 [96/100]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/100] · Stack #286, 3 pull requests",
+        "    Stack Overview [1/4]",
         "    #8 3/3 [2/4]",
         "    #7 2/3 [3/4]",
         "    #6 1/3 [4/4]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
+        "#5 [98/100]",
+        "#10 [99/100]",
+        "#9 [100/100]"
       ],
       "filter": "open → all",
       "closed": "[286] → []",
@@ -1023,14 +898,16 @@ $ node tests/dom/github-pulls-stack-groups-session.js reveal
       "step": "the reader closes Stack #286 over the open pull request, #7: the tab shown again, a landing that keeps the list's place, and a filter picked leave it folded, and an address that names #7 again opens the stack",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:06:00Z [1/99] · Stack #286, 3 pull requests, 2 in this list",
-        "    Whole stack [1/3]",
+        "#106 [1/99]",
+        "#105 [2/99]",
+        "…",
+        "#11 [96/99]",
+        "▾ Stack #286 · 3 pulls · updated 2026-09-17T08:08:00Z [97/99] · Stack #286, 3 pull requests, 2 in this list",
+        "    Stack Overview [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
-        "#106 [2/99]",
-        "#105 [3/99]",
-        "…",
-        "#5 [99/99]"
+        "#5 [98/99]",
+        "#10 [99/99]"
       ],
       "folded": "all · closed [286]",
       "the tab hidden and shown again": "all · closed [286]",
@@ -1041,6 +918,114 @@ $ node tests/dom/github-pulls-stack-groups-session.js reveal
     }
   ],
   "invariants": true
+}
+? 0
+```
+
+## Test: stacks and standalone pull requests sort by activity in every filter
+
+The controller runs over a partial window in each filter.
+An update to a member outside the window moves its stack above the newer standalone PRs.
+
+```console
+$ node tests/dom/github-pulls-stack-groups-session.js recency
+{
+  "open": {
+    "initial": [
+      "#5",
+      "Stack #286",
+      "#99",
+      "Stack #287",
+      "#101"
+    ],
+    "after the closed member is updated": [
+      "Stack #287",
+      "#5",
+      "Stack #286",
+      "#99",
+      "#101"
+    ]
+  },
+  "closed": {
+    "initial": [
+      "#6",
+      "Stack #286",
+      "#98",
+      "Stack #287",
+      "#102"
+    ],
+    "after the closed member is updated": [
+      "Stack #287",
+      "#6",
+      "Stack #286",
+      "#98",
+      "#102"
+    ]
+  },
+  "all": {
+    "initial": [
+      "#6",
+      "#5",
+      "Stack #286",
+      "#99",
+      "#98",
+      "Stack #287",
+      "#102",
+      "#101"
+    ],
+    "after the closed member is updated": [
+      "Stack #287",
+      "#6",
+      "#5",
+      "Stack #286",
+      "#99",
+      "#98",
+      "#102",
+      "#101"
+    ]
+  },
+  "overlapping stacks in a partial Open window": [
+    {
+      "stack": 286,
+      "members": [
+        14
+      ]
+    },
+    {
+      "stack": 287,
+      "members": [
+        15
+      ]
+    }
+  ],
+  "partial Open window updates before the stack snapshot": [
+    {
+      "stack": 287,
+      "members": [
+        15
+      ]
+    },
+    {
+      "stack": 286,
+      "members": [
+        14
+      ]
+    }
+  ],
+  "equal snapshot activity keeps the shared row with GitHub’s first stack": [
+    {
+      "stack": 71,
+      "members": [
+        15
+      ]
+    },
+    {
+      "stack": 70,
+      "members": [
+        14
+      ]
+    }
+  ]
 }
 ? 0
 ```

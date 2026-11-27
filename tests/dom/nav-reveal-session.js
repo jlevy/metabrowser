@@ -952,13 +952,11 @@ async function recordedPullsController(deps, options) {
         if (method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
           const query = new URL(route, "http://x").searchParams;
           const state = query.get("state");
-          if (query.get("limit") === "1") {
-            // The catalog's indexed read, newest first from just above `after`, as
-            // pull_catalog.py's `catalog_window` answers it, over the recorded All list.
+          if (query.has("at")) {
             const all = [...lists.current.body.rows, ...lists.more_window.body.rows];
-            const after = query.has("after") ? Number(query.get("after")) : null;
-            const rows = all.filter((row) => after === null || row.number < after).slice(0, 1);
-            const body = { ...lists.current.body, rows, next_after: null };
+            const position = all.findIndex((row) => row.number === Number(query.get("at")));
+            const rows = position < 0 ? [] : [all[position]];
+            const body = { ...lists.current.body, rows, next_after: null, position };
             return Promise.resolve({ status: 200, etag: null, body });
           }
           const name = route.includes("&after=")
@@ -1091,8 +1089,8 @@ const MAX_PULL_REQUEST_NUMBER = 9_999_999_999;
  * holds: how many of All's rows, newest first, as a catalog being read from GitHub holds
  * them, the newest number it has read (`newest`, for pull requests opened since, which
  * `publish` reads in), its `epoch`, whether it is complete, which reads fail (a list's
- * name, or `lookup` for the one-row indexed reads), and which are slow (`held`, the same
- * names, or `newest` for the read of the newest row alone): those wait for `release`, and
+ * name, or `lookup` for a PR's position), and which are slow (`held`, the same
+ * names): those wait for `release`, and
  * answer then, from the catalog as it stands, even when the panel has let them go, as an
  * answer already on its way does. A read the panel lets go before it answers is listed as
  * `let go`. Each list's generation moves as pull_catalog.py's `_commit` moves it: a pull
@@ -1134,13 +1132,10 @@ async function pullsDepthController(catalog, filter) {
         const name = query.get("state");
         const limit = Number(query.get("limit"));
         const after = query.has("after") ? Number(query.get("after")) : null;
-        const lookup = limit === 1;
-        const kind = lookup ? "lookup" : name;
-        const read = lookup
-          ? after === null
-            ? "lookup: the newest"
-            : `lookup: #${after - 1} or the next older`
-          : `${name}${after === null ? "" : ` after #${after}`}`;
+        const at = query.has("at") ? Number(query.get("at")) : null;
+        const kind = at === null ? name : "lookup";
+        const read =
+          at !== null ? `lookup: #${at}` : `${name}${after === null ? "" : ` after #${after}`}`;
         reads.push(read);
         let answered = false;
         options?.signal?.addEventListener("abort", () => answered || letGo.push(read), {
@@ -1148,13 +1143,9 @@ async function pullsDepthController(catalog, filter) {
         });
         const answer = () => {
           answered = true;
-          return answerOf(name, limit, after, kind);
+          return answerOf(name, limit, after, at, kind);
         };
-        const slow = catalog.held?.has(kind)
-          ? kind
-          : lookup && after === null && catalog.held?.has("newest")
-            ? "newest"
-            : null;
+        const slow = catalog.held?.has(kind) ? kind : null;
         if (slow !== null) {
           return new Promise((resolve) =>
             waiting.push({ kind: slow, answer: () => resolve(answer()) }),
@@ -1188,21 +1179,21 @@ async function pullsDepthController(catalog, filter) {
     { filter, current: null },
   );
   /** The route's answer, from the catalog as it stands when it answers. */
-  function answerOf(name, limit, after, kind) {
+  function answerOf(name, limit, after, at, kind) {
     if (catalog.down.has(kind)) {
       return { status: 500, etag: null, body: null };
     }
-    if (after !== null && after > MAX_PULL_REQUEST_NUMBER) {
-      // pull_list_route.py refuses an `after` past the largest pull request number.
+    if (at !== null && at > MAX_PULL_REQUEST_NUMBER) {
       return { status: 400, etag: null, body: { code: "invalid_request" } };
     }
     const cached = every
       .filter((number) => number <= (catalog.newest ?? Number.POSITIVE_INFINITY))
       .slice(0, catalog.cached);
     const all = cached.filter((number) => name === "all" || state(number) === name);
-    const from = after === null ? 0 : all.findIndex((number) => number < after);
-    const rows = from < 0 ? [] : all.slice(from, from + limit);
-    const last = from >= 0 && from + limit < all.length ? rows[rows.length - 1] : null;
+    const from = after === null ? 0 : all.indexOf(after) + 1;
+    const position = at === null ? -1 : all.indexOf(at);
+    const rows = at === null ? all.slice(from, from + limit) : position < 0 ? [] : [at];
+    const last = at === null && from + limit < all.length ? rows[rows.length - 1] : null;
     const body = {
       ...template,
       list: name,
@@ -1214,6 +1205,7 @@ async function pullsDepthController(catalog, filter) {
       filter_totals: { all: every.length, open: 101, closed: 1900 },
       rows: rows.map(row),
       next_after: last,
+      ...(at === null ? {} : { position: position < 0 ? null : Math.min(position, limit) }),
     };
     return { status: 200, etag: `"${name}:${cached.length}"`, body };
   }
@@ -1385,16 +1377,14 @@ async function pullsDepthStory() {
     complete: true,
     down: new Set(),
     newest: 2990,
-    held: new Set(["newest"]),
   };
   const race = await pullsDepthController(racing, "closed");
   await race.step(
-    "a link names open #2995 under Closed as the catalog reads it in: the lookup of #2995 answers before, and that of the newest row after, so the catalog as the first saw it lacks #2995, and the list says so",
+    "a link names open #2995 under Closed just before the catalog reads it in: the lookup lacks #2995, and the list says so",
     async () => {
       race.controller.setCurrent(2995);
       await settle();
       race.publish();
-      race.release("newest");
     },
   );
   await race.step(

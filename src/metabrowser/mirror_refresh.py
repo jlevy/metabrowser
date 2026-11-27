@@ -63,6 +63,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from collections.abc import Set as AbstractSet
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -196,6 +197,20 @@ type PageAsk = Literal["started", "joined", "probed", "not_due"]
 # How a request for a pull request's refresh was answered; ``"too_many"`` started nothing,
 # because :data:`MAX_PULL_JOBS` were queued or running.
 type PullJobStart = Literal["started", "joined", "too_many"]
+# Why a pull request's refresh was asked for, which is what its job reads
+# (:meth:`CompanionRefresh.refresh`). Each start or join of the job names one, and the job
+# reads what all of them need, whoever started it:
+#
+# - ``"due"``: whatever of the record and its status is due when the job's turn comes, and
+#   nothing when neither still is. The source's own refresh asks this when the data served
+#   beside the mirror is stale, as a page's own commit fetch and a prefetch do.
+# - ``"page"``: a visible page's automatic ask, which found a read due: as ``"due"``, and
+#   the record too when its full read is (``FULL_REFRESH_S`` in
+#   ``builtin_plugins/github/served_pull.py``).
+# - ``"record"``: the record and its status after it, whatever is due, since the asker
+#   needs what only that read brings: a reader's own action, a reader's retry of a commit
+#   fetch, a commit the mirror lacks, a link into the pull request, or a comparison.
+type RefreshAsk = Literal["due", "page", "record"]
 # How a request for the source's refresh was answered: ``"too_many"`` started nothing, when
 # only the attended pull request was stale and the queue had no room for its job.
 type RefreshStart = Literal["started", "joined", "too_many"]
@@ -311,9 +326,10 @@ class MirrorRef:
     """One branch or tag a mirror or a checkout holds, and the commit it names.
 
     ``name`` is the name a reader knows it by, ``ref`` the full ref a pin request names
-    it with, and ``default`` marks the branch that lists first: the origin's default
-    branch in a mirror, the checked-out branch in a checkout. ``committed_at`` is the
-    commit's committer date in epoch seconds, ``None`` when Git printed none.
+    it with, and ``default`` marks the origin's default branch in a mirror or the
+    checked-out branch in a checkout. ``notable`` gives a branch listing priority
+    independently of that marker. ``committed_at`` is the commit's committer date in
+    epoch seconds, ``None`` when Git printed none.
     """
 
     name: str
@@ -325,6 +341,7 @@ class MirrorRef:
     # Metabrowser keeps of that origin: where the checkout's own remote-tracking branch
     # is, when that is not ``commit`` (``_with_origin`` in ``checkout_revisions.py``).
     checkout: CheckoutOwnRef | None = None
+    notable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,8 +469,8 @@ class ServedMirror(Protocol):
     async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         """Every branch, or every tag, the mirror holds that names a commit.
 
-        *default_ref*, :meth:`default_ref` as the caller read it, lists first and is
-        marked; then newest first by the commit each ref names, then by name.
+        *default_ref*, :meth:`default_ref` as the caller read it, is marked and lists
+        with the other notable branches. Each group reads newest first, then by name.
         """
         ...
 
@@ -486,8 +503,13 @@ class CompanionRefresh(Protocol):
         """Whether it is older than *window_s* at *now*, from memory alone."""
         ...
 
-    async def refresh(self) -> None:
-        """Fetch it again; failures become outcomes rather than exceptions."""
+    async def refresh(self, asks: AbstractSet[RefreshAsk]) -> None:
+        """Fetch what *asks* need; failures become outcomes rather than exceptions.
+
+        *asks* are why its job was started or joined (:data:`RefreshAsk`), as the job's
+        coordinator keeps them (:meth:`RefreshCoordinator.asks`): a live view, so an ask
+        that joins while it runs is there when it looks again.
+        """
         ...
 
 
@@ -919,22 +941,49 @@ class StoreTurn:
         chosen.turn.set_result(None)
 
 
+class NetworkSlots(asyncio.Semaphore):
+    """The coordinator's network slots, each wait for one recorded by the span that waited.
+
+    A job started with ``network=True`` waits for a slot before its work starts, and one
+    that takes a slot itself (:meth:`RefreshCoordinator.slot`) waits before each page it
+    reads; either wait is time queued, not slow work. Each is added to the waiting span's
+    ``queued_ms`` in the event log, so a job's record says how long it queued however it
+    took its slots, and the request report (``builtin_plugins/github/gh_requests.py``)
+    reads it. A slot taken at once adds nothing but says one was taken.
+    """
+
+    async def acquire(self) -> Literal[True]:
+        asked = time.perf_counter()
+        await super().acquire()
+        waiting = event_log.current()
+        waited_ms = (time.perf_counter() - asked) * 1000
+        before = waiting.attrs.get("queued_ms")
+        total = (before if isinstance(before, int | float) else 0.0) + waited_ms
+        waiting.set(queued_ms=round(total, 1))
+        return True
+
+
 class RefreshCoordinator:
     """Background jobs keyed by what they refresh, run at most *limit* at a time.
 
     A job belongs to the coordinator, not to the request that started it: the request
     returns as soon as the job is scheduled. A second start for a key whose job is
     still running joins it. A job's own failure is logged here and never reaches a
-    request; callers that need an outcome record it inside the job.
+    request; callers that need an outcome record it inside the job. Why a pull request's
+    job was started or joined (:data:`RefreshAsk`) is kept here with it (:meth:`asks`),
+    for exactly as long as the job runs, so what it reads follows from every ask it has
+    and from no ask of an earlier job or of a start that was refused.
     """
 
     def __init__(self, *, limit: int = MAX_CONCURRENT_REFRESHES) -> None:
-        self._semaphore = asyncio.Semaphore(limit)
+        self._semaphore = NetworkSlots(limit)
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._closed = False
         # The keys of jobs a request joined after they were told to stop, each to be
         # started again once it has unwound (:meth:`start_again_when_stopped`).
         self._restarts: set[str] = set()
+        # Why each running job was started or joined (:meth:`asked`), bounded by the jobs.
+        self._asks: dict[str, set[RefreshAsk]] = {}
 
     @property
     def closed(self) -> bool:
@@ -985,16 +1034,41 @@ class RefreshCoordinator:
         def forget(done: asyncio.Task[None]) -> None:
             if self._jobs.get(key) is done:
                 del self._jobs[key]
+                # The asks that joined a job told to stop are its restart's.
+                if key not in self._restarts:
+                    self._asks.pop(key, None)
 
         job.add_done_callback(forget)
         return "started"
 
+    def asked(self, key: str, ask: RefreshAsk) -> None:
+        """Note that *key*'s job, running now, was started or joined for *ask*.
+
+        A caller notes only a start or join; nothing is noted for a job that is not
+        running, so no ask outlives the job it was for and none waits for a later one.
+        """
+
+        if self.running(key):
+            self._asks.setdefault(key, set()).add(ask)
+
+    def asks(self, key: str) -> AbstractSet[RefreshAsk]:
+        """Why *key*'s job was started or joined so far (:meth:`asked`), for its work to read.
+
+        A live view: an ask that joins after the work first looks is there when it looks
+        again. The asks last as long as the job, and through its restart once it was told
+        to stop (:meth:`start_again_when_stopped`).
+        """
+
+        asks = self._asks.get(key)
+        if asks is None:
+            asks = set[RefreshAsk]()
+            if self.running(key):
+                self._asks[key] = asks
+        return asks
+
     async def _run(self, work: Callable[[], Awaitable[None]], *, network: bool) -> None:
-        queued = time.perf_counter()
+        # The slot records how long the job waited for it (NetworkSlots).
         async with self._semaphore if network else contextlib.nullcontext():
-            if network:
-                # How long the job waited for a slot: a queue, not slow work.
-                event_log.current().set(queued_ms=round((time.perf_counter() - queued) * 1000, 1))
             try:
                 await work()
             except asyncio.CancelledError:
@@ -1039,6 +1113,8 @@ class RefreshCoordinator:
             self._restarts.discard(key)
             if not self._closed:
                 start()
+            if not self.running(key):
+                self._asks.pop(key, None)
 
         job.add_done_callback(restart)
         return True
@@ -1050,16 +1126,40 @@ class RefreshCoordinator:
         return key in self._restarts and not self._closed
 
     def slot(self) -> asyncio.Semaphore:
-        """One of the limited slots, for a job started with ``network=False`` to hold."""
+        """One of the limited slots, for a job started with ``network=False`` to hold.
+
+        Each wait for it is on the record of the span that waited (:class:`NetworkSlots`).
+        """
 
         return self._semaphore
 
     async def drain(self, *, timeout_s: float) -> None:
-        """Wait up to *timeout_s* for the jobs running now, for a one-shot command."""
+        """Wait until no job is left, at most *timeout_s* in all, for a one-shot command.
 
-        jobs = [job for job in self._jobs.values() if not job.done()]
-        if jobs:
-            await asyncio.wait(jobs, timeout=timeout_s)
+        A job may start another before it ends: a list's look at the mirror starts the
+        status scan, a refresh that found another process refreshing follows it, and a
+        stopped job that a request joined is started again once it has unwound. Waiting only
+        for the jobs running when the drain began would leave those to the close that
+        follows it, which cancels them. So each round waits for every job then running, and
+        the next looks again, until the coordinator holds no job at all. A job that has
+        ended is held until its done callbacks have run, the first of which forgets it, so a
+        job one of them starts, as a restart does, is on the books before the drain can
+        find none. Every round counts against the one deadline, so a chain of jobs that
+        never ends costs the command no more than one job that never ends would.
+        """
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_s
+        while self._jobs:
+            left = deadline - loop.time()
+            if left <= 0:
+                return
+            live = [job for job in self._jobs.values() if not job.done()]
+            if live:
+                await asyncio.wait(live, timeout=left)
+            else:
+                # Only ended jobs whose done callbacks are still to run: let them run.
+                await asyncio.sleep(0)
 
     async def aclose(self) -> None:
         """Cancel every running job and wait for each to finish unwinding."""
@@ -1071,6 +1171,7 @@ class RefreshCoordinator:
         if jobs:
             await asyncio.gather(*jobs, return_exceptions=True)
         self._jobs.clear()
+        self._asks.clear()
 
 
 class StoreSession:
@@ -1742,7 +1843,7 @@ class MirrorSession(StoreSession):
         if self._pending_selection is not None:
             self._selection_state = "pending"
         if companion_stale:
-            self.request_companion_refresh()
+            self.request_companion_refresh("due")
 
     def _beside_refreshing(self) -> bool:
         return self.companion_refreshing()
@@ -1891,7 +1992,7 @@ class MirrorSession(StoreSession):
         # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
         skip_mirror = self._fetch_on_miss and self._pending_selection is None
         if companion_stale and skip_mirror and not self._mirror_stale(now):
-            return self.request_companion_refresh() or "joined"
+            return self.request_companion_refresh("due") or "joined"
         return self._refresh_mirror(companion_stale=companion_stale)
 
     def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
@@ -1906,30 +2007,36 @@ class MirrorSession(StoreSession):
         served content can send a reader to any address, so that request fetches only
         what is older than :data:`FRESHNESS_WINDOW_S`: ``"fresh"`` says the mirror was
         fetched inside the window and no fetch of it was started. *retry* is a reader's
-        own click, and always fetches. The answer says how the pull request's refresh was
-        answered too, since a full queue can refuse it while the mirror is fetched.
+        own click, and always fetches, the pull request's record among it. The answer says
+        how the pull request's refresh was answered too, since a full queue can refuse it
+        while the mirror is fetched.
         """
 
         now = _now_utc()
         pull_refresh: PullJobStart | None = None
         if retry or self._companion_stale(now):
-            pull_refresh = self.request_companion_refresh()
+            pull_refresh = self.request_companion_refresh("record" if retry else "due")
         if retry or self._mirror_stale(now) or self._coordinator.running(self.mirror.key):
             return CommitFetchAnswer(self._refresh_mirror(companion_stale=False), pull_refresh)
         return CommitFetchAnswer("fresh", pull_refresh)
 
-    def request_companion_refresh(self) -> PullJobStart | None:
-        """Start or join the attended pull request's refresh, if there is one."""
+    def request_companion_refresh(self, ask: RefreshAsk) -> PullJobStart | None:
+        """Start or join the attended pull request's refresh for *ask*, if there is one."""
 
         if self.companion is None or self._pull_request is None:
             return None
-        return self.request_pull_refresh(self._pull_request)
+        return self.request_pull_refresh(self._pull_request, ask)
 
     def companion_refreshing(self) -> bool:
         return self.companion is not None and self._coordinator.running(self.companion.key)
 
-    def request_pull_refresh(self, number: int, *, background: bool = False) -> PullJobStart:
-        """Start or join the refresh of pull request *number*, whichever it is.
+    def request_pull_refresh(
+        self, number: int, ask: RefreshAsk, *, background: bool = False
+    ) -> PullJobStart:
+        """Start or join the refresh of pull request *number* for *ask*, whichever it is.
+
+        *ask* is why (:data:`RefreshAsk`), which the job is told whoever started it
+        (:meth:`RefreshCoordinator.asked`); a start refused ``too_many`` notes none.
 
         One that is not running starts only while fewer than :data:`MAX_PULL_JOBS` are
         queued or running; the mirror's own fetch and a list's do not count. The attended
@@ -1951,12 +2058,21 @@ class MirrorSession(StoreSession):
         key = pulls.key(number)
         if background:
             if self._coordinator.running(key):
-                return "joined"
-            self._background_pulls.add(key)
-            return self._coordinator.start(key, partial(self._pull_job, number), network=False)
-        return self._readers_pull(number, key, bounded=True)
+                answer: PullJobStart = "joined"
+            else:
+                self._background_pulls.add(key)
+                answer = self._coordinator.start(
+                    key, partial(self._pull_job, number), network=False
+                )
+        else:
+            answer = self._readers_pull(number, key, ask, bounded=True)
+        if answer != "too_many":
+            self._coordinator.asked(key, ask)
+        return answer
 
-    def _readers_pull(self, number: int, key: str, *, bounded: bool) -> PullJobStart:
+    def _readers_pull(
+        self, number: int, key: str, ask: RefreshAsk, *, bounded: bool
+    ) -> PullJobStart:
         """A reader's start of pull request *number*'s job, or their join of the one running.
 
         A job joined counts among the reader's jobs from then on, in the place it takes now.
@@ -1967,7 +2083,7 @@ class MirrorSession(StoreSession):
 
         if self._coordinator.running(key):
             self._pull_jobs.add(key)
-            restart = partial(self._readers_pull, number, key, bounded=False)
+            restart = partial(self._readers_pull, number, key, ask, bounded=False)
             if self._coordinator.start_again_when_stopped(key, restart):
                 return "joined"
             if key in self._background_pulls:
@@ -2010,7 +2126,7 @@ class MirrorSession(StoreSession):
                 # Asked for here, not when the job was started: a job waiting its turn
                 # holds nothing the set's bound could drop.
                 companion = await pulls.companion(number)
-                await companion.refresh()
+                await companion.refresh(self._coordinator.asks(key))
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -2200,7 +2316,7 @@ class MirrorSession(StoreSession):
         # by the time its job ends, so the miss remembers the job. One a full queue refused
         # has not run, so the miss waits for an ask that finds it room.
         if key[1] is not None and self.companion is not None:
-            asked = self.request_companion_refresh()
+            asked = self.request_companion_refresh("record")
             seen.pull_job_refused = asked == "too_many"
             if not seen.pull_job_refused:
                 seen.pull_jobs.add(self.companion.key)
@@ -2335,7 +2451,8 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
 
 
 async def drain_refreshes(app: Any, *, timeout_s: float) -> None:
-    """Let a one-shot command finish the refresh its own request started."""
+    """Let a one-shot command finish the work its own request started, and every job that
+    work starts in turn, within *timeout_s* in all (:meth:`RefreshCoordinator.drain`)."""
 
     coordinator = refresh_coordinator(app)
     if coordinator is not None:
@@ -2363,6 +2480,7 @@ __all__ = [
     "MirrorDisplay",
     "MirrorRef",
     "MirrorSession",
+    "NetworkSlots",
     "OpenedSelection",
     "OriginProbeError",
     "PROBED_REF_PREFIX",
@@ -2371,6 +2489,7 @@ __all__ = [
     "PullRequestSet",
     "RecordedFreshness",
     "RefKind",
+    "RefreshAsk",
     "RefreshCoordinator",
     "RefreshResult",
     "RefreshStart",

@@ -1,11 +1,11 @@
 // A native stack's brief change line in the Pulls column (mb-9ekj): its line totals alone,
-// "Whole stack · +1,234 −567", with no file statuses (mb-lqkb). It is drawn on the stack's
-// Whole stack row (mb-tvhs; pulls-panel.js, `paintWholeRow`), where it and the chevron after
+// "Stack Overview · +1,234 −567", with no file statuses (mb-lqkb). It is drawn on the stack's
+// Stack Overview row (mb-tvhs; pulls-panel.js, `paintWholeRow`), where it and the chevron after
 // it are the toggle of the stack's changed files (mb-odt4, stack-files.js), and was on the
 // stack's own row, its heading, which now says the stack's size and age: "heading" below is
 // whichever row draws the line, and the lane reads for every stack whose own row is drawn,
-// open or closed, so a stack that opens has its line in the paint that draws its Whole
-// stack row.
+// open or closed, so a stack that opens has its line in the paint that draws its Stack
+// Overview row.
 //
 // What it says is the stack's combined change: a stack is the accumulation of its pull
 // requests, merged or open, so its change is theirs, each member's own changed files, the

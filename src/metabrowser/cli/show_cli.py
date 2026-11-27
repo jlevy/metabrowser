@@ -165,19 +165,69 @@ def _describe_pull(payload: dict[str, Any], tab: str) -> str:
             parts.append(f"pull_state={_pull_display_state(pull)}")
         parts.append(f"fetched_at={record.get('fetched_at')}")
         parts.append(f"reader={record.get('reader')}")
-        for name in ("issue_comments", "reviews", "review_comments", "check_runs"):
+        for name in ("issue_comments", "reviews", "review_comments"):
             items = record.get(name)
             parts.append(f"{name}={len(items) if isinstance(items, list) else 0}")
-        status = record.get("status")
-        statuses = status.get("statuses") if isinstance(status, dict) else None
-        parts.append(f"statuses={len(statuses) if isinstance(statuses, list) else 0}")
+        parts.append(f"checks={_describe_checks(payload.get('checks'), pull)}")
         unavailable = record.get("unavailable")
         if isinstance(unavailable, dict) and unavailable:
             parts.append("unavailable=" + ",".join(sorted(str(key) for key in unavailable)))
+    if tab == "checks":
+        parts.extend(_describe_readiness(payload))
     parts.append(f"tab={tab or 'conversation'}")
     if tab == "files":
         parts.append(f"comparison_route={payload.get('comparison_route')}")
     return "pull envelope; " + " ".join(parts)
+
+
+def _describe_checks(checks: object, pull: object) -> str:
+    """The checks the Checks tab lists, by GitHub's bucket, as ``pass:2,pending:1``.
+
+    They are the status's, beside the record: ``none`` when none are kept for the head the
+    record names, ``0`` for a head with no checks, and ``+truncated`` when the list is short.
+    """
+
+    head = pull.get("head") if isinstance(pull, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    sha = head.get("sha") if isinstance(head, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if not isinstance(checks, dict) or sha is None or checks.get("head") != sha:  # pyright: ignore[reportUnknownMemberType]
+        return "none"
+    items = checks.get("items")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    counts: dict[str, int] = {}
+    for item in items if isinstance(items, list) else []:  # pyright: ignore[reportUnknownVariableType]
+        if isinstance(item, dict):
+            bucket = str(item.get("bucket"))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            counts[bucket] = counts.get(bucket, 0) + 1
+    said = ",".join(f"{bucket}:{count}" for bucket, count in sorted(counts.items())) or "0"
+    return said + ("+truncated" if checks.get("truncated") is True else "")  # pyright: ignore[reportUnknownMemberType]
+
+
+def _describe_readiness(payload: dict[str, Any]) -> list[str]:
+    """The verdict the Checks tab shows, and each requirement's status, in its order.
+
+    ``readiness=none`` is a closed or merged pull request, or one not shown at all; a
+    status read that failed is named, since the verdict is then an earlier read's, or
+    ``checking``.
+    """
+
+    readiness = payload.get("readiness")
+    if not isinstance(readiness, dict):
+        parts = ["readiness=none"]
+    else:
+        parts = [f"readiness={readiness.get('verdict')}"]
+        requirements = readiness.get("requirements")
+        if isinstance(requirements, list) and requirements:
+            parts.append(
+                "requirements="
+                + ",".join(
+                    f"{row.get('kind')}:{row.get('status')}"
+                    for row in requirements
+                    if isinstance(row, dict)
+                )
+            )
+    unavailable = payload.get("status_unavailable")
+    if unavailable is not None:
+        parts.append(f"status_unavailable={unavailable}")
+    return parts
 
 
 def _describe_stack(payload: dict[str, Any], tab: str, file: str) -> str:
