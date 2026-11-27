@@ -442,17 +442,6 @@ globalThis.window = {
     },
     loadChangedFilesTree: async () => null,
     navigation,
-    // The rest of what a rendered file's links' cards are read with (`MetabrowserLinkCardSdk`):
-    // the cards here are a recording stand-in, which reads none of it.
-    tooltip: { show() {}, hide() {} },
-    plugins: { load: async () => ({}) },
-    fetchPluginData: async () => ({}),
-    ensureKindAssets: async () => {},
-    fileCatalog: { snapshot: () => ({ complete: false, files: [] }) },
-    directoryTotals: { get: () => null },
-    formatAge: () => ({ label: "" }),
-    formatFileCount: (count) => `${count} files`,
-    formatSize: (bytes) => `${bytes} B`,
     sourceKind: () => pageSource.kind,
     get repository() {
       return pageSource.repository;
@@ -470,21 +459,21 @@ for (const name of ["git-path.js", "repository-links.js"]) {
   const file = path.join(repoRoot, "src/metabrowser/static", name);
   require("node:vm").runInThisContext(fs.readFileSync(file, "utf8"), { filename: file });
 }
-// The link cards (static/link-previews.js), which the bundle loads after the resolver: a
-// recording stand-in, which the page reaches through the resolver's runtime. A card is its
-// link's, by identity, with its root and target, and a disposal forgets its root's.
+// The link cards, which the page registers each link for through the SDK
+// (`metabrowser.previewLink`, static/plugin-sdk-views.js): a recording stand-in. A card is
+// its link's, by identity, with its root and target, and a disposal forgets its root's.
 const cards = new Map();
 /** The roots whose cards a disposal put away. */
 const disposedRoots = new Set();
-globalThis.window.MetabrowserLinkPreviews = {
-  register(root, anchor, target) {
+Object.assign(globalThis.window.metabrowser, {
+  previewLink(root, anchor, target) {
     cards.set(anchor, { root, target });
     return true;
   },
-  forget(anchor) {
+  forgetPreview(anchor) {
     cards.delete(anchor);
   },
-  dispose(root) {
+  disposePreviews(root) {
     disposedRoots.add(root);
     for (const [anchor, card] of cards) {
       if (card.root === root) {
@@ -492,7 +481,7 @@ globalThis.window.MetabrowserLinkPreviews = {
       }
     }
   },
-};
+});
 /** The cards of the links in *container*: what each opens, or `none`. */
 function cardsIn(container) {
   return anchorsIn(container).map((link) => {
@@ -987,8 +976,8 @@ async function main() {
     assert(typeof headLinksOpen === "function", "the diff has a rule for `/view/` targets");
     // What this page's SDK says of its source, which another page's mount does not change.
     const { kind, repository } = pageSource;
-    const tooltip = { show() {}, hide() {} };
-    const sdk = { navigation, repository, sourceKind: () => kind, tooltip };
+    const { previewLink, forgetPreview, disposePreviews } = globalThis.window.metabrowser;
+    const sdk = { navigation, repository, sourceKind: () => kind, previewLink, forgetPreview };
     return {
       isTarget: (href, image, links = globalThis.window.MetabrowserRepositoryLinks) =>
         target(href, image, links),
@@ -1004,11 +993,11 @@ async function main() {
           navigation,
           linksOpen: headLinksOpen,
           isPlainClick: (event) => links.isPlainClick(event),
-          preview: (link, head) => links.previewLink(prose, link, head, sdk),
+          preview: (link, head) => previewLink(prose, link, head),
         });
       },
       // As diff-view.js puts a block's cards away (`disposeLinks`).
-      disposeLinks: (root) => globalThis.window.MetabrowserRepositoryLinks.disposePreviews(root),
+      disposeLinks: (root) => disposePreviews(root),
     };
   }
   // The head is pinned from the pull request's branch, and so is an earlier commit of it,

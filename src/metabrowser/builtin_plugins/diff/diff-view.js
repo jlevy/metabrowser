@@ -47,72 +47,32 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
  * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
  * @property {MetabrowserPublicSdk["loadRepositoryLinks"]} [loadRepositoryLinks]
- * @property {MetabrowserPublicSdk["tooltip"]} [tooltip] The rest of what a rendered file's
- *   links' cards are read and drawn with (`MetabrowserLinkCardSdk`, `linkCardSdk`).
- * @property {MetabrowserPublicSdk["fetchPluginData"]} [fetchPluginData]
- * @property {MetabrowserPublicSdk["fileCatalog"]} [fileCatalog]
- * @property {MetabrowserPublicSdk["directoryTotals"]} [directoryTotals]
- * @property {MetabrowserPublicSdk["prefetchCounterpart"]} [prefetchCounterpart]
- * @property {MetabrowserPublicSdk["formatAge"]} [formatAge]
- * @property {MetabrowserPublicSdk["formatFileCount"]} [formatFileCount]
- * @property {MetabrowserPublicSdk["formatSize"]} [formatSize]
+ * @property {MetabrowserPublicSdk["previewLink"]} [previewLink] A rendered file's links'
+ *   cards, registered with the block or article that holds them (static/plugin-sdk-views.js).
+ * @property {MetabrowserPublicSdk["forgetPreview"]} [forgetPreview]
+ * @property {MetabrowserPublicSdk["disposePreviews"]} [disposePreviews]
  */
 
 /**
- * *api* as what a rendered file's links are read and their cards drawn with, or null where
- * the view was mounted without it, as a diff drawn with the plain syntax api is: the SDK the
- * plugin mounts the view with has every member (index.js).
+ * *api* as what a rendered file's links are read with and given their cards through, or
+ * null where the view was mounted without it, as a diff drawn with the plain syntax api is:
+ * the SDK the plugin mounts the view with has every member (index.js).
  *
  * @param {DiffViewApi | undefined} api
- * @returns {MetabrowserLinkCardSdk | null}
+ * @returns {MetabrowserRepositoryLinksSdk | null}
  */
-function linkCardSdk(api) {
+function repositoryLinksSdk(api) {
   if (
     !api?.repository ||
     !api.sourceKind ||
     !api.navigation ||
-    !api.tooltip ||
-    !api.plugins ||
-    !api.fetchPluginData ||
-    !api.ensureKindAssets ||
-    !api.fileCatalog ||
-    !api.directoryTotals ||
-    !api.formatAge ||
-    !api.formatFileCount ||
-    !api.formatSize
+    !api.previewLink ||
+    !api.forgetPreview
   ) {
     return null;
   }
-  const {
-    repository,
-    sourceKind,
-    navigation,
-    tooltip,
-    plugins,
-    fetchPluginData,
-    ensureKindAssets,
-    fileCatalog,
-    directoryTotals,
-    prefetchCounterpart,
-    formatAge,
-    formatFileCount,
-    formatSize,
-  } = api;
-  return {
-    repository,
-    sourceKind,
-    navigation,
-    tooltip,
-    plugins,
-    fetchPluginData,
-    ensureKindAssets,
-    fileCatalog,
-    directoryTotals,
-    prefetchCounterpart,
-    formatAge,
-    formatFileCount,
-    formatSize,
-  };
+  const { repository, sourceKind, navigation, previewLink, forgetPreview } = api;
+  return { repository, sourceKind, navigation, previewLink, forgetPreview };
 }
 
 /**
@@ -5637,7 +5597,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         enhanceLinks(prose) {
           const navigation = api?.navigation;
           const links = loadedLinks();
-          const mb = linkCardSdk(api);
+          const mb = repositoryLinksSdk(api);
           if (links && mb) {
             links.enhance(prose, mb, { views: headLinksOpen?.() === true });
           }
@@ -5646,15 +5606,14 @@ export function mountDiffView(container, document_, api, options = {}) {
               navigation,
               linksOpen: headLinksOpen,
               isPlainClick: (event) => loadedLinks()?.isPlainClick(event) === true,
-              preview: (link, target) =>
-                mb ? loadedLinks()?.previewLink(prose, link, target, mb) : undefined,
+              preview: (link, target) => api?.previewLink?.(prose, link, target),
             });
           }
           for (const link of prose.querySelectorAll('a[target="_blank"]')) {
             api?.decorateExternalLink?.(/** @type {HTMLElement} */ (link));
           }
         },
-        disposeLinks: (root) => loadedLinks()?.disposePreviews(root),
+        disposeLinks: (root) => api?.disposePreviews?.(root),
         // The structured plugin draws a YAML or JSON file's tree, as in the file view
         // (`requires` in manifest.toml).
         async ensureStructured() {

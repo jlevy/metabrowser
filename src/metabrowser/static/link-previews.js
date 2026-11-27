@@ -2,12 +2,15 @@
 // rest, saying what it opens, that object's title where the app knows it, and that it opens
 // here (docs/design-system.md, "Tooltips on Links").
 //
-// A surface that draws links in authored text registers each one here by identity, with
-// what the resolver (static/repository-links.js) said it opens: a resolver's `view` or
-// `route` target, a rendered diff's link to a file of its head (`view-head`), or, for a link
-// that leaves for another site, its address (`external`), whose card says where it goes,
-// since the macOS app's web view shows no status bar and only a GitHub address has a mark
-// (`decorateExternalLink`). This module
+// A surface that draws links in authored text registers each one by identity, through the
+// SDK (`metabrowser.previewLink`, static/plugin-sdk-views.js), with what it opens: a link to
+// a file or folder by its path, a resolver's `view` or `route` target
+// (static/repository-links.js), a rendered diff's link to a file of its head (`view-head`),
+// or, for a link that leaves for another site, its address (`external`), whose card says
+// where it goes, since the macOS app's web view shows no status bar and only a GitHub
+// address has a mark (`decorateExternalLink`). The SDK keeps those registrations until a
+// pointer first rests on one, then loads this module, hands them here, and hands it that
+// first rest (`rest`). This module
 // then owns everything about the card: one delegated pointer listener per registered root,
 // one intent timer, the reads and prefetches a rest starts, and the one renderer, `card`,
 // so no surface can draw a card of its own (devtools/check_tooltips.py holds that).
@@ -35,9 +38,9 @@
 // Providers (`provide`) return data, never markup, and `card` escapes every value. This
 // module keeps no answer: each provider keeps what it reads, for as long as that stays true,
 // retries what failed, and answers what it keeps at once, so the next rest says what the
-// page knows then. Loaded
-// on demand in the `repository-links` bundle, after the resolver (server.py has the
-// measurement). The exact module runs browserlessly in tests/dom/link-previews-session.js.
+// page knows then. Loaded on demand as the first script of the `link-previews` bundle, at a
+// page's first rest on a registered link (server.py has the measurement). The exact module
+// runs browserlessly in tests/dom/link-previews-session.js.
 
 (() => {
   // ── Timing ─────────────────────────────────────────────────────
@@ -899,6 +902,39 @@
     if (anchor === null || entry === undefined || current?.anchor === anchor) {
       return;
     }
+    begin(anchor, entry, 0, false);
+  }
+
+  /**
+   * The pointer has rested on *anchor*, a registered link, for *elapsed* ms already: since
+   * before this module loaded, which the SDK does at a page's first rest on a link it
+   * registered (`previewLink` in static/plugin-sdk-views.js), and then hands that rest here.
+   * Its card is asked for now, and its summary and prefetch when a rest that began here
+   * would ask for them, the intent delay less the time it has rested. *ended* says the
+   * reader's press or a focus ended it while the module loaded, so it shows nothing, as
+   * `endOnInput` would have it. A link that is not registered, or the rest already here,
+   * changes nothing.
+   *
+   * @param {Element} anchor
+   * @param {{elapsed?: number, ended?: boolean}} [options]
+   */
+  function rest(anchor, { elapsed = 0, ended = false } = {}) {
+    const entry = entries.get(anchor);
+    if (entry === undefined || current?.anchor === anchor) {
+      return;
+    }
+    begin(anchor, entry, Math.max(0, elapsed), ended === true);
+  }
+
+  /**
+   * A rest begins on *anchor*, *elapsed* ms after the pointer arrived, in place of any other.
+   *
+   * @param {Element} anchor
+   * @param {Entry} entry
+   * @param {number} elapsed
+   * @param {boolean} ended
+   */
+  function begin(anchor, entry, elapsed, ended) {
     if (current !== null) {
       const left = current;
       leave();
@@ -914,15 +950,21 @@
       prefetched: false,
       answer: undefined,
       html: null,
-      ended: false,
+      ended,
     };
     current = rest;
+    if (ended) {
+      return;
+    }
     show(rest);
-    rest.timer = setTimeout(() => {
-      rest.timer = null;
-      rest.intent = true;
-      work();
-    }, INTENT_MS);
+    rest.timer = setTimeout(
+      () => {
+        rest.timer = null;
+        rest.intent = true;
+        work();
+      },
+      Math.max(0, INTENT_MS - elapsed),
+    );
   }
 
   /**
@@ -1165,6 +1207,7 @@
     INTENT_MS,
     OPENS,
     register,
+    rest,
     forget,
     dispose,
     provide,

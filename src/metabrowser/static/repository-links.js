@@ -45,13 +45,11 @@
 // links to files of its head read it too (builtin_plugins/diff/diff-markdown.js,
 // `openHeadLinks`), so the links of one text open alike.
 //
-// Each link `enhance` makes in-app has its link card, the tooltip that says what it opens
-// (static/link-previews.js, loaded right after this module in the same bundle), and so has
-// each link it leaves for another site, whose card says where it goes. A plugin
-// reaches the cards through this runtime, `previewLink`, `forgetPreview`, and
-// `disposePreviews`, which `metabrowser.loadRepositoryLinks()` already gives it, and never
-// through that module's global (AGENTS.md, Browser and Plugin Boundary); each is a no-op
-// where the cards are not loaded.
+// Each link `enhance` makes in-app has its link card, the tooltip that says what it opens,
+// and so has each link it leaves for another site, whose card says where it goes: it
+// registers each through the SDK it is given (`previewLink`, static/plugin-sdk-views.js),
+// as every surface registers its links, so this module needs nothing of the card's, which
+// loads in a bundle of its own at the first rest on a link (static/link-previews.js).
 //
 // Loaded on demand (`ensureAsset("repository-links")`) by the views that show authored text
 // from a GitHub repository: only a page with a repository identity uses it, and the startup
@@ -636,9 +634,10 @@
    * modified click, a new tab, and a copied address use the same `href`, and so does a
    * plain click the shell cannot open in place. Returns how many links it changed.
    *
-   * Each link it reads is registered for its link card with *root* (`previewLink`), so
-   * *root* is the text's own element, the boundary whose card its page puts away when the
-   * text goes (`disposePreviews`): an in-app link's card says what it opens, and that a link
+   * Each link it reads is registered for its link card with *root*, through *mb*
+   * (`mb.previewLink`), so *root* is the text's own element, the boundary whose card its page
+   * puts away when the text goes (`mb.disposePreviews`): an in-app link's card says what it
+   * opens, and that a link
    * to the served branch opens whatever the page serves, and a link it leaves for another
    * site, or restores to one, says where it goes. It shows no tooltip of its own.
    *
@@ -646,7 +645,8 @@
    * text wrote it and moves its one click handler and its card to the new answer.
    *
    * @param {Element} root
-   * @param {MetabrowserLinkCardSdk} mb The page's SDK, which a link's card is drawn with.
+   * @param {MetabrowserRepositoryLinksSdk} mb The page's SDK, which a link opens and is
+   *   given its card through.
    * @param {{
    *   text?: TextContext,
    *   open?: (route: RouteTarget) => boolean,
@@ -679,7 +679,7 @@
       });
       if (resolved === null) {
         if (original) {
-          restoreAuthoredLink(anchor, original);
+          restoreAuthoredLink(anchor, original, mb);
         }
         previewOutside(root, anchor, mb);
         continue;
@@ -697,7 +697,7 @@
         // other links are still read.
         console.warn("metabrowser: a link was left as written", error);
         if (original) {
-          restoreAuthoredLink(anchor, original);
+          restoreAuthoredLink(anchor, original, mb);
         }
         previewOutside(root, anchor, mb);
         continue;
@@ -724,7 +724,7 @@
       anchor.removeAttribute("rel");
       anchor.setAttribute("data-metabrowser-github-localization", resolved.localization);
       opens.set(anchor, { resolved, mb, open: options.open });
-      previewLink(root, anchor, resolved, mb);
+      mb.previewLink(root, anchor, resolved);
       if (!listening.has(anchor)) {
         listening.add(anchor);
         anchor.addEventListener("click", (event) => openOnPlainClick(anchor, event));
@@ -736,8 +736,9 @@
   /**
    * @param {Element} anchor
    * @param {{href: string, target: string | null, rel: string | null}} original
+   * @param {MetabrowserRepositoryLinksSdk} mb
    */
-  function restoreAuthoredLink(anchor, original) {
+  function restoreAuthoredLink(anchor, original, mb) {
     for (const [name, value] of Object.entries(original)) {
       if (value === null) {
         anchor.removeAttribute(name);
@@ -748,32 +749,7 @@
     anchor.removeAttribute("data-metabrowser-github-localization");
     authoredLinks.delete(anchor);
     opens.delete(anchor);
-    forgetPreview(anchor);
-  }
-
-  // ── Link cards ─────────────────────────────────────────────────
-  //
-  // The tooltip that says what an in-app link opens (static/link-previews.js), which the
-  // bundle loads right after this module. A plugin reaches it through these, as it reaches
-  // the rest of this runtime; each is a no-op where that module is not loaded.
-
-  /**
-   * Give *anchor*, a link of *root* that opens *target*, its link card, in place of any it
-   * had: a page here, or one on another site (`{kind: "external", url}`). *root* is the element whose cards its surface puts away together
-   * (`disposePreviews`): a text, a rendered document, or a rendered diff's block. *mb* is
-   * the surface's SDK, which draws the card. *authorTitle* is a title the author gave the
-   * link, which the surface takes off the link and the card says, so the reader never sees
-   * two tooltips. Returns whether the link has a card.
-   *
-   * @param {Element} root
-   * @param {Element} anchor
-   * @param {MetabrowserLinkPreviewTarget} target
-   * @param {MetabrowserLinkCardSdk} mb
-   * @param {{authorTitle?: string | null}} [options]
-   * @returns {boolean}
-   */
-  function previewLink(root, anchor, target, mb, options) {
-    return window.MetabrowserLinkPreviews?.register(root, anchor, target, mb, options) ?? false;
+    mb.forgetPreview(anchor);
   }
 
   /**
@@ -783,30 +759,10 @@
    *
    * @param {Element} root
    * @param {Element} anchor
-   * @param {MetabrowserLinkCardSdk} mb
+   * @param {MetabrowserRepositoryLinksSdk} mb
    */
   function previewOutside(root, anchor, mb) {
-    previewLink(root, anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" }, mb);
-  }
-
-  /**
-   * *anchor* has no card any more: it opens no page here now, or is gone.
-   *
-   * @param {Element} anchor
-   */
-  function forgetPreview(anchor) {
-    window.MetabrowserLinkPreviews?.forget(anchor);
-  }
-
-  /**
-   * Forget every card *root*'s links have, and put away the one it shows, and no other
-   * surface's: what a surface does with a text it replaces, and with its texts when it is
-   * disposed.
-   *
-   * @param {Element} root
-   */
-  function disposePreviews(root) {
-    window.MetabrowserLinkPreviews?.dispose(root);
+    mb.previewLink(root, anchor, { kind: "external", url: anchor.getAttribute("href") ?? "" });
   }
 
   /**
@@ -970,13 +926,10 @@
   }
 
   window.MetabrowserRepositoryLinks = Object.freeze({
-    disposePreviews,
     enhance,
     fileUrl,
-    forgetPreview,
     isPlainClick,
     localize,
-    previewLink,
     viewFileUrl,
   });
 })();

@@ -239,14 +239,12 @@ def test_an_in_app_link_opens_what_its_address_says() -> None:
 def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
     """A link ``enhance`` leaves in-app has its link card, for what its address opens, with
     the text it was given as the root; a link it restores or makes an outside one has the
-    card that says where its address goes, and no link carries a tooltip of its own; the
-    page's disposal of the text comes last. Without the cards loaded, the links open as
-    they do with them."""
+    card that says where its address goes, and no link carries a tooltip of its own."""
 
     runs = _session()["enhanced"]
     for name, run in runs.items():
         cards: dict[str, str] = {}
-        for call in run["previews"][:-1]:
+        for call in run["previews"]:
             verb, rest = call.split(" ", 1)
             if verb == "register":
                 link, target = rest.split(" in the text: ", 1)
@@ -254,12 +252,11 @@ def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
             else:
                 assert verb == "forget", (name, call)
                 cards.pop(rest, None)
-        assert run["previews"][-1:] in ([], ["dispose the text"]), name
         for link, attributes in run["anchors"].items():
             assert "data-tip-text" not in attributes, (name, link)
             localization = attributes.get("data-metabrowser-github-localization")
-            # Without the cards, or on a page with no repository identity, which `enhance`
-            # leaves as written, no link has one.
+            # On a page with no repository identity, which `enhance` leaves as written, no
+            # link has one of its giving.
             if not any(call.startswith("register ") for call in run["previews"]):
                 assert link not in cards, (name, link)
                 continue
@@ -269,10 +266,3 @@ def test_each_in_app_link_has_the_card_of_what_it_opens() -> None:
                 continue
             kind = f"view {localization}" if href.startswith("/view/") else "route"
             assert cards[link] == f"{kind} {href}", (name, link)
-    without = runs["a text on a page whose link cards have not loaded"]
-    with_cards = runs["a commit's message, which has no text context"]
-    assert without["previews"] == [] != with_cards["previews"]
-    assert (without["changed"], without["anchors"]) == (
-        with_cards["changed"],
-        with_cards["anchors"],
-    )

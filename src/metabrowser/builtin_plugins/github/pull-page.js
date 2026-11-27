@@ -6070,7 +6070,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const holder of holders) {
       for (const prose of holder.querySelectorAll(".kpress-prose")) {
         if (textProses.has(prose)) {
-          repositoryLinks?.disposePreviews(prose);
+          mb.disposePreviews(prose);
         }
       }
     }
@@ -9099,7 +9099,7 @@ export function mountPullPage(container, ctx, mb) {
           },
           // A note the guide lets go, its step left for another, takes its links' cards with
           // it, as a text the conversation drops does.
-          releaseProse: (prose) => repositoryLinks?.disposePreviews(prose),
+          releaseProse: (prose) => mb.disposePreviews(prose),
           // A refused note says why in a description's words.
           refusalNote: textRefusalNote,
           // The overview shows the description once its Markdown is drawn, or its source

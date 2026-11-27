@@ -24,8 +24,9 @@ print making a card’s image eager, disposal, a document replaced before the pl
 answers, and a page without the plugin.
 Each link the document opens here, the link to the PDF by its path, the wiki link, and
 each card’s View, has its link card (`linkCards`), the tooltip that says what it opens
-(`static/link-previews.js`), registered through the resolver’s runtime, a recording
-stand-in here, with the rendered root, and the document’s disposal puts them away.
+(`static/link-previews.js`), registered through the SDK (`metabrowser.previewLink`), a
+recording stand-in here, with the rendered root, on a plain folder’s page with no GitHub
+identity and so no resolver, and the document’s disposal puts them away.
 
 ```console
 $ node tests/dom/markdown-functional-session.js

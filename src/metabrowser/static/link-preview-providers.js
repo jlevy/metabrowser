@@ -621,7 +621,7 @@
     await Promise.allSettled(work);
   }
 
-  // The card's registry comes first in this bundle (server.py, `repository-links`); a page
+  // The card's registry comes first in this bundle (server.py, `link-previews`); a page
   // where it did not load shows no card, and so asks for nothing here.
   const registry = /** @type {{MetabrowserLinkPreviews?: Registry}} */ (
     /** @type {unknown} */ (window)

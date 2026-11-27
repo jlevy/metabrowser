@@ -99,6 +99,13 @@ ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
         "explains it, which its link card then says in its place (`previewLink`), on a page "
         "that draws cards",
     ),
+    (
+        "static/plugin-sdk-views.js",
+        'anchor.setAttribute("title", title)',
+        "gives a link that has no card after all, its card's code not loaded, the title its "
+        "author wrote, which its surface took off it when the link was registered "
+        "(`giveTitleBack`), as a link with no card keeps it",
+    ),
     # The next three explain a link or embed inside a rendered document, where the title is
     # part of what the enhancers restore and test. They predate this rule's reach to
     # setAttribute. Moving them to data-tip-text is a change to the enhancers' contract.
@@ -271,7 +278,7 @@ def main() -> int:
             relative = finding.path.relative_to(ROOT)
             print(f"  {relative}:{finding.line}: {finding.text[:96]}", file=sys.stderr)
         print(
-            "\nRegister the link through the resolver's runtime, previewLink, which draws\n"
+            "\nRegister the link through the SDK, metabrowser.previewLink, which draws\n"
             'its card (docs/design-system.md, "Tooltips on Links").',
             file=sys.stderr,
         )

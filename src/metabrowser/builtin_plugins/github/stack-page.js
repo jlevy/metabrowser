@@ -2364,7 +2364,7 @@ export function mountStackPage(container, ctx, mb) {
     // any of them.
     for (const prose of body.querySelectorAll(".kpress-prose")) {
       if (noteProses.has(prose)) {
-        repositoryLinks?.disposePreviews(prose);
+        mb.disposePreviews(prose);
       }
     }
     handle?.dispose?.();
@@ -2521,7 +2521,7 @@ export function mountStackPage(container, ctx, mb) {
         };
       },
       // A note the guide lets go, its step left for another, takes its links' cards with it.
-      releaseProse: (prose) => repositoryLinks?.disposePreviews(prose),
+      releaseProse: (prose) => mb.disposePreviews(prose),
       refusalNote: textRefusalNote,
       // The comparison drawn has moved, and may be gone: the stack is read now, so the
       // page draws its own comparison in its place or offers it (`answerAction`).

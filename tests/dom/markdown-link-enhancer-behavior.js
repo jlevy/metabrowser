@@ -3,7 +3,9 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
-const sdk = require("./sdk-sandbox.js").createSdkSandbox();
+const { createSdkSandbox, linkCardRegistration } = require("./sdk-sandbox.js");
+
+const sdk = createSdkSandbox();
 const linkDocument = { createElement: (tag) => new FakeElement(tag) };
 sdk.document = linkDocument;
 
@@ -305,27 +307,30 @@ async function loadModule() {
 
 (async () => {
   const module = await loadModule();
-  // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
-  // recording stand-in, which the enhancer reaches through the resolver's runtime. Like the
-  // module, it gives an outside link a card only for a web address, and answers whether it
-  // did, which is what tells the enhancer to take the link's title.
+  // The link cards, which the enhancer registers each link for through the SDK
+  // (`metabrowser.previewLink`, static/plugin-sdk-views.js): the SDK's own registration, as
+  // a page has it before a rest loads the card, which answers whether the card is about a
+  // link, and so tells the enhancer to take its title, recorded here as it is asked.
+  const registration = linkCardRegistration();
   const cards = { calls: [], registered: new Map() };
-  global.MetabrowserLinkPreviews = {
-    register(root, anchor, target, _mb, options = {}) {
-      if (target.kind === "external" && !/^(https?:)?\/\//i.test(target.url)) {
-        cards.calls.push(["forget", anchor]);
+  const cardSdk = {
+    previewLink(root, anchor, target, options = {}) {
+      const card = registration.previewLink(root, anchor, target, options);
+      cards.calls.push([card ? "register" : "forget", anchor]);
+      if (card) {
+        cards.registered.set(anchor, { root, target, authorTitle: options.authorTitle ?? null });
+      } else {
         cards.registered.delete(anchor);
-        return false;
       }
-      cards.calls.push(["register", anchor]);
-      cards.registered.set(anchor, { root, target, authorTitle: options.authorTitle ?? null });
-      return true;
+      return card;
     },
-    forget(anchor) {
+    forgetPreview(anchor) {
+      registration.forgetPreview(anchor);
       cards.calls.push(["forget", anchor]);
       cards.registered.delete(anchor);
     },
-    dispose(root) {
+    disposePreviews(root) {
+      registration.disposePreviews(root);
       cards.calls.push(["dispose", root]);
       for (const [anchor, entry] of cards.registered) {
         if (entry.root === root) {
@@ -439,6 +444,7 @@ async function loadModule() {
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
     decorateExternalLink: sdk.metabrowser.decorateExternalLink,
+    ...cardSdk,
     repository: {
       branch: "main",
       host: "github.com",
@@ -1129,19 +1135,66 @@ async function loadModule() {
     JSON.stringify(cards.calls.filter(([verb]) => verb === "dispose").length),
   );
 
-  // Where the cards have not loaded, the runtime registers nothing, and an author's title
-  // stays on the link it was written on.
-  delete global.MetabrowserLinkPreviews;
+  // On a page with no GitHub identity, which loads no resolver, a link the document opens
+  // here and one to another site have their cards all the same, each with its author's
+  // title; a mail link names no site, has none, and keeps its title.
+  const plainTitled = new FakeElement("a", { href: "setup.md", title: "How to set it up" });
+  const plainOutside = new FakeElement("a", {
+    href: "https://example.com/elsewhere",
+    title: "Somewhere else",
+  });
+  const plainMail = new FakeElement("a", { href: "mailto:team@example.com", title: "The team" });
+  const plainContainer = new FakeContainer([plainTitled, plainOutside, plainMail]);
+  const plainHandle = module.enhanceRenderedLinks(
+    plainContainer,
+    "docs/readme.md",
+    { ...mb, repository: null },
+    {
+      repositoryLinks: null,
+      cancel: () => {},
+      eventTarget: new FakeEventTarget(),
+      schedule: () => 0,
+    },
+  );
+  const plainCard = (anchor) => cards.registered.get(anchor);
+  check(
+    "with no GitHub identity, a document's own and outside links have cards with their titles",
+    plainTitled.getAttribute("href") === "/view/docs/setup.md" &&
+      plainCard(plainTitled)?.root === plainContainer &&
+      plainCard(plainTitled)?.target.target.path === "docs/setup.md" &&
+      plainCard(plainTitled)?.authorTitle === "How to set it up" &&
+      !plainTitled.hasAttribute("title") &&
+      plainCard(plainOutside)?.target.url === "https://example.com/elsewhere" &&
+      plainCard(plainOutside)?.authorTitle === "Somewhere else" &&
+      !plainOutside.hasAttribute("title") &&
+      plainCard(plainMail) === undefined &&
+      plainMail.getAttribute("title") === "The team",
+    JSON.stringify(
+      [plainTitled, plainOutside, plainMail].map((anchor) => {
+        const entry = plainCard(anchor);
+        return entry && { target: entry.target, authorTitle: entry.authorTitle };
+      }),
+    ),
+  );
+  plainHandle.dispose();
+
+  // Where the SDK gives a link no card, as on a page whose card did not load, an author's
+  // title stays on the link it was written on.
   const uncardedTitled = new FakeElement("a", { href: "setup.md", title: "How to set it up" });
   const uncardedContainer = new FakeContainer([uncardedTitled]);
-  const uncardedHandle = module.enhanceRenderedLinks(uncardedContainer, "docs/readme.md", mb, {
-    repositoryLinks: global.MetabrowserRepositoryLinks,
-    cancel: () => {},
-    eventTarget: new FakeEventTarget(),
-    schedule: () => 0,
-  });
+  const uncardedHandle = module.enhanceRenderedLinks(
+    uncardedContainer,
+    "docs/readme.md",
+    { ...mb, previewLink: () => false },
+    {
+      repositoryLinks: global.MetabrowserRepositoryLinks,
+      cancel: () => {},
+      eventTarget: new FakeEventTarget(),
+      schedule: () => 0,
+    },
+  );
   check(
-    "without the cards, a link the document opens here keeps its author's title",
+    "a link the SDK gives no card keeps its author's title",
     uncardedTitled.getAttribute("href") === "/view/docs/setup.md" &&
       uncardedTitled.getAttribute("title") === "How to set it up",
     JSON.stringify([...uncardedTitled.attributes]),

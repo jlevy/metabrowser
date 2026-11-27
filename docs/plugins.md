@@ -1003,19 +1003,29 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   runtime’s `enhance`, which makes a link into the served repository open its page in
   Metabrowser, in place on a plain click; `static/repository-links.js` documents which
   GitHub URLs open which pages.
-  Each link `enhance` reads also has its link card, the tooltip that says what it opens
-  (`static/link-previews.js`), registered with the element it was given, so pass the
-  text’s own element: the one whose links the view puts away together.
-  A view that opens other links in the app itself, or draws links of its own to other
-  sites, reaches the cards through the same runtime, never a window global:
-  `previewLink(root, anchor, target, mb, { authorTitle })` gives one link its card, for
-  a `target` of the resolver’s kind `view` or `route`, a rendered diff’s link to a file
-  of its head, `{ kind: "view-head", href }` by its `/view/` address in the GitPath
-  wire, or a link to another site, `{ kind: "external", url }` by its `http` or `https`
-  address, whose card says the host it goes to and whether it opens a new tab.
-  The view takes off the link any `title` its author wrote, passing it as `authorTitle`,
-  so the reader sees one tooltip, and `previewLink` answers whether the link has a card:
-  false for a target it says nothing of, such as a mail link’s, which keeps its title.
+  Each link `enhance` reads also has its link card, registered through the SDK it is
+  given (`previewLink`, below) with the element it was given, so pass the text’s own
+  element: the one whose links the view puts away together.
+- `previewLink(root, anchor, target, { authorTitle })` gives one link in authored text
+  its link card, the tooltip that says what it opens
+  ([Tooltips on Links](design-system.md#tooltips-on-links)), on any page, with or
+  without a repository identity or the resolver.
+  A view that opens a link in the app itself, or draws links to other sites, registers
+  each this way, never through a window global.
+  `target` is the resolver’s answer of kind `view` or `route`, a file’s or folder’s
+  `{ kind: "view", target, localization: "revision" }` by its navigation target, a
+  rendered diff’s link to a file of its head, `{ kind: "view-head", href }` by its
+  `/view/` address in the GitPath wire, or a link to another site,
+  `{ kind: "external", url }` by its `http` or `https` address, whose card says the host
+  it goes to and whether it opens a new tab.
+  *root* is the element whose links the view puts away together.
+  When `previewLink` answers `true`, the link has a card, and the view takes off the
+  link any `title` its author wrote, passed as `authorTitle`, so the reader sees one
+  tooltip; it answers `false` for a target the card says nothing of, such as a mail
+  link’s, which keeps its title.
+  The card’s code loads at the page’s first rest on a link registered this way
+  (`static/plugin-sdk-views.js`); where it cannot load, each link gets its `authorTitle`
+  back and shows no card.
   `forgetPreview(anchor)` takes a card from a link that no longer has one, and
   `disposePreviews(root)` forgets every card of *root*’s links, and puts away the one it
   shows, when the view replaces that text or is disposed.

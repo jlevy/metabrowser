@@ -12,13 +12,17 @@ A link in rendered text has the link card
 `cli-ui-link-preview-providers.tryscript.md` its data on a stand-in registry.
 This session runs the boundaries between them for real, in one realm as one page does:
 app.js’s own tooltip and its delegated listeners for short tips and focus, the
-resolver’s `enhance` over a pull request’s text in a KPress host, the card’s registry,
-and its providers, each read replaying the server’s recorded answer 40 ms later on the
-session’s clock.
+resolver’s `enhance` over a pull request’s text in a KPress host, the SDK it registers
+each link through, which loads the card’s bundle at the first rest, here at once, the
+card’s registry, and its providers, each read replaying the server’s recorded answer 40
+ms later on the session’s clock.
+`cli-ui-link-preview-loader.tryscript.md` pins what that load does when it takes time,
+fails, or never comes.
 
 Each log entry says when, in milliseconds, the pointer arrived on something (`pointer`),
-focus moved (`focus`), a provider read the server (`read`), and what the reader sees
-(`sees`), with the element the tooltip is placed on (`on`).
+the SDK asked for the card’s bundle (`load`) and it ran (`loaded`), focus moved
+(`focus`), a provider read the server (`read`), and what the reader sees (`sees`), with
+the element the tooltip is placed on (`on`).
 
 - `rest`: the card comes up on the tooltip’s own delay with the title its catalog row
   gives, and goes when the pointer leaves.
@@ -42,6 +46,14 @@ $ node tests/dom/link-card-integration-session.js
   {
    "at": 0,
    "pointer": "#12"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
   },
   {
    "at": 250,
@@ -73,6 +85,14 @@ $ node tests/dom/link-card-integration-session.js
   {
    "at": 0,
    "pointer": "#12"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
   },
   {
    "at": 250,
@@ -111,6 +131,14 @@ $ node tests/dom/link-card-integration-session.js
    "pointer": "#14"
   },
   {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
+  },
+  {
    "at": 250,
    "read": "github/pulls?q=14"
   },
@@ -135,6 +163,14 @@ $ node tests/dom/link-card-integration-session.js
   {
    "at": 0,
    "pointer": "#15"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
   },
   {
    "at": 250,
@@ -177,6 +213,14 @@ $ node tests/dom/link-card-integration-session.js
    "pointer": "the old guide"
   },
   {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
+  },
+  {
    "at": 700,
    "sees": "docs/old-guide.md | Not in the served files",
    "on": "the old guide"
@@ -199,6 +243,14 @@ $ node tests/dom/link-card-integration-session.js
   {
    "at": 0,
    "pointer": "the link's words"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
   },
   {
    "at": 250,
@@ -236,6 +288,14 @@ $ node tests/dom/link-card-integration-session.js
   {
    "at": 0,
    "pointer": "elsewhere"
+  },
+  {
+   "at": 0,
+   "load": "link-previews"
+  },
+  {
+   "at": 0,
+   "loaded": "link-previews"
   },
   {
    "at": 320,

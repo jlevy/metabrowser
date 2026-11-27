@@ -23,6 +23,7 @@
 // the WebKit and Chrome measurements.
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const markdownDir = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
@@ -151,6 +152,7 @@ async function run() {
   let sourceKind = "filesystem";
   const mb = {
     decorateExternalLink() {},
+    ...linkCardRegistration(),
     navigation: {
       current: () => ({ path: "docs/readme.md" }),
       href: (target) => `/view/${target.path}`,

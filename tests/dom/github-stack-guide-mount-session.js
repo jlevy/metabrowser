@@ -26,6 +26,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 const { Element, root, settle } = require("./github-pull-page-mount-behavior.js");
 
 const recorded = JSON.parse(
@@ -411,6 +412,8 @@ async function run() {
     })),
     formatTimestamp: () => "now",
     formatInteger: (value) => String(value),
+    // The SDK's own registration of a note's links for their cards.
+    ...linkCardRegistration(),
     // A count summary's parts as its text: each number, word, and separator.
     countPartsNodes: (parts) =>
       parts.map((part) =>
@@ -909,18 +912,18 @@ async function noteLinks(page, mb) {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
-  // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
-  // recording stand-in in the resolver's realm, which the page reaches through its runtime.
+  // The link cards, which the page and the resolver register a note's links for through the
+  // SDK (`metabrowser.previewLink`, static/plugin-sdk-views.js): a recording stand-in.
   const cards = new Map();
-  sandbox.MetabrowserLinkPreviews = {
-    register(cardRoot, anchor, target) {
+  const cardSdk = {
+    previewLink(cardRoot, anchor, target) {
       cards.set(anchor, { root: cardRoot, target });
       return true;
     },
-    forget(anchor) {
+    forgetPreview(anchor) {
       cards.delete(anchor);
     },
-    dispose(cardRoot) {
+    disposePreviews(cardRoot) {
       for (const [anchor, card] of cards) {
         if (card.root === cardRoot) {
           cards.delete(anchor);
@@ -991,6 +994,7 @@ async function noteLinks(page, mb) {
     },
     {
       ...mb,
+      ...cardSdk,
       // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
       loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
       getRegisteredView: () => view,

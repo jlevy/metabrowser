@@ -904,23 +904,23 @@ async function headLinkChecks(mountDiffView, byName) {
     }
   }
   /**
-   * The link cards (static/link-previews.js), which the bundle loads after the resolver: a
-   * recording stand-in in the resolver's realm *realm*, which the diff reaches through the
-   * resolver's runtime. A card is its link's, by identity, with its root and target, and a
-   * disposal forgets its root's.
+   * The link cards, which the diff and the resolver register each link for through the SDK
+   * the plugin mounts its view with (`metabrowser.previewLink`, static/plugin-sdk-views.js):
+   * a recording stand-in, its members spread into that SDK (`sdk`). A card is its link's, by
+   * identity, with its root and target, and a disposal forgets its root's.
    */
-  function recordCards(realm) {
+  function recordCards() {
     const cards = new Map();
     const disposed = [];
-    realm.MetabrowserLinkPreviews = {
-      register(root, anchor, target) {
+    const sdk = {
+      previewLink(root, anchor, target) {
         cards.set(anchor, { root, target });
         return true;
       },
-      forget(anchor) {
+      forgetPreview(anchor) {
         cards.delete(anchor);
       },
-      dispose(root) {
+      disposePreviews(root) {
         disposed.push(root);
         for (const [anchor, card] of cards) {
           if (card.root === root) {
@@ -929,7 +929,7 @@ async function headLinkChecks(mountDiffView, byName) {
         }
       },
     };
-    return { cards, disposed };
+    return { cards, disposed, sdk };
   }
   /** What *link*'s card in *cards* says it opens, and whether the block holding it is its root. */
   /**
@@ -960,22 +960,6 @@ async function headLinkChecks(mountDiffView, byName) {
       ? opens
       : `${opens}, rooted elsewhere`;
   }
-  // The page's one tooltip, which draws a card.
-  const tooltip = { show() {}, hide() {} };
-  // The rest of what the SDK the plugin mounts its view with gives a rendered file's links'
-  // cards to be read with (`MetabrowserLinkCardSdk`): the cards here are a recording
-  // stand-in, which reads none of it.
-  const linkCardSdk = {
-    tooltip,
-    plugins: { load: async () => ({}) },
-    fetchPluginData: async () => ({}),
-    ensureKindAssets: async () => {},
-    fileCatalog: { snapshot: () => ({ complete: false, files: [] }) },
-    directoryTotals: { get: () => null },
-    formatAge: () => ({ label: "" }),
-    formatFileCount: (count) => `${count} files`,
-    formatSize: (bytes) => `${bytes} B`,
-  };
   // A rendered file's links into the served repository open its pages in place, as every
   // text's do: the view hands static/repository-links.js, run whole, the SDK's navigation, so
   // a plain click on a commit's page, the list, or another pull request's opens it through
@@ -1011,14 +995,14 @@ async function headLinkChecks(mountDiffView, byName) {
     answer.blocks[added] = { ...answer.blocks[added], html };
     const routed = [];
     const host = new MarkupElement("div");
-    const routeCards = recordCards(sandbox);
+    const routeCards = recordCards();
     const handle = mountDiffView(
       host,
       byName.get("added-text-file"),
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
-        ...linkCardSdk,
+        ...routeCards.sdk,
         // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
         loadRepositoryLinks: async () => sandbox.MetabrowserRepositoryLinks,
         repository: {
@@ -1446,8 +1430,6 @@ async function headLinkChecks(mountDiffView, byName) {
     // The first file already rendered when the optional resolver became available.
     global.window.MetabrowserRepositoryLinks = {
       viewFileUrl: () => fallback,
-      // The page drew no card for a link, with no resolver when it drew them.
-      disposePreviews() {},
     };
     headOpen = false;
     pinChanged?.();
@@ -1485,14 +1467,14 @@ async function headLinkChecks(mountDiffView, byName) {
     const navigated = [];
     const decorated = new Set();
     const branchContainer = new MarkupElement("div");
-    const branchCards = recordCards(resolverRealm);
+    const branchCards = recordCards();
     const branchHandle = mountDiffView(
       branchContainer,
       byName.get("added-text-file"),
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
-        ...linkCardSdk,
+        ...branchCards.sdk,
         loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
         repository: {
           branch: "feature",
@@ -1651,14 +1633,14 @@ async function headLinkChecks(mountDiffView, byName) {
     let spelledPinChanged = null;
     const spelledOpened = [];
     const spelledContainer = new MarkupElement("div");
-    const spelledCards = recordCards(resolverRealm);
+    const spelledCards = recordCards();
     const spelledHandle = mountDiffView(
       spelledContainer,
       byName.get("added-text-file"),
       {
         filterControls: { groupHtml: () => "", bind: () => () => {} },
         ensureAsset: async () => {},
-        ...linkCardSdk,
+        ...spelledCards.sdk,
         loadRepositoryLinks: async () => resolverRealm.MetabrowserRepositoryLinks,
         repository: headRepository,
         sourceKind: () => "git_revision",

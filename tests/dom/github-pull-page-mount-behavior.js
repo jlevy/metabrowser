@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { linkCardRegistration } = require("./sdk-sandbox.js");
 const root = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(root, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
@@ -267,8 +268,24 @@ const comparisonPrefetchUrl = pathToFileURL(
 ).href;
 
 /**
+ * The SDK's registration of a text's links for their cards (`previewLink`, `forgetPreview`,
+ * `disposePreviews` in plugin-sdk-views.js), which the view helpers give every page, for a
+ * mount whose SDK does not record its own: the SDK's own, as a page has it before a rest
+ * loads the card.
+ *
+ * @param {Record<string, unknown> | undefined} sdk
+ */
+function withLinkCards(sdk) {
+  if (sdk && typeof sdk.disposePreviews !== "function") {
+    Object.assign(sdk, linkCardRegistration());
+  }
+  return sdk;
+}
+
+/**
  * The pull page module at *url*, whose `mountPullPage` mounts a fresh load of the page, its
- * document's keep empty, and whose `revisitPullPage` mounts it again in the same document.
+ * document's keep empty, and whose `revisitPullPage` mounts it again in the same document,
+ * each with the SDK's link card registration where the mount gives none (`withLinkCards`).
  *
  * @param {string} url
  * @returns {Promise<Record<string, any>>}
@@ -278,11 +295,12 @@ async function importPage(url) {
   const { documentComparisons } = await import(comparisonPrefetchUrl);
   return {
     ...page,
-    mountPullPage(...args) {
+    mountPullPage(container, options, sdk, ...rest) {
       documentComparisons.clear();
-      return page.mountPullPage(...args);
+      return page.mountPullPage(container, options, withLinkCards(sdk), ...rest);
     },
-    revisitPullPage: page.mountPullPage,
+    revisitPullPage: (container, options, sdk, ...rest) =>
+      page.mountPullPage(container, options, withLinkCards(sdk), ...rest),
   };
 }
 
@@ -817,20 +835,20 @@ async function textLinks() {
     const file = path.join(root, "src/metabrowser/static", name);
     vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: file });
   }
-  // The link cards (static/link-previews.js), which the bundle loads after the resolver: a
-  // recording stand-in in the resolver's realm, which the page reaches through its runtime.
-  // A card is its link's, by identity, with its root and target; a disposal forgets its
-  // root's.
+  // The link cards, which the page and the resolver register each link for through the SDK
+  // (`metabrowser.previewLink`, static/plugin-sdk-views.js): a recording stand-in, spread
+  // into the SDK the page is mounted with. A card is its link's, by identity, with its root
+  // and target; a disposal forgets its root's.
   const cards = new Map();
-  sandbox.MetabrowserLinkPreviews = {
-    register(root, anchor, target) {
+  const cardSdk = {
+    previewLink(root, anchor, target) {
       cards.set(anchor, { root, target });
       return true;
     },
-    forget(anchor) {
+    forgetPreview(anchor) {
       cards.delete(anchor);
     },
-    dispose(root) {
+    disposePreviews(root) {
       for (const [anchor, card] of cards) {
         if (card.root === root) {
           cards.delete(anchor);
@@ -1001,6 +1019,7 @@ async function textLinks() {
         },
         // As static/plugin-sdk-views.js answers it on a repository's page: the resolver.
         loadRepositoryLinks: async () => links,
+        ...cardSdk,
         loadKpressAssets: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},

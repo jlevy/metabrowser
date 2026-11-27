@@ -34,6 +34,9 @@ with the body’s article as its root, the link to the served branch’s file sa
 opens the served working tree, and the link to another site has the card that says where
 it goes; no link has a tooltip of its own (`cards`), and when another page has the pane,
 the panel puts the body’s cards away.
+In a repository with no GitHub identity, whose page asks for no resolver, the same
+body’s links stay as written, and each, the ones to github.com among them, has the card
+that says where it goes, registered through the SDK (`metabrowser.previewLink`).
 
 A body the route will not render shows as written: one too long, with a notice that is
 not asked for again, and one past the renderer’s deadline, with a notice that is.
@@ -465,6 +468,78 @@ $ node tests/dom/git-commit-body-session.js
       "ccccccc"
     ]
   },
+  "a body's links in a repository with no GitHub identity": {
+    "waiting": true,
+    "requests": [
+      "/api/git/commit-markdown/8888888888888888888888888888888888888880"
+    ],
+    "assets": [
+      "inert-html"
+    ],
+    "box": {
+      "div.git-commit-body.page-card.chrome-prose": [
+        {
+          "div.metabrowser-kpress-host": [
+            {
+              "article.kpress.kpress-inert": [
+                {
+                  "div.kpress-prose": [
+                    {
+                      "p": [
+                        "See ",
+                        {
+                          "a[href=https://github.com/acme/widgets/pull/12 target=_blank rel=noopener noreferrer data-decorated=external]": "the pull request"
+                        },
+                        ", ",
+                        {
+                          "a[href=https://github.com/acme/widgets/commit/9999999999999999999999999999999999999999 target=_blank rel=noopener noreferrer data-decorated=external]": "a commit"
+                        },
+                        ", ",
+                        {
+                          "a[href=https://github.com/acme/widgets/pulls target=_blank rel=noopener noreferrer data-decorated=external]": "the pull requests"
+                        },
+                        ", ",
+                        {
+                          "a[href=https://github.com/acme/widgets/blob/main/docs/guide.md target=_blank rel=noopener noreferrer data-decorated=external]": "the guide"
+                        },
+                        ", ",
+                        {
+                          "a": "a relative one"
+                        },
+                        ", and ",
+                        {
+                          "a[href=https://example.com/doc target=_blank rel=noopener noreferrer data-decorated=external]": "another site"
+                        },
+                        "."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "warnings": [],
+    "kept": [
+      "aaaaaaa",
+      "3333333",
+      "4444444",
+      "5555555",
+      "bbbbbbb",
+      "ccccccc",
+      "8888888"
+    ],
+    "cards": [
+      "the pull request: external",
+      "a commit: external",
+      "the pull requests: external",
+      "the guide: external",
+      "a relative one: none",
+      "another site: external"
+    ]
+  },
   "a body's links into the served repository": {
     "waiting": true,
     "requests": [
@@ -527,6 +602,7 @@ $ node tests/dom/git-commit-body-session.js
       "5555555",
       "bbbbbbb",
       "ccccccc",
+      "8888888",
       "7777777"
     ],
     "clicks": [
@@ -563,6 +639,7 @@ $ node tests/dom/git-commit-body-session.js
       "5555555",
       "bbbbbbb",
       "ccccccc",
+      "8888888",
       "7777777"
     ]
   },

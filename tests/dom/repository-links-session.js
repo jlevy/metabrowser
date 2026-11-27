@@ -14,9 +14,10 @@
 // tests/test_repository_links_js.py holds its in-app addresses to the server's route
 // grammar and its github.com addresses to the server's URL reducer.
 //
-// The link cards (static/link-previews.js), which the bundle loads after the resolver, are
-// a recording stand-in here: each run prints what `enhance` gave a card, with which root and
-// target, and took one from, and what the runtime's `disposePreviews` put away (`previews`).
+// The link cards, which `enhance` registers each link for through the SDK it is given
+// (`metabrowser.previewLink` and `forgetPreview`, static/plugin-sdk-views.js), are a
+// recording stand-in here: each run prints what `enhance` gave a card, with which root and
+// target, and took one from (`previews`).
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -44,13 +45,12 @@ const described = (target) => {
   return `${target.kind} ${target.kind === "external" ? target.url : target.href}`;
 };
 const cards = {
-  register(root, anchor, target, _mb, options = {}) {
+  previewLink(root, anchor, target, options = {}) {
     const title = options.authorTitle ? ` titled ${JSON.stringify(options.authorTitle)}` : "";
     previews.push(`register ${named(anchor)} in ${named(root)}: ${described(target)}${title}`);
     return true;
   },
-  forget: (anchor) => previews.push(`forget ${named(anchor)}`),
-  dispose: (root) => previews.push(`dispose ${named(root)}`),
+  forgetPreview: (anchor) => previews.push(`forget ${named(anchor)}`),
 };
 
 const SERVED = "a".repeat(40);
@@ -354,12 +354,10 @@ function enhanced(context, sourceKind, options) {
     names.set(link, name);
   }
   previews.length = 0;
-  sandbox.MetabrowserLinkPreviews = options.cards === false ? undefined : cards;
   const mb = {
     repository: context,
     sourceKind: () => sourceKind,
-    // The page's one tooltip, which draws a link's card.
-    tooltip: { show() {}, hide() {} },
+    ...cards,
     navigation: {
       href: (target) =>
         `/view/${target.path}${target.query ? `?${target.query}` : ""}${target.fragment ? `#${target.fragment}` : ""}`,
@@ -391,8 +389,6 @@ function enhanced(context, sourceKind, options) {
       listeners: link.listeners(),
     };
   }
-  // The page lets the text go.
-  links.disposePreviews(root);
   return {
     changed,
     anchors: Object.fromEntries(
@@ -487,9 +483,6 @@ const runs = {
   "a commit's message, which has no text context": enhanced(textContext, "filesystem", {}),
   "a commit's message before the shell's tabs have loaded": enhanced(textContext, "filesystem", {
     shell: false,
-  }),
-  "a text on a page whose link cards have not loaded": enhanced(textContext, "filesystem", {
-    cards: false,
   }),
   "a page with no repository": enhanced(null, "filesystem", { text: { head: SERVED } }),
 };

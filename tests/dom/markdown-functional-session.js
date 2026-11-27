@@ -2,7 +2,7 @@
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { createSdkSandbox } = require("./sdk-sandbox.js");
+const { createSdkSandbox, linkCardRegistration } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const markdownRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
@@ -317,14 +317,12 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
-  // The resolver's runtime, which a page with a repository identity loads beside the render
-  // (`metabrowser.loadRepositoryLinks`), and through which each link the document opens here
-  // has its link card (static/link-previews.js): a stand-in that reads no github.com link
-  // and records each card, by its link, with its root and target.
+  // The SDK, through which each link the document opens here has its link card
+  // (`metabrowser.previewLink`, static/plugin-sdk-views.js), on a page with no resolver: a
+  // stand-in that records each card, by its link, with its root and target.
   const linkCards = new Map();
   const disposedRoots = [];
-  const repositoryLinks = {
-    localize: () => null,
+  const cardRegistration = {
     previewLink(root, anchor, target) {
       linkCards.set(anchor, { root, target });
       return true;
@@ -371,17 +369,11 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
             return load();
           },
         },
-        // A page on a GitHub repository, the only one `loadRepositoryLinks` answers a
-        // runtime on (plugin-sdk-views.js), whose links the stand-in reads none of.
-        repository: {
-          host: "github.com",
-          owner: "octo",
-          name: "papers",
-          branch: "main",
-          revision: "a".repeat(40),
-          served_prefix: "",
-        },
-        loadRepositoryLinks: async () => repositoryLinks,
+        // A plain folder's page, with no GitHub identity, which `loadRepositoryLinks`
+        // answers with no resolver (plugin-sdk-views.js): its links have their cards still.
+        repository: null,
+        loadRepositoryLinks: async () => null,
+        ...cardRegistration,
       },
     );
     await handle.ready;
@@ -796,6 +788,7 @@ async function pdfEmbedSession(renderedMarkdown, wikiParser, printReady) {
         },
       },
       repository: null,
+      ...linkCardRegistration(),
     },
   );
   await rootMount.ready;

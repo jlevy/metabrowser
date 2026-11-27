@@ -2064,6 +2064,22 @@ type MetabrowserSdk = {
    * Later calls can use the resolver after it arrives (static/plugin-sdk-views.js).
    */
   loadRepositoryLinks(): Promise<MetabrowserRepositoryLinksRuntime | null>;
+  /**
+   * Give a link of *root* that opens *target*, a page here or one on another site, its link
+   * card (static/link-previews.js, loaded at the page's first rest on a link registered
+   * here); *authorTitle* is the title its author gave it, which the surface takes off the link
+   * when this answers true. Whether it has one (static/plugin-sdk-views.js).
+   */
+  previewLink(
+    root: Element,
+    anchor: Element,
+    target: MetabrowserLinkPreviewTarget,
+    options?: { authorTitle?: string | null },
+  ): boolean;
+  /** The link has no card any more. */
+  forgetPreview(anchor: Element): void;
+  /** Forget every card of *root*'s links, and put away the one it shows. */
+  disposePreviews(root: Element): void;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   /**
@@ -3977,32 +3993,16 @@ declare global {
         views?: boolean;
       },
     ): MetabrowserRepositoryLinkTarget | null;
-    /** Each link it reads has its link card, registered with *root*. */
+    /** Each link it reads has its link card, registered with *root* through *mb*. */
     enhance(
       root: Element,
-      mb: MetabrowserLinkCardSdk,
+      mb: MetabrowserRepositoryLinksSdk,
       options?: {
         text?: MetabrowserRepositoryTextContext;
         open?: (route: Extract<MetabrowserRepositoryLinkTarget, { kind: "route" }>) => boolean;
         views?: boolean;
       },
     ): number;
-    /**
-     * Give a link of *root* that opens *target* here its link card (static/link-previews.js);
-     * *authorTitle* is the title its author gave it, which the surface took off the link.
-     * Whether it has one; false where the cards are not loaded.
-     */
-    previewLink(
-      root: Element,
-      anchor: Element,
-      target: MetabrowserLinkPreviewTarget,
-      mb: MetabrowserLinkCardSdk,
-      options?: { authorTitle?: string | null },
-    ): boolean;
-    /** The link has no card any more. */
-    forgetPreview(anchor: Element): void;
-    /** Forget every card of *root*'s links, and put away the one it shows. */
-    disposePreviews(root: Element): void;
     fileUrl(
       context: MetabrowserRepositoryContext | null | undefined,
       revision: string,
@@ -4025,8 +4025,17 @@ declare global {
    * wire>[#fragment]` address, or a page on another site, by its address.
    */
   /**
-   * What a link's card is read and drawn with: the SDK members the resolver's `enhance`, the
-   * card's registry, and its providers call, which the surface that drew the link passes.
+   * What the resolver's `enhance` reads a text's links with, opens them through, and gives
+   * each its card through, which the surface that drew the text passes.
+   */
+  type MetabrowserRepositoryLinksSdk = Pick<
+    MetabrowserPublicSdk,
+    "forgetPreview" | "navigation" | "previewLink" | "repository" | "sourceKind"
+  >;
+
+  /**
+   * What a link's card is read and drawn with: the SDK members the card's registry and its
+   * providers call, the page's own SDK, which registered the link (`previewLink`).
    */
   type MetabrowserLinkCardSdk = Pick<
     MetabrowserPublicSdk,
@@ -4102,7 +4111,10 @@ declare global {
     ): unknown;
   }>;
 
-  /** static/link-previews.js, in the `repository-links` on-demand bundle. */
+  /**
+   * static/link-previews.js, the first script of the `link-previews` on-demand bundle, which
+   * the SDK loads at a page's first rest on a link it registered (static/plugin-sdk-views.js).
+   */
   type MetabrowserLinkPreviewsRuntime = Readonly<{
     /** How long the pointer rests on a link before its summary and prefetch start. */
     INTENT_MS: number;
@@ -4115,6 +4127,11 @@ declare global {
       mb: MetabrowserLinkCardSdk,
       options?: { authorTitle?: string | null },
     ): boolean;
+    /**
+     * The pointer has rested on a registered link for *elapsed* ms since before the module
+     * loaded; *ended*, the reader's press or a focus ended that rest meanwhile.
+     */
+    rest(anchor: Element, options?: { elapsed?: number; ended?: boolean }): void;
     forget(anchor: Element): void;
     dispose(root: Element): void;
     provide(

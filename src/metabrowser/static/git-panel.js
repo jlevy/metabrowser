@@ -1671,13 +1671,19 @@
   function unlinkCommitBodies(keep = null) {
     for (const article of linkedBodies) {
       if (keep === null || !keep.contains(article)) {
-        window.MetabrowserRepositoryLinks?.disposePreviews(article);
+        sdk()?.disposePreviews(article);
         linkedBodies.delete(article);
       }
     }
   }
 
   /**
+   * Make *article*'s links open what *links* says they open, give each its link card,
+   * registered with the article, which its page puts away with it (`unlinkCommitBodies`),
+   * and mark each outside link. Without a resolver, as on a repository with no GitHub
+   * identity, every link is the one the message wrote, and each to another site has the
+   * card that says where it goes; one into the repository on github.com is such a link.
+   *
    * @param {Element} article
    * @param {MetabrowserRepositoryLinksRuntime | null} links
    * @param {boolean} views
@@ -1685,9 +1691,16 @@
   function linkCommitProse(article, links, views) {
     const pluginSdk = sdk();
     if (pluginSdk && links) {
-      // Each link that opens here has its link card, registered with the body's article,
-      // which its page puts away with it (`unlinkCommitBodies`).
       links.enhance(article, pluginSdk, { views });
+    } else if (pluginSdk) {
+      for (const anchor of article.querySelectorAll("a[href]")) {
+        pluginSdk.previewLink(article, anchor, {
+          kind: "external",
+          url: anchor.getAttribute("href") ?? "",
+        });
+      }
+    }
+    if (pluginSdk) {
       linkedBodies.add(article);
     }
     for (const anchor of article.querySelectorAll("a[href]")) {

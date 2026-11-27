@@ -2825,8 +2825,11 @@
 
   // Limit how long a view waits to localize links before rendering. In nine cold loads
   // of a checkout's README from 127.0.0.1 in headless Chromium 152 on 2026-11-26, the asset
-  // took 4 to 25 ms and always arrived before the Markdown request started. The limit
-  // lets every surface render if that optional request stalls.
+  // took 4 to 25 ms and always arrived before the Markdown request started. On 2026-11-27,
+  // with the link card in a bundle of its own, 40 cold loads of a checkout's Markdown file
+  // in headless Chrome 158 waited medians of 23.1 and 24.7 ms, at most 31.6 (server.py,
+  // `repository-links`, has the measurement). The limit lets every surface render if that
+  // optional request stalls.
   const REPOSITORY_LINKS_WAIT_MS = 250;
 
   /** @type {Promise<MetabrowserRepositoryLinksRuntime | null> | null} */
@@ -2861,6 +2864,305 @@
         .finally(() => clearTimeout(deadline));
     });
     return repositoryLinksWait;
+  }
+
+  // ── Link cards, until their bundle loads ──────────────────────
+  //
+  // Every link in authored text has its link card on every page, whatever repository it
+  // serves (docs/design-system.md, "Tooltips on Links"). The card, its registry, and its
+  // providers are the `link-previews` bundle, code that runs only once a pointer rests on a
+  // registered link, so the page loads it at the first such rest (server.py has the
+  // measurement). Until then a surface's links are kept here by identity, with one
+  // delegated listener per root. The first `pointerover` of one, not from a touch, loads the
+  // bundle, whose registry then takes every link and the rest that load began, as old as the
+  // load took (`rest` in static/link-previews.js), so that rest shows its card; a press or a
+  // focus meanwhile ends it. From then on each call goes straight to the registry. A bundle
+  // that does not load leaves every link as it was, its author's title given back, with one
+  // warning. tests/dom/link-preview-loader-session.js runs this file whole.
+
+  const LINK_PREVIEWS_BUNDLE = "link-previews";
+
+  /**
+   * @typedef {{target: MetabrowserLinkPreviewTarget, options: {authorTitle?: string | null}}} PendingLink
+   * @typedef {{links: Map<Element, PendingLink>, over: (event: Event) => void, out: (event: Event) => void}} PendingRoot
+   * @typedef {{root: Element, anchor: Element, since: number, ended: boolean}} PendingRest
+   */
+
+  /** @type {"waiting" | "loading" | "loaded" | "failed"} */
+  let linkCards = "waiting";
+  /** Each root's links, and its listeners, until the bundle loads. @type {Map<Element, PendingRoot>} */
+  const pendingRoots = new Map();
+  /** @type {WeakMap<Element, Element>} */
+  const pendingRootOf = new WeakMap();
+  /** The pointer's rest on a registered link while the bundle loads. @type {PendingRest | null} */
+  let pendingRest = null;
+
+  function linkCardRegistry() {
+    return linkCards === "loaded" ? (global.MetabrowserLinkPreviews ?? null) : null;
+  }
+
+  /**
+   * Give *anchor*, a link of *root* that opens *target*, its link card, in place of any it
+   * had: a page here (a `view` or `route` answer, or a rendered diff's `view-head` link), or
+   * one on another site (`{kind: "external", url}`). *root* is the element whose cards its
+   * surface puts away together (`disposePreviews`). The surface takes *authorTitle*, its
+   * author's title, off the link when this answers that the link has a card: before the
+   * bundle loads, whether the target is one a card is about (`namesLinkCard`). A link the
+   * registry then turns down, or every link when it cannot load, gets that title back.
+   *
+   * @param {Element} root
+   * @param {Element} anchor
+   * @param {MetabrowserLinkPreviewTarget} target
+   * @param {{authorTitle?: string | null}} [options]
+   * @returns {boolean}
+   */
+  function previewLink(root, anchor, target, options = {}) {
+    const registry = linkCardRegistry();
+    if (registry !== null) {
+      return registry.register(root, anchor, target, mb, options);
+    }
+    if (linkCards === "failed" || !namesLinkCard(target)) {
+      forgetPreview(anchor);
+      return false;
+    }
+    const previous = pendingRootOf.get(anchor);
+    if (previous !== undefined && previous !== root) {
+      pendingRoots.get(previous)?.links.delete(anchor);
+      if (pendingRest?.anchor === anchor) {
+        pendingRest.root = root;
+      }
+    }
+    pendingRootOf.set(anchor, root);
+    listenBeforeCards(root).links.set(anchor, { target, options });
+    return true;
+  }
+
+  /** *anchor* has no card any more. @param {Element} anchor */
+  function forgetPreview(anchor) {
+    const registry = linkCardRegistry();
+    if (registry !== null) {
+      registry.forget(anchor);
+      return;
+    }
+    const root = pendingRootOf.get(anchor);
+    if (root === undefined) {
+      return;
+    }
+    pendingRootOf.delete(anchor);
+    pendingRoots.get(root)?.links.delete(anchor);
+    if (pendingRest?.anchor === anchor) {
+      pendingRest = null;
+    }
+  }
+
+  /**
+   * Forget the cards of *root*'s links, and put away the one it shows and no other
+   * surface's, as a surface does with a text it replaces or disposes.
+   *
+   * @param {Element} root
+   */
+  function disposePreviews(root) {
+    const registry = linkCardRegistry();
+    if (registry !== null) {
+      registry.dispose(root);
+      return;
+    }
+    const state = pendingRoots.get(root);
+    if (state === undefined) {
+      return;
+    }
+    pendingRoots.delete(root);
+    root.removeEventListener("pointerover", state.over);
+    root.removeEventListener("pointerout", state.out);
+    for (const anchor of state.links.keys()) {
+      pendingRootOf.delete(anchor);
+    }
+    if (pendingRest?.root === root) {
+      pendingRest = null;
+    }
+  }
+
+  /**
+   * Whether a card is about *target*, as far as the registry's reading (`subject` in
+   * static/link-previews.js) can be told without it: an in-app answer, or an `http` or
+   * `https` address with a host, so a mail link has none.
+   *
+   * @param {unknown} target
+   */
+  function namesLinkCard(target) {
+    if (!target || typeof target !== "object") {
+      return false;
+    }
+    const { kind, url } = /** @type {{kind?: unknown, url?: unknown}} */ (target);
+    if (kind === "view" || kind === "view-head" || kind === "route") {
+      return true;
+    }
+    if (kind !== "external" || typeof url !== "string") {
+      return false;
+    }
+    try {
+      const scheme = global.location?.protocol === "http:" ? "http:" : "https:";
+      const parsed = new URL(url.startsWith("//") ? `${scheme}${url}` : url);
+      return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.host !== "";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  /** @param {Element} root @returns {PendingRoot} */
+  function listenBeforeCards(root) {
+    let state = pendingRoots.get(root);
+    if (state === undefined) {
+      state = {
+        links: new Map(),
+        over: (event) => pointerOverBeforeCards(root, event),
+        out: (event) => pointerOutBeforeCards(root, event),
+      };
+      pendingRoots.set(root, state);
+      root.addEventListener("pointerover", state.over);
+      root.addEventListener("pointerout", state.out);
+    }
+    return state;
+  }
+
+  /**
+   * The registered link of *root* at or above *node*, or null.
+   * @param {Element} root
+   * @param {EventTarget | null} node
+   * @returns {Element | null}
+   */
+  function pendingAnchorOf(root, node) {
+    const links = pendingRoots.get(root)?.links;
+    for (let at = /** @type {Node | null} */ (node); links && at && at !== root; ) {
+      if (links.has(/** @type {Element} */ (at))) {
+        return /** @type {Element} */ (at);
+      }
+      at = at.parentNode;
+    }
+    return null;
+  }
+
+  /**
+   * A rest begins on the registered link the pointer moved onto, and loads the bundle; a
+   * touch is a tap that opens the link.
+   * @param {Element} root
+   * @param {Event} event
+   */
+  function pointerOverBeforeCards(root, event) {
+    if (/** @type {PointerEvent} */ (event).pointerType === "touch") {
+      return;
+    }
+    const anchor = pendingAnchorOf(root, event.target);
+    if (anchor === null || pendingRest?.anchor === anchor) {
+      return;
+    }
+    pendingRest = { root, anchor, since: global.performance.now(), ended: false };
+    loadLinkCards();
+  }
+
+  /**
+   * The rest ends when the pointer leaves its link for anything outside it.
+   * @param {Element} root
+   * @param {Event} event
+   */
+  function pointerOutBeforeCards(root, event) {
+    const rest = pendingRest;
+    if (rest === null || rest.root !== root) {
+      return;
+    }
+    const related = /** @type {PointerEvent} */ (event).relatedTarget;
+    if (related !== null && rest.anchor.contains(/** @type {Node} */ (related))) {
+      return;
+    }
+    if (pendingAnchorOf(root, event.target) === rest.anchor) {
+      pendingRest = null;
+    }
+  }
+
+  /** A press or a focus while the bundle loads: that rest shows no card. */
+  function endRestBeforeCards() {
+    if (pendingRest !== null) {
+      pendingRest.ended = true;
+    }
+  }
+
+  /** Load the bundle, once, and hand it every link registered here. */
+  function loadLinkCards() {
+    if (linkCards !== "waiting") {
+      return;
+    }
+    linkCards = "loading";
+    const page = global.document;
+    page.addEventListener("pointerdown", endRestBeforeCards, true);
+    page.addEventListener("focusin", endRestBeforeCards, true);
+    const listened = () => {
+      page.removeEventListener("pointerdown", endRestBeforeCards, true);
+      page.removeEventListener("focusin", endRestBeforeCards, true);
+    };
+    void Promise.resolve()
+      .then(() => mb.ensureAsset(LINK_PREVIEWS_BUNDLE))
+      .then(() => {
+        const registry = global.MetabrowserLinkPreviews;
+        if (registry === undefined) {
+          throw new Error(`the ${LINK_PREVIEWS_BUNDLE} bundle installed no registry`);
+        }
+        return registry;
+      })
+      .then(
+        (registry) => {
+          listened();
+          handOverLinkCards(registry);
+        },
+        (error) => {
+          listened();
+          linkCards = "failed";
+          pendingRest = null;
+          console.warn("metabrowser: link cards are unavailable", error);
+          for (const root of Array.from(pendingRoots.keys())) {
+            for (const [anchor, link] of pendingRoots.get(root)?.links ?? []) {
+              giveTitleBack(anchor, link);
+            }
+            disposePreviews(root);
+          }
+        },
+      );
+  }
+
+  /** @param {MetabrowserLinkPreviewsRuntime} registry */
+  function handOverLinkCards(registry) {
+    const rest = pendingRest;
+    const roots = Array.from(pendingRoots);
+    pendingRest = null;
+    pendingRoots.clear();
+    linkCards = "loaded";
+    for (const [root, state] of roots) {
+      root.removeEventListener("pointerover", state.over);
+      root.removeEventListener("pointerout", state.out);
+      for (const [anchor, link] of state.links) {
+        pendingRootOf.delete(anchor);
+        if (!registry.register(root, anchor, link.target, mb, link.options)) {
+          giveTitleBack(anchor, link);
+        }
+      }
+    }
+    if (rest !== null) {
+      registry.rest(rest.anchor, {
+        elapsed: global.performance.now() - rest.since,
+        ended: rest.ended,
+      });
+    }
+  }
+
+  /**
+   * A link with no card after all keeps its author's title, which its surface took off it.
+   * @param {Element} anchor
+   * @param {PendingLink} link
+   */
+  function giveTitleBack(anchor, link) {
+    const title = link.options.authorTitle;
+    if (typeof title === "string" && title !== "" && !anchor.hasAttribute("title")) {
+      anchor.setAttribute("title", title);
+    }
   }
 
   function loadChangedFilesTree() {
@@ -2901,11 +3203,14 @@
     changeSizeLineNodes,
     counterpartButton,
     decorateExternalLink,
+    disposePreviews,
     externalLinkMenuItems,
+    forgetPreview,
     loadChangedFilesTree,
     loadRepositoryLinks,
     mountCounterpart,
     prefetchCounterpart,
+    previewLink,
     refChipHtml,
     refChip,
     mergeRefs,

@@ -69,15 +69,15 @@ const authorTitles = new WeakMap();
  * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner, repositoryLinks?: MetabrowserRepositoryLinksRuntime | null}=} options
  *   `repositoryLinks` is what a link into the served repository opens
  *   (`metabrowser.loadRepositoryLinks`), which `rendered.js` loads beside the render; without
- *   it, such a link stays as written. It also gives each link the document opens in
- *   Metabrowser its link card, the tooltip that says what the link opens
- *   (static/link-previews.js), registered with *container*, whose cards `dispose` puts
- *   away: a link to a file or folder by its path, a wiki link, a PDF's View, and a
- *   `github.com` link this resolver opens here; and each link to another site its card
- *   that says where it goes. A link to a place in the same document has none: it opens no
- *   other page. A title the author gave a link with a card moves into its card, so the
- *   reader never sees two tooltips; a link with none keeps its title, and, without the
- *   runtime, so does every link.
+ *   it, as on a page with no GitHub identity, such a link stays as written.
+ *   Each link the document opens in Metabrowser has its link card, the tooltip that says
+ *   what the link opens, on every page, with or without that runtime: registered through the
+ *   SDK (`mb.previewLink`, static/plugin-sdk-views.js) with *container*, whose cards
+ *   `dispose` puts away: a link to a file or folder by its path, a wiki link, a PDF's View,
+ *   and a `github.com` link the resolver opens here; and so has each link to another site,
+ *   whose card says where it goes. A link to a place in the same document has none: it opens
+ *   no other page. A title the author gave a link with a card moves into its card, so the
+ *   reader never sees two tooltips; a link with none keeps its title.
  *   `rawVersions` is the render's `raw_versions`: the version of each served file it
  *   embeds, by identity, which that file's address carries.
  *   `pagePath` is the path of the page that shows this document as its own, when that is
@@ -131,8 +131,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
    * link card, saying the title its author gave it, which then leaves the link: its own, or
    * else an image's inside it, as `[![d](d.png "Its title")](x.md)` writes one. Every title
    * inside the link leaves it too, since each would be a second tooltip over the card. A
-   * link whose card cannot be drawn, as on a page with no resolver, keeps its titles, and a
-   * download, which saves the file rather than opening its page, has none.
+   * link the SDK gives no card, such as a mail link, keeps its titles, and a download, which
+   * saves the file rather than opening its page, has none.
    *
    * @param {Element} anchor
    * @param {MetabrowserLinkPreviewTarget} target
@@ -147,7 +147,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       authorTitles.get(anchor) ??
       inner.map((element) => element.getAttribute("title")).find(Boolean) ??
       null;
-    if (repositoryLinks?.previewLink(container, anchor, target, mb, { authorTitle }) === true) {
+    if (mb.previewLink(container, anchor, target, { authorTitle })) {
       if (authorTitle !== null) {
         authorTitles.set(anchor, authorTitle);
       }
@@ -205,7 +205,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             // pass decides; otherwise a click before the first continuation can
             // navigate to a transient, incorrect target.
             internalTargets.delete(anchor);
-            repositoryLinks?.forgetPreview(anchor);
+            mb.forgetPreview(anchor);
             disableTarget(anchor, "href", "pending", "published-route-pending");
             reconciliationScope.published(
               { authoredTarget, resolvedPath: resolved.path },
@@ -262,7 +262,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   function applyInternalAnchor(anchor, authoredTarget, resolved, adapted) {
     if (adapted && adapted.status !== "internal") {
       internalTargets.delete(anchor);
-      repositoryLinks?.forgetPreview(anchor);
+      mb.forgetPreview(anchor);
       disableTarget(anchor, "href", adapted.status, adapted.reason);
       return;
     }
@@ -476,7 +476,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       disposed = true;
       // Its links' cards, and the one up on any of them (docs/design-system.md, "A Surface
       // Puts Away Only Its Own Tooltip"); a transclusion's own enhancer puts away its own.
-      repositoryLinks?.disposePreviews(container);
+      mb.disposePreviews(container);
       wiki.dispose();
       for (const embed of pdfEmbeds) {
         embed.dispose();

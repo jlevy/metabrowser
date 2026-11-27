@@ -19,9 +19,7 @@ import re
 import subprocess
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
-from devtools import check_startup_scripts
 from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -349,16 +347,3 @@ def test_a_files_subject_keeps_the_resolvers_own_spelling() -> None:
     }
     assert subjects["a head link with an escaped anchor"]["target"]["fragment"] == "über-uns"
     assert subjects["a head link whose anchor does not decode"] is None
-
-
-def test_the_card_loads_with_the_resolver_and_is_no_startup_script() -> None:
-    html = check_startup_scripts.render_folder_shell()
-    bundles = json.loads(
-        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
-    )
-    names = [urlsplit(entry["src"]).path for entry in bundles["repository-links"]]
-    resolver = names.index("/static/repository-links.js")
-    assert names[resolver + 1] == "/static/link-previews.js"
-    entry = bundles["repository-links"][resolver + 1]
-    assert entry["provides"] == "MetabrowserLinkPreviews"
-    assert "/static/link-previews.js" not in check_startup_scripts.startup_script_paths(html)
