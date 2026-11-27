@@ -24,8 +24,9 @@
 //    else when the pointer moves within the link.
 // 4. That moving the pointer away puts it away.
 //
-// Then what an outside link shows (OUTSIDE_LINK_CARD: none, today), that a Tab puts a card
-// away, and that focus brought by Tab and Shift-Tab shows none; and, last, that moving the
+// Before the catalog holds the pull request, a rest on its link, whose card has no title
+// yet, and which a later rest gains, since the card keeps no answer of nothing. Then that an
+// outside link's card says where it goes (OUTSIDE_LINK_CARD), that a Tab puts a card away, and that focus brought by Tab and Shift-Tab shows none; and, last, that moving the
 // pointer straight from one link to the next shows the next link's card, on its link, in
 // the same window, which the shell's bug H1 broke (KNOWN_BUG_H1). Throughout, no link with
 // a card carries a native `title`, and the page throws nothing, logs no error, and has no
@@ -59,11 +60,10 @@ const PULLS = "Pull requests";
 // Chrome's own request for the page's icon, which the app does not name
 // (docs/design-system-icons.md, "Known Departures").
 const BROWSERS_OWN = new Set(["/favicon.ico"]);
-// What an outside link's card says, line by line: nothing, so no card, as the design has it
-// today. The next change gives an outside link a one-line card saying where it goes, such
-// as "Opens example.com in a new tab"; it puts that line here, and the outside link's step
-// then checks the card comes up saying it.
-const OUTSIDE_LINK_CARD = [];
+// The document's link to another site, whose card is one line saying where it goes, as the
+// card's own renderer draws it for that address and for whether the link opens a new tab
+// (`card` in static/link-previews.js, read in the page as OUTSIDE_LINK_CARD below).
+const OUTSIDE_LINK = { text: "Another site", url: "https://example.com/elsewhere" };
 // The shell's bug H1: a pointer that moved straight from one link with a card to another
 // within the tooltip's fade left the first link's card showing. static/app.js fixed it
 // (`tooltipShown`), so this is false and the step that moves so checks the second link's
@@ -250,17 +250,7 @@ try {
       typeof window.MetabrowserGitPanel?.commitSummary === "function"`,
     "the document's links and the card",
   );
-  // The catalog holds the pull request, as it does once the page's first refresh is in: a
-  // rest before then would find no title, and keep that answer for the page.
-  await waitFor(
-    `(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const answer = await (await fetch("/api/plugin/github/pulls?q=${expected.pull}")).json();
-      return (answer.rows ?? []).some((row) => row.number === ${expected.pull} && row.title);
-    })()`,
-    "the catalog holds the pull request",
-  );
-  phase("ready");
+  phase("enhanced");
 
   const constants = await evaluate(`({
     appear: window.TOOLTIP_APPEAR_DELAY,
@@ -344,6 +334,27 @@ try {
     return evaluate(READ);
   };
 
+  // A rest on the pull request before its catalog is known to hold it, as soon as the page
+  // has its links: a card with no title, unless the catalog filled first. The card keeps no
+  // answer, a provider keeps none of a catalog not yet whole, and so the rests below, once
+  // the catalog holds the pull request, say its title (review H4).
+  const early = await rest(`Pull request ${expected.pull}`);
+  process.stderr.write(
+    `a rest before the catalog was known to hold #${expected.pull}: ` +
+      `${early?.lines.map((line) => line.text).join(" | ") ?? "no card"}\n`,
+  );
+  await away();
+  // The catalog holds the pull request, as it does once the page's first refresh is in.
+  await waitFor(
+    `(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const answer = await (await fetch("/api/plugin/github/pulls?q=${expected.pull}")).json();
+      return (answer.rows ?? []).some((row) => row.number === ${expected.pull} && row.title);
+    })()`,
+    "the catalog holds the pull request",
+  );
+  phase("ready");
+
   /** The card is where its link is: centered on it, below, or above without room below. */
   const placed = (label, card) => {
     const { tip, link, viewport } = card;
@@ -404,7 +415,8 @@ try {
     {
       text: "The guide",
       identity: viewPath,
-      lines: [expected.authorTitle],
+      // The author's own words, quoted as theirs, after the path the app names.
+      lines: [`“${expected.authorTitle}”`],
       first: "at once",
     },
     {
@@ -550,14 +562,31 @@ try {
   );
 
   // An outside link, back in view: the pointer rests as long as any card would take, and
-  // its card is OUTSIDE_LINK_CARD's, which today is none.
+  // its card is OUTSIDE_LINK_CARD, the renderer's own lines for its address and its tab.
   await away();
   await evaluate(`(() => {
-    window.__linkCardProbe.reset("Another site");
+    window.__linkCardProbe.reset(${JSON.stringify(OUTSIDE_LINK.text)});
     window.__linkCardProbe.link.scrollIntoView({ block: "center" });
   })()`);
   await frames();
-  const outside = await across("Another site", 0.5);
+  const OUTSIDE_LINK_CARD = await evaluate(`(() => {
+    const previews = window.MetabrowserLinkPreviews;
+    const link = window.__linkCardProbe.link;
+    const html = previews.card(
+      previews.subject({ kind: "external", url: ${JSON.stringify(OUTSIDE_LINK.url)} }),
+      null,
+      { linkText: link.textContent, newTab: link.getAttribute("target") === "_blank" },
+    );
+    const box = document.createElement("div");
+    box.innerHTML = html;
+    return [...box.children].map((line) => line.textContent.replace(/\\s+/g, " ").trim());
+  })()`);
+  check(
+    "the renderer's card for the outside link is one line naming its host",
+    OUTSIDE_LINK_CARD.length === 1 && OUTSIDE_LINK_CARD[0].startsWith("Opens example.com"),
+    JSON.stringify(OUTSIDE_LINK_CARD),
+  );
+  const outside = await across(OUTSIDE_LINK.text, 0.5);
   if (outside !== null) {
     await pointAt(outside.x, outside.y);
     await pause(CARD_BY_MS);
@@ -566,12 +595,10 @@ try {
   const outsideRest = outside === null ? null : await evaluate(READ);
   const outsideSays = outsideRest?.up ? outsideRest.lines.map((line) => line.text) : [];
   check(
-    OUTSIDE_LINK_CARD.length === 0
-      ? "an outside link shows no card"
-      : `an outside link's card says ${JSON.stringify(OUTSIDE_LINK_CARD)}`,
+    `an outside link's card says ${JSON.stringify(OUTSIDE_LINK_CARD)}`,
     outsideRest !== null &&
       outsideRest.arrived !== null &&
-      outsideRest.ups === (OUTSIDE_LINK_CARD.length === 0 ? 0 : 1) &&
+      outsideRest.ups === 1 &&
       JSON.stringify(outsideSays) === JSON.stringify(OUTSIDE_LINK_CARD),
     JSON.stringify({ arrived: outsideRest?.arrived, ups: outsideRest?.ups, says: outsideSays }),
   );

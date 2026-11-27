@@ -6,8 +6,9 @@ the exact module and app.js's own tooltip (``tests/dom/link-previews-session.js`
 Chrome's own pointer and keys on a document the server renders: that the card comes up on
 the tooltip's appear delay whatever the rest reads meanwhile, placed on its link and
 holding still while the pointer moves within it, that it says what the link opens from the
-data the page reads, and that focus, an outside link, and a pointer that leaves show none
-(docs/design-system.md, "Tooltips on Links").
+data the page reads, a pull request's title once its catalog holds it though a rest came
+first, and an outside link's where it goes, and that focus and a pointer that leaves show
+none (docs/design-system.md, "Tooltips on Links").
 
 So this serves a checkout of the GitHub stand-in, whose ``origin`` names
 ``github.com/octo/demo``, with a fake ``gh`` whose catalog holds pull request 8, and a

@@ -268,11 +268,15 @@ def test_focus_or_a_press_during_a_rest_brings_no_card_back() -> None:
 def test_a_failing_provider_leaves_the_card_with_where_it_opens() -> None:
     failures = _session()["failures"]
     for name, session in failures.items():
-        assert all(card.endswith("Opens here in Metabrowser") for card in session["cards"]), name
+        assert all(card.endswith(_opens()["here"]) for card in session["cards"]), name
         # The registry keeps no answer: every provider is asked again at the next rest.
         assert session["asked"] == 2, name
-    for name in ("a provider that throws", "a provider that rejects", "a provider that answers null"):
-        assert failures[name]["cards"] == ["Commit 0123456 | Opens here in Metabrowser"] * 2, name
+    for name in (
+        "a provider that throws",
+        "a provider that rejects",
+        "a provider that answers null",
+    ):
+        assert failures[name]["cards"] == [f"Commit 0123456 | {_opens()['here']}"] * 2, name
     later = failures["a provider that answers null, then a subject"]["cards"]
     assert "Found at the second rest" not in later[0] and "Found at the second rest" in later[1]
 
