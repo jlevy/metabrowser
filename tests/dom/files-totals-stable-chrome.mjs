@@ -144,7 +144,11 @@ const PROBE = `(() => {
     for (const entry of list.getEntries()) {
       if (!entry.hadRecentInput) {
         const sources = (entry.sources || []).map((source) => source.node && source.node.nodeType === 1 ? source.node.tagName.toLowerCase() + (source.node.id ? "#" + source.node.id : "") + "." + String(source.node.className).trim().split(/\\s+/).join(".") : String(source.node && source.node.nodeName));
-        window.__shifts.push({ at: Math.round(entry.startTime), value: entry.value, sources });
+        // Where each source was and went, [x, y, width, height] in CSS px, so a failure
+        // says which way a node moved and by how much, not only that it did (mb-r5s7).
+        const rect = (r) => r ? [r.x, r.y, r.width, r.height].map((v) => Math.round(v * 100) / 100) : null;
+        const moves = (entry.sources || []).map((source) => [rect(source.previousRect), rect(source.currentRect)]);
+        window.__shifts.push({ at: Math.round(entry.startTime), value: entry.value, sources, moves, viewport: [innerWidth, innerHeight] });
       }
     }
   }).observe({ type: "layout-shift", buffered: true });
