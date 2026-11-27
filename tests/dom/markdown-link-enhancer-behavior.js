@@ -71,21 +71,20 @@ class FakeElement extends ElementShim {
   }
 
   /**
-   * The descendants that carry a title, or the images that carry an `alt`: what the
-   * enhancer and the SDK ask of a link.
+   * The descendants that carry a title, or all images whose names the SDK can read.
    */
   querySelectorAll(selector) {
-    const wanted = { "[title]": () => true, "img[alt]": (child) => child.tagName === "IMG" }[
-      selector
-    ];
+    const wanted = {
+      "[title]": (child) => child.hasAttribute("title"),
+      img: (child) => child.tagName === "IMG",
+    }[selector];
     if (wanted === undefined) {
       throw new Error(`the stand-in does not read ${selector}`);
     }
-    const attribute = selector === "[title]" ? "title" : "alt";
     const found = [];
     const walk = (node) => {
       for (const child of node.children) {
-        if (wanted(child) && child.hasAttribute(attribute)) {
+        if (wanted(child)) {
           found.push(child);
         }
         walk(child);
@@ -660,15 +659,18 @@ async function loadModule() {
       cards.registered.get(bothTitled)?.authorTitle,
     ]),
   );
-  // A title is what assistive technology read of a link where nothing else names it, as
-  // nothing names these, whose stand-ins hold no words: it stays for it, through the SDK
-  // (`takeAuthorTitles`), the link's own or its image's, until the document is disposed.
-  const spoken = [titled, imageLink, bothTitled, externalTitled];
+  // Keep an image's name on the image and the link's own description on the link.
+  const titledElements = [titled, imageLink, titledImage, bothTitled, innerTitled, externalTitled];
   check(
-    "a title a link's card took still names the link to assistive technology",
-    JSON.stringify(spoken.map((anchor) => anchor.getAttribute("aria-label"))) ===
-      JSON.stringify(["How to set it up", "The image title", "The link's title", "Somewhere else"]),
-    JSON.stringify(spoken.map((anchor) => [...anchor.attributes])),
+    "accessible link and image names survive title handover",
+    titled.getAttribute("aria-label") === "How to set it up" &&
+      !imageLink.hasAttribute("aria-label") &&
+      titledImage.getAttribute("aria-label") === "The image title" &&
+      !bothTitled.hasAttribute("aria-label") &&
+      bothTitled.getAttribute("aria-description") === "The link's title" &&
+      innerTitled.getAttribute("aria-label") === "An inner title" &&
+      externalTitled.getAttribute("aria-label") === "Somewhere else",
+    JSON.stringify(titledElements.map((element) => [...element.attributes])),
   );
   check(
     "an outside link's title moves into its card, and a disabled one keeps its explanation",
@@ -1152,8 +1154,11 @@ async function loadModule() {
       titledImage.getAttribute("title") === "The image title" &&
       bothTitled.getAttribute("title") === "The link's title" &&
       innerTitled.getAttribute("title") === "An inner title" &&
-      spoken.every((anchor) => !anchor.hasAttribute("aria-label")),
-    JSON.stringify(spoken.map((anchor) => [...anchor.attributes])),
+      titledElements.every(
+        (element) =>
+          !element.hasAttribute("aria-label") && !element.hasAttribute("aria-description"),
+      ),
+    JSON.stringify(titledElements.map((element) => [...element.attributes])),
   );
   check(
     "dispose puts away the rendered root's cards",
