@@ -1389,6 +1389,10 @@ async function paintStory(panel, selection = false) {
       assert(pageHost.stackFor(stackNumber) === stack, "the visible stack owns the page part");
       assert(pageHost.pageFor(stackNumber) === null, "a stack is not a pull request");
       const refreshPlan = runtime.MetabrowserRefreshPlan.createPlan({
+        waiting() {},
+        failed(_part, error) {
+          throw error;
+        },
         shown: (part) =>
           runtime.MetabrowserRefreshPlan.isShown(part, { front: "pulls", owner: "pull-request" }),
       });
