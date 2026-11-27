@@ -287,6 +287,11 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # the on-demand `shell-tools` bundle. app.js's comment on `window.MetabrowserShell`, which
 # types.d.ts held in part, moved there whole, and with plugin-sdk.js's line for the method
 # the shell is at 225,716 bytes, 75 under.
+# Measured with it on 2026-11-26: the tooltip's handover from one element to the next
+# (app.js's `tooltipShown` and `tooltipWaiting`, changelog.d/mb-tooltip-handover.md) put the
+# folder's shell at 225,754 bytes, 37 under, against 225,716 at 7005d8f1, 75 under. Its
+# comments were cut to what the code needs beside it, and the reasons are in
+# docs/design-system.md, "A Tooltip Holds Still".
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220

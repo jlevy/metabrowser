@@ -4,6 +4,9 @@
 literal forms its docstring names, and leaves to the shell the forms it does not read.
 The shipped tree has none, so without these a pattern that stopped matching would pass
 lint silently. Each line below is one line of markup as a source file holds it.
+
+It also fails a link card drawn outside its one renderer, ``static/link-previews.js``,
+and the shell's stylesheet: a card's classes or its words for where a link opens.
 """
 
 from __future__ import annotations
@@ -77,3 +80,43 @@ def test_the_shipped_tree_repeats_no_tip() -> None:
     candidates = check._candidates()
     assert check.ROOT / "src" / "metabrowser" / "static" / "app.js" in candidates
     assert [finding for path in candidates for finding in check._repeats(path)] == []
+
+
+# Lines that draw a link card of their own: its classes or its words for where it opens.
+LINK_CARDS = (
+    pytest.param('`<div class="tip-name link-card-name">${name}</div>`', id="class"),
+    pytest.param('h("div", { class: "tip-detail" }, ["Opens here in Metabrowser"])', id="words"),
+    pytest.param('"Opens in the served working tree"', id="working-tree"),
+    pytest.param(".link-card-mark { color: red; }", id="restyled"),
+)
+
+
+@pytest.mark.parametrize("line", LINK_CARDS)
+def test_a_link_card_outside_its_renderer_is_found(tmp_path: Path, line: str) -> None:
+    path = _source(tmp_path, line)
+    assert check._link_cards(path) == [check.Finding(path, 2, line)]
+
+
+def test_the_renderer_and_the_shells_stylesheet_hold_the_card() -> None:
+    static = check.ROOT / "src" / "metabrowser" / "static"
+    for owner in ("link-previews.js", "styles.css"):
+        text = (static / owner).read_text(encoding="utf-8")
+        assert check._LINK_CARD.search(text), f"{owner} no longer holds the link card"
+        assert check._link_cards(static / owner) == []
+
+
+def test_a_second_link_card_fails_the_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _source(tmp_path, '"<div class=\\"tip-detail\\">Opens here in Metabrowser</div>"')
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    monkeypatch.setattr(check, "_candidates", lambda: [path])
+    monkeypatch.setattr(check, "_size_findings", list)
+    assert check.main() == 1
+    err = capsys.readouterr().err
+    assert "one renderer draws every link card" in err
+    assert "markup.js:2:" in err
+
+
+def test_the_shipped_tree_draws_one_link_card() -> None:
+    assert [finding for path in check._candidates() for finding in check._link_cards(path)] == []

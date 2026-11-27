@@ -475,16 +475,28 @@ const headListening = new WeakSet();
  * the link at github.com or taken its address. It may read the same body again, and
  * gives each link one listener.
  *
- * @param {ParentNode} root
+ * Each such link also has its link card while the page shows the head (*preview*), as the
+ * resolver's own links do, which `closeHeadLinks` takes away with the head.
+ *
+ * @param {Element} root
  * @param {{
  *   navigation: Pick<MetabrowserPublicSdk["navigation"], "open">,
  *   linksOpen: () => boolean,
  *   isPlainClick: (event: Event) => boolean,
- * }} how *isPlainClick* is the resolver's own test of a plain click.
+ *   preview?: (link: Element, target: Readonly<{kind: "view-head", href: string}>) => void,
+ * }} how *isPlainClick* is the resolver's own test of a plain click. *preview* gives a link
+ *   of *root* that opens a file of the head its card.
  */
 export function openHeadLinks(root, how) {
   for (const link of root.querySelectorAll('a[href^="/view/"]')) {
-    if (!headLinks.has(link) || headListening.has(link)) {
+    if (!headLinks.has(link)) {
+      continue;
+    }
+    const written = link.getAttribute("href") ?? "";
+    if (how.preview && HEAD_LINK.test(written) && how.linksOpen()) {
+      how.preview(link, Object.freeze({ kind: "view-head", href: written }));
+    }
+    if (headListening.has(link)) {
       continue;
     }
     headListening.add(link);
@@ -1215,6 +1227,7 @@ export function kpressStylesheets(assets, base) {
  *   mutate: (change: () => void) => void,
  *   isTarget?: (value: string, image: boolean) => string | null,
  *   enhanceLinks?: (prose: HTMLElement) => void,
+ *   disposeLinks?: (root: Element) => void,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
@@ -1225,7 +1238,8 @@ export function kpressStylesheets(assets, base) {
  * }} deps
  *   *show* is the comparison's initial presentation. *enhanceLinks* reads a drawn block's
  *   links into the repository as the page's link resolver does, and reads a file's whole
- *   body again when the pin changes (`closeHeadLinks`).
+ *   body again when the pin changes (`closeHeadLinks`). *disposeLinks* puts away the link
+ *   cards *enhanceLinks* gave the links of one element it read (`disposeFileLinks`).
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
@@ -1802,9 +1816,29 @@ export function createMarkdownViews(deps) {
       });
   }
 
-  // Forget what a file's article draws: its chunks still to draw and its folds.
+  /**
+   * Put away the link cards of what *file*'s article draws: each block's, which *build* read
+   * (`enhanceLinks`), and the article's own, which `closeHeadLinks` read, so no card stays on
+   * a link the article no longer holds or that no longer opens here.
+   *
+   * @param {FileView} file
+   */
+  function disposeFileLinks(file) {
+    const dispose = deps.disposeLinks;
+    if (dispose === undefined) {
+      return;
+    }
+    dispose(file.rendered);
+    for (const prose of file.rendered.querySelectorAll(".kpress-prose")) {
+      dispose(prose);
+    }
+  }
+
+  // Forget what a file's article draws: its chunks still to draw, its folds, and its links'
+  // cards.
   /** @param {FileView} file */
   function clearDrawn(file) {
+    disposeFileLinks(file);
     for (const [spacer, entry] of spacers) {
       if (entry.region.file === file) {
         chunkObserver?.unobserve(spacer);
@@ -2513,7 +2547,8 @@ export function createMarkdownViews(deps) {
      * file of the head the server spelled goes where *isTarget* now keeps it, that file at
      * the head on github.com, or is plain text where it cannot; each one the resolver made
      * of a github.com address is read again by *enhanceLinks*, which keeps it as written
-     * now. What is drawn later asks both, which say so themselves.
+     * now. What is drawn later asks both, which say so themselves. Every card the file's
+     * links had goes, and *enhanceLinks* gives the links that still open here theirs again.
      */
     closeHeadLinks() {
       for (const file of files.values()) {
@@ -2528,6 +2563,7 @@ export function createMarkdownViews(deps) {
             link.removeAttribute("href");
           }
         }
+        disposeFileLinks(file);
         // The resolver's own links, and the outside links the file now holds marked, as
         // in one drawn after the change.
         deps.enhanceLinks?.(file.rendered);
@@ -2559,6 +2595,7 @@ export function createMarkdownViews(deps) {
         file.asking.clear();
         file.tree?.dispose();
         file.tree = null;
+        disposeFileLinks(file);
       }
       spacers.clear();
       files.clear();

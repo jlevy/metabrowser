@@ -34,6 +34,8 @@ function createSdkSandbox(overrides = {}) {
     dispatchEvent: () => true,
     document: {
       addEventListener() {},
+      // The page's address, at `location`'s origin, which a link's is read against.
+      baseURI: "http://localhost/view/",
       body: { append() {} },
       cookie: "",
       createElement: () => ({ addEventListener() {}, getAttribute: () => null, setAttribute() {} }),
@@ -75,4 +77,18 @@ function createSdkSandbox(overrides = {}) {
   return sandbox;
 }
 
-module.exports = { createSdkSandbox };
+/**
+ * The SDK's registration of a link for its card, as a page has it before the card's bundle
+ * loads (`previewLink`, `forgetPreview`, and `disposePreviews` in plugin-sdk-views.js): for
+ * a session whose stand-in SDK draws a view that registers its links, and whose pointer
+ * rests on none of them, so the bundle is never asked for. It answers as the page does,
+ * whether the card is about each target, and each root it is given listens for the pointer;
+ * the titles a view hands a link's card (`takeAuthorTitles`) come back as its card ends.
+ */
+function linkCardRegistration(overrides = {}) {
+  const { previewLink, forgetPreview, disposePreviews, takeAuthorTitles, giveAuthorTitlesBack } =
+    createSdkSandbox(overrides).metabrowser;
+  return { previewLink, forgetPreview, disposePreviews, takeAuthorTitles, giveAuthorTitlesBack };
+}
+
+module.exports = { createSdkSandbox, linkCardRegistration };

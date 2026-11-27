@@ -56,6 +56,7 @@ const LIFTED = [
   "mirrorHeading",
   "ownedControlAttr",
   "pathBaseName",
+  "servedRootName",
   "getLogicalName",
   "formatSize",
   "sizeHtml",
@@ -82,7 +83,7 @@ const VIEW_HEADER = `
 var viewHeader = MetabrowserViewHeader.create({
   esc,
   servedRoot,
-  pathBaseName,
+  servedRootName,
   ownedControlAttr,
   mirrorHeading,
   getFileIcon,

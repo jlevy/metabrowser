@@ -47,7 +47,33 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["sourceKind"]} [sourceKind]
  * @property {MetabrowserPublicSdk["decorateExternalLink"]} [decorateExternalLink]
  * @property {MetabrowserPublicSdk["loadRepositoryLinks"]} [loadRepositoryLinks]
+ * @property {MetabrowserPublicSdk["previewLink"]} [previewLink] A rendered file's links'
+ *   cards, registered with the block or article that holds them (static/plugin-sdk-views.js).
+ * @property {MetabrowserPublicSdk["forgetPreview"]} [forgetPreview]
+ * @property {MetabrowserPublicSdk["disposePreviews"]} [disposePreviews]
  */
+
+/**
+ * *api* as what a rendered file's links are read with and given their cards through, or
+ * null where the view was mounted without it, as a diff drawn with the plain syntax api is:
+ * the SDK the plugin mounts the view with has every member (index.js).
+ *
+ * @param {DiffViewApi | undefined} api
+ * @returns {MetabrowserRepositoryLinksSdk | null}
+ */
+function repositoryLinksSdk(api) {
+  if (
+    !api?.repository ||
+    !api.sourceKind ||
+    !api.navigation ||
+    !api.previewLink ||
+    !api.forgetPreview
+  ) {
+    return null;
+  }
+  const { repository, sourceKind, navigation, previewLink, forgetPreview } = api;
+  return { repository, sourceKind, navigation, previewLink, forgetPreview };
+}
 
 /**
  * @typedef {object} FileViewState
@@ -5566,28 +5592,28 @@ export function mountDiffView(container, document_, api, options = {}) {
         // github.com link the text wrote, marked as an outside link is everywhere else. A
         // link to a file of the head the server spelled opens in place on the same rule,
         // its click read as the resolver reads one, so neither kind loads the page again.
+        // Each link that opens here has its link card, registered with *prose*, the block
+        // or the file's article read, and put away with it (`disposeLinks`).
         enhanceLinks(prose) {
           const navigation = api?.navigation;
-          const sourceKind = api?.sourceKind;
           const links = loadedLinks();
-          if (links && navigation && sourceKind && api?.repository) {
-            links.enhance(
-              prose,
-              { navigation, repository: api.repository, sourceKind },
-              { views: headLinksOpen?.() === true },
-            );
+          const mb = repositoryLinksSdk(api);
+          if (links && mb) {
+            links.enhance(prose, mb, { views: headLinksOpen?.() === true });
           }
           if (navigation && headLinksOpen) {
             markdownViews.openHeadLinks(prose, {
               navigation,
               linksOpen: headLinksOpen,
               isPlainClick: (event) => loadedLinks()?.isPlainClick(event) === true,
+              preview: (link, target) => api?.previewLink?.(prose, link, target),
             });
           }
           for (const link of prose.querySelectorAll('a[target="_blank"]')) {
             api?.decorateExternalLink?.(/** @type {HTMLElement} */ (link));
           }
         },
+        disposeLinks: (root) => api?.disposePreviews?.(root),
         // The structured plugin draws a YAML or JSON file's tree, as in the file view
         // (`requires` in manifest.toml).
         async ensureStructured() {

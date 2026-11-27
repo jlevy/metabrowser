@@ -347,6 +347,27 @@ sandbox.metabrowser = {
   changeSizeLineHtml: () => '<span class="change-size-line"></span>',
   icons: { copy: "" },
 };
+// The link cards, which the panel registers a body's links for through the SDK
+// (`metabrowser.previewLink`, static/plugin-sdk-views.js), directly or through the resolver:
+// a recording stand-in. A card is its link's, by identity, with its root and target; a
+// disposal forgets its root's.
+const cards = new Map();
+Object.assign(sandbox.metabrowser, {
+  previewLink(root, anchor, target) {
+    cards.set(anchor, { root, target });
+    return true;
+  },
+  forgetPreview(anchor) {
+    cards.delete(anchor);
+  },
+  disposePreviews(root) {
+    for (const [anchor, card] of cards) {
+      if (card.root === root) {
+        cards.delete(anchor);
+      }
+    }
+  },
+});
 vm.createContext(sandbox);
 for (const file of [
   "formatters.js",
@@ -380,6 +401,7 @@ const PREFETCHED = "4".repeat(40);
 const BUSY = "5".repeat(40);
 const ABANDONED = "6".repeat(40);
 const LINKED = "7".repeat(40);
+const UNLINKED = "8".repeat(39) + "0";
 
 const ASSETS = {
   schema_version: "kpress-asset-manifest-v2",
@@ -437,14 +459,10 @@ answers.set(route(OFFLINE), new TypeError("Failed to fetch"));
 // a relative reference, which the route's `about:blank` base leaves with no address, and
 // another site.
 const LINKED_COMMIT = "9".repeat(40);
-answers.set(
-  route(LINKED),
-  rendered(
-    LINKED,
-    `\n<div><div><p>See <a href="https://github.com/acme/widgets/pull/12" target="_blank" rel="noopener noreferrer">the pull request</a>, <a href="https://github.com/acme/widgets/commit/${LINKED_COMMIT}" target="_blank" rel="noopener noreferrer">a commit</a>, <a href="https://github.com/acme/widgets/pulls" target="_blank" rel="noopener noreferrer">the pull requests</a>, <a href="https://github.com/acme/widgets/blob/main/docs/guide.md" target="_blank" rel="noopener noreferrer">the guide</a>, <a>a relative one</a>, and <a href="https://example.com/doc" target="_blank" rel="noopener noreferrer">another site</a>.</p></div></div>`,
-    "",
-  ),
-);
+const LINKED_HTML = `\n<div><div><p>See <a href="https://github.com/acme/widgets/pull/12" target="_blank" rel="noopener noreferrer">the pull request</a>, <a href="https://github.com/acme/widgets/commit/${LINKED_COMMIT}" target="_blank" rel="noopener noreferrer">a commit</a>, <a href="https://github.com/acme/widgets/pulls" target="_blank" rel="noopener noreferrer">the pull requests</a>, <a href="https://github.com/acme/widgets/blob/main/docs/guide.md" target="_blank" rel="noopener noreferrer">the guide</a>, <a>a relative one</a>, and <a href="https://example.com/doc" target="_blank" rel="noopener noreferrer">another site</a>.</p></div></div>`;
+answers.set(route(LINKED), rendered(LINKED, LINKED_HTML, ""));
+// The same body in a repository with no GitHub identity, whose page has no resolver.
+answers.set(route(UNLINKED), rendered(UNLINKED, LINKED_HTML, ""));
 answers.set(
   route(PREFETCHED),
   rendered(PREFETCHED, "\n<div><div><p>prefetched</p></div></div>", ""),
@@ -696,6 +714,46 @@ async function step(label, revision, body, before = null) {
   Object.assign(transcript, await step("an allowlist that cannot load", NO_ALLOWLIST, "x"));
   options.inertFails = false;
 
+  // In a repository with no GitHub identity, whose page asks for no resolver, a body's links
+  // stay as the message wrote them, and each, the ones to github.com among them, has the
+  // card that says where it goes, with the body's article as its root.
+  Object.assign(
+    transcript,
+    await step("a body's links in a repository with no GitHub identity", UNLINKED, "linked"),
+  );
+  {
+    const unlinked = transcript["a body's links in a repository with no GitHub identity"];
+    assert(!unlinked.assets.includes("repository-links"), "no identity, no resolver");
+    const placed = summary(UNLINKED, "linked");
+    await internals.placeCommitBody(placed, detail(UNLINKED, "linked"));
+    const article = placed.querySelector(".kpress-inert");
+    unlinked.cards = placed.querySelectorAll("a").map((anchor) => {
+      const card = cards.get(anchor);
+      if (card === undefined) {
+        return `${anchor.textContent}: none`;
+      }
+      assert(card.root === article, "a link's card has the body's article as its root");
+      assert(
+        card.target.kind === "external" && card.target.url === anchor.getAttribute("href"),
+        "a link's card is the outside card of its own address",
+      );
+      return `${anchor.textContent}: ${card.target.kind}`;
+    });
+    assert(
+      JSON.stringify(unlinked.cards) ===
+        JSON.stringify([
+          "the pull request: external",
+          "a commit: external",
+          "the pull requests: external",
+          "the guide: external",
+          "a relative one: none",
+          "another site: external",
+        ]),
+      "each link of a body with no resolver has the card of where it goes",
+    );
+    sandbox.MetabrowserGitPanel.cancelPending();
+  }
+
   // On a page with the served repository's identity, a body's links into it open its pages
   // here (static/repository-links.js, run whole): a same-repository pull request's page, a
   // commit's, and the list are their routes, which a plain click has the shell open in
@@ -781,6 +839,33 @@ async function step(label, revision, body, before = null) {
         ]),
       "a plain click opens an in-app page in place, and a modified click is the browser's",
     );
+    // Each link has its card, for its own address, with the body's article as its root: one
+    // that opens here says what it opens, and one to another site where it goes. No link has
+    // a tooltip of its own; when another page has the pane, the panel puts the body's cards
+    // away.
+    const article = placed.querySelector(".kpress-inert");
+    const bodyLinks = placed.querySelectorAll("a[href]");
+    linked.cards = bodyLinks.map((anchor) => {
+      assert(anchor.getAttribute("data-tip-text") === null, "a link has no tooltip of its own");
+      const card = cards.get(anchor);
+      if (card === undefined) {
+        return `${anchor.textContent}: none`;
+      }
+      const { root, target } = card;
+      assert(root === article, "a link's card has the body's article as its root");
+      let opens = target.href;
+      if (target.kind === "view") {
+        opens = `/view/${target.target.path}`;
+      } else if (target.kind === "external") {
+        opens = target.url;
+      }
+      assert(opens === anchor.getAttribute("href"), "a link's card is for its own address");
+      return `${anchor.textContent}: ${target.kind}${target.kind === "view" ? ` ${target.localization}` : ""}`;
+    });
+    sandbox.MetabrowserGitPanel.cancelPending();
+    linked["cards left once another page has the pane"] = bodyLinks.filter((anchor) =>
+      cards.has(anchor),
+    ).length;
   }
   sandbox.MetabrowserSourcePinGuard = { hasChanged: () => true };
   const staleCommit = summary(LINKED, "linked");
