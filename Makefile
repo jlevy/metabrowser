@@ -415,10 +415,11 @@ GOLDEN_DRIVERS := \
 # recorder's recording feeds has to be named too, and a step with nothing named is
 # skipped. Both tryscript passes run GOLDEN_JOBS files at a time, as `make test-goldens`
 # does; the second checks what the first rewrote, once the fixup has restored its
-# patterns.
+# patterns. A full update omits ONLY entirely.
 ONLY_UNLISTED = $(filter-out %.tryscript.md $(GOLDEN_RECORDERS) $(GOLDEN_DRIVERS),$(ONLY))
 
 golden-update:
+	$(if $(filter-out undefined,$(origin ONLY)),$(if $(strip $(ONLY)),,$(error ONLY needs at least one transcript pattern or module)))
 	$(if $(ONLY_UNLISTED),$(error ONLY names $(ONLY_UNLISTED), which is no .tryscript.md golden and no module of GOLDEN_RECORDERS or GOLDEN_DRIVERS))
 	$(if $(and $(strip $(ONLY)),$(GOLDENS)),$(UV_RUN) python -m devtools.run_goldens --check-patterns $(QUOTED_GOLDENS))
 	$(if $(GOLDEN_RECORDERS),$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS))
@@ -430,7 +431,7 @@ golden-update:
 # What ONLY narrows golden-update to. Set for that target alone, so `make test-goldens`
 # still runs GOLDENS, and after its recipe, which devtools/check_goldens.py reads from the
 # target's first line. ONLY takes precedence over a broader command-line selection.
-ifneq ($(strip $(ONLY)),)
+ifneq ($(origin ONLY),undefined)
 golden-update: override GOLDENS := $(filter %.tryscript.md,$(ONLY))
 golden-update: override GOLDEN_RECORDERS := $(filter $(ONLY),$(GOLDEN_RECORDERS))
 golden-update: override GOLDEN_DRIVERS := $(filter $(ONLY),$(GOLDEN_DRIVERS))

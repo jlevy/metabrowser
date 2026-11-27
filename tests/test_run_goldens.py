@@ -144,6 +144,22 @@ def test_patterns_that_match_no_file_fail(
     assert f"{PREFIX} no file matches {pattern}" in capsys.readouterr().err
 
 
+def test_every_pattern_must_match_before_sharding(
+    tmp_path: Path, tryscript: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    pattern = _goldens(tmp_path / "goldens", present="pass")
+    missing = str(tmp_path / "missing.tryscript.md")
+
+    assert run_goldens.main(["--shard", "2/2", pattern, missing, "--", *tryscript]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err.strip() == f"{PREFIX} no file matches {missing}"
+
+    # The match is real even though the second shard has nothing to run.
+    assert run_goldens.main(["--shard", "2/2", pattern, "--", *tryscript]) == 0
+    assert "0 files and 0 commands" in capsys.readouterr().out
+
+
 def test_a_command_that_cannot_start_leaves_its_file_without_a_verdict(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -221,6 +237,34 @@ def test_a_run_without_a_command_is_refused(
 ) -> None:
     assert run_goldens.main(arguments) == 2
     assert "usage:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("only", ["", "   "])
+def test_explicit_empty_only_refuses_to_update(only: str) -> None:
+    result = subprocess.run(
+        ["make", "-n", "golden-update", f"ONLY={only}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "ONLY needs at least one transcript pattern or module" in result.stderr
+    assert result.stdout == ""
+
+
+def test_omitting_only_updates_all_goldens(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ONLY", raising=False)
+    monkeypatch.delenv("MAKEFLAGS", raising=False)
+    result = subprocess.run(
+        ["make", "-n", "golden-update"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "run --update" in result.stdout
+    assert "tests/golden/*.tryscript.md" in result.stdout
 
 
 def test_only_limits_updates_even_when_goldens_has_a_command_line_value() -> None:
