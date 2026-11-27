@@ -3,15 +3,14 @@ name = "structured"
 display_name = "Structured Data"
 version = "0.0.1"
 sdk_version = "0.8"
-python_requires = ["cachetools", "json5", "pyyaml", "ruamel.yaml", "starlette"]
-extra_scripts = ["preview.js", "tree.js"]
+python_requires = ["cachetools", "frontmatter-format", "json5", "pyyaml", "ruamel.yaml", "starlette"]
 # The table plugin's routes serve this plugin's [[table_source]], and its view draws the
 # Table view (mb.plugins.load("table") in index.js).
 requires = ["table"]
 
-# Generic JSON / YAML browser. Renders the parsed structure as a
-# virtualized, YAML-styled tree (default) with the original raw text
-# also available via the source view. Schema-aware variants
+# Generic JSON / YAML browser. Table offers the ordered projection or the
+# shared record grid. Tree and Source keep their existing entry points.
+# Schema-aware variants
 # (e.g. analysis-report, report-bundle) can claim specific files
 # at higher priority and fall back to the renderInlineTree its exports
 # offer (`requires = ["structured"]`) for their raw view.
@@ -22,24 +21,20 @@ priority = 0
 
 [[view]]
 kind = "structured"
-id = "tree"
-label = "Tree"
-key = "v"
-default = true
-
-# A JSON or YAML list of mappings as a table (plan Decision 12), offered only on a file
-# that starts as one (offer.py), so a mapping or a scalar has no Table tab. Tree stays
-# the default. `t`, the label's first letter, is Quick Search's, so the tab takes `a`.
-[[view]]
-kind = "structured"
 id = "table"
 label = "Table"
 key = "a"
-offer = "metabrowser.builtin_plugins.structured.offer:offers_table"
+default = true
 container_class = "content-body table-view-host"
 printable = true
 print_profile = "table"
 render_runtime = "client"
+
+[[view]]
+kind = "structured"
+id = "tree"
+label = "Tree"
+key = "v"
 
 [[view]]
 kind = "structured"

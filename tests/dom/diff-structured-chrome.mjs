@@ -1,7 +1,7 @@
 // A changed YAML or JSON file's Rendered tree, laid out and timed by headless Chrome: the
 // production `mountStructuredDiff` (builtin_plugins/diff/diff-structured.js) draws merged
-// trees with the structured plugin's preview.js and tree.js, under the shell's, the
-// structured plugin's and the diff plugin's stylesheets, in a pull request's diff host.
+// trees with the core preview and tree scripts, under the shell's, the
+// shared tree's and the diff plugin's stylesheets, in a pull request's diff host.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     [STRUCTURED_SWEEP=1] node tests/dom/diff-structured-chrome.mjs
@@ -41,10 +41,10 @@ const check = (label, ok, detail = "") => {
 
 const PAGE_HTML = `<!doctype html><html style="--doc-max-chars: ${process.env.DOC_MAX_CHARS}"><head><meta charset="utf-8"><title>structured diff</title>
 <link rel="stylesheet" href="/static/styles.css">
-<link rel="stylesheet" href="/plugins/structured/styles.css">
+<link rel="stylesheet" href="/static/structured-tree.css">
 <link rel="stylesheet" href="/plugins/diff/styles.css">
-<script src="/plugins/structured/preview.js"></script>
-<script src="/plugins/structured/tree.js"></script>
+<script src="/static/structured-preview.js"></script>
+<script src="/static/structured-tree.js"></script>
 <script type="module">
 import * as structured from "/plugins/diff/diff-structured.js";
 window.structuredDiff = {

@@ -1,4 +1,4 @@
-"""Pure-function tests for structured/preview.js.
+"""Pure-function tests for static/structured-preview.js.
 
 Runs the JS-side assertions in tests/dom/test-preview.js via Node's
 vm sandbox (same approach as test_plugin_e2e_render.py). Keeps the

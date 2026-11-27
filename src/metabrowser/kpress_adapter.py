@@ -38,11 +38,14 @@ from urllib.parse import quote
 
 from metabrowser.asset_stamps import StampedTree
 from metabrowser.http_caching import editable_install
+from metabrowser.kpress_fences import MarkedMarkdown, mark_fences
 
 if TYPE_CHECKING:
     # Annotations only. `from __future__ import annotations` makes these
     # strings at run time, so naming them costs nothing.
+    from kpress.format.model import DiagramMode
     from kpress.models import KPressAsset, KPressExportRequest
+    from markdown_it.token import Token
 
 
 # Resolved on first use and cached here. This stays a module attribute rather
@@ -70,21 +73,22 @@ def _runtime() -> Any:
 # render of Markdown an untrusted author wrote therefore asks for plain code: each fence
 # escaped, as KPress shows one that names no language.
 _PLAIN_CODE: ContextVar[bool] = ContextVar("kpress_plain_code", default=False)
-_plain_code_installed = False
-_plain_code_lock = threading.Lock()
+_FENCE_IDS: ContextVar[frozenset[str]] = ContextVar("kpress_fence_ids", default=frozenset())
+_fence_renderer_installed = False
+_fence_renderer_lock = threading.Lock()
 
 
-def _install_plain_code() -> None:
-    """Make KPress's fence highlighter answer :data:`_PLAIN_CODE`, once per process.
+def _install_fence_renderer() -> None:
+    """Wrap KPress’s fence rule for host markers and its highlighter for inert rendering.
 
     KPress has no option for it, and its fences call
     ``kpress.format.markdown._highlight_code``, so that function is wrapped. A KPress
     without it raises :class:`KPressRenderError`, so a render that asked for plain code
     fails rather than highlighting.
     """
-    global _plain_code_installed
-    with _plain_code_lock:
-        if _plain_code_installed:
+    global _fence_renderer_installed
+    with _fence_renderer_lock:
+        if _fence_renderer_installed:
             return
         from kpress.format import markdown as kpress_markdown
 
@@ -96,7 +100,17 @@ def _install_plain_code() -> None:
             return escape(code) if _PLAIN_CODE.get() else str(highlight(code, language))
 
         kpress_markdown._highlight_code = highlight_unless_plain  # pyright: ignore[reportPrivateUsage]
-        _plain_code_installed = True
+        render_fence = kpress_markdown._render_fence  # pyright: ignore[reportPrivateUsage]
+
+        def render_marked_fence(token: Token, *, diagrams: DiagramMode) -> str:
+            html = render_fence(token, diagrams=diagrams)
+            marker = token.info.rsplit(maxsplit=1)[-1] if token.info.strip() else ""
+            if marker in _FENCE_IDS.get():
+                return html.replace("</code></pre>", f'<a href="#{marker}"></a></code></pre>', 1)
+            return html
+
+        kpress_markdown._render_fence = render_marked_fence  # pyright: ignore[reportPrivateUsage]
+        _fence_renderer_installed = True
 
 
 # Keep the top-level section spine visible while scroll-follow opens the active branch.
@@ -266,6 +280,7 @@ def render_kpress_view(
     profile: str | None = None,
     include_toc: Literal["auto", "on", "off"] = "auto",
     plain_code: bool = False,
+    fence_origin: bytes | None = None,
     asset_url_prefix: str | None = None,
 ) -> dict[str, Any]:
     """Render a Metabrowser file through KPress.
@@ -279,20 +294,23 @@ def render_kpress_view(
     """
 
     runtime = _runtime()
-    if plain_code:
-        _install_plain_code()
-        # KPress keeps renders by this hash among the rest, so a plain render never
-        # answers a highlighted request, or the reverse.
-        mtime_hash = f"{mtime_hash}:plain-code"
+    marked = (
+        mark_fences(source_text, fence_origin, mtime_hash)
+        if fence_origin is not None
+        else MarkedMarkdown(source_text, ())
+    )
+    if plain_code or marked.placements:
+        _install_fence_renderer()
+    # Keep KPress’s cached plain and highlighted renders separate.
     # KPress defaults to font_mode="custom", which uses vendored PT Serif /
     # Source Sans reader faces. Host fonts apply only when font_mode="host".
     request = runtime.KPressRenderRequest(
-        source_text=source_text,
+        source_text=marked.source,
         source_path=source_path,
         kind=kind,
         view=view,
         ext=ext,
-        mtime_hash=mtime_hash,
+        mtime_hash=f"{mtime_hash}:plain-code" if plain_code else mtime_hash,
         size=size,
         frontmatter=frontmatter or {},
         frontmatter_error=frontmatter_error,
@@ -311,15 +329,26 @@ def render_kpress_view(
         # GitHub shows both, so a page reads here as it does there.
         diagrams="mermaid",
     )
+    ids = _FENCE_IDS.set(frozenset(p["id"] for p in marked.placements))
     plain = _PLAIN_CODE.set(plain_code)
     try:
-        return _separate_sanitizer_diagnostics(cast("dict[str, Any]", runtime.render_view(request)))
+        result = _separate_sanitizer_diagnostics(
+            cast("dict[str, Any]", runtime.render_view(request))
+        )
+        if marked.placements and result.get("profile") == "document":
+            result = {
+                **result,
+                "structured_fences": list(marked.placements),
+                "fence_revision": mtime_hash,
+            }
+        return result
     except runtime.KPressInvalidRequestError as exc:
         raise KPressInvalidRequestError(str(exc)) from exc
     except runtime.KPressRenderError as exc:
         raise KPressRenderError(str(exc)) from exc
     finally:
         _PLAIN_CODE.reset(plain)
+        _FENCE_IDS.reset(ids)
 
 
 # KPress's diagnostic types for raw HTML its sanitizer removed: `html_sanitized_tag`,
@@ -425,6 +454,7 @@ _KPRESS_TOC = re.compile(r"<button\b[^>]*\bdata-kpress-toc-toggle\b.*?</nav>", r
 _KPRESS_FRONTMATTER_ERROR = re.compile(
     r'<aside class="kpress-frontmatter-error"[^>]*>.*?</aside>', re.DOTALL
 )
+_KPRESS_FRONTMATTER_DISCLOSURE = re.compile(r'<details\s+class="kpress-frontmatter(?:\s[^"]*)?"')
 
 
 def _without_kpress_toc(html: str) -> tuple[str, bool]:
@@ -523,6 +553,9 @@ def inert_render(
 
     inert = dict(rendered)
     html, inert["toc"] = _without_kpress_toc(str(rendered.get("html", "")))
+    prose = html.find(_KPRESS_PROSE)
+    if prose >= 0 and _KPRESS_FRONTMATTER_DISCLOSURE.search(html, 0, prose):
+        inert["frontmatter_disclosure"] = True
     inert["html"], anchors = harden_document(html, rewrite_local=rewrite_local)
     assets = rendered.get("assets")
     if isinstance(assets, dict):

@@ -175,18 +175,21 @@ function loadHeldOutsideImagesEagerly(root) {
  * @param {MetabrowserPublicSdk} mb
  * @param {((root: HTMLElement) => T) | null} [enhance] Resolves the render's links and
  *   images under *root*; inert-render.js says when it runs for an inert render.
+ * @param {((root: HTMLElement) => void) | null} [prepare] Consumes renderer-owned
+ *   markers before links are admitted or rewritten.
  * @returns {Promise<{enhanced: T | null, inert: typeof import("./inert-render.js") | null}>}
  */
-export async function placeRendered(target, rendered, mb, enhance = null) {
+export async function placeRendered(target, rendered, mb, enhance = null, prepare = null) {
   if (rendered.inert !== true) {
     const template = target.ownerDocument.createElement("template");
     template.innerHTML = rendered.html;
     loadHeldOutsideImagesEagerly(template.content);
     target.replaceChildren(template.content);
+    prepare?.(target);
     return { enhanced: enhance ? enhance(target) : null, inert: null };
   }
   const inert = await import("./inert-render.js");
-  return { enhanced: await inert.placeRendered(target, rendered, mb, enhance), inert };
+  return { enhanced: await inert.placeRendered(target, rendered, mb, enhance, prepare), inert };
 }
 
 /**

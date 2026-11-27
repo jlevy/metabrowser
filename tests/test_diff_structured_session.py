@@ -1,7 +1,7 @@
 """The rendered YAML and JSON session runs production browser code on the server's trees.
 
 ``tests/dom/diff-structured-session.js`` loads ``builtin_plugins/diff/diff-structured.js``,
-``diff-markdown.js`` and the structured plugin's ``preview.js`` and ``tree.js`` whole, and
+``diff-markdown.js`` and the core ``structured-preview.js`` and ``structured-tree.js`` whole, and
 mounts each file through the page's views as a pull request's Changes does: which rows a
 merged tree has, which open first, what a click opens and closes, how each row is marked,
 and the chooser, refusal and disposal around it. ``tests/golden/cli-ui-diff-structured.tryscript.md``

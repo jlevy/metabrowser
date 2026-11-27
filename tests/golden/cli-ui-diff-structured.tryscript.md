@@ -21,16 +21,17 @@ view’s preview of it, as a fold of unchanged blocks does in a Markdown file.
 A click on a closed row opens it and on an open row closes it, and replaces only that
 row and the rows under it; a closed modified mapping previews its new side.
 An open container draws its children a page at a time (`PAGE`), and a “more” row draws
-the next page. Rows are the file view’s own (`renderRowHtml` of `structured/tree.js`),
-with a changed one adding its change class and a screen-reader label.
+the next page. Rows are the file view’s own (`renderRowHtml` of
+`static/structured-tree.js`), with a changed one adding its change class and a
+screen-reader label.
 One difference: a mapping or list that is an item of a modified list reads `- `, where
 the file view gives its index, since the two sides number a changed list’s items
 differently.
 
 This browserless session loads the production `builtin_plugins/diff/diff-structured.js`,
-`diff-markdown.js` and the structured plugin’s `preview.js` and `tree.js` whole, and
-mounts the files in `tests/fixtures/diff-structured-responses.json`, what the production
-projection answers for them, through the page’s views as Changes does.
+`diff-markdown.js` and the core `structured-preview.js` and `structured-tree.js` whole,
+and mounts the files in `tests/fixtures/diff-structured-responses.json`, what the
+production projection answers for them, through the page’s views as Changes does.
 The first step is the first screen: the requests in order, how often the tree renderer
 was asked for, and each file’s chooser, what its body shows, and its rows.
 A file whose answer is a refusal (here a key twice in one mapping) shows only Source,

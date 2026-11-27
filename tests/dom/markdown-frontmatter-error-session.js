@@ -373,7 +373,35 @@ async function mount(answer) {
 }
 
 async function main() {
+  const { placeRendered } = await import(
+    pathToFileURL(path.join(markdownDir, "inert-render.js")).href
+  );
+  const valid = "sanitized metadata and authored disclosure";
+  parses.set(valid, [
+    tag("details", [], tag("summary", [], "Frontmatter"), tag("dl", [], tag("dt", [], "title"))),
+    tag("div", [], tag("details", [], tag("summary", [], "Authored disclosure"))),
+  ]);
+  for (const identified of [true, false]) {
+    const host = pageDocument.createElement("div");
+    await placeRendered(
+      host,
+      { html: valid, inert: true, frontmatter_disclosure: identified },
+      mbAnswering({}),
+    );
+    const article = host.querySelector("article");
+    const chrome = article.querySelector(":scope > details.kpress-frontmatter");
+    assert(
+      Boolean(chrome) === identified,
+      "only metadata identified by the server moves to the article preamble",
+    );
+    assert(
+      article.querySelector(".kpress-prose").textContent.includes("Authored disclosure"),
+      "authored disclosure stays in prose",
+    );
+    assert(article.querySelectorAll("details").length === 2, "neither disclosure is duplicated");
+  }
   const transcript = {};
+
   transcript.trusted = await mount({
     html: trustedHtml,
     diagnostics: [frontmatterError, otherDiagnostic],

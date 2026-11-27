@@ -1,24 +1,18 @@
-"""Where the structured kind offers its Table view: a document that starts as a list of
-records.
+"""Identify possible record grids above the structured node parser's input bound.
 
-The record-list source (records.py) reads a list of mappings, and a JSON or YAML file
-that is not one has no table to show. The server asks :func:`offers_table` before it
-lists a file's views (the manifest's ``offer``), so such a file has no Table tab at
-all, rather than a tab that says it does not apply.
-
-The question is answered from the file's leading bytes, never a parse of the whole
-file: every response that lists a file's views asks it, the hover prefetch among them,
-and a whole YAML parse takes seconds (records.py measured 5 s for 1 MiB). So it reads
-only as far as the shape is decided:
+The record-list source (records.py) reads a list of mappings. A file within the ordered
+projection's bound has its shape decided by that parser. Above that bound, the renderer
+can still offer the grid when the leading bytes suggest a record list; a whole YAML
+parse takes seconds (records.py measured 5 s for 1 MiB). The prefix probe reads only as
+far as the shape is decided:
 
 - JSON: the first value is a list and its first item a mapping.
 - YAML: the first document's root is a list whose first item is a mapping, or a mapping
   that a second document, also a mapping, follows; the structured parse reads several
   documents as the list of them (``collapse_yaml_documents``).
 
-A file that starts as a list of records and turns out not to be one, a later item that
-is not a mapping or a parse error further on, is still offered, and its Table view says
-why the source refused it.
+When the prefix suggests a record list but the complete file has a different shape
+or malformed data, the grid shows the record source's diagnostic.
 """
 
 from __future__ import annotations

@@ -32,6 +32,7 @@ import functools
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from metabrowser.builtin_plugins.structured.nodes_route import read_projection
 from metabrowser.builtin_plugins.structured.parser import (
     STRUCTURED_PARSE_MAX_BYTES,
     StructuredPayload,
@@ -98,6 +99,17 @@ async def parsed_handler(request: Request) -> JSONResponse:
         if ref is None:
             return JSONResponse({"error": "Not found", "path": raw_path}, status_code=404)
         ext = ref.logical_ext
+        if request.query_params.get("projection") == "nodes" and (
+            ext in STRUCTURED_EXTS
+            or (
+                ext == ".md"
+                and (
+                    request.query_params.get("frontmatter") == "1"
+                    or "fence_line" in request.query_params
+                )
+            )
+        ):
+            return await read_projection(ref, request.query_params)
         if ext not in STRUCTURED_EXTS:
             return JSONResponse(
                 {"error": "Unsupported extension", "path": raw_path, "ext": ext},

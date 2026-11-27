@@ -252,6 +252,7 @@ const CELL_PAD_PX = 20;
  *
  * @typedef {{
  *   path: string,
+ *   rowAction?: {label: string, render(key: string, position: number | null): HTMLButtonElement | null},
  *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose?: () => void} | void),
  * }} TableContext
  */
@@ -1151,7 +1152,7 @@ export function mountTable(container, ctx, host = {}) {
       columns,
       widths: Object.fromEntries(columns.map((name) => [name, columnPx(name)])),
       chPx: 1,
-      fixedPx: positionPx(),
+      fixedPx: positionPx() + measureCh().action,
       padPx: 0,
       available: scroller.clientWidth || 0,
       chosen: state.cols !== null,
@@ -1172,7 +1173,9 @@ export function mountTable(container, ctx, host = {}) {
     if (fit.hidden.length) {
       table.setAttribute(
         "aria-colcount",
-        String(fit.visible.length + fit.hidden.length + (positional() ? 1 : 0)),
+        String(
+          fit.visible.length + fit.hidden.length + (positional() ? 1 : 0) + Number(!!ctx.rowAction),
+        ),
       );
     } else {
       table.removeAttribute("aria-colcount");
@@ -1188,7 +1191,7 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** One character's width in the table's face, and in a literal value's, and a cell's padding. @type {{sans: number, mono: number, pad: number} | null} */
+  /** One character's width in the table's face, and in a literal value's, and a cell's padding. @type {{sans: number, mono: number, pad: number, action: number} | null} */
   let chPx = null;
   function measureCh() {
     if (chPx) {
@@ -1211,7 +1214,22 @@ export function mountTable(container, ctx, host = {}) {
     table.append(padProbe);
     const pad = padProbe.getBoundingClientRect?.().width ?? 0;
     padProbe.remove();
-    chPx = { sans: width(""), mono: width("data-literal"), pad: pad > 0 ? pad : CELL_PAD_PX };
+    let action = 0;
+    if (ctx.rowAction) {
+      const probe = el("span", { class: "table-ch-probe icon-btn", "aria-hidden": "true" });
+      table.append(probe);
+      const token = doc.defaultView
+        ?.getComputedStyle(doc.documentElement)
+        .getPropertyValue("--icon-btn-size");
+      action = (probe.getBoundingClientRect?.().width || Number.parseFloat(token || "") || 0) + pad;
+      probe.remove();
+    }
+    chPx = {
+      action,
+      sans: width(""),
+      mono: width("data-literal"),
+      pad: pad > 0 ? pad : CELL_PAD_PX,
+    };
     return chPx;
   }
 
@@ -1267,10 +1285,25 @@ export function mountTable(container, ctx, host = {}) {
       cols.push(el("col", { style: `width: ${columnPx(name)}px` }));
       heads.push(headerCell(name, field));
     }
+    if (ctx.rowAction) {
+      cols.push(el("col", { class: "table-action-col", style: `width: ${measureCh().action}px` }));
+      heads.push(
+        el("th", {
+          scope: "col",
+          class: "table-action-cell",
+          "aria-label": ctx.rowAction.label,
+          "aria-colindex": String(columns.length + (positional() ? 1 : 0) + 1),
+        }),
+      );
+    }
     colgroup.replaceChildren(...cols);
+
     // The table is as wide as its columns, so each holds the width its 'col' gives it
     // rather than one its widest value would take.
-    const px = fit.visible.reduce((sum, name) => sum + columnPx(name), positionPx());
+    const px = fit.visible.reduce(
+      (sum, name) => sum + columnPx(name),
+      positionPx() + measureCh().action,
+    );
     table.style.setProperty("width", `${px}px`);
     const row = el("tr", windowed ? { "aria-rowindex": "1" } : {}, ...heads);
     thead.replaceChildren(row);
@@ -1370,7 +1403,7 @@ export function mountTable(container, ctx, host = {}) {
     const hadFocus = scroller.contains(doc.activeElement);
     drawn = range;
     rowElements.clear();
-    const span = fit.visible.length + (positional() ? 1 : 0);
+    const span = fit.visible.length + (positional() ? 1 : 0) + Number(!!ctx.rowAction);
     const before = spacer(range.start * rowHeight, span);
     const after = spacer((rows.length - range.end) * rowHeight, span);
     const drawnRows = [];
@@ -1468,7 +1501,20 @@ export function mountTable(container, ctx, host = {}) {
     for (const name of fit.visible) {
       tr.append(cellElement(row.cells[name], fieldsByName.get(name)));
     }
+    if (ctx.rowAction) {
+      const action = ctx.rowAction.render(row.key, position);
+      const cell = el("td", {
+        class: "table-action-cell data-grid-row-action",
+        "aria-colindex": String(columns.length + (positional() ? 1 : 0) + 1),
+      });
+      if (action) {
+        action.tabIndex = -1;
+        cell.append(action);
+      }
+      tr.append(cell);
+    }
     rowElements.set(index, tr);
+
     return tr;
   }
 
@@ -1798,6 +1844,9 @@ export function mountTable(container, ctx, host = {}) {
     if (!cell) {
       return tr;
     }
+    if (cell.firstElementChild?.localName === "button") {
+      return /** @type {HTMLButtonElement} */ (cell.firstElementChild);
+    }
     const link = /** @type {HTMLElement | undefined} */ (
       Array.from(cell.firstChild?.childNodes ?? []).find(
         (node) => /** @type {HTMLElement} */ (node).localName === "a",
@@ -1901,9 +1950,18 @@ export function mountTable(container, ctx, host = {}) {
     if (!target || !scroller.contains(target) || rows.length === 0) {
       return;
     }
+    if (
+      event.key === "Enter" &&
+      target === focusElement() &&
+      focus.row >= 0 &&
+      ctx.rowAction &&
+      focus.col === fit.visible.length
+    ) {
+      return;
+    }
     const step = keyStep(focus, event, {
       rows: rows.length,
-      cols: fit.visible.length,
+      cols: fit.visible.length + Number(!!ctx.rowAction),
       pageRows: Math.max(1, Math.floor((scroller.clientHeight || rowHeight * 10) / rowHeight) - 1),
       heads: headControls().length,
       headStarts: headStarts(),
@@ -1992,6 +2050,12 @@ export function mountTable(container, ctx, host = {}) {
       }
       event.preventDefault();
       activateLink(link);
+      return;
+    }
+    if (
+      ctx.rowAction &&
+      ancestor(target, (node) => node.classList?.contains("table-action-cell"))
+    ) {
       return;
     }
     const tr = ancestor(
@@ -2956,6 +3020,14 @@ export function mountTable(container, ctx, host = {}) {
   root.addEventListener("pointerout", onPointerOut);
   root.addEventListener("focusin", (event) => {
     const target = /** @type {HTMLElement} */ (event.target);
+    if (ctx.rowAction && target.parentElement?.classList.contains("table-action-cell")) {
+      const row = Number(target.parentElement.parentElement?.dataset.index);
+      if (Number.isInteger(row) && (focus.row !== row || focus.col !== fit.visible.length)) {
+        focusElement()?.setAttribute("tabindex", "-1");
+        focus = { row, col: fit.visible.length };
+        syncFocusable();
+      }
+    }
     // A header control the pointer focused is where the keyboard's roving focus stands.
     const head = headControls().indexOf(target);
     if (head >= 0 && (focus.row >= 0 || focus.col !== head)) {

@@ -420,14 +420,15 @@ $ metab --plugins --json
       ],
       "python_requires": [
         "cachetools",
+        "frontmatter-format",
         "json5",
         "pyyaml",
         "ruamel.yaml",
         "starlette"
       ],
       "views": [
-        "tree",
         "table",
+        "tree",
         "source"
       ],
       "view_count": 3,
@@ -531,6 +532,8 @@ assets in static_root:
   - diagram-frame.js
   - diagrams.js
   - dom-traversal.js
+  - fenced-views.js
+  - frontmatter-view.js
   - index.js
   - inert-render.js
   - inert-toc.js
@@ -550,6 +553,7 @@ assets in static_root:
   - reconciliation-coordinator.js
   - render-refusal.js
   - rendered.js
+  - structured-disclosure.js
   - source.js
   - toc-toggle.js
   - transclusion.js
@@ -649,6 +653,8 @@ $ metab --plugin markdown --json
       "diagram-frame.js",
       "diagrams.js",
       "dom-traversal.js",
+      "fenced-views.js",
+      "frontmatter-view.js",
       "index.js",
       "inert-render.js",
       "inert-toc.js",
@@ -668,6 +674,7 @@ $ metab --plugin markdown --json
       "reconciliation-coordinator.js",
       "render-refusal.js",
       "rendered.js",
+      "structured-disclosure.js",
       "source.js",
       "toc-toggle.js",
       "transclusion.js",

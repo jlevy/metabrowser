@@ -194,6 +194,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 from metabrowser.inventory_rollup import RollupEncoding, RollupIgnored, RollupOptions, RollupRank
 from metabrowser.jsonl_view import JsonlParseLimitError, _parse_jsonl_file
 from metabrowser.keymap import check_view_keys, live_view_keys
+from metabrowser.kpress_fences import read_fence_origin
 from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -2493,6 +2494,10 @@ async def index(
             {"src": source_ref_selector_url},
         ],
         "source-append": [{"src": source_append_url}],
+        "structured-tree": [
+            {"src": _static_asset_url("structured-preview.js"), "provides": "__structuredPreview"},
+            {"src": _static_asset_url("structured-tree.js"), "provides": "__structuredTree"},
+        ],
         # The watch on a revision's file ages and the notes about them, which only a page whose
         # Git can read ages and whose response says they are not all in yet needs: asked for
         # the first time a response says `dating`, `partial`, or `failed`, and never by a page
@@ -4658,6 +4663,7 @@ async def api_kpress_render(request: Request) -> Response:
     with server_timing.phase("read"):
         kind, frontmatter, frontmatter_error = await asyncio.to_thread(_classify_markdown)
     mtime_hash = file_mtime_hash(target)
+    fence_origin = await read_fence_origin(subpath, mtime_hash, content, ext, view, profile)
 
     try:
         with server_timing.phase("render"):
@@ -4665,6 +4671,7 @@ async def api_kpress_render(request: Request) -> Response:
                 rendered = await asyncio.to_thread(
                     kpress_adapter.render_kpress_view,
                     source_text=content,
+                    fence_origin=fence_origin,
                     source_path=subpath,
                     kind=kind,
                     view=view,
@@ -4687,6 +4694,7 @@ async def api_kpress_render(request: Request) -> Response:
                     shared_worker().render_inert(
                         InertRender(
                             source_text=content,
+                            fence_origin=fence_origin,
                             source_path=subpath,
                             identity=await asyncio.to_thread(text_identity, content),
                             kind=kind,

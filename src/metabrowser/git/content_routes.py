@@ -149,6 +149,7 @@ from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.invisible_chars import display_segment
 from metabrowser.keymap import live_view_keys
+from metabrowser.kpress_fences import read_fence_origin
 from metabrowser.plugin_loader.classify import CONTENT_PREDICATE_MAX_BYTES
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -2395,6 +2396,15 @@ async def git_revision_kpress_render(
             ext, head[:_PREDICATE_PREFIX_BYTES]
         )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
+    fence_origin = await read_fence_origin(
+        entry.path.to_wire(),
+        entry.oid,
+        content,
+        ext,
+        view,
+        profile,
+        blob=body if source_override is None else None,
+    )
     try:
         # A pin is never trusted (_PIN_CAPABILITIES), so its document renders inert, in the
         # Markdown child under its deadline, and is known by its blob, or by the text a
@@ -2406,6 +2416,7 @@ async def git_revision_kpress_render(
             shared_worker().render_inert(
                 InertRender(
                     source_text=content,
+                    fence_origin=fence_origin,
                     source_path=entry.path.to_wire(),
                     display_path=entry.path.display(),
                     identity=(

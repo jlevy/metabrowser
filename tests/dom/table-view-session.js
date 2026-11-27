@@ -1659,6 +1659,47 @@ async function recordLists() {
   mixed.container.remove();
 }
 
+async function recordActionInvariant() {
+  const activated = [];
+  const view = mount("records.json", "", {
+    rowAction: {
+      label: "Copy record",
+      render(key, originalPosition) {
+        const button = new Element("button");
+        button.addEventListener("click", () => activated.push([key, originalPosition]));
+        return button;
+      },
+    },
+  });
+  await ready(view);
+  click(headerButton(view, "age"));
+  await settle();
+  takeRequests();
+  const address = sdk.navigation.current();
+  const [first, second] = rowsOf(view);
+  first.focus();
+  key(first, "ArrowDown");
+  assert.equal(documentStandIn.activeElement, second);
+  const dataCells = second.childNodes.filter((cell) => cell.localName === "td");
+  for (const _cell of dataCells) {
+    key(documentStandIn.activeElement, "ArrowRight");
+  }
+  const action = second.lastChild.firstElementChild;
+  assert.equal(documentStandIn.activeElement, action);
+  // Native buttons dispatch a click after an unconsumed Enter. The DOM stand-in
+  // delivers the key and its native activation separately.
+  assert.equal(key(action, "Enter").prevented, false);
+  click(action);
+  await settle();
+  assert.deepEqual(activated, [["@3", 3]], "the second sorted row copies the third source record");
+  assert.deepEqual(sdk.navigation.current(), address, "the action leaves the reader in the grid");
+  assert.deepEqual(takeRequests(), [], "activation requests no record detail");
+  key(action, "ArrowLeft");
+  assert.notEqual(documentStandIn.activeElement, action);
+  view.handle.dispose();
+  view.container.remove();
+}
+
 async function relationshipFilter() {
   const file = "market.db/orders";
   const ref = "people:k.WzFd";
@@ -1741,6 +1782,7 @@ async function main() {
   await placeAndHistory();
   await bounds();
   await recordLists();
+  await recordActionInvariant();
   await liveTable();
   await liveWindowTable();
   step("requests asked of the server", { unrecorded });

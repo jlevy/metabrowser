@@ -1,7 +1,7 @@
-/* Structured (JSON/YAML) plugin — Tree view styles.
+/* Shared structured Tree view styles.
    Every color / size references a CSS variable on :root; no literals.
    Class-name conventions:
-     .structured-tree, .tree-viewport — plugin-private chrome
+     .structured-tree, .tree-viewport — tree viewport and layout
      .srow, .srow-* — per-row layout and state
      .tok-*       — token-bearing classes shared with future plugins
                     that want to mount the same color vocabulary

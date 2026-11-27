@@ -20,8 +20,10 @@ compatibility: >-
 ---
 # Metabrowser
 
-Use Metabrowser through its self-documenting CLI. Keep the skill as a routing layer and
-use command help as the source of truth for arguments and options.
+Use the Metabrowser CLI to inspect content and open pages for the user.
+For the default browser, run `metab --present <target> --open-in browser`. For the
+native app, run `metab --present <target> --open-in app`. Use command help for arguments
+and options.
 
 ## Choose the Invocation
 
@@ -97,8 +99,10 @@ handoff, the app needs `metab` 0.13.0 or later.
 
 ## Hand the User a Page
 
-Present the page, which opens it where the user prefers, or serve it yourself and give
-the user an address for a browser.
+Use `--present` for a supported target on the user’s machine.
+Pass `--open-in browser` when they ask for their default browser, or `--open-in app`
+when they ask for the native app.
+With no override, Metabrowser follows the user’s preference.
 
 Choose a local checkout path for its live working tree.
 The Files row follows the actual checked-out branch and shows the commit when `HEAD` is
@@ -110,7 +114,7 @@ revision. A commit URL keeps that exact revision selected.
   Use it when the user is at this machine.
   It opens the page in the Metabrowser app on the user’s Mac when an installed build
   takes it, and otherwise in their browser, on a `metab` server it starts and leaves
-  running. The user’s `open_in` preference can choose the app only or the browser only
+  running.
 - **A server you start** answers any address, so serve for what a target cannot name,
   such as a heading, a commit of a local checkout, one file of a pull request’s changes,
   or a stack’s page; in a headless environment; and whenever presenting fails
@@ -120,18 +124,30 @@ revision. A commit URL keeps that exact revision selected.
   without a terminal. So present what the user should see, and serve what only you need
   to look at
 
-### Present It in the App
+### Present with the CLI
 
 ```shell
-<invocation> --present <target> --format json
-<invocation> --present <root> --path <relative-path> --format json
 <invocation> --present <target> --open-in browser --format json
+<invocation> --present <root> --path <relative-path> --open-in browser --format json
+<invocation> --present <target> --open-in app --format json
+<invocation> --present <target> --format json
 ```
 
-- Add `--open-in browser` when the user asks for a browser; otherwise leave the choice
-  to the user’s preference.
-  A delivery to a browser starts a server, so never run it outside the sandbox: see
-  [When a Sandbox Blocks It](#when-a-sandbox-blocks-it)
+- Use the CLI’s delivery report for routine handoffs.
+  Use `--show` or `--api` to check a view or route.
+  Use browser tools when the user explicitly requests a browser surface or the task
+  requires interacting with the rendered page.
+
+- A folder target opens its default view.
+  For a specific view already served by a running local Metabrowser instance, use the
+  exact view URL. `--path` takes a relative path within the root.
+
+- Browser delivery starts the installed interpreter in isolated mode.
+  For a preview build, install its required dependencies in that interpreter’s
+  environment or serve the preview build directly.
+
+- A delivery to a browser starts a server.
+  For sandbox requirements, see [When a Sandbox Blocks It](#when-a-sandbox-blocks-it).
 
 - A file named alone as `<target>` opens in the most specific folder the app already has
   open that holds it, and otherwise in its own folder.

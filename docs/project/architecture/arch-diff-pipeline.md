@@ -467,7 +467,7 @@ work budget; past it a list’s middle is one replaced run.
 In a replaced run, removed and added mappings and lists that share the most entries are
 paired first, within their own budget, and the items between paired ones in order.
 `builtin_plugins/diff/diff-structured.js` draws the tree with the structured plugin’s
-own rows (`materializeRows` and `renderRowHtml` in `structured/tree.js`), opening
+own rows (`materializeRows` and `renderRowHtml` in `static/structured-tree.js`), opening
 modified containers and whole added or removed values within a first-draw budget
 (`ROW_BUDGET`), drawing each open container’s children a page at a time (`PAGE`) behind
 a “more” row, and leaving unchanged ones closed with the tree view’s preview.
