@@ -5,8 +5,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Iterator
-from functools import cache, lru_cache
-from importlib.util import find_spec
+from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
 from metabrowser.ignore_filter import IgnoreMode, make_ignore_filter
@@ -22,11 +21,6 @@ _POINTER_SAMPLE_LIMIT = 6
 _POINTER_BYTES = 64 * 1024
 _DATA_SUFFIXES = (".md", ".json", ".yaml", ".yml")
 _SCHEMA_FOLDERS = ("_schemas", "schemas")
-
-
-@cache
-def _available() -> bool:
-    return find_spec("softschema.collection") is not None
 
 
 def _schema_folder(folder: Path) -> bool:
@@ -84,8 +78,6 @@ def _samples(folder: Path) -> Iterator[Path]:
 
 def offers_collection(folder: Path) -> bool:
     """Offer the shared table where discovery finds a schema directory or an artifact."""
-    if not _available():
-        return False
     from .indexer import has_collection
 
     return (

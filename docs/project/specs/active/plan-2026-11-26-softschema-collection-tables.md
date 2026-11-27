@@ -586,7 +586,9 @@ The background index subsequently supplied all 18 cached tables while another re
 ran.
 The preview tests pin cross-folder links, exact inbound relationship filters, source
 links, and stable generations.
-The full rollout requires a released SoftSchema dependency.
+The preview uses the
+[published collection release](https://github.com/jlevy/softschema/releases/tag/v0.10.0).
+`pyproject.toml` and `uv.lock` pin the release used by the installed plugin.
 
 Use the bounded eager snapshot for this phase.
 It can retain a complete collection in memory and rebuild its table projection on
