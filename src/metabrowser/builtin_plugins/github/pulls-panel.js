@@ -59,7 +59,6 @@ import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
   alignRefreshing,
-  authorLabel,
   avatarUrl,
   FAST_POLL_MS,
   h,
@@ -4641,22 +4640,6 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The sidebar shows the avatar. The row’s accessible name includes the login.
-   *
-   * @param {string} login
-   * @param {string | null} avatar
-   */
-  function rowAuthor(login, avatar) {
-    // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this asks
-    // for no avatar outside that window, and a row the window mounts again as the list scrolls
-    // back draws its avatar at once: WebKit fetches a new lazy image again
-    // (docs/design-system.md, "A Repaint Keeps Its Images").
-    return authorLabel(mb, login, avatar, "github-pulls-author", {
-      loading: "eager",
-    });
-  }
-
-  /**
    * A row's fields as its run shows them (stack-member-row.js), with the place it showed
    * last: the place is the list's to decide (`paintPlace`).
    *
@@ -4735,19 +4718,18 @@ export function mountPullsPanel(container, ctx, mb) {
       ],
     );
     change.dataset.number = String(row.number);
-    // The age, at the row's end in the column every row's age has, as a list row's time is
-    // (docs/design-system.md, "Ages End the Row"). No tooltip, as nothing in the Pulls column
-    // has one: the page has the exact time (docs/design-system.md, "Tooltips Add
-    // Information"). The link's name says it (`rowSaid`).
+    // The age follows the toggle. The link's name says it (rowSaid).
     const updated = mb.ageLabel(at, { className: "github-pulls-age" });
     updated.setAttribute("aria-hidden", "true");
     const label = updated.textContent ?? "";
-    // The shared heading wraps its title and keeps readiness beside the number at the right.
+    // The heading is the state icon and wrapping title. The summary line carries the metadata.
     const heading = h("span", { class: "github-pulls-heading" });
-    const run = stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN);
+    const run = stackMemberRow(heading, mb.titleNodes, undefined, PULLS_RUN);
     const line = runLine(row, null);
     run.show(line);
-    const tail = h("span", { class: "github-pulls-tail" }, [change, updated]);
+    const separator = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
+    run.end.insertBefore(separator, run.end.firstChild);
+    const tail = h("span", { class: "github-pulls-tail" }, [change, updated, run.end]);
     const said = h("span", { class: "sr-only" }, [rowSaid(row, label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
@@ -4809,7 +4791,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * Update the heading’s readiness in place. An empty glyph slot keeps the number still.
+   * Update the summary line’s readiness in place. An empty glyph slot keeps the number still.
    *
    * @param {PaintedRow} entry
    */
@@ -4980,9 +4962,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * A stack's row: the chevron, then its heading, the stack's label in the label register
    * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"), then,
    * after a muted dot, how many pull requests the stack has, a count summary with its number
-   * bold (`metabrowser.countPartsNodes`; "Heading Tallies"), and, at the row's end, the age
-   * of the stack's most recent change in the column every row's age has ("Ages End the
-   * Row"): "Stack #286 · 4 pulls   2h". The count is the stack's size (`stackPullsCount`),
+   * bold (`metabrowser.countPartsNodes`; "Heading Tallies"), then the age of the stack's
+   * most recent change: "Stack #286 · 4 pulls  2h". The count is the stack's size (`stackPullsCount`),
    * which the row's accessible name says first, and the age the newest of its listed pull
    * requests' (`stackUpdatedAt`); both are known when the row is first drawn, the stacks'
    * snapshot and the list's rows being what draws it, so the row has no pending state and
@@ -4999,12 +4980,10 @@ export function mountPullsPanel(container, ctx, mb) {
     if (entry === undefined) {
       const label = h("span", { class: "group-heading github-pull-stack-label" });
       const count = h("span", { class: "github-pulls-stack-count" });
-      const heading = h("span", { class: "github-pulls-stack-heading" }, [label, count]);
       const at = stackUpdatedSeconds(group);
-      // The age, in the column a pull request's row has for its own, there whether or not
-      // the list has a time for the stack. The row's name says it (`stackSaid`).
       const age = mb.ageLabel(at, { className: "github-pulls-age" });
       age.setAttribute("aria-hidden", "true");
+      const heading = h("span", { class: "github-pulls-stack-heading" }, [label, count, age]);
       const row = h(
         "div",
         {
@@ -5013,11 +4992,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-level": "1",
           tabindex: "-1",
         },
-        [
-          h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
-          heading,
-          age,
-        ],
+        [h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]), heading],
       );
       row.dataset.stack = String(group.stack.number);
       const item = h("li", { class: "github-pulls-item github-pulls-stack-item", role: "none" }, [

@@ -615,13 +615,7 @@ async function panelStory() {
     const headingOf = (number) => childByClass(rowOf(number), "github-pulls-heading");
     const tailOf = (number) => childByClass(rowOf(number), "github-pulls-tail");
     const cellOf = (number) =>
-      childByClass(
-        childByClass(
-          childByClass(headingOf(number), "github-pull-row-copy"),
-          "github-pull-row-end",
-        ),
-        "github-pulls-readiness",
-      );
+      childByClass(childByClass(tailOf(number), "github-pull-row-end"), "github-pulls-readiness");
     /** What a row draws of its readiness: the glyph's verdict and tone, the label after it,
      * whether the column is hidden from assistive technology, the words after the state icon,
      * the last line's parts, and the name its link is read by. */
@@ -707,7 +701,11 @@ async function panelStory() {
     );
     for (const number of SHOWN) {
       const row = settled[`#${number}`];
-      assert.deepEqual(row.last, ["github-pulls-change", "github-pulls-age"]);
+      assert.deepEqual(row.last, [
+        "github-pulls-change",
+        "github-pulls-age",
+        "github-pull-row-end",
+      ]);
       assert.ok(row.hidden, `#${number}'s column is hidden from assistive technology`);
       const drawn = invariants[String(number)];
       // The name says the verdict after the state, as the state icon says the state.

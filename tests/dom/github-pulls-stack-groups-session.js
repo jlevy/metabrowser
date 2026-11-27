@@ -286,9 +286,12 @@ async function mountStory() {
       const heading = row.childNodes.find((node) =>
         node.classList?.contains("github-pulls-stack-heading"),
       );
-      const age = row.childNodes.find((node) => node.classList?.contains("github-pulls-age"));
+      const age = heading.childNodes.find((node) => node.classList?.contains("github-pulls-age"));
       return {
-        text: heading.childNodes.map((node) => node.textContent).join(" "),
+        text: heading.childNodes
+          .filter((node) => node !== age)
+          .map((node) => node.textContent)
+          .join(" "),
         age: age.textContent,
         name: row.getAttribute("aria-label"),
       };
@@ -316,14 +319,14 @@ async function mountStory() {
     const titleLine = (row) => {
       const heading = find(row, "github-pulls-heading");
       const copy = find(heading, "github-pull-row-copy");
-      const end = find(copy, "github-pull-row-end");
+      const end = find(row, "github-pull-row-end");
       assert.deepEqual(copy.childNodes.map(classOf).filter(Boolean), [
         "github-pulls-title",
         "github-pulls-place",
         "github-pulls-by",
-        "github-pull-row-end",
       ]);
       assert.deepEqual(end.childNodes.map(classOf).filter(Boolean), [
+        "github-pull-stack-dot",
         "github-pulls-readiness",
         "github-pulls-number",
       ]);
@@ -342,7 +345,10 @@ async function mountStory() {
           "a member's row draws no stack icon",
         );
         const { place, text } = titleLine(row);
-        assert.equal(place.hidden, false, "a member's place is shown");
+        assert.ok(
+          !place.hidden && place.classList.contains("sr-only"),
+          "a member’s place is accessible",
+        );
         // The place and its dot follow the title: a no-break space, so no line starts with the
         // dot, the dot, and a space, where the run may wrap, then the position.
         assert.deepEqual(

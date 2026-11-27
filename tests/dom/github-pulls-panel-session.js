@@ -1440,10 +1440,10 @@ async function paintStory(panel, selection = false) {
     // (mb-rb3n). A row names no branches; the pull request's page does.
     const heading = child(row(hostile), "github-pulls-heading");
     const copy = child(heading, "github-pull-row-copy");
-    const end = child(copy, "github-pull-row-end");
+    const tail = child(row(hostile), "github-pulls-tail");
+    const end = child(tail, "github-pull-row-end");
     const numberLabel = child(end, "github-pulls-number");
     const by = child(copy, "github-pulls-by");
-    const tail = child(row(hostile), "github-pulls-tail");
     // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t, mb-rb3n): the state icon,
     // then the title, the place, the number, and the author, a dot before each part after the
     // title, every line of it in the text column; then the last line, the toggle and the age.
@@ -1472,24 +1472,15 @@ async function paintStory(panel, selection = false) {
     );
     assert(
       JSON.stringify(classesOf(copy)) ===
-        JSON.stringify([
-          "github-pulls-title",
-          "github-pulls-place",
-          "github-pulls-by",
-          "github-pull-row-end",
-        ]),
+        JSON.stringify(["github-pulls-title", "github-pulls-place", "github-pulls-by"]),
       JSON.stringify(classesOf(copy)),
     );
     assert(
       JSON.stringify(classesOf(end)) ===
-        JSON.stringify(["github-pulls-readiness", "github-pulls-number"]),
+        JSON.stringify(["github-pull-stack-dot", "github-pulls-readiness", "github-pulls-number"]),
       JSON.stringify(classesOf(end)),
     );
-    assert(
-      JSON.stringify(classesOf(by)) ===
-        JSON.stringify(["github-pull-stack-dot", "github-pull-identity"]),
-      JSON.stringify(classesOf(by)),
-    );
+    assert(by.hidden && classesOf(by).length === 0, "the heading draws no author");
     assert(by.getAttribute("aria-hidden") === "true", "the row supplies the author’s name");
     // The number holds its text alone, and the last line is the toggle, the lines, then the
     // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), then the
@@ -1500,7 +1491,7 @@ async function paintStory(panel, selection = false) {
     assert(
       classesOf(numberLabel).length === 0 &&
         JSON.stringify(classesOf(tail)) ===
-          JSON.stringify(["github-pulls-change", "github-pulls-age"]) &&
+          JSON.stringify(["github-pulls-change", "github-pulls-age", "github-pull-row-end"]) &&
         tailAge.getAttribute("aria-hidden") === "true" &&
         JSON.stringify(classesOf(toggle)) ===
           JSON.stringify([
@@ -1529,8 +1520,8 @@ async function paintStory(panel, selection = false) {
     );
     assert(
       numberLabel.firstChild.textContent === `#${first.body.rows[0].number}` &&
-        by.textContent.includes(first.body.rows[0].author),
-      "the run shows the number and the author, and names no branch",
+        by.textContent === "",
+      "the summary line shows the number and the heading omits the author",
     );
     assert(
       !heading.textContent.includes("→") && !tail.textContent.includes("→"),
@@ -1542,15 +1533,6 @@ async function paintStory(panel, selection = false) {
       ),
       "the link says the number, the author, and the age, which its run shows hidden",
     );
-    const identity = child(by, "github-pull-identity");
-    const authorLabel = child(identity, "github-pulls-author");
-    assert(
-      numberLabel.firstChild.textContent === `#${first.body.rows[0].number}`,
-      "number has its normal-size span",
-    );
-    assert(authorLabel.localName === "strong", "username is semantically bold");
-    assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
-
     const status = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-status"),
     );

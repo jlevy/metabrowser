@@ -473,11 +473,12 @@ async function main() {
             JSON.stringify([before[stack]?.stack?.text, after[stack]?.stack?.text]),
           );
           check(
-            `${at}: Stack #${stack}'s own row is one row tall, its label whole, its age at its end`,
+            `${at}: Stack #${stack}'s own row is one row tall, its label whole and its age after the pull count`,
             near(after[stack].stack.row.height, after[stack].rowHeight) &&
               !after[stack].stack.labelCut &&
               after[stack].stack.age.right <= after[stack].stack.row.right + TOLERANCE_PX &&
-              after[stack].stack.age.left >= after[stack].stack.label.right - TOLERANCE_PX,
+              (after[stack].stack.age.top > after[stack].stack.count.top + TOLERANCE_PX ||
+                near(after[stack].stack.age.left - after[stack].stack.count.right, 6)),
             JSON.stringify(after[stack].stack),
           );
         }

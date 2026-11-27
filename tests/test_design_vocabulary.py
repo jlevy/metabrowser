@@ -1713,7 +1713,6 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".view-header-age"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
-    ("github/styles.css", ".github-pulls-by"),
     ("github/styles.css", ".github-pulls-number"),
     ("github/styles.css", ".github-pulls-place"),
     ("github/styles.css", ".github-pulls-empty"),
@@ -2771,7 +2770,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # A Pulls row, the stack menu, a stack's page, and a guide's pull request row draw a pull
     # request's fields with one builder (stack-member-row.js), its title through the SDK's
     # titleNodes.
-    assert "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)" in panel
+    assert "stackMemberRow(heading, mb.titleNodes, undefined, PULLS_RUN)" in panel
     assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
@@ -3118,16 +3117,10 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert github[".github-pulls-row > .github-pulls-tail"]["height"] == (
         "var(--github-pulls-change-line)"
     )
-    assert github[".github-pulls-tail > .github-pulls-age"]["justify-self"] == "end"
-    # The author is the run's secondary metadata, at its size, which it inherits.
-    assert "font-size" not in github[".github-pulls-by"]
-    assert ".github-pulls-id" not in github, "the run names the number once"
+    assert github[".github-pulls-tail > .github-pull-row-end"]["margin-inline-start"] == "auto"
+    assert github[".github-pulls-row > .github-pulls-tail"]["gap"] == "var(--tree-inline-age-gap)"
+    assert ".github-pulls-id" not in github, "the row names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
-    assert github[".github-pulls-by"]["--actor-avatar-size"] == (
-        "var(--github-pull-row-avatar-size)"
-    ), "a list row's avatar"
-    author = github[".github-pulls-by .github-pulls-author"]
-    assert (author["inline-size"], author["visibility"]) == ("0", "hidden")
     assert ".github-pulls-who" not in github
     # The header's details may be narrower than its merge, whose chips then ellipsize.
     assert github[".github-pull-meta-details"]["min-width"] == "0"

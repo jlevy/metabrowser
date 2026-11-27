@@ -508,6 +508,7 @@
      inset and a category heading's icon (--category-icon-gap) also take, so a heading's
      name and its rows' names stay on one column. */
   --tree-icon-gap: 6px;
+  --tree-inline-age-gap: 6px;
   /* The disclosure chevron's glyph (.toggle-chevron), 2px under --icon-glyph. A tree's
      folder and container toggles center it in the slot, half the slot's spare width each
      side, 1px. */
@@ -3885,7 +3886,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   white-space: nowrap;
   display: flex;
   align-items: center;
-  margin-left: 6px;
+  margin-inline-start: var(--tree-inline-age-gap);
 }
 /* Positioning only — color / weight / tabular-nums come from the shared
    .size / .size-large rule (the sole source of truth), and the size from

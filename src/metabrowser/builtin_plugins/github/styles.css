@@ -1423,14 +1423,6 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-height: var(--ui-row-height);
-  /* The one width of the column every row's age has, a pull request's on its last line
-     (`.github-pulls-tail`) and a stack's on its row (`.github-pulls-stack-row`), so the ages
-     of a list are one column and an age that grows a digit moves nothing. The longest
-     compact age is four characters ("12mo", 345 to 364 days), and its m is wider than a
-     digit; 5ch of the row's type holds it at the row's own size: measured in Chrome 152 at
-     13 px, "12mo" is 31.1 px of the column's 32.3 px (tests/dom/type-scale-chrome.mjs holds
-     it whole). WebKit was not measured. */
-  --github-pulls-age-column: 5ch;
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
@@ -1553,30 +1545,25 @@
   color: var(--text);
   white-space: nowrap;
 }
-/* The row's last line (mb-rb3n): the lines and the chevron after them in the text column under
-   the run, and the age at the row's end, in the change line's one line height, centered
-   (docs/design-system.md, "Ages End the Row"). The line is there, and the row as tall,
-   whether the lines are shown, waited for, or cannot be had, so they arrive and move no line
-   of the row, only the chevron, which follows them; where there are no lines it is the
-   chevron alone (pulls-panel.js, `paintChange`), as the prefetch lane lists its files. The
-   age has a column of one width, `--github-pulls-age-column`, measured on `.github-pulls-row`,
-   so an age that grows a digit moves nothing. The rest of the line is the item's link's, as the run is: a press
-   there, the age's too, opens the pull request. Before, the lines and the chevron ended the
-   run, and the author and the age were this line (mb-pw8t); in between, the age ended the
-   run after the author, where its place moved with the title's length, and the ages read
-   as no column. */
+/* The diff toggle and age start the last line. The status and PR number share its end. */
 .github-pulls-row > .github-pulls-tail {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--github-pulls-age-column);
+  display: flex;
   align-items: center;
   height: var(--github-pulls-change-line);
-  padding: 0 0 2px var(--github-pull-row-text-column);
-  column-gap: var(--github-pull-row-gap);
+  padding-inline-start: var(--github-pull-row-text-column);
+  gap: var(--tree-inline-age-gap);
   line-height: var(--github-pulls-change-line);
   white-space: nowrap;
 }
-.github-pulls-tail > .github-pulls-age {
-  justify-self: end;
+.github-pulls-tail > .github-pulls-age,
+.github-pulls-stack-heading > .github-pulls-age {
+  flex: none;
+  white-space: nowrap;
+}
+.github-pulls-tail > .github-pull-row-end {
+  float: none;
+  flex: none;
+  margin-inline-start: auto;
 }
 /* The toggle: the lines, then the registry's chevron, a space's width on (0.25em, about 3 px
    at the nav's 13 px). Its words, the lines said in full, are hidden. Where the lines and the
@@ -1902,17 +1889,9 @@
 .github-pulls-item[data-level="2"] {
   --github-pulls-indent: var(--github-pull-row-text-column);
 }
-/* A stack's row is one line: its chevron's slot, its heading, and its age in the column a
-   pull request's row has for its own (`--github-pulls-age-column`), at the row's end, there
-   whether or not the stack has a time, so an age that grows a digit moves nothing
-   (docs/design-system.md, "Ages End the Row"). It is a row of the tree, and hovers,
-   focuses, and takes the pointer as a pull request's row does (`.github-pulls-row`). */
+/* The stack label, pull count, and age follow the chevron on one line. */
 .github-pulls-row.github-pulls-stack-row {
-  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr) var(--github-pulls-age-column);
-}
-.github-pulls-stack-row > .github-pulls-age {
-  justify-self: end;
-  white-space: nowrap;
+  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
 }
 /* A stack's Stack Overview row (pulls-panel.js, `paintWholeRow`), the first under its open
    stack, beside its pull requests' rows, opens the stack's own page. It is one line in a
@@ -1976,6 +1955,12 @@
    change line's own box (`.github-pulls-stack-change`). */
 .github-pulls-stack-row > .github-pulls-stack-heading {
   column-gap: 0.25em;
+}
+.github-pulls-stack-heading > .github-pulls-age {
+  margin-inline-start: calc(var(--tree-inline-age-gap) - 0.25em);
+}
+.github-pulls-stack-heading > .github-pulls-age:empty {
+  display: none;
 }
 /* The Stack Overview row's line never wraps (mb-odt4, the owner's word of 2026-11-26): "Stack Overview" keeps its width, and the toggle after it takes what is left and gives way inside
    itself, as a pull request's row's toggle does, so its chevron is always right after its
@@ -2129,21 +2114,6 @@
 .github-pull-meta-details:has(> .github-pull-actor-sep)
 > :is(.github-pull-identity, .github-pull-action) {
   flex-shrink: 1;
-}
-
-/* Keep the name’s baseline for the avatar while the row’s accessible name supplies
-   the login. Removing the text box makes the avatar itself define the baseline. */
-.github-pulls-by {
-  --actor-avatar-size: var(--github-pull-row-avatar-size);
-}
-.github-pulls-by > .github-pull-identity {
-  gap: 0;
-}
-.github-pulls-by .github-pulls-author {
-  inline-size: 0;
-  overflow: hidden;
-  visibility: hidden;
-  white-space: nowrap;
 }
 
 .github-pull-guided-review [hidden] {
@@ -2390,9 +2360,11 @@
   border-radius: var(--radius-chrome);
   overflow: hidden;
 }
-.github-pull-guide-row-link {
+.github-pull-guide-row-link:not(.github-pull-stack-member) {
   display: flex;
   align-items: center;
+}
+.github-pull-guide-row-link {
   gap: var(--tree-icon-gap);
   min-height: var(--ui-row-height);
   padding: 0 10px;

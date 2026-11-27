@@ -563,7 +563,7 @@ def test_the_pulls_metadata_uses_the_shared_line_boxes() -> None:
     )
 
 
-def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None:
+def test_the_pulls_rows_use_inline_ages_and_filter_counts_keep_their_widths() -> None:
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
@@ -579,17 +579,13 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
         _rule(css, ".github-pulls-row.github-pulls-stack-row"),
     )
     assert stack_columns is not None
-    # Both rows' age columns read the one width, declared once on the row, so no grid keeps
-    # a copy of it.
-    age_column = "var(--github-pulls-age-column)"
-    assert css.count("--github-pulls-age-column:") == 1
-    assert "--github-pulls-age-column:" in _rule(css, ".github-pulls-row")
-    assert stack_columns.group(1).split()[-1] == age_column
-    tail_columns = re.search(
-        r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row > .github-pulls-tail")
+    assert stack_columns.group(1) == "var(--tree-icon-slot) minmax(0, 1fr)"
+    tail = _rule(css, ".github-pulls-row > .github-pulls-tail")
+    assert "display: flex;" in tail
+    assert "gap: var(--tree-inline-age-gap);" in tail
+    assert "margin-inline-start: var(--tree-inline-age-gap);" in _rule(
+        _css(), ".tree-item-age-inline"
     )
-    assert tail_columns is not None
-    assert tail_columns.group(1).split()[-1] == age_column
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
     # on #506).
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
@@ -607,12 +603,12 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
 
 
 def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
-    """The PR heading wraps with an anchored suffix. The diff toggle stays below."""
+    """The PR heading wraps. The diff toggle, age and anchored suffix stay below."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     assert "[heading, tail, said]," in panel
     build = _function(panel, "buildRow")
-    assert 'h("span", { class: "github-pulls-tail" }, [change, updated])' in build
+    assert 'h("span", { class: "github-pulls-tail" }, [change, updated, run.end])' in build
     toggle = build[build.index('{ class: "github-pulls-change disclosure-toggle collapsed"') :]
     assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"')
     css = _github_css()
@@ -626,8 +622,6 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     assert "line-clamp" not in copy
     end = _rule(css, ".github-pull-row-end")
     assert "float: inline-end;" in end and "white-space: nowrap;" in end
-    author = _rule(css, ".github-pulls-by .github-pulls-author")
-    assert "visibility: hidden;" in author and "inline-size: 0;" in author
     assert ".github-pulls-heading > .github-pulls-tail" not in css
     assert "--github-pulls-lines-room: 5.6em;" in _rule(css, ".github-pulls-row")
     assert "width: var(--github-pulls-lines-room);" in _rule(css, ".github-pulls-change-pending")

@@ -595,17 +595,17 @@ async function rowStory(lines, totals = null) {
         SHOWN.map((number) => {
           const heading = headingOf(number);
           const copy = childByClass(heading, "github-pull-row-copy");
-          const end = childByClass(copy, "github-pull-row-end");
+          const end = childByClass(tailOf(number), "github-pull-row-end");
           return [
             `#${number}`,
             {
               run: [
                 ...heading.childNodes.slice(0, 2),
-                ...copy.childNodes.filter((part) => part.className && part !== end),
-                ...end.childNodes,
+                ...copy.childNodes.filter((part) => part.className),
               ].map(runPart),
               last: tailOf(number).childNodes[0].childNodes.map((node) => node.className),
-              end: tailOf(number).childNodes.at(-1).className,
+              age: childByClass(tailOf(number), "github-pulls-age").className,
+              end: end.childNodes.map(runPart),
               shown: shownOf(heading).replaceAll("\u00a0", " "),
               spoken: textOf(childByClass(rowOf(number), "sr-only")),
               text: textOf(lineOf(number)),
@@ -735,15 +735,19 @@ async function rowStory(lines, totals = null) {
       assert.deepEqual(row.run.slice(1, 4), [
         "sr-only github-pull-readiness-said",
         "github-pulls-title",
-        "github-pulls-place",
+        "github-pulls-place sr-only",
       ]);
-      assert.deepEqual(row.run.slice(-2), ["github-pulls-readiness", "github-pulls-number"]);
+      assert.deepEqual(row.end, [
+        "github-pull-stack-dot",
+        "github-pulls-readiness",
+        "github-pulls-number",
+      ]);
       assert.deepEqual(row.last, [
         "github-pulls-change-line",
         "github-pulls-toggle",
         "github-pulls-change-words",
       ]);
-      assert.equal(row.end, "github-pulls-age age-min");
+      assert.equal(row.age, "github-pulls-age age-min");
     }
     // The link is the run, the last line, and the number, the author, and the age said for
     // its name alone.
@@ -823,10 +827,10 @@ async function rowStory(lines, totals = null) {
       findByClass(rowOf(105), "github-pulls-number"),
     );
     await press(
-      "a press on #105's author, in its run, opens it too",
+      "a press on #105's number opens it too",
       105,
       "author",
-      findByClass(rowOf(105), "github-pulls-author"),
+      findByClass(rowOf(105), "github-pulls-number"),
     );
     await press(
       "a press on #105's age opens it too",

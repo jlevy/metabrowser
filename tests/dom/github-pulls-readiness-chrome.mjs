@@ -228,13 +228,12 @@ const READ = `(() => {
     if (row === null) { rows[id] = null; continue; }
     const head = row.querySelector(".github-pulls-heading");
     const copy = head.querySelector(".github-pull-row-copy");
-    const end = head.querySelector(".github-pull-row-end");
+    const end = row.querySelector(".github-pulls-tail > .github-pull-row-end");
     const cell = end.querySelector(".github-pulls-readiness");
     const glyph = cell.querySelector(".github-pull-readiness-icon");
     const number = end.querySelector(".github-pulls-number");
     const tail = row.querySelector(".github-pulls-tail");
-    const avatar = copy.querySelector(".actor-avatar");
-    const author = copy.querySelector(".github-pulls-author");
+    const bullet = tail.querySelector(".github-pull-stack-dot");
     const title = copy.querySelector(".github-pulls-title");
     const titleLines = [...title.getClientRects()];
     end.style.display = "none";
@@ -248,10 +247,8 @@ const READ = `(() => {
       ink: glyph ? getComputedStyle(glyph).color : null,
       next: cell.nextElementSibling === number,
       wraps: getComputedStyle(title).whiteSpace === "normal" && getComputedStyle(title).textOverflow === "clip",
-      avatar: box(avatar),
-      authorHidden: author !== null && getComputedStyle(author).visibility === "hidden" &&
-        author.getBoundingClientRect().width === 0,
-      authorLine: box(author),
+      bullet: box(bullet),
+      noSuffixInHeading: head.querySelector(".github-pull-row-end") === null,
       lineHeight: parseFloat(getComputedStyle(copy).lineHeight),
       titleLines: titleLines.length,
       firstLineUnchanged: titleLines[0]?.width === firstWithFullWidth,
@@ -354,8 +351,13 @@ async function main() {
         check(`${at}: every row checked is drawn`, drawn.length === ROWS.length);
         const right = drawn[0]?.head.right;
         check(
-          `${at}: numbers and ages share the right edge, including stack members`,
-          drawn.every((r) => near(r.number.right, right) && near(r.age.right, right)) &&
+          `${at}: age, bullet, readiness, and number end the summary line, including stack members`,
+          drawn.every(
+            (r) =>
+              near(r.number.right, right) &&
+              r.age.right <= r.bullet.left &&
+              r.bullet.right <= r.cell.left,
+          ) &&
             after.rows[INDENTED]?.level === "2" &&
             after.rows[106]?.level === "1",
           JSON.stringify(drawn.map((r) => [r.head.right, r.number.right, r.age.right])),
@@ -367,10 +369,10 @@ async function main() {
             continue;
           }
           check(
-            `${at}: #${id}'s glyph slot precedes the number on the heading's last line`,
+            `${at}: #${id}'s glyph slot precedes the number below the heading`,
             r.next &&
-              near(r.end.bottom, r.copy.bottom) &&
-              near(r.end.bottom, r.tail.top) &&
+              r.noSuffixInHeading &&
+              near(r.head.bottom, r.tail.top) &&
               near(r.cell.width, 14) &&
               r.cell.right <= r.number.left + TOLERANCE_PX,
             JSON.stringify({ copy: r.copy, end: r.end, cell: r.cell, number: r.number }),
@@ -379,29 +381,9 @@ async function main() {
             `${at}: #${id} keeps its heading size and number position when readiness arrives`,
             near(r.head.height, was.head.height) &&
               near(r.number.right, was.number.right) &&
-              near(r.number.bottom - r.head.top, was.number.bottom - was.head.top),
+              near(r.number.bottom - r.tail.top, was.number.bottom - was.tail.top),
           );
-          check(
-            `${at}: #${id} allows wrapping and shows just the avatar`,
-            r.wraps && r.avatar !== null && r.avatar.width > 0 && r.authorHidden,
-          );
-          check(
-            `${at}: #${id}'s avatar is centered on its text line without increasing row height`,
-            r.avatar !== null &&
-              r.authorLine !== null &&
-              near(
-                r.avatar.top + r.avatar.height / 2,
-                r.authorLine.top + r.authorLine.height / 2,
-                1,
-              ) &&
-              near(r.copy.height, Math.round(r.copy.height / r.lineHeight) * r.lineHeight, 1),
-            JSON.stringify({
-              avatar: r.avatar,
-              author: r.authorLine,
-              copy: r.copy,
-              lineHeight: r.lineHeight,
-            }),
-          );
+          check(`${at}: #${id} allows the title to wrap`, r.wraps);
           if (r.titleLines > 1) {
             check(
               `${at}: #${id}'s first title line gets the full text width`,

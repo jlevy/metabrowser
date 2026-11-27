@@ -33,7 +33,7 @@ import { pullStateIcon } from "./pull-state.js";
  *   readiness: string,
  * }} MemberRowLayout */
 
-const MEMBER_LINE = /** @type {MemberRowLayout} */ (
+export const MEMBER_LINE = /** @type {MemberRowLayout} */ (
   Object.freeze({
     row: "github-pull-stack-member",
     title: "github-pull-stack-member-title",
@@ -58,6 +58,7 @@ export const PULLS_RUN = /** @type {MemberRowLayout} */ (
  *   link: HTMLElement,
  *   title: HTMLElement,
  *   place: HTMLElement,
+ *   end: HTMLElement,
  *   show(member: StackMemberLine): void,
  * }} StackMemberRow */
 
@@ -111,26 +112,31 @@ export function stackMemberRow(link, titleNodes, identity, layout = MEMBER_LINE)
     by.setAttribute("aria-hidden", "true");
   }
   end.append(number);
-  copy.append(" ", end);
+  if (sidebar) {
+    place.classList.add("sr-only");
+  } else {
+    copy.append(" ", end);
+  }
   link.replaceChildren(icon, copy);
 
   const spoken = make("sr-only github-pull-readiness-said");
   const cell = make(layout.readiness);
   cell.setAttribute("aria-hidden", "true");
-  /** @type {{title?: string, place?: string, state?: StackMemberLine["state"], author?: string, readiness?: string}} */
+  /** @type {{words?: string, place?: string, state?: StackMemberLine["state"], author?: string, readiness?: string}} */
   const shown = {};
   return {
     link,
     title,
     place,
+    end,
     show(member) {
       const words = member.title || `Pull request #${member.number}`;
-      if (words !== shown.title) {
+      if (words !== shown.words) {
         title.replaceChildren(...titleNodes(words));
         if (!sidebar) {
           link.setAttribute("data-tip-text", words);
         }
-        shown.title = words;
+        shown.words = words;
       }
 
       const placeKey = JSON.stringify([member.place, member.placeHint]);
