@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,10 +18,12 @@ from devtools.shard_weights import GOLDENS, load
 from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
-# A stand-in for tryscript: what it prints for a file is the file's first line.
+# A stand-in for tryscript: what it prints for a file is the file's first line. The file's
+# path is its last argument, after `run` and any option.
 FAKE = r"""
 import pathlib, sys, time
-path = pathlib.Path(sys.argv[2]).resolve()
+assert sys.argv[1] == "run", sys.argv
+path = pathlib.Path(sys.argv[-1]).resolve()
 how = path.read_text(encoding="utf-8").split()[0]
 if how == "meet":
     # Wait until every "meet" file has started: they finish only if they run at once.
@@ -51,7 +54,7 @@ elif how == "another-file":
 def tryscript(tmp_path: Path) -> list[str]:
     fake = tmp_path / "fake_tryscript.py"
     fake.write_text(FAKE, encoding="utf-8")
-    return [sys.executable, str(fake)]
+    return [sys.executable, str(fake), "run"]
 
 
 def _goldens(directory: Path, **files: str) -> str:
@@ -141,6 +144,22 @@ def test_patterns_that_match_no_file_fail(
     assert f"{PREFIX} no file matches {pattern}" in capsys.readouterr().err
 
 
+def test_every_pattern_must_match_before_sharding(
+    tmp_path: Path, tryscript: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    pattern = _goldens(tmp_path / "goldens", present="pass")
+    missing = str(tmp_path / "missing.tryscript.md")
+
+    assert run_goldens.main(["--shard", "2/2", pattern, missing, "--", *tryscript]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err.strip() == f"{PREFIX} no file matches {missing}"
+
+    # The match is real even though the second shard has nothing to run.
+    assert run_goldens.main(["--shard", "2/2", pattern, "--", *tryscript]) == 0
+    assert "0 files and 0 commands" in capsys.readouterr().out
+
+
 def test_a_command_that_cannot_start_leaves_its_file_without_a_verdict(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -220,24 +239,96 @@ def test_a_run_without_a_command_is_refused(
     assert "usage:" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("only", ["", "   "])
+def test_explicit_empty_only_refuses_to_update(only: str) -> None:
+    result = subprocess.run(
+        ["make", "--no-print-directory", "-n", "golden-update", f"ONLY={only}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "ONLY needs at least one transcript pattern or module" in result.stderr
+    assert result.stdout == ""
+
+
+def test_omitting_only_updates_all_goldens(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ONLY", raising=False)
+    monkeypatch.delenv("MAKEFLAGS", raising=False)
+    result = subprocess.run(
+        ["make", "-n", "golden-update"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "run --update" in result.stdout
+    assert "tests/golden/*.tryscript.md" in result.stdout
+
+
+def test_only_limits_updates_even_when_goldens_has_a_command_line_value() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "golden-update",
+            "GOLDENS=tests/golden/*.tryscript.md",
+            "ONLY=tests/golden/cli-doctor.tryscript.md",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "run --update" in result.stdout
+    assert "tests/golden/cli-doctor.tryscript.md" in result.stdout
+    assert "tests/golden/*.tryscript.md" not in result.stdout
+
+
+def test_only_refuses_unmatched_patterns_before_running_recorders(tmp_path: Path) -> None:
+    (tmp_path / "devtools").symlink_to(ROOT / "devtools", target_is_directory=True)
+    (tmp_path / "real.tryscript.md").touch()
+    env = {
+        **os.environ,
+        "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ["PATH"]]),
+    }
+    result = subprocess.run(
+        [
+            "make",
+            "-f",
+            str(ROOT / "Makefile"),
+            "golden-update",
+            "UV_RUN=env",
+            "ONLY=real*.tryscript.md missing.tryscript.md tests/test_inert_toc.py",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "no file matches missing.tryscript.md" in result.stderr
+    assert "devtools.golden_update" not in result.stdout
+    assert "run --update" not in result.stdout
+
+
 def test_make_test_goldens_runs_every_golden_through_the_runner_with_the_makefiles_tryscript(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The recipe's words, and ``TRYSCRIPT``'s words as the command, on two real goldens."""
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    line = (
-        "\t$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) "
-        "$(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)"
-    )
+    line = "\t$(RUN_GOLDENS) $(if $(SHARD),--shard $(SHARD)) $(QUOTED_GOLDENS) -- $(TRYSCRIPT) run"
     assert recipe(makefile, "test-goldens") == line
     assert makefile_list(makefile, "GOLDENS") == ["tests/golden/*.tryscript.md"]
     require_node()
     command = [
-        word.replace("$(CURDIR)", str(ROOT)).replace("$$PATH", os.environ["PATH"]).strip('"')
-        for word in makefile_list(makefile, "TRYSCRIPT")
+        word.replace("$(CURDIR)", str(ROOT)) for word in makefile_list(makefile, "TRYSCRIPT")
     ]
-    assert command[0] == "env"
+    assert command == [str(ROOT / "devtools" / "tryscript.sh")]
+    command.append("run")
     goldens = [
         "tests/golden/cli-ui-treemap-not-indexed.tryscript.md",
         "tests/golden/cli-ui-tree-summary-line.tryscript.md",
