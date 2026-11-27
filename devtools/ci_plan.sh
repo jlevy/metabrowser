@@ -72,7 +72,7 @@ RUNS_PER_PAGE=30
 #             of the goldens (63 s at four at a time) and of the serial tier, with one
 #             collection between them. In two, the slower interpreters' parts took 3.9
 #             minutes of the job's 5 on main (run 45066732637).
-#   chrome    4 on main and 6 on a pull request, which runs the whole tier as main
+#   chrome    5 on main and 6 on a pull request, which runs the whole tier as main
 #             does. Its 84 tests took 1065 s, each test's median over the interpreters
 #             of main's runs 45752768224 and 45751344037. Dealt by the committed weights
 #             that is 244 to 297 s of tests a part in 4, 197 to 234 in 5, 155 to 198 in
@@ -81,13 +81,17 @@ RUNS_PER_PAGE=30
 #             180 s of tests a part, in jobs of 181 to 255 s (runs 45752121797 and
 #             45747488810). So 6 parts add 18 s to the longest part and two jobs to the
 #             run; 7 would add none and a third job, about a minute of setup each. One
-#             test takes 94 s, the floor under any count.
+#             test takes 94 s, the floor under any count. On main, 5 since 2026-11-27:
+#             the tier had grown to 90 tests and 1173 s (main's run 45976882655, the
+#             committed weights), 293 s of tests a part in 4, and four parts' jobs took
+#             up to 409 s on main and 426 s on a pull request run on main's path (run
+#             45978583219), against the job's 7 minutes. In 5 a part holds 235 s.
 #   admitted-git  2 on the one release: 146 to 163 s. Its 572 s of tests on four workers
 #             include tests/test_github_pulls.py at 108 s on its worker, so a third part
 #             would not shorten the longest.
 UNIT_SHARDS_MAIN=2 UNIT_SHARDS_PR=4
 GOLDENS_SHARDS_MAIN=3 GOLDENS_SHARDS_PR=3
-CHROME_SHARDS_MAIN=4 CHROME_SHARDS_PR=6
+CHROME_SHARDS_MAIN=5 CHROME_SHARDS_PR=6
 ADMITTED_GIT_SHARDS_MAIN=1 ADMITTED_GIT_SHARDS_PR=2
 
 # Prints the parts 1/N through N/N as a JSON list.

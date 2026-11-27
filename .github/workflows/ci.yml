@@ -354,7 +354,10 @@ jobs:
     # (devtools/shard_weights.json). Dealt by rank in node-ID order, the first part took
     # 6.0 to 6.6 minutes on run 45062416967 and the others 2.7 to 4.7. The main path
     # sets the limit: a pull request deals the same tests into more parts
-    # (CHROME_SHARDS_PR in devtools/ci_plan.sh, with the measurement).
+    # (CHROME_SHARDS_PR in devtools/ci_plan.sh, with the measurement). By 2026-11-27
+    # four parts took up to 6.8 minutes (409 s on run 45976882655, 426 s on a pull
+    # request run on main's path, 45978583219), so main deals the tier into five
+    # (CHROME_SHARDS_MAIN, with the measurement).
     timeout-minutes: 7
     steps:
       - name: Checkout
