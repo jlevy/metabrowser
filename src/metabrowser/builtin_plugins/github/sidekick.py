@@ -834,6 +834,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     answer, and starts the scan itself.
     """
 
+    from metabrowser.builtin_plugins.github import gh_lanes
     from metabrowser.builtin_plugins.github.pull_list_route import (
         ListRequestError,
         ListWindow,
@@ -862,16 +863,19 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view, ask)
-    if wanted == "probe":
-        # A visible page asks every LIST_PROBE_S; most asks end here, in a free conditional
-        # read that finds nothing new (:mod:`.pull_list_probe`).
-        wanted = await probe_list(view)
-    # Read before the start, as the file list's refresh does: a job with no gh to run
-    # writes its stamp at once, and an answer read after the start would race that write.
-    window = ListWindow(ask.name, limit=0)
-    found = await asyncio.to_thread(read_catalog_window, view, window)
-    with _whose(ask.retry):
-        started = start_refresh(view, ask, wanted=wanted)
+    # The Pulls tab asks for the list it shows; a pull request page names the ``attended``
+    # lane, for the list behind it. The probe, the catalog's job, and the scan copy it.
+    with gh_lanes.serving(ask.lane):
+        if wanted == "probe":
+            # A visible page asks every LIST_PROBE_S; most asks end here, in a free
+            # conditional read that finds nothing new (:mod:`.pull_list_probe`).
+            wanted = await probe_list(view)
+        # Read before the start, as the file list's refresh does: a job with no gh to run
+        # writes its stamp at once, and an answer read after the start would race that write.
+        window = ListWindow(ask.name, limit=0)
+        found = await asyncio.to_thread(read_catalog_window, view, window)
+        with _whose(ask.retry):
+            started = start_refresh(view, ask, wanted=wanted)
     # Nothing is awaited from the start to here, so a job this request started has done
     # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = list_view(request.app, ask.name)
@@ -887,14 +891,15 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     # The catalog as this ask read it before the list's start: a first read the job just
     # started is not yet one the scan may follow.
     listed = found.listed if found is not None else None
-    scan = await ask_status_scan(
-        view.repository,
-        view.coordinator,
-        reader=listed.reader if listed is not None else None,
-        git_dir=host.pulls.git_dir if host is not None else None,
-        retry=ask.retry,
-        changed=wanted == "changed",
-    )
+    with gh_lanes.serving(ask.lane):
+        scan = await ask_status_scan(
+            view.repository,
+            view.coordinator,
+            reader=listed.reader if listed is not None else None,
+            git_dir=host.pulls.git_dir if host is not None else None,
+            retry=ask.retry,
+            changed=wanted == "changed",
+        )
     answer = {
         "refresh": started,
         "pulls": dict(envelope),
