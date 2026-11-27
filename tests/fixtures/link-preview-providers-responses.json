@@ -100,6 +100,10 @@
       "core_preview": null,
       "repository_labels": [],
       "labels_pending": false,
+      "status": null,
+      "readiness": null,
+      "checks": null,
+      "status_unavailable": null,
       "no_store": true
     }
   },
