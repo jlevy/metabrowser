@@ -149,8 +149,8 @@
   /**
    * What the row calls the ref a status serves: its short name, and for a pull request's
    * head, whose only name is `refs/pull/<n>/head`, the pull request. *start* is for a
-   * sentence the label starts: the row's own words are capitalized there, as its link to the
-   * pull request reads, and a ref's name never is, since it is the ref's. Pure.
+   * sentence the label starts. The row's own words are capitalized there. A ref's
+   * name keeps its case. Pure.
    *
    * @param {MetabrowserSourceStatus} status
    * @param {{start?: boolean}} [where]
@@ -184,7 +184,6 @@
       detail: "",
       offer: null,
       error,
-      pull: null,
       follow: null,
     };
     if (status === null || (status.subject !== "git_revision" && !folder)) {
@@ -208,12 +207,11 @@
           detail: goneDetail(status),
           offer: null,
           error,
-          pull: null,
           follow: null,
         };
       }
       if (error === null) {
-        return following(status, moved, null);
+        return following(status, moved);
       }
       const name = status.ref_name ?? moved.ref;
       return {
@@ -223,7 +221,6 @@
         detail: `${name} has moved, and this page shows where it was.`,
         offer: null,
         error,
-        pull: null,
         follow: null,
       };
     }
@@ -265,15 +262,11 @@
       label = `${status.ref_name ?? status.ref} no longer exists · origin fetched ${age}`;
       detail = goneDetail(status);
     }
-    const pull =
-      typeof status.pull_request === "number"
-        ? { href: `/pull/${status.pull_request}`, text: `Pull request #${status.pull_request}` }
-        : null;
     // Not while something failed: a follow the server refused says why, with the reload
     // offer below, rather than claiming to update.
     const follow = error === null ? followTarget(status, page.shown) : null;
     if (follow !== null) {
-      return following(status, follow, pull);
+      return following(status, follow);
     }
     const selection = status.selection_state ?? null;
     const retrySelection = selection === "fetch_failed" && !refreshing;
@@ -329,11 +322,10 @@
       label ||= `${refLabel(status, { start: true })} is no longer on the origin`;
       detail = `${refLabel(status, { start: true })} is no longer on the origin; its commits stay readable here.`;
     }
-    // The attended pull request's page is one link away from every page on its pin.
-    if (label === "" && offer === null && error === null && pull === null) {
+    if (label === "" && offer === null && error === null) {
       return hidden;
     }
-    return { visible: true, tone, label, detail, offer, error, pull, follow: null };
+    return { visible: true, tone, label, detail, offer, error, follow: null };
   }
 
   /**
@@ -373,10 +365,9 @@
    *
    * @param {MetabrowserSourceStatus} status
    * @param {MetabrowserSourceFollow} follow
-   * @param {MetabrowserSourceFreshnessModel["pull"]} pull
    * @returns {MetabrowserSourceFreshnessModel}
    */
-  function following(status, follow, pull) {
+  function following(status, follow) {
     // A pull request's head is named for its pull request (`refLabel`), capitalized where
     // it starts the detail's sentence; `followTarget` follows only the ref status serves,
     // so the label names that ref.
@@ -387,7 +378,6 @@
       detail: `${refLabel(status, { start: true })} has moved, and this page follows it.`,
       offer: null,
       error: null,
-      pull,
       follow,
     };
   }
@@ -1242,17 +1232,6 @@
         label.append(detail);
       }
       children.push(label);
-    }
-    if (model.pull !== null) {
-      const pull = document.createElement("a");
-      pull.className = "source-freshness-pull";
-      pull.href = model.pull.href;
-      pull.textContent = model.pull.text;
-      const here = window.location.pathname;
-      if (here === model.pull.href || here.startsWith(`${model.pull.href}/`)) {
-        pull.setAttribute("aria-current", "page");
-      }
-      children.push(pull);
     }
     if (model.offer !== null) {
       const offer = document.createElement("span");
