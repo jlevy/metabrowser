@@ -1,4 +1,4 @@
-"""Bounded YAML: the one loader front matter, and the classifier's YAML prefix, parse through.
+"""Bounded YAML for front matter, classification and native structured values.
 
 A Markdown file's front matter is untrusted on a served GitHub mirror and in a folder
 served with ``--untrusted``, and little better in a downloaded repository served as a
@@ -35,6 +35,10 @@ and the C parser, whose nesting and cost were never measured here, is never used
 reads YAML 1.2 only, and never writes a warning: ruamel warns on every reused anchor
 name, with the author's text in each message, and Python keeps every distinct message
 for the life of the process.
+
+:func:`load_bounded_native_yaml_documents` shares the composer and graph measurement
+with the JSON-safe loader. It then uses ruamel's safe constructor to preserve native
+values, including those in streams with YAML version directives.
 """
 
 from __future__ import annotations
