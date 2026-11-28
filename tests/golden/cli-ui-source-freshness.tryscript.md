@@ -392,14 +392,7 @@ $ node tests/dom/source-freshness-session.js
       "timer": "ask",
       "reloads": 0,
       "repaints": 0,
-      "paint": {
-        "label": "",
-        "tone": "quiet",
-        "detail": "",
-        "offer": null,
-        "error": null,
-        "pull": "Pull request #7"
-      },
+      "paint": null,
       "commit": {
         "repaints": 1,
         "state": "not_found",
@@ -421,8 +414,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null,
-        "pull": "Pull request #7"
+        "error": null
       },
       "commit": {
         "repaints": 1,
@@ -445,8 +437,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null,
-        "pull": "Pull request #7"
+        "error": null
       },
       "commit": {
         "repaints": 0,
@@ -471,8 +462,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "",
         "offer": "The server now serves another revision [Reload page]",
-        "error": "The request to follow the branch failed.",
-        "pull": "Pull request #7"
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -494,8 +484,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "",
         "offer": "The server now serves another revision [Reload page]",
-        "error": "The request to follow the branch failed.",
-        "pull": "Pull request #7"
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -520,8 +509,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "",
         "offer": "The server now serves another revision [Reload page]",
-        "error": "The request to follow the branch failed.",
-        "pull": "Pull request #7"
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -544,8 +532,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null,
-        "pull": "Pull request #7"
+        "error": null
       },
       "commit": {
         "repaints": 1,
@@ -565,14 +552,7 @@ $ node tests/dom/source-freshness-session.js
       "timer": "ask",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "",
-        "tone": "quiet",
-        "detail": "",
-        "offer": null,
-        "error": null,
-        "pull": "Pull request #7"
-      },
+      "paint": null,
       "commit": {
         "repaints": 1,
         "state": "not_found",
@@ -664,8 +644,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": null,
-        "pull": "Pull request #7"
+        "error": null
       },
       "commit": {
         "repaints": 1,
@@ -685,14 +664,7 @@ $ node tests/dom/source-freshness-session.js
       "timer": "ask",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "",
-        "tone": "stale",
-        "detail": "",
-        "offer": null,
-        "error": null,
-        "pull": "Pull request #20"
-      },
+      "paint": null,
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
@@ -714,8 +686,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
-        "error": "The server did not answer.",
-        "pull": "Pull request #7"
+        "error": "The server did not answer."
       },
       "commit": {
         "repaints": 1,
@@ -820,14 +791,7 @@ $ node tests/dom/source-freshness-session.js
       "timer": "ask",
       "reloads": 0,
       "repaints": 1,
-      "paint": {
-        "label": "",
-        "tone": "stale",
-        "detail": "",
-        "offer": null,
-        "error": null,
-        "pull": "Pull request #20"
-      }
+      "paint": null
     },
     {
       "step": "a press with no room in the queue says why",
@@ -842,8 +806,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "stale",
         "detail": "",
         "offer": null,
-        "error": "Other refreshes are running. Try again shortly.",
-        "pull": "Pull request #20"
+        "error": "Other refreshes are running. Try again shortly."
       }
     }
   ],
