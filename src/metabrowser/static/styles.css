@@ -3446,14 +3446,6 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 .source-freshness-error {
   color: var(--status-error-text);
 }
-.source-freshness-pull {
-  color: var(--link);
-  text-decoration: none;
-}
-.source-freshness-pull:hover,
-.source-freshness-pull[aria-current="page"] {
-  text-decoration: underline;
-}
 
 /* ── Resize handle ───────────────────────────────────────────── */
 

@@ -4243,8 +4243,6 @@ declare global {
     detail: string;
     offer: MetabrowserSourceOffer | null;
     error: string | null;
-    /** The attended pull request's page, when there is one. */
-    pull: { href: string; text: string } | null;
     /** The branch or tag the page goes with to a new commit, which the controller does. */
     follow: MetabrowserSourceFollow | null;
   };

@@ -333,7 +333,6 @@ function paintOf(model) {
           ? `${offer.text} [${offer.button}] → ${offer.ref}`
           : `${offer.text} [${offer.button}]`,
     error: model.error,
-    ...(model.pull === null ? {} : { pull: model.pull.text }),
   };
 }
 
@@ -674,11 +673,7 @@ async function checkMountedFooter() {
 
   next = { ...next, pull_request: 7 };
   await controller.poll();
-  assert(
-    !footer.hidden && footer.querySelector(".source-freshness-pull"),
-    "attended link vanished",
-  );
-  assert(footer.querySelector(".source-freshness-label") === null, "link left a blank label");
+  assert(footer.hidden, "a pull request association drew a footer");
 
   next = { ...next, ref: "refs/remotes/origin/other", follows: false, pull_request: null };
   await controller.poll();
@@ -1565,14 +1560,14 @@ async function run() {
         offered.offer.button === "Switch",
       `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
     );
-    const current = { ...recorded.refreshed, pull_request: 7 };
-    const linkOnly = freshness.describe(current, {
+    const current = { ...onHead, pin: onHead.latest, pull_request: 7 };
+    const onCurrentHead = freshness.describe(current, {
       shown: { pin: current.pin, ref: current.ref },
       nowMs: NOW_MS,
     });
     assert(
-      linkOnly.visible && linkOnly.label === "" && linkOnly.pull?.href === "/pull/7",
-      "a pin's attended pull request is still linked without a routine fetch label",
+      !onCurrentHead.visible,
+      "a fresh pull request head drew a footer without a fetch or revision action",
     );
 
     // The row's own words start a sentence capitalized, and a ref's name stays its own.
