@@ -126,11 +126,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor | /pull/106",
-          "[Open] Work item 105 | #105 · contributor | /pull/105",
+          "[Open] Work item 106 | contributor · #106 | /pull/106",
+          "[Open] Work item 105 | contributor · #105 | /pull/105",
           "…",
-          "[Draft] WIP: draft the next page | #10 · maintainer | /pull/10",
-          "[Closed] spam | #9 · ghost | /pull/9"
+          "[Draft] WIP: draft the next page | maintainer · #10 | /pull/10",
+          "[Closed] spam | ghost · #9 | /pull/9"
         ]
       },
       "refreshDetail": {
@@ -161,11 +161,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor | /pull/106",
-          "[Open] Work item 105 | #105 · contributor | /pull/105",
+          "[Open] Work item 106 | contributor · #106 | /pull/106",
+          "[Open] Work item 105 | contributor · #105 | /pull/105",
           "…",
-          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
-          "[Open] Count to two in the app | #7 · forker | /pull/7"
+          "[Merged] Say more in the guide | maintainer · #8 | /pull/8",
+          "[Open] Count to two in the app | forker · #7 | /pull/7"
         ]
       }
     },
@@ -209,11 +209,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor | /pull/106",
-          "[Open] Work item 105 | #105 · contributor | /pull/105",
+          "[Open] Work item 106 | contributor · #106 | /pull/106",
+          "[Open] Work item 105 | contributor · #105 | /pull/105",
           "…",
-          "[Draft] WIP: draft the next page | #10 · maintainer | /pull/10",
-          "[Open] Count to two in the app | #7 · forker | /pull/7"
+          "[Draft] WIP: draft the next page | maintainer · #10 | /pull/10",
+          "[Open] Count to two in the app | forker · #7 | /pull/7"
         ]
       }
     },
@@ -285,11 +285,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
+          "[Closed] Work item 6000 | contributor · #6000 | /pull/6000",
+          "[Closed] Work item 5999 | contributor · #5999 | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
+          "[Closed] Work item 5502 | contributor · #5502 | /pull/5502",
+          "[Closed] Work item 5501 | contributor · #5501 | /pull/5501"
         ]
       }
     },
@@ -314,11 +314,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
+          "[Closed] Work item 6000 | contributor · #6000 | /pull/6000",
+          "[Closed] Work item 5999 | contributor · #5999 | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
+          "[Closed] Work item 5502 | contributor · #5502 | /pull/5502",
+          "[Closed] Work item 5501 | contributor · #5501 | /pull/5501"
         ]
       }
     },
@@ -344,11 +344,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
+          "[Closed] Work item 6000 | contributor · #6000 | /pull/6000",
+          "[Closed] Work item 5999 | contributor · #5999 | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
+          "[Closed] Work item 5502 | contributor · #5502 | /pull/5502",
+          "[Closed] Work item 5501 | contributor · #5501 | /pull/5501"
         ]
       }
     },
@@ -376,11 +376,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
+          "[Closed] Work item 6000 | contributor · #6000 | /pull/6000",
+          "[Closed] Work item 5999 | contributor · #5999 | /pull/5999",
           "…",
-          "[Closed] Work item 5002 | #5002 · contributor | /pull/5002",
-          "[Closed] Work item 5001 | #5001 · contributor | /pull/5001"
+          "[Closed] Work item 5002 | contributor · #5002 | /pull/5002",
+          "[Closed] Work item 5001 | contributor · #5001 | /pull/5001"
         ]
       }
     },
@@ -414,11 +414,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,001 pull requests",
         "rowsHeld": 1000,
         "rows": [
-          "[Closed] Work item 6001 | #6001 · contributor | /pull/6001",
-          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 6001 | contributor · #6001 | /pull/6001",
+          "[Closed] Work item 6000 | contributor · #6000 | /pull/6000",
           "…",
-          "[Closed] Work item 5003 | #5003 · contributor | /pull/5003",
-          "[Closed] Work item 5002 | #5002 · contributor | /pull/5002"
+          "[Closed] Work item 5003 | contributor · #5003 | /pull/5003",
+          "[Closed] Work item 5002 | contributor · #5002 | /pull/5002"
         ]
       }
     },
@@ -715,7 +715,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "author": "ghost",
     "avatar": null,
     "updatedAt": "2026-09-17T12:00:00Z",
-    "meta": "#7 · ghost",
+    "meta": "ghost · #7",
     "head": null
   },
   "probes": [

@@ -16,14 +16,21 @@ MINIMUM_TEXT_CONTRAST = 4.5
 AGE_STATES = ("live", "sec", "min", "hr", "day", "wk", "old")
 AGE_BUCKETS = AGE_STATES[1:]
 APPROVED_LIGHT_AGE_PALETTE = {
-    "live": (0.74, 0.22, 55.0, 1.0),
-    "sec": (0.74, 0.22, 55.0, 1.0),
+    "live": (0.71, 0.15, 72.0, 1.0),
+    "sec": (0.71, 0.15, 72.0, 1.0),
     "min": (0.72, 0.23, 97.5, 1.0),
     "hr": (0.64, 0.2, 104.0, 1.0),
     "day": (0.56, 0.14, 107.1, 1.0),
     "wk": (0.5, 0.07, 107.8, 1.0),
     "old": (0.48, 0.012, 106.6, 1.0),
 }
+# How far the freshest tier sits from its neighbours, in OKLab and in hue. It is told from the
+# minute tier at a glance: measured 0.115 apart in the light theme and 0.092 in the dark
+# (2026-11-26), and the bound sits just below. It is never read as the shell's warning ink, the
+# orange of a merge conflict: its hue is outside the 15-degree family
+# `test_status_text_inks_keep_their_fills_hue` allows one ink, 22 degrees past it as shipped.
+MIN_FRESH_STEP = 0.085
+WARNING_HUE_FAMILY = 15.0
 AGE_SURFACES = (
     "--bg",
     "--sidebar-bg",
@@ -86,6 +93,12 @@ def _oklch(value: str) -> tuple[float, float, float, float]:
         float(match.group("hue")),
         float(alpha) if alpha is not None else 1.0,
     )
+
+
+def _oklab(value: str) -> tuple[float, float, float]:
+    lightness, chroma, hue, _alpha = _oklch(value)
+    angle = math.radians(hue)
+    return lightness, chroma * math.cos(angle), chroma * math.sin(angle)
 
 
 def _oklch_to_srgb(value: str) -> tuple[float, float, float]:
@@ -178,7 +191,16 @@ def test_file_age_tokens_use_one_oklch_palette_in_both_themes() -> None:
             tokens, "--file-age-fill-live"
         )
         live_hue = _oklch(live)[2]
-        assert 25 <= live_hue <= 55, f"{theme} Live must stay warm salmon, got {live_hue}"
+        minute_hue = _oklch(_resolved_color(tokens, "--file-age-min"))[2]
+        warning_hue = _oklch(_resolved_color(tokens, "--status-warning-text"))[2]
+        assert warning_hue + WARNING_HUE_FAMILY < live_hue < minute_hue, (
+            f"{theme} Live is an amber between the warning ink's orange and the minute "
+            f"tier's yellow, got {live_hue}"
+        )
+        step = math.dist(_oklab(live), _oklab(_resolved_color(tokens, "--file-age-min")))
+        assert step >= MIN_FRESH_STEP, (
+            f"{theme} Live is {step:.3f} from the minute tier, too close to tell apart"
+        )
 
 
 def test_dark_file_age_foregrounds_meet_contrast_on_every_age_surface() -> None:

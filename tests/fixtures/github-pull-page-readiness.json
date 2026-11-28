@@ -29,7 +29,7 @@
     },
     "readiness": {
       "verdict": "conflicts",
-      "tone": "danger",
+      "tone": "severe",
       "label": "Merge conflicts",
       "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "observed_at": "2026-09-17T12:00:00Z",
@@ -38,19 +38,22 @@
           "kind": "conflicts",
           "status": "unmet",
           "summary": "Merge conflicts with topic must be resolved.",
-          "github_url": "https://github.com/octo/demo/pull/7/conflicts"
+          "github_url": "https://github.com/octo/demo/pull/7/conflicts",
+          "tone": "severe"
         },
         {
           "kind": "checks",
           "status": "unmet",
           "summary": "Some checks were not successful: 1 failing (1 required), and 2 successful.",
-          "github_url": "https://github.com/octo/demo/pull/7/checks"
+          "github_url": "https://github.com/octo/demo/pull/7/checks",
+          "tone": "danger"
         },
         {
           "kind": "reviews",
           "status": "unmet",
           "summary": "Changes requested.",
-          "github_url": "https://github.com/octo/demo/pull/7"
+          "github_url": "https://github.com/octo/demo/pull/7",
+          "tone": "danger"
         }
       ],
       "auto_merge": null,
@@ -143,25 +146,29 @@
           "kind": "queue",
           "status": "waiting",
           "summary": "Queued to merge, position 2, in about 9 min.",
-          "github_url": "https://github.com/octo/demo/queue/topic"
+          "github_url": "https://github.com/octo/demo/queue/topic",
+          "tone": "attention"
         },
         {
           "kind": "conflicts",
           "status": "met",
           "summary": "No merge conflicts with topic.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         },
         {
           "kind": "checks",
           "status": "met",
           "summary": "All checks were successful: 3 successful.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         },
         {
           "kind": "reviews",
           "status": "met",
           "summary": "Approved.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         }
       ],
       "auto_merge": null,
@@ -252,19 +259,22 @@
           "kind": "conflicts",
           "status": "met",
           "summary": "No merge conflicts with topic.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         },
         {
           "kind": "checks",
           "status": "waiting",
           "summary": "Some checks are still pending: 2 successful, and 1 pending.",
-          "github_url": "https://github.com/octo/demo/pull/7/checks"
+          "github_url": "https://github.com/octo/demo/pull/7/checks",
+          "tone": "attention"
         },
         {
           "kind": "reviews",
           "status": "waiting",
           "summary": "Review required.",
-          "github_url": "https://github.com/octo/demo/pull/7"
+          "github_url": "https://github.com/octo/demo/pull/7",
+          "tone": "attention"
         }
       ],
       "auto_merge": {
@@ -315,19 +325,22 @@
           "kind": "conflicts",
           "status": "met",
           "summary": "No merge conflicts with topic.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         },
         {
           "kind": "checks",
           "status": "met",
           "summary": "All checks were successful: 3 successful.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         },
         {
           "kind": "reviews",
           "status": "met",
           "summary": "Approved.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         }
       ],
       "auto_merge": null,

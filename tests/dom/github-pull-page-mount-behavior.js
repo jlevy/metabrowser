@@ -2496,7 +2496,8 @@ async function mergeStatusSection(page) {
     const [status, said] = rows[at].children;
     assert.equal(rows[at].getAttribute("data-kind"), requirement.kind);
     assert.equal(status.dataset.status, requirement.status);
-    assert.equal(status.dataset.tone, requirement.status === "met" ? "success" : readiness.tone);
+    // The tone the server gave the requirement, its kind's and its status's.
+    assert.equal(status.dataset.tone, requirement.tone);
     assert.ok(said.classes.has("github-pull-requirement-said"));
     assert.equal(said.children[0].textContent, requirement.summary);
   });

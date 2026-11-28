@@ -45,7 +45,7 @@
 
 import { createBoundedIndex } from "./change-lines.js";
 import { documentComparisons } from "./comparison-prefetch.js";
-import { readinessForState, VERDICT_GLYPHS } from "./pull-readiness.js";
+import { readinessForState, TONES, VERDICT_GLYPHS } from "./pull-readiness.js";
 
 export const PULL_STATUSES_ROUTE = "/api/plugin/github/pull-statuses";
 // The rows one read names, the server's MAX_STATUS_NUMBERS (pull_catalog.py): more than a
@@ -70,7 +70,6 @@ const RECENT = 8;
 // The states the server judges; a closed or merged pull request has no readiness.
 const JUDGED = new Set(["open", "draft"]);
 const STATES = new Set(["open", "draft", "merged", "closed"]);
-const TONES = new Set(["success", "attention", "danger"]);
 
 /**
  * @typedef {import("./pull-readiness.js").ShownReadiness} ShownReadiness
@@ -118,7 +117,7 @@ export function shownReadiness(value) {
     typeof verdict !== "string" ||
     !Object.hasOwn(VERDICT_GLYPHS, verdict) ||
     typeof tone !== "string" ||
-    !TONES.has(tone) ||
+    !TONES.includes(/** @type {import("./pull-readiness.js").ReadinessTone} */ (tone)) ||
     typeof label !== "string" ||
     label === ""
   ) {

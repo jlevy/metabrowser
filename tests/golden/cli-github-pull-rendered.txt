@@ -240,19 +240,22 @@ status: 202
           "kind": "conflicts",
           "status": "met",
           "summary": "No merge conflicts with topic.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         },
         {
           "kind": "checks",
           "status": "waiting",
           "summary": "Some checks are still pending: 2 successful, and 1 pending.",
-          "github_url": "<PATH>/pull/7/checks"
+          "github_url": "<PATH>/pull/7/checks",
+          "tone": "attention"
         },
         {
           "kind": "reviews",
           "status": "waiting",
           "summary": "Review required.",
-          "github_url": "<PATH>/pull/7"
+          "github_url": "<PATH>/pull/7",
+          "tone": "attention"
         }
       ],
       "auto_merge": {
@@ -488,9 +491,9 @@ status: 200
   "labels_pending": false,
   "status": "<STATUS 7>",
   "readiness": {
-    "verdict": "checking",
+    "verdict": "status_unavailable",
     "tone": "attention",
-    "label": "Checking",
+    "label": "Status unavailable",
     "head": "1fbe7f21adea41e790684a50c64f81ea949b9b45",
     "observed_at": null,
     "requirements": [],

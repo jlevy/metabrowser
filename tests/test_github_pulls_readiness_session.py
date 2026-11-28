@@ -20,8 +20,9 @@ string, so a hundred rows are a hundred lines to review, as the panel's recordin
 The stand-in's open pull requests are each judged as GitHub's answers for them say:
 ``STATUS_SHAPES`` gives pull request 7 a pending docs build and a review required, and the
 draft 10 conflicts; every generated one is clean with no checks; 8 is merged and 9 closed. So
-the rows hold an open pull request of each tone, a closed and a merged one, and, once 105 is
-pushed, one the server has no status of for its head.
+the rows hold open pull requests in success, attention, and severe, a merge conflict's tone,
+a closed and a merged one, and, once 105 is pushed, one the server has no status of for its
+head.
 """
 
 from __future__ import annotations
@@ -318,8 +319,8 @@ def test_recording_is_what_a_served_mirror_answers(
         number: row["readiness"]["tone"] if row["readiness"] else None
         for number, row in by_number.items()
     }
-    # An open pull request of each tone, and none for the closed and the merged one.
-    assert {tones[106], tones[7], tones[10]} == {"success", "attention", "danger"}
+    # Open pull requests ready, waiting, and in conflict; none for the closed and merged ones.
+    assert {tones[106], tones[7], tones[10]} == {"success", "attention", "severe"}
     assert tones[8] is None and tones[9] is None
     assert {by_number[8]["lifecycle"], by_number[9]["lifecycle"]} == {"merged", "closed"}
     assert all(

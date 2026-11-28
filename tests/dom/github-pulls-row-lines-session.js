@@ -578,7 +578,7 @@ async function rowStory(lines, totals = null) {
     const shownOf = (node) =>
       node.data !== undefined
         ? node.data
-        : node.getAttribute("hidden") !== null
+        : node.getAttribute("hidden") !== null || node.classList?.contains("github-pulls-author")
           ? ""
           : node.childNodes.map(shownOf).join("");
     /** A part of a row's run: its class, and the parts of the author. */
@@ -594,12 +594,18 @@ async function rowStory(lines, totals = null) {
       Object.fromEntries(
         SHOWN.map((number) => {
           const heading = headingOf(number);
+          const copy = childByClass(heading, "github-pull-row-copy");
+          const end = childByClass(tailOf(number), "github-pull-row-end");
           return [
             `#${number}`,
             {
-              run: heading.childNodes.map(runPart),
+              run: [
+                ...heading.childNodes.slice(0, 2),
+                ...copy.childNodes.filter((part) => part.className),
+              ].map(runPart),
               last: tailOf(number).childNodes[0].childNodes.map((node) => node.className),
-              end: tailOf(number).childNodes.at(-1).className,
+              age: childByClass(tailOf(number), "github-pulls-age").className,
+              end: end.childNodes.map(runPart),
               shown: shownOf(heading).replaceAll("\u00a0", " "),
               spoken: textOf(childByClass(rowOf(number), "sr-only")),
               text: textOf(lineOf(number)),
@@ -723,41 +729,25 @@ async function rowStory(lines, totals = null) {
       shape([...sdk.changeLineNodes(said106)]),
       "the row draws the component, after the dot before it",
     );
-    // The run holds the title, the place, the number, and the author, a dot before each part
-    // after the title (mb-rb3n); the last line holds the toggle, the lines and the chevron
-    // after them, the summary it expands (mb-f0pz), and the age at the row's end, one line
-    // tall whatever it holds, so a row with no lines, whose chevron is alone there, moves
-    // nothing when its lines are read after all.
+    // The heading ends with readiness and the PR number. The diff toggle and age stay below.
     for (const number of SHOWN) {
-      const run = arrived[`#${number}`].run;
-      assert.deepEqual(
-        run.slice(1, 6),
-        [
-          "sr-only github-pull-readiness-said",
-          "github-pulls-title",
-          "github-pulls-place",
-          "github-pulls-sep",
-          "github-pulls-number",
-        ],
-        `#${number}'s run is the readiness's words, the title, the place, and the number`,
-      );
-      assert.deepEqual(
-        arrived[`#${number}`].last,
-        ["github-pulls-change-line", "github-pulls-toggle", "github-pulls-change-words"],
-        `#${number}'s last line is the toggle, the lines then the chevron`,
-      );
-      assert.equal(
-        arrived[`#${number}`].end,
-        "github-pulls-age age-min",
-        `#${number}'s age ends it`,
-      );
-    }
-    for (const number of SHOWN.map((shown) => `#${shown}`)) {
-      assert.deepEqual(
-        arrived[number].run.slice(6),
-        ["github-pulls-sep", { "github-pulls-by": ["actor-identity github-pull-identity"] }],
-        `${number}'s run ends with the dot and the author`,
-      );
+      const row = arrived[`#${number}`];
+      assert.deepEqual(row.run.slice(1, 4), [
+        "sr-only github-pull-readiness-said",
+        "github-pulls-title",
+        "github-pulls-place sr-only",
+      ]);
+      assert.deepEqual(row.end, [
+        "github-pull-stack-dot",
+        "github-pulls-readiness",
+        "github-pulls-number",
+      ]);
+      assert.deepEqual(row.last, [
+        "github-pulls-change-line",
+        "github-pulls-toggle",
+        "github-pulls-change-words",
+      ]);
+      assert.equal(row.age, "github-pulls-age age-min");
     }
     // The link is the run, the last line, and the number, the author, and the age said for
     // its name alone.
@@ -765,11 +755,11 @@ async function rowStory(lines, totals = null) {
       rowOf(106).childNodes.map((node) => node.className),
       ["github-pulls-heading", "github-pulls-tail", "sr-only"],
     );
-    assert.equal(textOf(childByClass(rowOf(106), "sr-only")), "#106 · contributor · 1m");
+    assert.equal(textOf(childByClass(rowOf(106), "sr-only")), "contributor · #106 · 1m");
     // Each item says its number and its last line in words, whatever its toggle shows: the
     // number, the author, and the age, read with the title as the item's name.
     for (const number of SHOWN) {
-      assert.equal(arrived[`#${number}`].spoken, `#${number} · contributor · 1m`);
+      assert.equal(arrived[`#${number}`].spoken, `contributor · #${number} · 1m`);
     }
     assert.equal(arrived["#106"].words, `Changed files: ${said106.label}`);
     assert.equal(
@@ -837,10 +827,10 @@ async function rowStory(lines, totals = null) {
       findByClass(rowOf(105), "github-pulls-number"),
     );
     await press(
-      "a press on #105's author, in its run, opens it too",
+      "a press on #105's number opens it too",
       105,
       "author",
-      findByClass(rowOf(105), "github-pulls-author"),
+      findByClass(rowOf(105), "github-pulls-number"),
     );
     await press(
       "a press on #105's age opens it too",
