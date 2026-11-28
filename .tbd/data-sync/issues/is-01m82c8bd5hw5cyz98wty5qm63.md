@@ -5,7 +5,7 @@ title: "Nightly soak time-limits red since 2026-11-19: chrome 1/4, goldens-and-s
 kind: task
 status: in_progress
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-22T19:38:15.330Z
-updated_at: 2026-11-28T18:05:44.685Z
+updated_at: 2026-11-28T18:13:11.481Z
 started_at: 2026-11-22T19:55:40.236Z
 closed_at: null
 close_reason: null
@@ -31,4 +31,4 @@ make ci-report --check fails the nightly soak (latest run 45023473576 on 48397f5
 
 ## Notes
 
-Nightly run 46145831492 passed all 25 repeated functional jobs. Time-limits reported chrome 3.13 shard 1/5 p90 5.6 min against 7 min, lint 2.6 against 3, and both 3.14t unit shards 5.9 and 6.1 against 7. Use per-step durations to distinguish setup stalls from test cost before recalibrating shards or changing deadlines.
+All 25 repeated functional jobs passed in nightly 46145831492. A step report over 12 later main runs attributed the lost headroom mainly to the parallel tests on 3.14t (step p90 6.03 and 5.73 min) and lint/audits (2.35 min). Tool setup p90 was at most 0.05 min per step. Chrome shard 1/5 improved to 5.3 min overall in the 12-run window. Recheck after the current shard redistribution before touching timeout settings.
