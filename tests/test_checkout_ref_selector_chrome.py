@@ -237,7 +237,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert branch["heading"] == "checkout"
     assert branch["tree"] == ["FEATURE.md", "README.md"]
     assert branch["capabilities"] == UNTRUSTED
-    assert branch["title"] == tree["title"] == "checkout • Metabrowser"
+    assert branch["title"] == tree["title"] == "README.md"
     # A page on a branch opens its list on Branches, where that branch is current.
     on_branch = result["branchPanel"]
     assert on_branch["focused"] and on_branch["workingTree"] is None
