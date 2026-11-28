@@ -121,7 +121,7 @@ async function main() {
       state: "ready",
       generation: "1",
       complete: true,
-      summary: {},
+      summary: { problems: [{ code: "invalid" }] },
       tables: [{ id: "person/v2", label: "Person", count: 577 }],
     };
     poll();
@@ -165,12 +165,52 @@ async function main() {
     poll();
     await turn();
     assert.equal(refreshed.length, 1, "a removed table is disposed before refresh");
+    const status = container.querySelector(".table-status");
+    answer = {
+      ...answer,
+      complete: false,
+      state: "ready",
+      generation: "partial",
+      summary: {
+        problems: [
+          { code: "total_byte_limit" },
+          { code: "directory_unreadable" },
+          { code: "file_unreadable" },
+          { code: "invalid" },
+        ],
+      },
+    };
+    poll();
+    await turn();
+    assert.equal(status.hidden, false);
+    assert.equal(status.dataset.severity, "warning");
+    const partial = status.textContent;
+    answer = {
+      ...answer,
+      generation: "bounded",
+      summary: { problems: [{ code: "entry_limit" }, { code: "file_too_large" }] },
+    };
+    poll();
+    await turn();
+    const bounded = status.textContent;
+    answer = {
+      ...answer,
+      complete: true,
+      generation: "complete",
+      tables: [{ id: "person/v2", label: "Person", count: 1 }],
+      summary: { problems: [{ code: "invalid" }] },
+    };
+    poll();
+    await turn();
+    assert.equal(status.hidden, true, "complete discovery can still report invalid records");
     view.dispose();
     console.log(
       JSON.stringify(
         {
           "cold index": cold,
           "collection discovery": discovery,
+          "partial index": partial,
+          "bounded scan": bounded,
           "published table": { label: link.textContent, count, href: link.getAttribute("href") },
           "background refresh": "the catalog stays visible without its indexing spinner",
           "return before the renderer arrives": "the catalog keeps the same links",

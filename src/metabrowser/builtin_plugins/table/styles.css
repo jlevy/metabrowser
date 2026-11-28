@@ -111,6 +111,9 @@
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
+.table-view-host > .table-status.notice {
+  margin-block-end: var(--content-padding-y);
+}
 .table-status:not(.notice) {
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);

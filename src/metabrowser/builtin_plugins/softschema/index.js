@@ -7,13 +7,67 @@ if (!mb) {
 }
 
 /** @typedef {{id: string, label: string, count: number}} CollectionTable */
-/** @typedef {{root: string, state: string, generation: string, complete: boolean, paths_checked: number, summary: object | null, tables: CollectionTable[]}} CollectionAnswer */
+/** @typedef {{root: string, state: string, generation: string, complete: boolean, paths_checked: number, summary: {problems: {code: string}[]} | null, tables: CollectionTable[]}} CollectionAnswer */
 /** @typedef {typeof import("../table/index.js")} TableExports */
 /** @typedef {(host: HTMLElement, value: unknown) => ({dispose?: () => void} | undefined)} RenderRecordValue */
 
 const INDEXING = "Indexing collection…";
 const INDEX_POLL_MS = 350;
 const REFRESH_POLL_MS = 3000;
+
+/** @param {{code: string}[]} problems @param {(n: number) => string} count */
+function coverageWarning(problems, count) {
+  let entryLimit = false;
+  let byteLimit = false;
+  let oversized = 0;
+  let unreadable = 0;
+  let unreadableNames = 0;
+  for (const { code } of problems) {
+    switch (code) {
+      case "entry_limit":
+        entryLimit = true;
+        break;
+      case "total_byte_limit":
+        byteLimit = true;
+        break;
+      case "file_too_large":
+        oversized++;
+        break;
+      case "entry_unreadable":
+      case "file_unreadable":
+      case "directory_unreadable":
+      case "object_unavailable":
+        unreadable++;
+        break;
+      case "non_utf8_path":
+        unreadableNames++;
+        break;
+    }
+  }
+  const reasons = [];
+  if (entryLimit) {
+    reasons.push("the scan reached its file and folder limit");
+  }
+  if (byteLimit) {
+    reasons.push("the scan reached its total size limit");
+  }
+  if (oversized) {
+    reasons.push(
+      `${count(oversized)} ${oversized === 1 ? "file was" : "files were"} too large to read`,
+    );
+  }
+  if (unreadable) {
+    reasons.push(`${count(unreadable)} ${unreadable === 1 ? "path" : "paths"} could not be read`);
+  }
+  if (unreadableNames) {
+    reasons.push(
+      `${count(unreadableNames)} ${unreadableNames === 1 ? "path name" : "path names"} could not be read`,
+    );
+  }
+  return reasons.length
+    ? `Some records may be missing because ${new Intl.ListFormat("en").format(reasons)}.`
+    : "Some records may be missing because the scan did not finish.";
+}
 
 mb.registerView("folder", "table", {
   render(container, ctx) {
@@ -23,6 +77,8 @@ mb.registerView("folder", "table", {
     let mounted = null;
     let shown = "";
     let generation = "";
+    let warningGeneration = "";
+    let warning = "";
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     let timer;
     /** @type {CollectionAnswer | null} */
@@ -182,7 +238,11 @@ mb.registerView("folder", "table", {
           );
           setStatus("");
         } else if (!answer.complete) {
-          setStatus("The collection was only partly indexed.", "warning");
+          if (!warning || warningGeneration !== answer.generation) {
+            warning = coverageWarning(answer.summary?.problems ?? [], mb.formatInteger);
+            warningGeneration = answer.generation;
+          }
+          setStatus(warning, "warning");
         } else {
           setStatus(answer.tables.length ? "" : "No SoftSchema records in this folder.");
         }
