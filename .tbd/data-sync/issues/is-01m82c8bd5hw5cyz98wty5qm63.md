@@ -3,15 +3,15 @@ type: is
 id: is-01m82c8bd5hw5cyz98wty5qm63
 title: "Nightly soak time-limits red since 2026-11-19: chrome 1/4, goldens-and-serial 1/2, unit 3.14t 2/2 p90 past 80% of their limits"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/698
     at: 2026-11-22T21:09:42.919Z
-delegate: claude-code@spud10.local
+delegate: codex@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m7wysgm9rg3fdch55nst1wrn
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-22T19:38:15.330Z
-updated_at: 2026-11-28T17:47:54.076Z
+updated_at: 2026-11-28T18:05:22.914Z
 started_at: 2026-11-22T19:55:40.236Z
 closed_at: null
 close_reason: null
