@@ -856,8 +856,7 @@ def test_the_session_runs_on_the_recording() -> None:
     # A refusal of the page's own refresh says nothing; the reader's press says why.
     own = by_name["a page's own refresh with no room in the queue says nothing"]
     assert own["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
-    assert (own["paint"]["label"], own["paint"]["error"]) == ("", None)
-    assert own["paint"]["pull"].startswith("Pull request #")
+    assert own["paint"] is None
     pressed = by_name["a press with no room in the queue says why"]
     assert pressed["requests"] == ["POST /api/source/refresh {}"]
     # The answer's own words are the agent's; its code says waiting would help.
