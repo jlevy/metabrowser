@@ -295,8 +295,11 @@ The persistent arrow tooltips and accessible shortcut descriptions list both bin
 A short click traverses one entry.
 Click and hold an enabled arrow to open that direction’s native history menu, following
 Safari’s pattern. Secondary click opens the same menu.
-Expose it to keyboard and VoiceOver through **View > Back History** and **View > Forward
-History** even when the toolbar is out of focus.
+Expose **View > Back History** and **View > Forward History** for keyboard access.
+Give each arrow a VoiceOver **Show Menu** action alongside **Press**. The View commands
+follow the focused browsing context.
+Disable them when the GitHub popover owns focus unless it exposes a menu for its own
+history.
 
 Show the nearest reachable entries first.
 Read the current project WebView’s `WKBackForwardList`, reverse its Back entries, and
@@ -304,8 +307,9 @@ keep its Forward entries in order.
 Use the page title and add route context where titles repeat or are unavailable.
 Jump to the selected WebKit item with `go(to:)`, preserving exact route and in-page
 state. Closing the menu does not navigate, and releasing the hold does not trigger an
-extra step. Before activation, revalidate the original hosting window, WebView, origin,
-current history item, and the chosen item’s presence in that direction.
+extra step. Return keyboard focus to the invoking arrow when canceling.
+Before activation, revalidate the original hosting window, WebView, origin, current
+history item, and the chosen item’s presence in that direction.
 Dismiss stale menus if any check fails.
 Use entry identity so visits that share a URL retain their own history state.
 A new navigation after Back clears the forward branch as usual.
@@ -323,13 +327,15 @@ In the macOS host, expose the validated current Metabrowser URL in native chrome
 Click the field’s link icon to copy the full URL directly.
 Its tooltip reads “Internal Metabrowser server URL · Click to copy”.
 Give the icon an accessible **Copy internal Metabrowser server URL** label and show a
-brief **URL copied** confirmation on success.
-Clicking the address text still opens its details.
-Make the full address available without hiding meaningful query values or position
-anchors behind the folder title.
-Use a compact read-only presentation, with enough room to inspect the whole URL on
-demand. The display and actions require a ready server endpoint and a visible, committed
-main document at that origin.
+brief **URL copied** confirmation only after a successful copy.
+Keep focus on the icon and leave the clipboard untouched when the address becomes
+unavailable. The icon and address-details button have separate focus and hit regions at
+every width. Opening the address details focuses its selectable full URL. Make the full
+address available without hiding meaningful query values or position anchors behind the
+folder title.
+Use a compact read-only presentation, with enough room to inspect the whole
+URL on demand. The display and actions require a ready server endpoint and a visible,
+committed main document at that origin.
 Preserve the separate address used for recovery.
 Close the disclosure and clear its address when the committed page becomes unavailable
 or the window hosts another page.
@@ -401,7 +407,9 @@ existing links. No history stack crosses the process boundary.
    Open two windows on the same server and verify that restoring one window’s explicit
    source leaves the other window on its own target.
 
-5. In the native trace, open Back and Forward history by holding and by keyboard.
+5. Build the native history trace with real user inputs so WebKit applies its own
+   user-interaction rules to history entries.
+   Open Back and Forward history by holding and by keyboard.
    Check nearest-first order, jump to a non-adjacent item, and cancel a menu without
    navigating. Cover repeated URLs with different history state and a history branch that
    changes while the menu is open.
