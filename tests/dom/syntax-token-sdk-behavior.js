@@ -1,5 +1,6 @@
 // DOM-free behavioral contracts for mb.highlightSyntax.
 
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -180,6 +181,35 @@ async function main() {
     sourceContainer.innerHTML.includes("&lt;script&gt;") &&
       !sourceContainer.innerHTML.includes("'<script>'"),
     "shared source renderer should escape exact source text",
+  );
+  const excerpt = {
+    ...sourceContainer,
+    ownerDocument: { createElement: () => ({ setAttribute() {} }) },
+    querySelector: () => ({
+      prepend(element) {
+        excerpt.copy = element.textContent;
+      },
+    }),
+    querySelectorAll: () => [],
+  };
+  const authored = "\r\n  key: <long-value>\r\n\r\n";
+  ready.metabrowser.renderSourceView(
+    excerpt,
+    { content: authored, ext: ".yaml" },
+    { lineStart: 1 },
+  );
+  assert.equal(excerpt.copy, authored, "copy retains authored leading blank and CRLF");
+  const displayed = [...excerpt.innerHTML.matchAll(/data-line="(\d+)">([^<]*)<\/span>/g)].map(
+    (match) => [match[1], match[2]],
+  );
+  assert.deepEqual(
+    displayed,
+    [
+      ["1", ""],
+      ["2", "  key: &lt;long-value&gt;"],
+      ["3", ""],
+    ],
+    "wrapped source keeps one label per authored line",
   );
   ready.metabrowser.renderSourceView(sourceContainer, {
     content: "target:\n\tbuild\n",

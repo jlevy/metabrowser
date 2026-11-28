@@ -488,7 +488,7 @@ async function main() {
       `[...${mixedGrid}.tBodies[0].rows].map((row) => [...row.cells].filter(
         (cell) => !cell.classList.contains("structured-row-action"),
       ).map(
-        (cell) => (cell.querySelector(":scope > button") ?? cell).textContent,
+        (cell) => cell.querySelector(":scope > button")?.innerText ?? cell.textContent,
       ))`,
     );
     measured.branchLayout = await chrome.evaluate(`(() => {
@@ -498,7 +498,7 @@ async function main() {
       const icon = button.querySelector(".toggle-chevron").getBoundingClientRect();
       const box = button.getBoundingClientRect();
       const label = document.createRange();
-      label.selectNodeContents(button.firstChild);
+      label.selectNodeContents(button.querySelector(".structured-branch-preview"));
       return {
         usesTableTextSize: getComputedStyle(button).fontSize === getComputedStyle(button.closest("td")).fontSize,
         iconAfterLabel: label.getBoundingClientRect().right <= icon.left,
@@ -512,6 +512,34 @@ async function main() {
       deviceScaleFactor: 1,
       mobile: false,
     });
+    await tableTab("previews.json");
+    await chrome.waitFor(
+      `document.querySelectorAll("#preview-pane .structured-branch-toggle").length === 2`,
+    );
+    // Both values are complete projections; only the wider one needs a visible total.
+    // Wait for the host observer's layout pass before measuring the actual glyphs.
+    await chrome.waitFor(
+      `!document.querySelectorAll("#preview-pane .structured-branch-count")[1].hidden`,
+    );
+    measured.previewFit = await chrome.evaluate(`(() => {
+      const [tiny, long] = document.querySelectorAll("#preview-pane .structured-branch-toggle");
+      const small = tiny.querySelector(".structured-branch-preview");
+      const preview = long.querySelector(".structured-branch-preview");
+      const count = long.querySelector(".structured-branch-count");
+      const countBox = count.getBoundingClientRect();
+      const icon = long.querySelector(".toggle-chevron").getBoundingClientRect();
+      const cell = long.closest("td").getBoundingClientRect();
+      return {
+        tinyWhole: tiny.innerText === "[1, 2]" && small.scrollWidth <= small.clientWidth,
+        tinyCountHidden: tiny.querySelector(".structured-branch-count").hidden,
+        completeLongPreview: !preview.textContent.includes("…"),
+        longClipped: preview.scrollWidth > preview.clientWidth,
+        longCountShown: !count.hidden && count.textContent.trim() === "(1 item)",
+        countFits: countBox.left >= cell.left && countBox.right <= cell.right,
+        chevronFits: icon.left >= cell.left && icon.right <= cell.right,
+        chevronAfterCount: icon.left >= countBox.right,
+      };
+    })()`);
     await chrome.send("Page.navigate", { url: `${base}/view/frontmatter.md` });
     const frontmatter = "details.kpress-frontmatter";
     await chrome.waitFor(`Boolean(document.querySelector("${frontmatter} > summary"))`);
@@ -559,7 +587,7 @@ async function main() {
     measured.frontmatter = await chrome.evaluate(`(() => {
       const details = document.querySelector("${frontmatter}");
       return {
-        firstLine: Number(details.querySelector(".source-line-numbers").textContent.split(String.fromCharCode(10))[0]),
+        firstLine: Number(details.querySelector(".source-excerpt-line").dataset.line),
         copy: details.querySelector("[data-mb-copy-payload]").textContent,
       };
     })()`);
@@ -587,10 +615,14 @@ async function main() {
     await chrome.waitFor(hasSourceColor(jsonFence, "json"));
     measured.fencedViews = await chrome.evaluate(`(() => {
       const json = ${jsonFence};
-      const firstLine = Number(json.querySelector(".source-line-numbers").textContent.split(String.fromCharCode(10))[0]);
+      const firstLine = Number(json.querySelector(".source-excerpt-line").dataset.line);
+      const code = json.querySelector("pre.source-excerpt > code");
+      code.style.maxWidth = "18ch";
+      const rows = code.querySelectorAll(".source-excerpt-line");
+      const wraps = code.scrollWidth <= code.clientWidth + 1 && rows[1].offsetHeight > rows[0].offsetHeight;
       const source = json.querySelector("[data-mb-copy-payload]").textContent;
       json.querySelector("summary").click();
-      return { firstLine, source, yamlTableStaysOpen: ${yamlFence}.open && Boolean(${yamlFence}.querySelector(".structured-node-grid")) };
+      return { firstLine, source, wraps, yamlTableStaysOpen: ${yamlFence}.open && Boolean(${yamlFence}.querySelector(".structured-node-grid")) };
     })()`);
     await chrome.waitFor(`!${jsonFence}.nextElementSibling.hidden`);
     measured.fencedViews.jsonFallbackReturns = true;

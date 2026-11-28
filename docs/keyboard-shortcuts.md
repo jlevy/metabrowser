@@ -27,7 +27,7 @@ work.
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
 | `W` | Open the branch or tag chooser below Files and Commits | A repository opened by its URL, or a folder that is a repository’s root, is shown |
 | `V` | The rendered view: Document, Diagram, Preview, Table, Tree, Timeline, or Log | A file’s tab bar is shown |
-| `A` | Table: a JSON or YAML list of records as a table | A JSON or YAML file is shown |
+| `A` | Values: structured JSON or YAML values | A JSON or YAML file is shown |
 | `S` | The source: Source, or Raw JSON; a SQLite database’s Schema; or the Sessions list of an agent home | A file’s tab bar is shown, or a folder that is or holds a Claude Code or Codex home |
 | `E` | Session, the session’s header and events | An agent log or a compressed Codex rollout is shown |
 | `A` | Agents, the home of a Claude Code or Codex history | A folder that is or holds a Claude Code or Codex home is shown |

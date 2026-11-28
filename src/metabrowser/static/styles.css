@@ -6333,6 +6333,36 @@ pre.code-block.metabrowser-source-lines > code {
 .source-line-numbers:hover {
   color: var(--text);
 }
+
+/* An embedded excerpt has local line numbers and no file anchors. Keep each
+   number with its logical line when a narrow disclosure wraps the code. */
+pre.code-block.metabrowser-source-lines.source-excerpt {
+  display: block;
+  min-width: 0;
+}
+pre.metabrowser-source-lines.source-excerpt > code {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+}
+.source-excerpt-line {
+  position: relative;
+  display: block;
+  min-height: 1lh;
+  padding-inline-start: calc(var(--mb-excerpt-digits) + 2ch);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.source-excerpt-line::before {
+  position: absolute;
+  inset-inline-start: 0;
+  width: var(--mb-excerpt-digits);
+  color: var(--muted);
+  text-align: end;
+  content: attr(data-line) / "";
+  -webkit-user-select: none;
+  user-select: none;
+}
 .source-line-numbers:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
@@ -6558,11 +6588,20 @@ pre.code-block.metabrowser-source-lines > code {
     pointer-events: auto;
   }
 }
+.structured-view-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nav-toolbar-gap);
+  padding: var(--panel-cell-padding);
+}
 .structured-node-grid {
+  /* Preview buttons must shrink with the pane, not set its intrinsic width. */
+  table-layout: fixed;
   width: 100%;
   overflow-wrap: anywhere;
 }
-.structured-node-grid th[scope="row"] {
+.structured-node-grid:has(th[scope="row"]) thead th:first-child {
   width: 33%;
 }
 .structured-node-grid .structured-branch-toggle {
@@ -6571,17 +6610,30 @@ pre.code-block.metabrowser-source-lines > code {
   gap: var(--section-disclosure-chevron-gap);
   box-sizing: border-box;
   inline-size: max-content;
+  max-inline-size: 100%;
+  min-inline-size: 0;
   block-size: 1lh;
   padding-block: 0;
   font-size: var(--body-font-size);
   line-height: inherit;
   white-space: nowrap;
 }
-.structured-branch-toggle > span {
+.structured-branch-preview {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.structured-branch-count {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.structured-branch-chevron {
   display: flex;
+  flex-shrink: 0;
+  margin-inline-start: auto;
 }
 .structured-node-grid .structured-row-action {
-  width: 1%;
+  width: var(--icon-btn-size);
   padding-block: 0;
   text-align: end;
   vertical-align: middle;

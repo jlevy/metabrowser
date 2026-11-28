@@ -38,6 +38,7 @@ export function attachFrontmatter(host, path, raw, mb, lifetime) {
     disclosure,
     mb,
     {
+      path,
       label: "Frontmatter view",
       ext: ".yaml",
       pages: () => mb.createStructuredPageReader(path, { frontmatter: true, revision }),

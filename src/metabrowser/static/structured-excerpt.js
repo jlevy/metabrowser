@@ -1,3 +1,4 @@
+import { showStructuredNotice, structuredFailure } from "./structured-page-reader.js";
 /** @typedef {import("./structured-node-table.js").Position} Position */
 /** @typedef {ReturnType<typeof import("./structured-page-reader.js").createStructuredPageReader>} Pages */
 
@@ -9,6 +10,7 @@
  * @param {{
  *   label: string,
  *   ext: string,
+ *   path: string,
  *   pages: () => Promise<Pages>,
  *   readTree?: (position: Position, signal: AbortSignal) => unknown,
  * }} options
@@ -20,10 +22,11 @@ export function mountStructuredExcerpt(host, mb, options) {
   const filterControls = mb.filterControls;
   const doc = host.ownerDocument;
   const controls = doc.createElement("div");
+  controls.className = "structured-view-controls";
   const table = doc.createElement("div");
   const alternate = doc.createElement("div");
   host.replaceChildren(controls, table, alternate);
-  const pages = options.pages();
+  const pages = Promise.resolve().then(options.pages);
   let disposed = false;
   /** @type {Position} */
   let selection = { document: 0, path: [], offset: 0 };
@@ -33,7 +36,12 @@ export function mountStructuredExcerpt(host, mb, options) {
   let treeHandle;
   /** @type {AbortController | undefined} */
   let drawing;
-  const views = ["Table", "Tree", "Source"].map((label) => ({ label, value: label }));
+  const views = ["Table", "Tree", "Source"].map((value) => ({
+    label: value === "Table" ? "Values" : value,
+    value,
+  }));
+  const originalSource = () =>
+    void mb.navigation.open({ path: options.path }, { viewId: "source" });
 
   /** @param {string} mode */
   async function select(mode) {
@@ -66,12 +74,18 @@ export function mountStructuredExcerpt(host, mb, options) {
           return;
         }
         if (typeof page.source_text !== "string") {
-          throw Error("Source is unavailable for this selection.", { cause: page.diagnostic });
+          showStructuredNotice(
+            alternate,
+            structuredFailure(page, "Source"),
+            originalSource,
+            "Open file in Source",
+          );
+          return;
         }
         mb.renderSourceView(
           alternate,
           { content: page.source_text, ext: page.format === "json" ? ".json" : options.ext },
-          { lineStart: page.source_start_line, signal: attempt.signal },
+          { lineStart: 1, signal: attempt.signal },
         );
         return;
       }
@@ -90,24 +104,16 @@ export function mountStructuredExcerpt(host, mb, options) {
       treeHandle = structured.renderInlineTree(mount, value, { virtualize: true });
     } catch (error) {
       if (!attempt.signal.aborted) {
-        showNotice(alternate, error);
+        showStructuredNotice(
+          alternate,
+          structuredFailure(error, mode),
+          mode === "Source" ? originalSource : () => void select("Source"),
+          mode === "Source" ? "Open file in Source" : "Open Source",
+        );
       }
     }
   }
 
-  /** @param {HTMLElement} element @param {unknown} error */
-  function showNotice(element, error) {
-    const warning = doc.createElement("div");
-    warning.className = "notice";
-    warning.dataset.severity = "warning";
-    warning.setAttribute("role", "status");
-    console.error("Could not open structured view", error);
-    warning.textContent =
-      error instanceof Error && "status" in error && error.status === 409
-        ? "This file changed. Reload the page to read the current version."
-        : "Could not open this view. Open the file in Source.";
-    element.replaceChildren(warning);
-  }
   const unbind = filterControls.bind(controls, {
     onChange(_key, mode) {
       void select(mode);
@@ -120,6 +126,10 @@ export function mountStructuredExcerpt(host, mb, options) {
         ? undefined
         : mb.mountStructuredNodeTable(table, readTable, {
             copyRow,
+            openSource(position) {
+              selection = position;
+              void select("Source");
+            },
             onSelect(position) {
               selection = position;
             },
@@ -134,7 +144,12 @@ export function mountStructuredExcerpt(host, mb, options) {
     })
     .catch((error) => {
       if (!disposed) {
-        showNotice(table, error);
+        showStructuredNotice(
+          table,
+          structuredFailure(error, "Values"),
+          originalSource,
+          "Open file in Source",
+        );
       }
     });
   return {

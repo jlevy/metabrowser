@@ -54,8 +54,16 @@ export function attachStructuredDisclosure(details, mb, options, lifetime, fallb
           content.dataset.severity = "warning";
           content.setAttribute("role", "status");
           console.error("Could not open structured views", error);
-          content.textContent =
-            "Could not open these views. Close and reopen this section to try again.";
+          content.textContent = "The structured views could not be loaded.";
+          const action = content.ownerDocument.createElement("button");
+          action.type = "button";
+          action.className = "btn";
+          action.textContent = "Open file in Source";
+          action.addEventListener(
+            "click",
+            () => void mb.navigation.open({ path: options.path }, { viewId: "source" }),
+          );
+          content.append(" ", action);
         }
       });
   }

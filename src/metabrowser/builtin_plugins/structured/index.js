@@ -54,8 +54,21 @@ function renderTree(container, ctx) {
         return;
       }
       console.warn("structured data load failed", err);
-      container.innerHTML =
-        '<div class="notice" data-severity="error" role="alert">Could not load structured data. Reload the page to try again.</div>';
+      const notice = container.ownerDocument.createElement("div");
+      notice.className = "notice";
+      notice.dataset.severity = "error";
+      notice.setAttribute("role", "alert");
+      notice.textContent = "The Tree view could not be loaded.";
+      const action = container.ownerDocument.createElement("button");
+      action.type = "button";
+      action.className = "btn";
+      action.textContent = "Open Source";
+      action.addEventListener(
+        "click",
+        () => void mb.navigation.open({ path: ctx.path }, { viewId: "source" }),
+      );
+      notice.append(" ", action);
+      container.replaceChildren(notice);
       return;
     }
     if (!container.isConnected) {
@@ -147,32 +160,39 @@ mb.registerView("structured", "table", {
   async render(container, ctx) {
     const path = ctx.path ?? "";
     const revision = /** @type {{mtime_hash?: string} | undefined} */ (ctx.raw)?.mtime_hash;
-    const pages = await mb.createStructuredPageReader(path, { revision });
-    return mb.mountStructuredNodeTable(container, pages.table, {
-      copyRow: pages.copyRow,
-      async mountRecords(host, createRowCopy) {
-        table ??= /** @type {Promise<TableExports>} */ (mb.plugins.load("table"));
-        const { mountTable } = await table;
-        return mountTable(host, {
-          path,
-          renderJson: renderRecordValue,
-          rowAction: createRowCopy
-            ? {
-                label: "Copy record",
-                render(_key, position) {
-                  return position === null
-                    ? null
-                    : createRowCopy(`Copy record ${position}`, {
-                        document: 0,
-                        path: [position - 1],
-                        offset: 0,
-                      });
-                },
-              }
-            : undefined,
-        });
+    /** @type {ReturnType<typeof mb.createStructuredPageReader> | undefined} */
+    let reader;
+    const pages = () => (reader ??= mb.createStructuredPageReader(path, { revision }));
+    return mb.mountStructuredNodeTable(
+      container,
+      async (...args) => (await pages()).table(...args),
+      {
+        openSource: () => void mb.navigation.open({ path }, { viewId: "source" }),
+        copyRow: async (...args) => (await pages()).copyRow(...args),
+        async mountRecords(host, createRowCopy) {
+          table ??= /** @type {Promise<TableExports>} */ (mb.plugins.load("table"));
+          const { mountTable } = await table;
+          return mountTable(host, {
+            path,
+            renderJson: renderRecordValue,
+            rowAction: createRowCopy
+              ? {
+                  label: "Copy record",
+                  render(_key, position) {
+                    return position === null
+                      ? null
+                      : createRowCopy(`Copy record ${position}`, {
+                          document: 0,
+                          path: [position - 1],
+                          offset: 0,
+                        });
+                  },
+                }
+              : undefined,
+          });
+        },
       },
-    });
+    );
   },
 });
 

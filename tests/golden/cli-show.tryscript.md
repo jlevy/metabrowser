@@ -82,7 +82,7 @@ model: text envelope; size=11 content_bytes=11 content_truncated=False
 
 ## Test: structured data
 
-A JSON mapping opens in Table, with Tree and Source available from the same file.
+A JSON mapping opens in Values, with Tree and Source available from the same file.
 
 ```console
 $ metab showroot --show data.json

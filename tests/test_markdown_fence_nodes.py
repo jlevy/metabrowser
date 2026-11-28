@@ -17,6 +17,39 @@ from metabrowser.plugin_loader.static_assets import build_plugin_routes
 _ROUTE = "/api/plugin/structured/parsed"
 
 
+@pytest.mark.parametrize("eol", [b"\n", b"\r\n", b"\r"])
+def test_root_source_keeps_blank_lines_and_original_byte_positions(
+    tmp_path: Path, eol: bytes
+) -> None:
+    front = eol.join([b"", b"title: |", b"  first", b"  second", b""])
+    yaml = eol.join([b"", b"# header", b"key: value", b""])
+    json_body = eol.join([b"", b"{", b'  "key": null', b"}", b""])
+    data = eol.join(
+        [b"---", front + b"---", b"Body", b"```yaml", yaml + b"```", b"```json", json_body + b"```"]
+    )
+    server._set_root_dir(tmp_path)
+    (tmp_path / "article.md").write_bytes(data)
+    app = Starlette(
+        routes=build_plugin_routes([p for p in server._LOADED_PLUGINS if p.name == "structured"])
+    )
+    with TestClient(app) as client:
+        for params, expected in [
+            ({"frontmatter": "1"}, front),
+            ({"fence_line": "8"}, yaml),
+            ({"fence_line": "13"}, json_body),
+        ]:
+            response = client.get(
+                _ROUTE,
+                params={"path": "article.md", "projection": "nodes", "source": "1", **params},
+            )
+            assert response.status_code == 200
+            page = response.json()
+            assert page["source_text"].encode() == expected
+            span = page["excerpt"]
+            assert data[span["start_byte"] : span["end_byte"]] == expected
+            assert page["source_start_line"] == data[: span["start_byte"]].count(eol) + 1
+
+
 @pytest.mark.parametrize("eol", [b"\r\n", b"\r", b"\n"])
 def test_fence_source_copy_and_tree_use_the_same_revision(tmp_path: Path, eol: bytes) -> None:
     server._set_root_dir(tmp_path)
