@@ -1,4 +1,4 @@
-"""Bounded YAML: the one loader front matter, and the classifier's YAML prefix, parse through.
+"""Bounded YAML for front matter, classification and native structured values.
 
 A Markdown file's front matter is untrusted on a served GitHub mirror and in a folder
 served with ``--untrusted``, and little better in a downloaded repository served as a
@@ -35,6 +35,10 @@ and the C parser, whose nesting and cost were never measured here, is never used
 reads YAML 1.2 only, and never writes a warning: ruamel warns on every reused anchor
 name, with the author's text in each message, and Python keeps every distinct message
 for the life of the process.
+
+:func:`load_bounded_native_yaml_documents` shares the composer and graph measurement
+with the JSON-safe loader. It then uses ruamel's safe constructor to preserve native
+values, including those in streams with YAML version directives.
 """
 
 from __future__ import annotations
@@ -314,6 +318,42 @@ def load_bounded_yaml_documents(
     )
 
 
+def load_bounded_native_yaml_documents(
+    text: str, *, max_expanded_size: int, max_nodes: int
+) -> list[object]:
+    """Read native safe-loader values for the record grid, sizing each graph first."""
+    yaml = YAML(typ="safe", pure=True)
+    yaml.Composer = _Composer
+    yaml.max_depth = YAML_MAX_DEPTH
+    yaml.composer.nodes_left = max_nodes
+    remaining = max_expanded_size
+    documents: list[object] = []
+    try:
+        for node in yaml.compose_all(text):
+            remaining -= _written_out_size(node, remaining, native_value=True)
+            documents.append(yaml.constructor.construct_document(node))
+    except _ExpansionBudgetError as exc:
+        raise BoundedYamlError(
+            f"YAML written out without its aliases is larger than {max_expanded_size:,} characters",
+            over_budget=True,
+        ) from exc
+    except _NodeBudgetError as exc:
+        raise BoundedYamlError(
+            f"YAML holds more than {max_nodes:,} values", over_budget=True
+        ) from exc
+    except _CycleError as exc:
+        raise BoundedYamlError("A YAML alias refers to a value that contains it") from exc
+    except (_DepthError, MaxDepthExceededError) as exc:
+        raise BoundedYamlError(
+            f"YAML nests past {YAML_MAX_DEPTH} levels", over_budget=True
+        ) from exc
+    except BoundedYamlError:
+        raise
+    except Exception as exc:
+        raise BoundedYamlError(_parse_reason(BoundedYamlError, exc)) from exc
+    return documents
+
+
 def json_safe_scalar(value: object) -> object:
     """*value*, a scalar a YAML or JSON parser built, as the loader writes one into its value.
 
@@ -460,7 +500,7 @@ class _BoundedConstructor(SafeConstructor):
         return value
 
 
-def _written_out_size(root: Node, budget: int) -> int:
+def _written_out_size(root: Node, budget: int, *, native_value: bool = False) -> int:
     """The size of *root* written out without its aliases, never past *budget*.
 
     Each node is visited once and its size remembered, so a node that many aliases
@@ -471,6 +511,7 @@ def _written_out_size(root: Node, budget: int) -> int:
     """
 
     sizes: dict[int, int] = {}
+    heights: dict[int, int] = {}
     # Nodes whose children are being sized: the path from the root to the current node.
     active: set[int] = set()
     stack: list[tuple[Node, bool]] = [(root, False)]
@@ -479,12 +520,34 @@ def _written_out_size(root: Node, budget: int) -> int:
         marker = id(node)
         if children_sized:
             active.discard(marker)
-            size = 1 + sum(sizes[id(child)] for child in _children(node))
+            children = _children(node)
+            size = 1 + sum(sizes[id(child)] for child in children)
+            if native_value:
+                heights[marker] = 1 + max(
+                    (heights.get(id(child), 1) for child in children), default=0
+                )
+                if heights[marker] > YAML_MAX_DEPTH:
+                    raise _DepthError
         elif marker in sizes:
             continue
         elif isinstance(node, ScalarNode):
+            if native_value and node.tag not in _SCALAR_TAGS and node.tag not in _TEXT_TAGS:
+                raise BoundedYamlError("YAML scalar has an unsupported tag")
+            # YAML 1.1 base-60 integer construction repeatedly multiplies a growing
+            # Python integer. Apply Python's decimal conversion ceiling to its input.
+            if (
+                native_value
+                and node.tag == _TAG + "int"
+                and ":" in node.value
+                and len(node.value) > sys.int_info.default_max_str_digits
+            ):
+                raise BoundedYamlError("YAML base-60 integer is too long", over_budget=True)
             size = 1 + len(node.value)
         else:
+            if native_value:
+                tags = (_SEQ, _OMAP, _PAIRS) if isinstance(node, SequenceNode) else (_MAP, _SET)
+                if node.tag not in tags:
+                    raise BoundedYamlError("YAML collection has an unsupported tag")
             if marker in active:
                 raise _CycleError
             active.add(marker)
