@@ -500,8 +500,12 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
 other views: it reads the plugin’s own parse of a JSON or YAML file and refuses, with
 `SourceUnreadableError` and its reason, any document that holds no table.
 
-- A `[[table_source]]` names one of its own plugin’s kinds, once, and its plugin must
-  require `table`; an operator-directory plugin’s are ignored, since it runs no Python.
+- A `[[table_source]]` names one of its plugin’s kinds or `folder`, and its plugin must
+  require `table`. Operator-directory plugins run without Python adapters.
+- A folder table source declares an `offer` callable that receives a directory and
+  returns whether the source can serve it.
+  Its adapter takes a `FolderTableHandle`. The shared table routes accept the folder as
+  `path` and the contract or table ID as a separate `table` parameter.
 - Read through `handle.read_window(max_bytes=...)`, which answers on a folder and on a
   Git pin alike; `handle.local_path` is the real path on a served folder, or None.
 - `generation()` only stats files and reads bounded headers.
@@ -552,6 +556,12 @@ at `path` and returns a handle with `ready`, `dispose()`, and `refresh()`. `refr
 asks the current question again and draws the new answer in place, keeping the focused
 row, the row at the top of the view, and the selection by row key, for a source whose
 content changes while it is shown.
+For a source with several tables, load the same plugin export
+`renderTableCatalog(container, groups)` for the linked overview.
+Each group supplies a title and rows with a label, formatted estimate, address and
+navigation callback.
+Use `catalogAddress` with `mountTable` to expose the catalog in the shared toolbar.
+
 `renderJson(element, value)`, optional, draws a JSON value (a `{json}` cell) into a
 record’s element and returns a handle with `dispose()`, which the view calls when the
 record goes; without it the value is its JSON text.
@@ -749,6 +759,24 @@ Nothing checks the list for another plugin yet.
 
 Useful helpers include:
 
+- `renderIndexProgress(element, message)` for an index status element.
+  It shares the Files scan’s spinner and type and preserves them as the message changes.
+- `mountStructuredNodeTable(element, readPage, options)` for the core structured-data
+  table. Provide a reader that accepts a document index, typed path, page offset,
+  requested depth and abort signal.
+  The table previews nested rows and expands branches in place.
+  Use `options.onSelect` to update a companion view and `options.copyRow` to read a
+  complete row on demand.
+  Dispose the returned handle when the host unmounts.
+- `createStructuredPageReader(path, options)` builds revision-pinned Table, Tree, Source
+  excerpt and row-copy readers.
+  Pass `frontmatter` for Markdown metadata or `fenceLine` for a structured fence’s
+  original opening line.
+  A collection or excerpt can supply its own readers using the same ordered node model.
+- `mountStructuredExcerpt(element, options)` mounts the shared Table, Tree and Source
+  controls inside an existing view.
+  Pass a reader factory, a Source extension and an accessible label.
+  Dispose the handle when the host unmounts.
 - `render(template, data)` for auto-escaped Mustache templates, and `escapeHtml(value)`
   for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame, and `ownDelegate(element)` with
@@ -936,6 +964,11 @@ A view whose container carries `md-body` gets the reading font on its Markdown�
 headings, paragraphs, lists, and quotes only, so anything else it draws, such as a
 toolbar or an empty state, keeps the chrome face without a face of its own
 ([Serif Is for Documents](design-system.md#serif-is-for-documents)).
+
+`await mb.loadStructuredTree()` loads the shared structured Tree renderer and its
+stylesheet. Call `renderInlineTree(container, value, options)` on the returned object,
+and dispose its handle when replacing the view.
+The `expansion` property supplies the file view’s initial expansion settings.
 
 `ensureAsset(name)` loads a vendored library the shell does not put on every page, and
 resolves once its globals are present.

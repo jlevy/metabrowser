@@ -2,7 +2,7 @@
 
 ``tests/dom/diff-structured-chrome.mjs`` draws merged trees through the production
 ``mountStructuredDiff`` (``builtin_plugins/diff/diff-structured.js``) and the structured
-plugin's ``preview.js`` and ``tree.js``, under the shell's, the structured plugin's and
+renderer’s preview and tree scripts, under the shell’s, the shared tree’s and
 the diff plugin's stylesheets, in a pull request's diff host. Only a browser computes
 what it holds:
 

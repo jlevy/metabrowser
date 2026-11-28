@@ -128,6 +128,16 @@ exit: 0
       "requires": []
     },
     {
+      "name": "softschema",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "structured",
+        "table"
+      ]
+    },
+    {
       "name": "sqlite",
       "display_name": "<text>",
       "version": "<text>",

@@ -22,10 +22,11 @@ shell's own page, and measures what no browserless DOM computes:
   (200 in 10 seconds) writes the place once, after the keys stop, so Enter still pushes
   the record's address; its Back link returns to the grid at the row and scroll the keys
   left; and a reload returns there too.
-- the structured kind's Table tab draws a JSON list of records, a record's nested values
-  as the structured plugin's own tree, through the view it hands the table; a JSON
-  mapping has no Table tab; and a list with an item that is not a mapping is a notice
-  that it is not a list of records;
+- the structured kind's Table tab draws a JSON record list and its nested values in the
+  shared grid, and presents a mapping and a mixed list in the structured node table;
+- an embedded Markdown Source excerpt reports its original line and preserves CRLF
+  in the copy payload after expanding branches in the frontmatter table;
+- the Files scan and a plugin's index status use the same type and spinner paint;
 - a real SQLite table refreshes after a WAL-only commit and after its file is replaced at
   the same path.
 
@@ -104,6 +105,13 @@ def _write_folder(root: Path) -> None:
     (root / "records.json").write_text(json.dumps(records), encoding="utf-8")
     (root / "mapping.json").write_text('{"name": "metabrowser"}', encoding="utf-8")
     (root / "mixed.json").write_text('[{"name": "Ada"}, "Grace"]', encoding="utf-8")
+    (root / "frontmatter.md").write_bytes(
+        b"---\r\ntitle: " + b"unbroken" * 30 + b"\r\n"
+        b"person: {section: {slot: {roles: [host,\r\n editor]}}}\r\n"
+        b"---\r\n# Body\r\n"
+        b"\r\n~~~yaml\r\nroles: [host, editor]\r\n~~~\r\n"
+        b'\r\n```json\r\n{"roles": ["host", "editor"]}\r\n```\r\n'
+    )
 
 
 def _measure(tmp_path: Path, chrome_profile: Path) -> dict[str, Any]:
@@ -245,18 +253,43 @@ def _check_a_record_list_draws_its_records_and_their_trees(measured: dict[str, A
     assert records["tab"] == "table"
     assert records["headers"] == ["#", "name", "tags", "meta"]
     assert records["rows"] == 2
+    assert json.loads(records["copy"]) == {
+        "name": "Ada",
+        "tags": ["math", "engines"],
+        "meta": {"born": 1815},
+    }
     assert len(records["trees"]) == 2
     assert "math" in records["trees"][0] and "born" in records["trees"][1]
-    assert measured["mappingTabs"] == ["tree", "source"]
-    mixed = measured["mixed"]
-    assert mixed["notice"] == (
-        "This document is not a list of records: item 2 of its list is text, not a mapping."
-    )
-    assert (mixed["toolbar"], mixed["links"]) == (False, 0)
+    assert measured["mappingTabs"] == ["table", "tree", "source"]
+    assert measured["mappingRow"] == ["name", '"metabrowser"']
+    assert measured["mappingCopy"] == '{"name": "metabrowser"}'
+    assert measured["mixed"] == [["0", "Mapping (1)"], ["name", '"Ada"'], ["1", '"Grace"']]
+    assert measured["branchLayout"] == {
+        "usesTableTextSize": True,
+        "iconAfterLabel": True,
+        "iconCentered": True,
+        "rowHeightMatches": True,
+    }
+    assert measured["initialFrontmatter"] == {
+        "keys": ["title", "person", "section", "slot"],
+        "pickers": 0,
+        "slotOpen": "false",
+    }
+    assert measured["branchCopy"] == "{slot: {roles: [host,\r\n editor]}}"
+    assert measured["inlineExpansion"] is True
+    assert measured["frontmatterFits"] is True
+    assert measured["frontmatter"] == {"firstLine": 3, "copy": "[host,\r\n editor]"}
+    assert measured["fencedViews"] == {
+        "firstLine": 13,
+        "source": '{"roles": ["host", "editor"]}\r\n',
+        "yamlTableStaysOpen": True,
+        "jsonFallbackReturns": True,
+    }
 
 
 def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     measured = _measure(tmp_path, chrome_profile)
+    assert measured["progressPaint"] is True
     # Review A of #675, A11: the Live pill and the offer sit between the fit note and
     # Columns, and a hidden one keeps its slot, so neither moves those or the toolbar's
     # height, and with it the grid (Columns, then the fit note, then the toolbar height).

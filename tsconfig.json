@@ -28,7 +28,7 @@
     "src/metabrowser/builtin_plugins/agents/agent-log.js",
     "src/metabrowser/builtin_plugins/markdown/index.js",
     "src/metabrowser/builtin_plugins/structured/index.js",
-    "src/metabrowser/builtin_plugins/structured/preview.js",
-    "src/metabrowser/builtin_plugins/structured/tree.js"
+    "src/metabrowser/static/structured-preview.js",
+    "src/metabrowser/static/structured-tree.js"
   ]
 }

@@ -1,12 +1,11 @@
-// Structured plugin — pure value-classification + preview logic.
+// Shared structured value classification and preview logic.
 //
 // Framework-independent value classification and preview logic. No React or
 // Tailwind: emits CSS class names that map to the design tokens in
 // styles.css (.tok-string, .tok-number, .tok-bool, .tok-null, .tok-key,
 // .tok-punct, .tok-summary).
 //
-// Public surface (assigned to window.__structuredPreview so tree.js +
-// index.js can read it after this script tag has loaded):
+// Private bundle namespace used by structured-tree.js and the SDK:
 //   formatValue(value) -> {text, colorClass}
 //   generateStructuredPreview(data, opts) -> {parts, hasMore}
 //   calculateOptimalExpansion(data, opts) -> Set<pathStr>

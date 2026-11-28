@@ -78,6 +78,8 @@ PLUGIN_API_EXPORTS = {
     "FieldType",
     "Filter",
     "FilterOp",
+    "FolderTableHandle",
+    "FolderTableSourceAdapter",
     "Order",
     "PageReason",
     "RecordNotFoundError",
@@ -263,6 +265,62 @@ def _modules_loaded_by(*args: str) -> set[str]:
     )
     assert result.returncode == 0, result.stderr
     return set(json.loads(result.stderr.rpartition("loaded-modules:")[2]))
+
+
+def test_folder_browsing_survives_omitting_the_collection_plugin(tmp_path: Path) -> None:
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "ada.json").write_text(
+        '{"softschema":{"contract":"example:Person/v1","envelope":"person"},'
+        '"person":{"name":"Ada"}}'
+    )
+    script = textwrap.dedent(
+        """
+        import asyncio
+        import importlib.resources
+        import sys
+        from pathlib import Path
+        from unittest.mock import patch
+
+        package = "metabrowser.builtin_plugins"
+        builtin_root = Path(str(importlib.resources.files(package)))
+        iterdir = Path.iterdir
+
+        def without_collection(parent):
+            return (
+                child for child in iterdir(parent)
+                if parent != builtin_root or child.name != "softschema"
+            )
+
+        sys.modules[package + ".softschema"] = None
+        with patch.object(Path, "iterdir", without_collection):
+            from metabrowser import server
+        from metabrowser.cli.asgi_client import InProcessClient
+
+        assert not server._DISCOVERY.errors, server._DISCOVERY.errors
+        server._set_root_dir(Path(sys.argv[1]))
+
+        async def verify():
+            async with InProcessClient(server.app, label="without collection") as client:
+                folder = await client.get("/api/file?path=records")
+                assert [view["id"] for view in folder.json()["views"]] == ["overview", "treemap"]
+                parsed = await client.get(
+                    "/api/plugin/structured/parsed?projection=nodes&path=records/ada.json"
+                )
+                assert parsed.json()["status"] == "ready"
+                assert (await client.get("/api/plugin/softschema/collection?path=records")).status_code == 404
+
+        asyncio.run(verify())
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=_CHILD_TIMEOUT_S,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def _git_source_modules_in(loaded: set[str]) -> list[str]:

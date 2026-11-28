@@ -1,7 +1,7 @@
 // The Rendered view of a changed YAML or JSON file: the structured plugin's tree, drawn
 // from the server's merged tree (`structured-diff-v1`, diff/structured_projection.py),
 // with each row's change in the gutter Markdown blocks use. Rows are the tree view's own
-// (`renderRowHtml` and `materializeRows` of structured/tree.js), so a value reads as it
+// (`renderRowHtml` and `materializeRows` of static/structured-tree.js), so a value reads as it
 // does in the file view; this module only decides which rows a merged tree has, which are
 // open, and what each row's change is.
 //

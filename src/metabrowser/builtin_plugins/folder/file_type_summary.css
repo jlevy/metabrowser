@@ -20,23 +20,10 @@
 
 /* The section's status and its empty state are the main view's secondary text, at the body
    size of the table beside them (docs/design-system.md, "Type Scale"). */
-.file-type-summary-status:not(.notice),
+.file-type-summary-status:not(.notice, .index-progress),
 .file-type-summary-empty {
   color: var(--muted);
   font-size: var(--body-font-size);
-}
-
-/* The scanning row is the nav panel's index-progress component, reused so
-   the two cannot drift into two progress languages. Only the layout is
-   restated: the nav's copy is a bar at the foot of a panel and brings a
-   top border and the sidebar ground with it, and neither belongs inside a
-   section body. */
-.file-type-summary-status-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  line-height: 1.2;
 }
 
 .file-type-summary-table {

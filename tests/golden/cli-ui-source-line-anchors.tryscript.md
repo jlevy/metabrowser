@@ -189,7 +189,9 @@ $ node tests/dom/source-line-anchors-session.js
     "README.md?utm_source=chat&plain=1": "source",
     "README.md?plain=10": null,
     "README.md#install": null,
-    "README.md": null
+    "README.md": null,
+    "records?table=Person": "table",
+    "records?table=": "table"
   },
   "lineAt": {
     "top of line 1": 1,

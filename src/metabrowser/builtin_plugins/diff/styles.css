@@ -868,7 +868,7 @@
   text-decoration-color: var(--diff-del-gutter);
 }
 
-/* A changed YAML or JSON file's tree is the file view's (structured/styles.css), at its
+/* A changed YAML or JSON file's tree is the file view's (static/structured-tree.css), at its
    own height, with each added or removed row in the change gutter Markdown blocks use. */
 .metabrowser-diff-host .diff-structured.structured-tree,
 .metabrowser-diff-host .diff-structured .tree-viewport-flat {

@@ -125,6 +125,18 @@ if (sandbox.metabrowser.foreignHostValue) {
   fail("plugin-sdk.js retained a foreign namespace collision");
 }
 
+// The SDK requests this named classic-script bundle while the structured adapter loads.
+sandbox.MetabrowserAssets = {
+  async ensureAsset(name) {
+    if (name !== "structured-tree") {
+      throw new Error(`Unexpected registration-time bundle: ${name}`);
+    }
+    for (const file of ["structured-preview.js", "structured-tree.js"]) {
+      load(path.join(repoRoot, "src", "metabrowser", "static", file), file);
+    }
+  },
+};
+
 const _moduleCache = new Map();
 
 // One module per file, created unlinked. Linking the entry module links its whole graph:

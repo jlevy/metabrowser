@@ -109,10 +109,20 @@
           "path": "data.json",
           "views": [
             {
+              "id": "table",
+              "label": "Table",
+              "key": "a",
+              "default": true,
+              "container_class": "content-body table-view-host",
+              "printable": true,
+              "print_profile": "table",
+              "render_runtime": "client"
+            },
+            {
               "id": "tree",
               "label": "Tree",
               "key": "v",
-              "default": true,
+              "default": false,
               "container_class": "content-body",
               "printable": false,
               "print_profile": "plain",

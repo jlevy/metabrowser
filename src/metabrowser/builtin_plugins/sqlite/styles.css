@@ -43,7 +43,6 @@
 /* The overview and the Schema view: the same sections of `.data-grid` tables and
    literal blocks, in host tokens. */
 
-.sqlite-overview,
 .sqlite-schema {
   display: flex;
   flex-direction: column;
@@ -59,21 +58,6 @@
   margin: 8px 0 4px;
 }
 
-.sqlite-overview-table {
-  width: 100%;
-}
-
-.sqlite-overview-name {
-  font-weight: normal;
-  text-align: left;
-}
-
-.sqlite-overview-note {
-  margin-left: 8px;
-  color: var(--muted);
-}
-
-.sqlite-overview-estimate,
 .sqlite-loading,
 .sqlite-empty {
   color: var(--muted);

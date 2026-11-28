@@ -55,8 +55,8 @@
         "src/metabrowser/static/app.js",
         "src/metabrowser/static/charts.js",
         "src/metabrowser/static/perf.js",
-        "src/metabrowser/builtin_plugins/structured/preview.js",
-        "src/metabrowser/builtin_plugins/structured/tree.js"
+        "src/metabrowser/static/structured-preview.js",
+        "src/metabrowser/static/structured-tree.js"
       ],
       "linter": {
         "rules": {

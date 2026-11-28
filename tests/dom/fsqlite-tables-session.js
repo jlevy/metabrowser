@@ -55,7 +55,7 @@ function answerFor(pluginName, route, address) {
  * A page whose SDK answers from the recording. *load* stands in for
  * `plugins.load("sqlite")`; the table plugin is a stand-in that draws one node.
  */
-function page(sqlite, { load } = {}) {
+function page(sqlite, renderTableCatalog, { load } = {}) {
   const asked = [];
   const loaded = [];
   const aborted = [];
@@ -76,6 +76,7 @@ function page(sqlite, { load } = {}) {
             return load ? load() : Promise.resolve(sqlite);
           }
           return Promise.resolve({
+            renderTableCatalog,
             mountTable: (container, ctx) => {
               container.replaceChildren(new FakeElement("table-view"));
               return { ready: Promise.resolve(), dispose() {}, path: ctx.path };
@@ -148,6 +149,9 @@ async function main() {
     pathToFileURL(path.join(plugins, "sqlite/tables-view.js")).href
   );
   const sqlite = { mountSchema, mountTableView };
+  const { renderTableCatalog } = await import(
+    pathToFileURL(path.join(plugins, "table/table-catalog.js")).href
+  );
   const { mountStoreSchema, mountStoreTable } = await import(
     pathToFileURL(path.join(plugins, "fsqlite/store-tables.js")).href
   );
@@ -155,11 +159,11 @@ async function main() {
 
   // The Table view at the marker's address: the store's overview.
   for (const store of ["notes/fsqlite.json", "torn/fsqlite.json"]) {
-    const host = page(sqlite);
+    const host = page(sqlite, renderTableCatalog);
     const container = new FakeElement("div");
     const view = mountStoreTable(container, { path: store, raw: {} }, host.sdk);
     await view.ready;
-    assert.deepEqual(host.loaded, ["sqlite"]);
+    assert.deepEqual(host.loaded, ["sqlite", "table"]);
     assert.deepEqual(host.asked, [`table/tables?path=${store}`]);
     transcript[`Table view of ${store}`] = shownOverview(container);
     view.dispose();
@@ -167,7 +171,7 @@ async function main() {
 
   // At a table's address it is the table plugin's view of that table.
   {
-    const host = page(sqlite);
+    const host = page(sqlite, renderTableCatalog);
     const container = new FakeElement("div");
     const view = mountStoreTable(
       container,
@@ -185,7 +189,7 @@ async function main() {
 
   // The Schema view reads the store's own route, which answers as the SQLite one does.
   for (const address of ["notes/fsqlite.json", "notes/fsqlite.json/notes", "torn/fsqlite.json"]) {
-    const host = page(sqlite);
+    const host = page(sqlite, renderTableCatalog);
     const container = new FakeElement("div");
     const view = mountStoreSchema(container, { path: address }, host.sdk);
     await view.ready;
@@ -197,7 +201,7 @@ async function main() {
   // Disposed before the SQLite plugin loads: nothing is mounted and nothing is asked.
   {
     let release;
-    const host = page(sqlite, {
+    const host = page(sqlite, renderTableCatalog, {
       load: () =>
         new Promise((resolve) => {
           release = () => resolve(sqlite);
@@ -218,7 +222,7 @@ async function main() {
 
   // Disposed once drawn: the SQLite view's own disposal runs.
   {
-    const host = page(sqlite);
+    const host = page(sqlite, renderTableCatalog);
     const container = new FakeElement("div");
     const view = mountStoreSchema(container, { path: "notes/fsqlite.json" }, host.sdk);
     await view.ready;
@@ -229,7 +233,9 @@ async function main() {
 
   // The SQLite plugin failed to load: said, never a blank page.
   {
-    const host = page(sqlite, { load: () => Promise.reject(new Error("no sqlite")) });
+    const host = page(sqlite, renderTableCatalog, {
+      load: () => Promise.reject(new Error("no sqlite")),
+    });
     const container = new FakeElement("div");
     const view = mountStoreTable(container, { path: "notes/fsqlite.json" }, host.sdk);
     await view.ready;

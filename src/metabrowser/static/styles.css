@@ -3137,11 +3137,15 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   align-items: center;
   gap: 8px;
   min-height: 30px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--nav-font-size);
+  line-height: 1.2;
+}
+#index-progress {
   padding: 6px 12px;
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
-  color: var(--muted);
-  line-height: 1.2;
 }
 .index-progress-spinner {
   width: 12px;
@@ -6542,6 +6546,50 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .data-grid tbody tr:hover {
   background: var(--hover-bg);
+}
+.data-grid tbody tr:is(:hover, :has(:focus-visible)) .data-grid-row-action .icon-btn-reveal,
+.data-grid-row-action .icon-btn-reveal.copied {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .data-grid-row-action .icon-btn-reveal {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+.structured-node-grid {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+.structured-node-grid th[scope="row"] {
+  width: 33%;
+}
+.structured-node-grid .structured-branch-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--section-disclosure-chevron-gap);
+  box-sizing: border-box;
+  inline-size: max-content;
+  block-size: 1lh;
+  padding-block: 0;
+  font-size: var(--body-font-size);
+  line-height: inherit;
+  white-space: nowrap;
+}
+.structured-branch-toggle > span {
+  display: flex;
+}
+.structured-node-grid .structured-row-action {
+  width: 1%;
+  padding-block: 0;
+  text-align: end;
+  vertical-align: middle;
+}
+@media print {
+  .metabrowser-structured-fence + pre[hidden] {
+    display: block;
+  }
 }
 .data-grid .data-num,
 .data-num {

@@ -39,7 +39,8 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
     }
 
     @Test func readsTheReportMetabPrints() throws {
-        let report = try report(transcript("metab --doctor --json"))
+        let output = try transcript("metab --doctor --json")
+        let report = try report(output)
         #expect(report.ok)
         #expect(report.hasChecks)
         #expect(
@@ -50,7 +51,11 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
         let eventLog = try #require(report.rows.first { $0.id == "event_log" })
         #expect(eventLog.title == "Event log")
         #expect(eventLog.details.map(\.name).prefix(2) == ["directory", "source"])
-        #expect(report.rows[0].summary == "17 plugins and the packaged cache record contracts check out")
+        let json = try JSONSerialization.jsonObject(with: Data(output.joined(separator: "\n").utf8))
+        let payload = try #require(json as? [String: Any])
+        let checks = try #require(payload["checks"] as? [[String: Any]])
+        let plugins = try #require(checks.first { $0["id"] as? String == "plugins" })
+        #expect(report.rows[0].summary == plugins["summary"] as? String)
         #expect(report.rows[1].title == "Opening from a terminal")
         let git = try #require(report.rows.first { $0.id == "git" })
         #expect(git.title == "Git")

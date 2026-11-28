@@ -174,6 +174,11 @@ in place.
 The Document view renders Markdown with KPress: headings with a table of contents,
 tables, footnotes, highlighted code, math, images, and YAML frontmatter, which shows as
 a closed **Frontmatter** disclosure.
+Open **Frontmatter** or choose **Explore YAML** or **Explore JSON** above an eligible
+code fence to inspect it in Table, Tree, or Source.
+Source highlights YAML and JSON with the same colors as diffs and keeps the Markdown
+file’s line numbers.
+Hover over a table row or focus it with the keyboard to reveal its copy button.
 When the window is wide enough to show the document as a card, a print button at the
 card’s top right prints the document without the rest of the page, and the README on a
 folder’s Overview has the same button.

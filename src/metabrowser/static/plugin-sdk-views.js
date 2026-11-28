@@ -305,14 +305,17 @@
    * (builtin_plugins/github/urls.py). Null leaves the choice to the file's views.
    *
    * @param {Target | null | undefined} target
-   * @returns {"source" | null}
+   * @returns {"source" | "table" | null}
    */
   function preferredView(target) {
     if (!target) {
       return null;
     }
     const plain = (target.query || "").split("&").includes("plain=1");
-    return plain || parse(target.fragment) ? "source" : null;
+    if (plain || parse(target.fragment)) {
+      return "source";
+    }
+    return new URLSearchParams(target.query).has("table") ? "table" : null;
   }
 
   /**
@@ -335,9 +338,14 @@
    * read, because the code already has the lines; `mount` sets its value.
    *
    * @param {string} text
+   * @param {number} [lineStart] The excerpt's first line in its host document.
    */
-  function gutterHtml(text) {
+  function gutterHtml(text, lineStart) {
     const lines = countLines(text);
+    if (lineStart !== undefined) {
+      const numbers = Array.from({ length: lines }, (_unused, index) => lineStart + index);
+      return `<span class="source-line-numbers" aria-hidden="true">${numbers.join("\n")}</span>`;
+    }
     return (
       '<span class="source-line-numbers" role="slider" tabindex="0" aria-label="Line numbers" ' +
       `aria-orientation="vertical" aria-valuemin="1" aria-valuemax="${Math.max(1, lines)}" ` +
@@ -2049,6 +2057,46 @@
   }
 
   /**
+   * Highlight an embedded Source block after it is mounted. The Markdown
+   * compositor leaves KPress's server-highlighted code alone, so excerpts use
+   * the same token service as diffs here.
+   * @param {Element} code
+   * @param {string} language
+   * @param {AbortSignal | undefined} signal
+   */
+  async function highlightSourceExcerpt(code, language, signal) {
+    try {
+      const lines = await highlightSyntax(code.textContent ?? "", language, { signal });
+      if (!lines || signal?.aborted || !code.isConnected || code.classList.contains("hljs")) {
+        return;
+      }
+      const doc = code.ownerDocument;
+      const fragment = doc.createDocumentFragment();
+      for (const [index, runs] of lines.entries()) {
+        if (index > 0) {
+          fragment.append("\n");
+        }
+        for (const run of runs) {
+          if (run.classes.length === 0) {
+            fragment.append(run.text);
+          } else {
+            const token = doc.createElement("span");
+            token.className = run.classes.join(" ");
+            token.textContent = run.text;
+            fragment.append(token);
+          }
+        }
+      }
+      code.replaceChildren(fragment);
+      code.classList.add("hljs");
+    } catch (error) {
+      if (!signal?.aborted) {
+        console.warn("Could not highlight Source excerpt", error);
+      }
+    }
+  }
+
+  /**
    * Render the shared bounded Source surface used by generic text-like views.
    *
    * `options.parts` shows the text in consecutive code blocks under one gutter, each
@@ -2060,7 +2108,7 @@
    *
    * @param {HTMLElement} container
    * @param {Record<string, unknown> & {content?: string, ext?: string}} data
-   * @param {{parts?: ReadonlyArray<Readonly<{text: string, language: string}>>}} [options]
+   * @param {{parts?: ReadonlyArray<Readonly<{text: string, language: string}>>, lineStart?: number, signal?: AbortSignal}} [options]
    */
   function renderSourceView(container, data, options = {}) {
     const truncationWarning = renderTextTruncationWarning(data);
@@ -2106,11 +2154,32 @@
       parts.length > 1
         ? `<code data-mb-copy-payload class="no-highlight" hidden>${escapeHtml(text)}</code>`
         : "";
+    const lineStart =
+      options.lineStart !== undefined &&
+      Number.isSafeInteger(options.lineStart) &&
+      options.lineStart > 0
+        ? options.lineStart
+        : undefined;
     const code =
-      `${payload}<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text)}` +
+      `${payload}<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text, lineStart)}` +
       `${codes}</pre>`;
     container.classList.add("metabrowser-source-host");
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
+    if (lineStart !== undefined) {
+      const exact = container.ownerDocument.createElement("code");
+      exact.hidden = true;
+      exact.setAttribute("data-mb-copy-payload", "");
+      exact.textContent = content;
+      container.querySelector(".content-copy-wrap")?.prepend(exact);
+      const excerpt = container.querySelectorAll(".metabrowser-source-lines > code");
+      for (const [index, block] of excerpt.entries()) {
+        const syntax = parts[index]?.languageClass;
+        if (syntax?.startsWith("language-")) {
+          void highlightSourceExcerpt(block, syntax.slice("language-".length), options.signal);
+        }
+      }
+      return;
+    }
     // The shell's navigation takes the `replace` option the gutter passes; its
     // declared option type is the plugin-facing one, which does not name it.
     const navigation = /** @type {Parameters<typeof lineAnchors.mount>[1]["navigation"]} */ (
@@ -3345,7 +3414,54 @@
     return url ? new URL(url, global.location.href).href : null;
   }
 
+  /**
+   * Paint an inline index status with the same spinner and typography as the Files scan.
+   * Repeated calls keep the nodes and change the live text only when needed.
+   * @param {HTMLElement} container
+   * @param {string} message
+   */
+  function renderIndexProgress(container, message) {
+    container.classList.add("index-progress");
+    const previous = container.querySelector(".index-progress-text");
+    if (previous) {
+      if (previous.textContent !== message) {
+        previous.textContent = message;
+      }
+      return;
+    }
+    container.setAttribute("role", "status");
+    container.setAttribute("aria-live", "polite");
+    const spinner = container.ownerDocument.createElement("span");
+    spinner.className = "index-progress-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    const text = container.ownerDocument.createElement("span");
+    text.className = "index-progress-text";
+    text.textContent = message;
+    container.replaceChildren(spinner, text);
+  }
+
+  /** @type {Window["metabrowser"]["mountStructuredNodeTable"]} */
+  const mountStructuredNodeTable = async (...args) => {
+    const { mountNodeTable } = await import("./structured-node-table.js");
+    return mountNodeTable(...args);
+  };
+
+  /** @type {Window["metabrowser"]["createStructuredPageReader"]} */
+  const createStructuredPageReader = async (path, options) => {
+    const { createStructuredPageReader: create } = await import("./structured-page-reader.js");
+    return create(mb.fetchPluginData, path, options);
+  };
+  /** @type {Window["metabrowser"]["mountStructuredExcerpt"]} */
+  const mountStructuredExcerpt = async (host, options) => {
+    const { mountStructuredExcerpt: mount } = await import("./structured-excerpt.js");
+    return mount(host, mb, options);
+  };
+
   Object.assign(mb, {
+    mountStructuredNodeTable,
+    createStructuredPageReader,
+    mountStructuredExcerpt,
+
     actorIdentity,
     actorIdentityHtml,
     changeSizeLine,
@@ -3377,6 +3493,7 @@
     langForExtension: langForExtension,
     langForPath: langForPath,
     partialNoticeHtml: partialNoticeHtml,
+    renderIndexProgress,
     renderSourceView: renderSourceView,
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
     renderTextTruncationWarning: renderTextTruncationWarning,

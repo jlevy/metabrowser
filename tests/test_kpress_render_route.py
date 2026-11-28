@@ -617,3 +617,45 @@ def test_sanitizer_diagnostic_membership() -> None:
     assert not kpress_adapter.is_sanitizer_diagnostic({"type": "broken_anchor"})
     assert not kpress_adapter.is_sanitizer_diagnostic({"type": "frontmatter_error"})
     assert not kpress_adapter.is_sanitizer_diagnostic("html_sanitized")
+
+
+def test_rendered_fence_navigation_tracks_the_authored_revision(tmp_path: Path) -> None:
+    from strif import file_mtime_hash
+
+    source = (
+        "---\r\ntitle: Notes\r\n---\r\n# Notes\r\n\r\n"
+        '<pre class="kpress-code"><code class="language-yaml">value: one</code></pre>\r\n\r\n'
+        "```yml example\r\nvalue: one\r\n```\r\n"
+    )
+    file = tmp_path / "doc.md"
+    file.write_bytes(source.encode())
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as client:
+
+        def render(text: str) -> dict[str, Any]:
+            response = client.post(
+                "/api/kpress/render",
+                json={
+                    "path": "doc.md",
+                    "profile": "document",
+                    "view": "rendered",
+                    "source_text": text,
+                },
+            )
+            assert response.status_code == 200
+            return response.json()
+
+        wiki = source.replace("# Notes", '# <span id="obsidian-heading-Notes"></span>Notes')
+        result = render(wiki.replace("\r\n", "\n"))
+        assert result["fence_revision"] == file_mtime_hash(file)
+        (placement,) = result["structured_fences"]
+        assert (placement["opening_line"], placement["format"]) == (8, "yaml")
+        marker = f'<a href="#{placement["id"]}"></a>'
+        assert result["html"].count(marker) == 1
+        assert result["html"].index(marker) > result["html"].index("</pre>")
+        replay = render(wiki.replace("value: one</code>", f"value: one{marker}</code>"))
+        assert replay["structured_fences"][0]["id"] != placement["id"]
+        assert "structured_fences" not in render(wiki.replace("value: one\r\n", "value: two\r\n"))
+        assert "structured_fences" not in render("\n" + wiki)
+        raw = client.get("/api/kpress/render", params={"path": "doc.md", "view": "source"}).json()
+        assert "structured_fences" not in raw and "mb-fence-" not in raw["html"]

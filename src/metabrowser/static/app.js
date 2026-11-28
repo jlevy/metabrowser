@@ -9147,7 +9147,7 @@ window.addEventListener("popstate", applyPullHistoryLanding);
  *
  * @param {{path: string, query?: string, fragment?: string}} target
  * @param {ReturnType<typeof beginViewCompositionLoad>} loading
- * @returns {Promise<"source" | null>}
+ * @returns {Promise<"source" | "table" | null>}
  */
 async function addressedView(target, loading) {
   return (await loading).status === "ready"

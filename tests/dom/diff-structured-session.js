@@ -1,7 +1,7 @@
 // Browserless session: a changed YAML or JSON file's Rendered view in a pull request's
 // Changes, through the production code: builtin_plugins/diff/diff-structured.js, the
-// views of diff-markdown.js (`createMarkdownViews`), and the structured plugin's own
-// preview.js and tree.js. It covers which rows a merged tree has, which open first, what
+// views of diff-markdown.js (`createMarkdownViews`), and the core
+// structured-preview.js and structured-tree.js. It covers which rows a merged tree has, which open first, what
 // a click opens, closes or pages in, how a row is marked, and the page around the tree:
 // the chooser, a refusal falling back to Source, a missing tree renderer, and disposal.
 //
@@ -25,8 +25,8 @@ const recording = JSON.parse(
 
 // The tree helpers are classic scripts that publish on the global object, read here as
 // the page reads them from the structured plugin's exports (`mb.plugins.load`).
-require(path.join(plugins, "structured/preview.js"));
-require(path.join(plugins, "structured/tree.js"));
+require(path.join(plugins, "../static/structured-preview.js"));
+require(path.join(plugins, "../static/structured-tree.js"));
 const tree = globalThis.__structuredTree;
 const preview = globalThis.__structuredPreview;
 const helpers = {

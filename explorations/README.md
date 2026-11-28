@@ -12,6 +12,10 @@ rule, and a ledger generated from the record.
 | [plugin-worker-spike](plugin-worker-spike/README.md) | One-time spikes, not a loop: Python data hooks and log parsing served from a plugin’s own environment over stdio and what that costs, the worker’s failure modes, and a child process confined on Linux |
 | [repository-cache](repository-cache/README.md) | Acquisition strategy and layout for the worktree-free repository store, blobless reads and lazy fetch, concurrent readers and fetches, maintenance, and the lock and rename primitives behind cache publication |
 
+The [SoftSchema collection projection](softschema-projection/README.md) exploration
+compares the eager table preview with a reference-first prototype on GitHub Universe and
+on a synthetic mixed-format tree.
+
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an
 answer forever, and only the second earns a place in the release gate — which is what
 [`devtools/bench_serving.py`](../devtools/bench_serving.py) is for.

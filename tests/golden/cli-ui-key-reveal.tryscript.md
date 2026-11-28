@@ -638,6 +638,7 @@ $ node tests/dom/key-reveal-session.js
         ["0","shell.home","squares"],
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
+        ["A","view-tabs.a","Table tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
@@ -666,6 +667,7 @@ $ node tests/dom/key-reveal-session.js
         ["0","shell.home","squares"],
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
+        ["A","view-tabs.a","Table tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
@@ -719,6 +721,7 @@ $ node tests/dom/key-reveal-session.js
         ["0","shell.home","squares"],
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
+        ["A","view-tabs.a","Table tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
@@ -845,6 +848,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["0","shell.home","squares"],
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
+        ["A","view-tabs.a","Table tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
@@ -859,6 +863,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["3","Modified within"],
         ["4","File type"],
         ["U","beside, in file-header view-header"],
+        ["A","Table tab"],
         ["V","Tree tab"],
         ["S","Source tab"],
         ["\\","beside, in preview-frame"]
@@ -869,9 +874,9 @@ $ node tests/dom/key-reveal-session.js gestures
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "cost": {
-        "publications": ["batch(target,registration)"],
-        "targetReads": 8,
-        "keycapsCreated": 11
+        "publications": ["batch(registration,target)"],
+        "targetReads": 9,
+        "keycapsCreated": 12
       }
     },
     {

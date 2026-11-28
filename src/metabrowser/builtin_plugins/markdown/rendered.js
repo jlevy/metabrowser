@@ -253,6 +253,18 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       }
       const path = ctx.path;
       const pagePath = options.pagePath ?? path;
+      const fences = rendered.structured_fences;
+      const fenceRevision = rendered.fence_revision;
+      const fencedViews =
+        path && !options.wrapSource && fences?.length && fenceRevision
+          ? await import("./fenced-views.js").catch((error) => {
+              console.warn("Could not enhance structured code fences", error);
+              return null;
+            })
+          : null;
+      if (controller.signal.aborted) {
+        return;
+      }
       const { enhanced: links, inert: inertRender } = await placeRendered(
         container,
         rendered,
@@ -270,6 +282,17 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
                 transclusionChain: Object.freeze([transclusionKey(path)]),
               })
           : null,
+        path && fencedViews && fences && fenceRevision
+          ? (root) =>
+              fencedViews.attachFencedViews(
+                root,
+                path,
+                fenceRevision,
+                fences,
+                mb,
+                controller.signal,
+              )
+          : null,
       );
       if (disposed || controller.signal.aborted) {
         links?.dispose?.();
@@ -286,7 +309,24 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
           diagnostics.push(MARKDOWN_LINK_LIMIT_DIAGNOSTIC);
         }
       }
+      if (
+        path &&
+        !options.wrapSource &&
+        raw.frontmatter &&
+        typeof raw.frontmatter === "object" &&
+        !diagnostics.some(isFrontmatterError)
+      ) {
+        await import("./frontmatter-view.js")
+          .then(({ attachFrontmatter }) => {
+            attachFrontmatter(container, path, raw, mb, controller.signal);
+          })
+          .catch((error) => console.warn("Could not enhance frontmatter", error));
+        if (controller.signal.aborted) {
+          return;
+        }
+      }
       injectDiagnostics(container, diagnostics, mb);
+
       // An inert render's table of contents is the page's own; a trusted one's is KPress's.
       const inert = inertRender?.inertArticle(container);
       disposeToc =
