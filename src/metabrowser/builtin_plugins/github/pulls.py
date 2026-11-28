@@ -48,10 +48,12 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
+from time import monotonic_ns
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ValidationError
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
@@ -96,6 +98,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullObservationSuperseded,
     PullRecord,
     PullRefreshStamp,
+    PullRefreshTiming,
     PullRequest,
     PullSide,
     RecordAbsence,
@@ -107,6 +110,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     fit_record,
     label_color,
     label_description,
+    pull_observation_key,
     read_pull_record,
     read_pull_refresh,
     write_pull_record,
@@ -118,6 +122,7 @@ from metabrowser.builtin_plugins.github.pull_status_read import (
     keep_status_failure,
 )
 from metabrowser.builtin_plugins.github.pull_status_store import CheckProbes, ProbedPage
+from metabrowser.builtin_plugins.github.refresh_metrics import begin_counting, finish_counting
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
@@ -1038,14 +1043,30 @@ async def refresh_pull_request(
             )
             if recover and not isinstance(published, ListedRepository):
                 await _recover_comparison(published, number, recovery_pair)
-            record = await _refresh(
-                published,
-                number,
-                cached=cached,
-                on_core=on_core,
-                observe_reader=observe_reader,
-                published_records=published_records,
-            )
+            started_ns = monotonic_ns()
+            answers, measurement = begin_counting()
+            try:
+                record = await _refresh(
+                    published,
+                    number,
+                    cached=cached,
+                    on_core=on_core,
+                    observe_reader=observe_reader,
+                    published_records=published_records,
+                )
+            finally:
+                finish_counting(measurement)
+                finished_at = utc_now()
+                duration_ms = round((monotonic_ns() - started_ns) / 1_000_000)
+                github = answers.snapshot()
+                if github is not None:
+                    event_log.current().set(
+                        provider="github_cli",
+                        request_count=github.request_count,
+                        response_body_bytes=github.response_body_bytes,
+                        refresh_finished_at=finished_at.isoformat().replace("+00:00", "Z"),
+                        refresh_duration_ms=duration_ms,
+                    )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
     except PullObservationSuperseded as exc:
@@ -1068,7 +1089,17 @@ async def refresh_pull_request(
         await run_lock_section(partial(_keep_stamp, published, number, stamp, observed))
         raise
     succeeded = {"outcome": "succeeded", "at": record.fetched_at}
-    await run_lock_section(partial(_keep_stamp, published, number, succeeded, record))
+    timing = (
+        None
+        if github is None
+        else PullRefreshTiming(
+            observation=pull_observation_key(record),
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+            github=github,
+        )
+    )
+    await run_lock_section(partial(_keep_stamp, published, number, succeeded, record, timing))
     if not gh_budget.speculating():
         # The page's own read of its operational status, after the record is published,
         # so the record is shown no later than before. A failure fails the status alone.
@@ -1481,10 +1512,13 @@ def _keep_stamp(
     number: int,
     fields: dict[str, Any],
     expected: PullRecord | RecordAbsence,
+    timing: PullRefreshTiming | None = None,
 ) -> None:
     try:
         stamp = PullRefreshStamp.model_validate(fields)
-        write_pull_refresh(published.home, published.slug, number, stamp, expected=expected)
+        write_pull_refresh(
+            published.home, published.slug, number, stamp, expected=expected, timing=timing
+        )
     except (PrivateStorageError, OSError, ValidationError) as exc:
         # Only the report of the refresh is lost; the record, if any, is written.
         log.debug("could not keep how pull request %s's refresh ended: %s", number, exc)

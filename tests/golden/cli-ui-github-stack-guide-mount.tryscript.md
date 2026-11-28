@@ -142,7 +142,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·"
       },
       {
         "merge": "wip → topic"
@@ -332,7 +332,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·"
       },
       {
         "merge": "wip → topic"
@@ -394,7 +394,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
         "opened": "1 Pull Draft1 Pull Merged· Last opened now · Last update now "
       },
       {
-        "meta": "maintainer wants to merge 2 commits·Fetched 5 min ago via GitHub CLIFetched 59 min ago via GitHub CLI"
+        "meta": "maintainer wants to merge 2 commits·"
       },
       {
         "merge": "wip → topic"

@@ -43,6 +43,7 @@ import subprocess
 import sys
 from collections.abc import Generator, Mapping
 from dataclasses import dataclass
+from itertools import count
 from pathlib import Path
 from typing import Any, Final
 
@@ -222,12 +223,14 @@ def _seams(replica: Replica) -> Generator[None]:
         acquire.require_acquisition_git,
         acquire.canonical_now,
         pulls.utc_now,
+        pulls.monotonic_ns,
     )
     acquire.remote_url_for = remote_url_for
     # A store records the Git that acquired it, and a transcript prints the record.
     acquire.require_acquisition_git = lambda: _RECORDED_GIT  # pyright: ignore[reportAttributeAccessIssue]
     acquire.canonical_now = lambda: FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")
     pulls.utc_now = lambda: FETCHED_AT
+    pulls.monotonic_ns = count(0, 425_000_000).__next__
     try:
         yield
     finally:
@@ -236,6 +239,7 @@ def _seams(replica: Replica) -> Generator[None]:
             acquire.require_acquisition_git,
             acquire.canonical_now,
             pulls.utc_now,
+            pulls.monotonic_ns,
         ) = saved
 
 

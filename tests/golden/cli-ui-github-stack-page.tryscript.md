@@ -538,7 +538,7 @@ $ node tests/dom/github-stack-page-session.js
         "updated": "2026-09-16T17:39:01Z"
       },
       "sentence": "maintainer wants to merge 2 commits",
-      "note": "Fetched 5 min ago via GitHub CLI",
+      "note": null,
       "labels": [
         "bugfix #d73a4a",
         "shared design #0e8a16",
@@ -565,7 +565,7 @@ $ node tests/dom/github-stack-page-session.js
         "updated": "2026-09-16T17:39:01Z"
       },
       "sentence": "maintainer, forker want to merge 2 commits",
-      "note": "Fetched 5 min ago via GitHub CLI",
+      "note": null,
       "labels": [
         "bugfix #d73a4a",
         "shared design #0e8a16",
@@ -608,7 +608,7 @@ $ node tests/dom/github-stack-page-session.js
         "updated": "2026-09-16T17:39:01Z"
       },
       "sentence": "maintainer wants to merge 2 commits",
-      "note": "Fetched 5 min ago via GitHub CLI",
+      "note": null,
       "labels": [
         "shared design #0e8a16",
         "earnings analysis #5319e7",
@@ -670,7 +670,7 @@ $ node tests/dom/github-stack-page-session.js
         "updated": "2026-09-16T17:39:01Z"
       },
       "sentence": "maintainer wants to merge 2 commits",
-      "note": "Fetched 5 min ago via GitHub CLI",
+      "note": null,
       "labels": [],
       "members": [
         "draft WIP: draft the next page 2/2 · #10 · maintainer",
@@ -692,7 +692,7 @@ $ node tests/dom/github-stack-page-session.js
         "updated": "2026-09-16T17:39:01Z"
       },
       "sentence": "maintainer wants to merge 2 commits",
-      "note": "Fetched 5 min ago via GitHub CLI",
+      "note": null,
       "labels": [],
       "members": [
         "draft WIP: draft the next page 2/2 · #10 · maintainer",
@@ -740,7 +740,7 @@ $ node tests/dom/github-stack-page-session.js
         "updated": "2026-09-16T17:39:01Z"
       },
       "sentence": "maintainer wants to merge 2 commits",
-      "note": "Fetched 5 min ago via GitHub CLI",
+      "note": null,
       "labels": [
         "bugfix #d73a4a",
         "shared design #0e8a16",

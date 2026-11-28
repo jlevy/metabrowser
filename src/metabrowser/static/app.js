@@ -3215,7 +3215,7 @@ var tooltipTimer = null;
 var tooltipAnchor = null;
 // The element whose markup is up, from when it appears until its fade ends.
 var tooltipShown = null;
-// The newest markup for a show still waiting, or null.
+// The newest markup or renderer for a show still waiting, or null.
 var tooltipWaiting = null;
 
 var TOOLTIP_ANCHOR_GAP = 6;
@@ -3258,7 +3258,7 @@ function showTooltip(html, anchor) {
       hideTooltip();
       return;
     }
-    tooltipEl.innerHTML = tooltipWaiting;
+    tooltipEl.innerHTML = typeof tooltipWaiting === "function" ? tooltipWaiting() : tooltipWaiting;
     tooltipWaiting = null;
     tooltipShown = element;
     tooltipEl.style.display = "block";
@@ -3370,6 +3370,16 @@ if (typeof window !== "undefined") {
   window.MetabrowserTooltip = {
     show: (html, anchor) => {
       showTooltip(html, anchor);
+    },
+    updateText: (anchor) => {
+      if (
+        tooltipAnchor === anchor &&
+        tooltipShown === anchor &&
+        tooltipEl?.style.display === "block"
+      ) {
+        tooltipEl.innerHTML = tipTextHtml(anchor);
+        positionTooltip(anchor);
+      }
     },
     // With an element, only a tooltip anchored in it (hideTooltipWithin). With none, what a
     // pointer leaving a surface means: whatever tooltip there is, but the nav's header's.
@@ -3499,11 +3509,20 @@ function tipAddsInformation(anchor) {
   return !repeated;
 }
 
+/** @param {HTMLElement} anchor */
+function tipTextHtml(anchor) {
+  var text = esc(anchor.dataset.tipText || "");
+  var newline = text.indexOf("\n");
+  return newline < 0
+    ? text
+    : `${text.slice(0, newline)}<div class="tip-detail">${text.slice(newline + 1)}</div>`;
+}
+
 /** @param {Event} e */
 function showTipText(e) {
-  var anchor = tipTextAnchor(e);
+  const anchor = tipTextAnchor(e);
   if (anchor && tipAddsInformation(anchor)) {
-    showTooltip(esc(anchor.dataset.tipText || ""), anchor);
+    showTooltip(() => tipTextHtml(anchor), anchor);
   }
 }
 

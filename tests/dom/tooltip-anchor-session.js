@@ -523,6 +523,48 @@ const transcript = {};
   transcript["from X to Y and onto Y's child shows Y's tip"] = { atX, atChild, atY, resting };
 }
 
+// A completed refresh updates the Refresh tooltip, even if the pointer reached it while
+// an unrelated card was still fading. The new data belongs to the new anchor; it cannot
+// repaint the old card before Refresh's delay ends.
+{
+  const { clock, read, pointer, tooltip } = page();
+  const link = onLine(100);
+  const refresh = onLine(300, { tip: "Last fetched 2 min ago", text: "Refresh" });
+  tooltip.show("<b>#1</b> Review this pull request", link);
+  clock.to(700);
+  tooltip.hide(link);
+  pointer("mouseenter", refresh);
+  clock.to(750);
+  refresh.dataset.tipText = "Refreshed just now\n3 requests · 900 B · 250ms · GitHub CLI";
+  tooltip.updateText(refresh);
+  const waiting = read();
+  assert(
+    waiting.html === "<b>#1</b> Review this pull request" && waiting.left === "70px",
+    "a timing update repainted a link card waiting to leave",
+  );
+  clock.to(700 + 300 + 16);
+  const complete = read();
+  assert(
+    complete.visible &&
+      complete.left === "270px" &&
+      complete.html ===
+        'Refreshed just now<div class="tip-detail">3 requests · 900 B · 250ms · GitHub CLI</div>',
+    "Refresh did not appear at its anchor with the newly completed timing",
+  );
+  refresh.dataset.tipText = "Refreshed just now\n2 requests · 0 B · 90ms · GitHub CLI";
+  tooltip.updateText(refresh);
+  const shownUpdate = read();
+  assert(
+    shownUpdate.visible && shownUpdate.left === complete.left && shownUpdate.html.includes("90ms"),
+    "Refresh did not update the tooltip currently shown for its own anchor",
+  );
+  transcript["Refresh timing keeps the fading link card and updates its own tooltip"] = {
+    waiting,
+    complete,
+    shownUpdate,
+  };
+}
+
 // A show again while the first still waits, as a link card's title arriving 251 ms into a
 // rest is: the tooltip appears when the first show's delay ends, with the newer markup.
 // Once it is up, a show again with other markup is "still here" and changes nothing: what

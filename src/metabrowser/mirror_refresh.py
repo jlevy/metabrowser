@@ -1691,6 +1691,7 @@ class StoreSession:
 
     async def _refresh_job(self) -> None:
         baseline: RecordedFreshness | None = None
+        span = event_log.current()
 
         def idle() -> bool:
             return self._idle_fetch
@@ -1713,8 +1714,14 @@ class StoreSession:
                 # from before a long wait.
                 if self._follow_elsewhere:
                     baseline = await self._read_baseline()
-                result = await self.mirror.refresh()
+                started = _monotonic()
+                try:
+                    result = await self.mirror.refresh()
+                finally:
+                    span.set(refresh_duration_ms=round((_monotonic() - started) * 1000))
         except asyncio.CancelledError:
+            cancelled = RefreshResult("cancelled", _utc_timestamp())
+            span.set(refresh_outcome=cancelled.outcome, refresh_finished_at=cancelled.at)
             self._probe_fetched = None
             if idle():
                 # Stopped to let a reader's job go, or by shutdown: nobody asked for it, so
@@ -1725,11 +1732,15 @@ class StoreSession:
                 self._idle_not_before = _monotonic() + self._window_s
             else:
                 self._fetch_ended = _monotonic()
-                self._set_result(RefreshResult("cancelled", _utc_timestamp()))
+                self._set_result(cancelled)
             raise
-        except Exception:
+        except Exception as exc:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
+            span.set(error=event_log.describe_error(exc))
+        span.set(refresh_outcome=result.outcome, refresh_finished_at=result.at)
+        if result.outcome not in _UNHELD_OUTCOMES:
+            span.note_failure(result.outcome)
         self._idle_fetch = False
         self._fetch_ended = _monotonic()
         self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else self._fetch_ended

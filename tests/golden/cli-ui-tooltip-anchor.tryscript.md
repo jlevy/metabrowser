@@ -12,6 +12,8 @@ A tree row replaced during the 300 ms delay used to put the tooltip at
 the top-left corner, where it stayed until another hover.
 Now the tooltip does not appear, and one already up for another row is put away.
 The ordinary hover, the next hover, and a caller with no anchor are unchanged.
+A completed refresh cannot overwrite a fading link card, and its newer timing appears
+when the Refresh tooltip opens.
 
 A repaint elsewhere on the page used to take a row’s tooltip away too, under a pointer
 that had not moved (mb-alff).
@@ -290,6 +292,29 @@ $ node tests/dom/tooltip-anchor-session.js
     },
     "resting": {
       "html": "Tip of Y",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
+    }
+  },
+  "Refresh timing keeps the fading link card and updates its own tooltip": {
+    "waiting": {
+      "html": "<b>#1</b> Review this pull request",
+      "display": "block",
+      "visible": false,
+      "left": "70px",
+      "top": "126px"
+    },
+    "complete": {
+      "html": "Refreshed just now<div class=\"tip-detail\">3 requests · 900 B · 250ms · GitHub CLI</div>",
+      "display": "block",
+      "visible": true,
+      "left": "270px",
+      "top": "126px"
+    },
+    "shownUpdate": {
+      "html": "Refreshed just now<div class=\"tip-detail\">2 requests · 0 B · 90ms · GitHub CLI</div>",
       "display": "block",
       "visible": true,
       "left": "270px",
