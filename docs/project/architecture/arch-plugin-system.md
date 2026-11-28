@@ -6,7 +6,9 @@ adapters, table sources served by the `table` plugin’s routes, and two contain
 directories and patch files.
 Planned: editing through plugins
 ([trusted-local editing plan](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)).
-Proposed, with no plan yet: archive containers and re-rooting the tree at a container.
+Planned: archive containers
+([archive plan](../specs/active/plan-2026-11-24-archive-contents-and-browsing.md)).
+Proposed, with no plan yet: re-rooting the tree at a container.
 
 Metabrowser shows any file type through plugins.
 Every built-in view is a plugin in `src/metabrowser/builtin_plugins/`, loaded through
@@ -396,7 +398,7 @@ usually answered by what a directory already does.
 | Patch or diff file | One entry per changed path | The whole change set | That path’s diff | Built |
 | SQLite database | Its tables, views, and virtual tables, at `<database>/<segment>` | An overview of its tables | That table, drawn by the table plugin | Built |
 | Commit, `/commit/<rev>` | The commit’s changed files | The commit’s diff | That file’s diff | The child route parses; the panel restores the commit, not the file |
-| Archive, such as `.zip` | The archive’s members | A listing or summary | The member’s own views | Proposed; no plan yet |
+| Archive, such as `.zip` | The archive’s members | A listing or summary | The member’s own views | Planned ([archive plan](../specs/active/plan-2026-11-24-archive-contents-and-browsing.md)) |
 
 The GitHub plugin’s Pulls list and pull-request pages are plugin views over its own
 routes, not containers under this contract.
