@@ -116,6 +116,61 @@ import WebKit
         await harness.closeAll()
     }
 
+    @Test func nativeHistoryKeepsDuplicateAddressesSeparateAndResetsOnNewOrigin() async throws {
+        await runAppKitEventLoop()
+        ignoreSIGPIPELikeTheApp()
+        let html = Data("<h1>Navigation test</h1>".utf8)
+        let before = try LocalHTTPServer(body: html, contentType: "text/html; charset=utf-8")
+        let after = try LocalHTTPServer(body: html, contentType: "text/html; charset=utf-8")
+        let originalOrigin = before.start()
+        let newOrigin = after.start()
+        defer { before.stop(); after.stop() }
+
+        let harness = try Harness()
+        let session = harness.session(try harness.folder("native-navigation"))
+        let controller = session.makeWindow()
+        let window = try #require(controller.window)
+        defer { window.close(); try? FileManager.default.removeItem(at: harness.directory) }
+        window.makeKeyAndOrderFront(nil)
+        let page = controller.page
+        let route = "/view/a%20b.md?tab=checks#L13"
+        let originalAddress = try #require(URL(string: route, relativeTo: originalOrigin)?.absoluteURL)
+        page.attach(ServerEndpoint(origin: originalOrigin, entryURL: originalAddress), authorization: .none)
+        #expect(await eventually(within: .seconds(5)) { page.navigationState.url == originalAddress })
+        #expect(!page.navigationState.back)
+        let oldView = page.webView
+        _ = try await oldView.evaluateJavaScript("""
+            history.replaceState({ visit: 1 }, "", location.href);
+            history.pushState({ visit: 2 }, "", location.href);
+            history.pushState({ visit: 3 }, "", location.href);
+            0;
+            """)
+        #expect(await eventually(within: .seconds(5)) { page.historyItems(.back).count == 2 })
+        let items = page.historyItems(.back)
+        let nearest = try #require(items.first)
+        let oldest = try #require(items.last)
+        #expect(nearest !== oldest)
+        #expect(nearest.url == originalAddress)
+        #expect(oldest.url == originalAddress)
+        #expect(page.navigationState.back)
+        #expect(await eventually(within: .seconds(5)) { window.isKeyWindow })
+        let originalItem = oldView.backForwardList.currentItem
+        page.traverseHistory(to: oldest, direction: .back, from: originalItem, in: oldView)
+        #expect(await eventually(within: .seconds(5)) { oldView.backForwardList.currentItem === oldest })
+        let restored = try await oldView.evaluateJavaScript("history.state.visit")
+        #expect(restored as? Int == 1)
+        #expect(page.historyItems(.forward).count == 2)
+
+        page.showStarting()
+        #expect(page.navigationState.url == nil)
+        let newAddress = try #require(URL(string: route, relativeTo: newOrigin)?.absoluteURL)
+        page.attach(ServerEndpoint(origin: newOrigin, entryURL: newOrigin), authorization: .none)
+        #expect(await eventually(within: .seconds(5)) { page.navigationState.url == newAddress })
+        #expect(page.webView !== oldView)
+        #expect(!page.navigationState.back)
+        #expect(!page.navigationState.forward)
+    }
+
     /// A Command-click on a link to the folder's server, and `target=_blank`, open another
     /// window of the same folder, which shares its server.
     @Test func aPagesNewWindowIsAnotherWindowOfItsFolder() async throws {

@@ -10,7 +10,8 @@ public enum WebConfiguration {
     /// default app (`OpenFileRequests`), with the host descriptor that names the actions
     /// those handlers answer (`HostDescriptor`).
     public static func make(
-        pagePrints: PagePrintRequests? = nil, webViews: WebViewRequests? = nil, openFiles: OpenFileRequests? = nil
+        pagePrints: PagePrintRequests? = nil, webViews: WebViewRequests? = nil, openFiles: OpenFileRequests? = nil,
+        navigationHistory: NavigationHistoryRequests? = nil
     ) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
@@ -19,7 +20,10 @@ public enum WebConfiguration {
         pagePrints?.install(in: configuration)
         webViews?.install(in: configuration)
         openFiles?.install(in: configuration)
-        HostDescriptor.install(actions: openFiles == nil ? [] : [OpenFileRequests.action], in: configuration)
+        navigationHistory?.install(in: configuration)
+        let actions = [openFiles == nil ? nil : OpenFileRequests.action,
+                       navigationHistory == nil ? nil : NavigationHistoryRequests.action].compactMap { $0 }
+        HostDescriptor.install(actions: actions, in: configuration)
         return configuration
     }
 

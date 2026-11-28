@@ -3362,6 +3362,7 @@
 
     const stage = document.createElement("div");
     stage.className = "git-commit-stage";
+    stage.dataset.revision = lastSelection?.revision || commit.id;
     measure(
       "gitRevision:commitMarkup",
       () => {

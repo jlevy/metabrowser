@@ -683,6 +683,15 @@ check 1, so that `a`’s window shows `deep.md`, opened after `notes.md`:
 1. **Back, Forward, and Reload.** View > Back
    (Command-[) shows `notes.md`, View > Forward (Command-]) shows `deep.md` again, and
    View > Reload Page (Command-R) reloads it in place.
+   Hold Back in the title bar to open the history menu and check that `notes.md` comes
+   first, with its file icon.
+   Choose that item, then secondary-click Forward and choose `deep.md`. Step Back and
+   Forward again with the bare brackets.
+   Hold Shift on the page and check that hints appear only on the enabled arrows.
+   Type a bracket in Find and confirm that the page stays put.
+   Click the title-bar link icon, then paste into a text field and check that it
+   contains the address of `deep.md`. Click the address text to verify that the same URL
+   is selectable and opens in the default browser.
 2. **Find and zoom.** Command-F opens the find bar over the page, typing `deep`
    highlights it, and Command-G moves to the next match.
    Zoom In (Command-=) and Zoom Out (Command-Minus) zoom the page, and Actual Size

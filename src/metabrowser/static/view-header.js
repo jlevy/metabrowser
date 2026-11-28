@@ -146,11 +146,12 @@
      */
     function viewHeaderHtml(parts) {
       const counterpart = window.METABROWSER_REPOSITORY_CONTEXT ? " data-counterpart" : "";
+      const iconId = parts.iconId ? ` data-page-icon="${esc(parts.iconId)}"` : "";
       return (
         `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-path="${esc(parts.path)}" data-kbd-badge-anchor>` +
         `<div class="view-header-eyebrow">${parts.eyebrow}</div>` +
         '<div class="view-header-heading">' +
-        `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
+        `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""}${iconId} aria-hidden="true">${parts.iconHtml}</span>` +
         '<div class="view-header-title-group">' +
         `<h1 class="view-header-title page-heading">${esc(parts.title)}</h1>` +
         `<div class="view-header-line page-header-line">${parts.line}</div>` +
@@ -221,6 +222,7 @@
           (window.MetabrowserIcons?.copy || "") +
           "</button>",
         iconHtml: icon.svg,
+        iconId: icon.id,
         iconClass: icon.cls,
         iconStyle: icon.style,
         title: name,

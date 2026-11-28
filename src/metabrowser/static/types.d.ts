@@ -3759,7 +3759,7 @@ declare global {
     /** What a served mirror's page adds to its headings (mirror-heading.js). */
     mirrorHeading(part: "note"): string;
     /** A tree row's icon for a file name. */
-    getFileIcon(name: string): { svg: string; cls: string; style: string };
+    getFileIcon(name: string): { id: string; svg: string; cls: string; style: string };
     /** The name without a recognized compression suffix. */
     getLogicalName(entry: { name: string; compressed?: boolean; compression?: string }): string;
     sizeHtml(bytes: number | null | undefined, extraClass?: string): string;
@@ -3815,6 +3815,7 @@ declare global {
     /** The eyebrow's markup; an empty eyebrow is left out of the header's rhythm. */
     eyebrow: string;
     iconHtml: string;
+    iconId?: string;
     iconClass?: string;
     iconStyle?: string;
     title: string;
@@ -5382,6 +5383,7 @@ declare global {
   }
 
   interface Window {
+    MetabrowserPageLabels?: Readonly<{ addressChanged(): void }>;
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
     /** Set by the shell's prefetch chain once every optional asset has settled. */

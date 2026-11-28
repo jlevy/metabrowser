@@ -848,14 +848,16 @@ function getFileIcon(name) {
   const runtime = fileTypeRuntime();
   const family = fileTypeFamilyFor(name);
   if (!runtime || !family) {
-    return { svg: ICON_SVG.file, cls: "", style: "" };
+    return { svg: ICON_SVG.file, id: "file", cls: "", style: "" };
   }
-  const svg = ICON_SVG[runtime.iconForFamily(family) || "file"] || ICON_SVG.file;
+  const id = runtime.iconForFamily(family) || "file";
+  const svg = ICON_SVG[id] || ICON_SVG.file;
   const color = familyColors().get(family);
   if (!color) {
-    return { svg, cls: "", style: "" };
+    return { svg, id, cls: "", style: "" };
   }
   return {
+    id,
     svg,
     cls: FILE_COLOR_CLASS,
     style: `${FILE_COLOR_LIGHT_PROPERTY}:${color.light};${FILE_COLOR_DARK_PROPERTY}:${color.dark}`,

@@ -139,6 +139,12 @@ bound, and the stack menu on a pull request page walks the stack.
 The other exception is Option-Tab inside a dialog or an open menu: the dialog or menu
 keeps it, because Safari moves focus with Option-Tab.
 
+In the macOS app, Command-Left Bracket and Command-Right Bracket go Back and Forward.
+The bare `[` and `]` keys do the same while browsing a page.
+Text fields and dialogs keep those keys.
+Hold Shift to show the bracket hints on the available history buttons in the title bar.
+In a browser, use its Back and Forward controls.
+
 Command-R (Control-R or F5 elsewhere) always reloads, whatever has focus.
 In the macOS app it is View > Reload Page, which also restarts a folder whose server
 failed. The app’s other keys are the ones its menus show, which

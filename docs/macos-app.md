@@ -243,6 +243,15 @@ what the servers it runs did and how long each took, at its newest segment in a 
 on the log’s own folder, which Open Recent does not list.
 The mark at the title bar’s trailing end opens the project on GitHub.
 
+Back and Forward sit to the right of the project chooser and move through that project’s
+page history. Hold either button or secondary-click it to open a menu of pages in that
+direction, nearest first.
+Choose a page to jump directly to it.
+
+The address field shows the current page on the local Metabrowser server.
+Click the address to select it or open it in your default browser.
+The link icon copies the address to the clipboard.
+
 Edit > Find (Command-F) opens a find bar above the page.
 It searches as a browser’s find does: the whole page, the navigation pane included,
 without regard to case, wrapping at either end, and it searches the page as it is now,
