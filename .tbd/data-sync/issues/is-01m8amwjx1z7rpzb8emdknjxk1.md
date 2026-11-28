@@ -5,7 +5,7 @@ title: "softschema plugin: folder table source, collection index cache, overview
 kind: feature
 status: in_progress
 priority: 2
-version: 26
+version: 27
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 refs:
   - kind: branch
@@ -36,10 +36,11 @@ child_order_hints:
   - is-01m8f4hzxee1qc6gntjqvsd63f
   - is-01m8f5e6kyyapa5v5whqgz8j8y
   - is-01m8hgz7pwbvvzkr2re1h7bwgn
+  - is-01m8hkkxbrn4mfd595bnz5fvs0
 hold: null
 hold_until: null
 created_at: 2026-11-26T00:43:02.432Z
-updated_at: 2026-11-28T16:49:15.974Z
+updated_at: 2026-11-28T17:35:30.679Z
 started_at: 2026-11-26T17:54:36.329Z
 ---
 Phase 3: fixture collection with every bad-record kind; core folder table source (offer, directory TableHandle, table query key, indexing page reason); builtin_plugins/softschema over the upstream API with a SQLite index in the plugin cache and a single-flight builder; references from learned ID prefixes; collection route; overview and SoftSchema record view; goldens, parity rows, map, changelog.
