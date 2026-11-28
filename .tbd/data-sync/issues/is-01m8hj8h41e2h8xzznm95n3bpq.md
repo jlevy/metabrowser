@@ -5,7 +5,7 @@ title: Unify page history and add native Back, Forward, and URL controls
 kind: feature
 status: in_progress
 priority: 2
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-28-shared-navigation-history.md
 delegate: codex@spud10.local
 labels: []
@@ -20,11 +20,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-28T17:11:49.109Z
-updated_at: 2026-11-28T18:33:42.456Z
+updated_at: 2026-11-28T18:59:08.008Z
 started_at: 2026-11-28T18:18:06.017Z
 ---
 Implement phase 1 after the draft spec is reviewed. Preserve browser history and verify equivalent macOS buttons, menus, shortcuts, and link copying.
 
 ## Notes
 
-Design and Astra review are in draft PR #927. Phase 1 is implemented in draft PR #930 on codex/native-navigation-history and has a guided review. Real Chrome verified exact PR and file restoration with their tab titles. Swift app and native regression type-check passed locally, and GitHub runs the native suite. The follow-up for source-qualified Git routes and history is mb-flot.
+Phase 1 is implemented in draft PR #930 on codex/native-navigation-history. Its six-step guided review resolves against commit 112a60b6d. Linux and macOS CI passed, including Chrome navigation, native history and the macOS build and packaging. The design and Astra review are in PR #927. The remaining interactive title-bar acceptance is in mb-ovom, and source-qualified Git history is tracked in mb-flot.
