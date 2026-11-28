@@ -454,6 +454,9 @@ const READ = `(() => {
     const heading = row.querySelector(".github-pulls-heading");
     const title = row.querySelector(".github-pulls-title");
     const place = row.querySelector(".github-pulls-place");
+    const avatar = heading.querySelector(".github-pulls-by .actor-avatar");
+    const authorName = heading.querySelector(".github-pulls-author");
+    const authorDot = heading.querySelector(".github-pulls-by .github-pull-stack-dot");
     const shown = row.querySelector(".github-pulls-number");
     const tail = row.querySelector(":scope > .github-pulls-tail");
     // The age, at the end of the last line (docs/design-system.md, "Ages End the Row").
@@ -476,7 +479,7 @@ const READ = `(() => {
     // outermost. The dots are left out: a line never starts with one, and a dot's trailing
     // space hangs past the end of a line it ends.
     const lines = [];
-    for (const piece of [title]) {
+    for (const piece of [title, avatar, authorDot]) {
       for (const rect of piece?.getClientRects() ?? []) {
         if (rect.width === 0) continue;
         const at = lineOf(rect);
@@ -503,7 +506,10 @@ const READ = `(() => {
       icon: box(row.querySelector(".github-pull-state-icon")),
       noPlace: place.hidden,
       headingHasNumber: heading.contains(shown),
-      headingHasAuthor: heading.querySelector(".actor-avatar") !== null,
+      avatar: box(avatar),
+      authorDot: box(authorDot),
+      authorLine: avatar ? lineOf(avatar.getBoundingClientRect()) : null,
+      authorNameHidden: authorName !== null && getComputedStyle(authorName).visibility === "hidden" && authorName.getBoundingClientRect().width === 0,
       rowToggles: row.querySelectorAll(".github-pulls-toggle").length,
       inset: inset(row),
       slot: parseFloat(style.getPropertyValue("--tree-icon-slot")), gap: runStyle ? parseFloat(runStyle.columnGap) : null,
@@ -710,7 +716,16 @@ function rowShape(r) {
       near(r.icon.left, r.inset) &&
       near(r.icon.width, r.slot) &&
       near(r.column, r.icon.right + r.gap),
-    titleOnly: r.noPlace && !r.headingHasNumber && !r.headingHasAuthor,
+    authorFollowsTitle:
+      r.noPlace &&
+      !r.headingHasNumber &&
+      r.authorNameHidden &&
+      r.authorDot !== null &&
+      r.avatar !== null &&
+      r.authorLine === n - 1 &&
+      Math.abs(
+        r.avatar.top + r.avatar.height / 2 - (r.heading.top + (r.authorLine + 0.5) * r.lh),
+      ) <= 1,
     lastLine:
       near(r.tail.top, r.heading.bottom) &&
       near(r.tail.bottom, r.row.bottom) &&

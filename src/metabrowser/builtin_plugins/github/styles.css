@@ -2117,6 +2117,21 @@
   flex-shrink: 1;
 }
 
+/* The zero-width name keeps a text baseline for the avatar as the title wraps.
+   The row supplies the login in its accessible name. */
+.github-pulls-by {
+  --actor-avatar-size: var(--github-pull-row-avatar-size);
+}
+.github-pulls-by > .github-pull-identity {
+  gap: 0;
+}
+.github-pulls-by .github-pulls-author {
+  inline-size: 0;
+  overflow: hidden;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
 .github-pull-guided-review [hidden] {
   display: none;
 }

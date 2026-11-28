@@ -2770,7 +2770,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # A Pulls row, the stack menu, a stack's page, and a guide's pull request row draw a pull
     # request's fields with one builder (stack-member-row.js), its title through the SDK's
     # titleNodes.
-    assert "stackMemberRow(heading, mb.titleNodes, undefined, PULLS_RUN)" in panel
+    assert "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)" in panel
     assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:

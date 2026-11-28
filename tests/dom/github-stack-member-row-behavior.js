@@ -155,7 +155,7 @@ const tokens = (link, layout) => {
   const draw = (layout, members) => {
     const sidebar = layout === PULLS_RUN;
     const link = new Element(sidebar ? "span" : "a");
-    const row = stackMemberRow(link, titleNodes, sidebar ? undefined : identity, layout);
+    const row = stackMemberRow(link, titleNodes, identity, layout);
     for (const line of members) {
       row.show(line);
     }
@@ -193,14 +193,18 @@ const tokens = (link, layout) => {
       // An absent field draws nothing, not even an empty element, and the fields drawn keep
       // the one order.
       const shown = met.filter((token) => token !== "·");
-      assert.deepEqual(shown, layout === PULLS_RUN ? ["title", "number"] : given(last), said);
+      assert.deepEqual(
+        shown,
+        layout === PULLS_RUN ? given(last).filter((field) => field !== "place") : given(last),
+        said,
+      );
       // A row that got here by changing reads as one drawn so at once.
       assert.deepEqual(met, draw(layout, [last]), said);
       return shown;
     });
     // A line and a run show the same fields in the same order.
     assert.deepEqual(
-      byLayout[0].filter((field) => field === "title" || field === "number"),
+      byLayout[0].filter((field) => field !== "place"),
       byLayout[1],
       name,
     );

@@ -1480,7 +1480,18 @@ async function paintStory(panel, selection = false) {
         JSON.stringify(["github-pull-stack-dot", "github-pulls-readiness", "github-pulls-number"]),
       JSON.stringify(classesOf(end)),
     );
-    assert(by.hidden && classesOf(by).length === 0, "the heading draws no author");
+    assert(
+      JSON.stringify(classesOf(by)) ===
+        JSON.stringify(["github-pull-stack-dot", "github-pull-identity"]),
+      "the author follows a bullet",
+    );
+    const identity = child(by, "github-pull-identity");
+    const authorLabel = child(identity, "github-pulls-author");
+    assert(
+      authorLabel?.textContent === first.body.rows[0].author,
+      "the identity preserves the login",
+    );
+    assert(child(identity, "actor-avatar"), "the avatar follows the bullet");
     assert(by.getAttribute("aria-hidden") === "true", "the row supplies the author’s name");
     // The number holds its text alone, and the last line is the toggle, the lines, then the
     // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), then the
@@ -1520,8 +1531,8 @@ async function paintStory(panel, selection = false) {
     );
     assert(
       numberLabel.firstChild.textContent === `#${first.body.rows[0].number}` &&
-        by.textContent === "",
-      "the summary line shows the number and the heading omits the author",
+        by.textContent.includes(first.body.rows[0].author),
+      "the summary line shows the number and the heading holds the author identity",
     );
     assert(
       !heading.textContent.includes("→") && !tail.textContent.includes("→"),

@@ -12,11 +12,9 @@
 // role of its own, and the row's changed files hang off it as a folder's children do
 // (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
 // `aria-expanded` on it. A pull request is one item, its anchor (mb-1z7j, mb-pw8t, mb-rb3n): a
-// run of its title, a stack member's place, its number, and its author, one flow that wraps
-// with every line after the first in the text column, then its last line, its brief change
-// line (row-lines.js, mb-lqkb) with the chevron after it, and its age at the row's end, in
-// the column every row's age has. The item is one hover, one
-// selection, and one keyboard stop (`.github-pulls-entry`). Its toggle is the brief change
+// wrapping title followed by a dot and the author avatar, then its summary line with the
+// diff toggle and age on the left and readiness and number on the right. The item has one
+// hover, one selection, and one keyboard stop (`.github-pulls-entry`). Its toggle is the brief change
 // line and the chevron after it, the summary the chevron expands (docs/design-system.md, "A
 // Click on the Toggle's Line Toggles"): a click on them toggles the files and opens no page,
 // and a click anywhere else on the item opens the pull request and expands nothing; a
@@ -28,11 +26,8 @@
 // is the pointer's alone: hidden from assistive technology, it leaves the tree its items and
 // groups, and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
-// An open pull request's last line has a readiness column between its change line and its age
-// (row-readiness.js, mb-3n21): the verdict's glyph in its tone, and its label after it where
-// the list is wide enough, "+1,234 −567 › ⊗ 3d", so the glyphs down the list read as a checks
-// column. A closed or merged row, and one the server has no status of, keeps the column's width
-// empty. The link's name says the verdict after the state, as the state icon says the state.
+// The readiness glyph sits just before the number. A row without a verdict reserves
+// the glyph's width. The accessible name says the verdict after the PR state.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -59,6 +54,7 @@ import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
   alignRefreshing,
+  authorLabel,
   avatarUrl,
   FAST_POLL_MS,
   h,
@@ -4661,6 +4657,14 @@ export function mountPullsPanel(container, ctx, mb) {
     };
   }
 
+  /** Use the shared identity and let the heading's styles show its avatar only.
+   * @param {string} login
+   * @param {string | null} avatar
+   */
+  function rowAuthor(login, avatar) {
+    return authorLabel(mb, login, avatar, "github-pulls-author", { loading: "eager" });
+  }
+
   /**
    * Say the author, PR number, and age once, after the title and stack position.
    *
@@ -4722,9 +4726,9 @@ export function mountPullsPanel(container, ctx, mb) {
     const updated = mb.ageLabel(at, { className: "github-pulls-age" });
     updated.setAttribute("aria-hidden", "true");
     const label = updated.textContent ?? "";
-    // The heading is the state icon and wrapping title. The summary line carries the metadata.
+    // The avatar follows the title in the same wrapping flow.
     const heading = h("span", { class: "github-pulls-heading" });
-    const run = stackMemberRow(heading, mb.titleNodes, undefined, PULLS_RUN);
+    const run = stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN);
     const line = runLine(row, null);
     run.show(line);
     const separator = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);

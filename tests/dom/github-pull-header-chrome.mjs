@@ -1626,6 +1626,7 @@ const CORNER_DONE = `(() => {
 // Use the shared row builder so the layout checks follow the production markup.
 const PULLS_ROWS = `async (rows, width) => {
   const { stackMemberRow, PULLS_RUN } = await import("/github/stack-member-row.js");
+  const { authorLabel } = await import("/github/pull-page.js");
   const mb = window.metabrowser;
   const h = (tag, attributes = {}, children = []) => {
     const node = document.createElement(tag);
@@ -1640,8 +1641,9 @@ const PULLS_ROWS = `async (rows, width) => {
   document.getElementById("preview-pane").replaceChildren(nav);
   const built = rows.map((row) => {
     const heading = h("span", { class: "github-pulls-heading" });
-    const run = stackMemberRow(heading, mb.titleNodes, undefined, PULLS_RUN);
-    const initial = { number: row.number, title: row.title, state: "open", place: null, author: null, readiness: null };
+    const identity = (login, avatar) => authorLabel(mb, login, avatar, "github-pulls-author");
+    const run = stackMemberRow(heading, mb.titleNodes, identity, PULLS_RUN);
+    const initial = { number: row.number, title: row.title, state: "open", place: null, author: {login: row.author, avatar: null}, readiness: null };
     run.show(initial);
     const age = h("span", { class: "github-pulls-age", "aria-hidden": "true" }, ["12mo"]);
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" });
@@ -1677,8 +1679,11 @@ const PULLS_ROWS = `async (rows, width) => {
     const time = bounds(age);
     const box = bounds(anchor);
     const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
+    const avatar = heading.querySelector(".github-pulls-by .actor-avatar");
+    const dot = heading.querySelector(".github-pulls-by .github-pull-stack-dot");
+    const name = heading.querySelector(".github-pulls-author");
     const lines = new Map();
-    for (const rect of run.title.getClientRects()) {
+    for (const rect of [...run.title.getClientRects(), bounds(avatar), bounds(dot)]) {
       if (rect.width === 0) continue;
       const index = Math.floor((rect.top + rect.height / 2 - header.top) / lineHeight);
       const before = lines.get(index);
@@ -1694,9 +1699,10 @@ const PULLS_ROWS = `async (rows, width) => {
       placeKeepsLayout: near(box.height, before[at].height) && JSON.stringify(firstLine(run.title)) === JSON.stringify(before[at].title),
       whole: number.scrollWidth <= Math.ceil(end.width) && near(end.right, summary.right),
       inside: near(summary.right, header.right) && time.right < end.left && nav.scrollWidth <= nav.clientWidth,
-      titleOnly: boxes.length > 0 && near(header.height, boxes.length * lineHeight) &&
-        boxes.every((line) => near(line.left, textLeft) && line.right <= header.right + 0.5) &&
-        !heading.contains(number) && heading.querySelector('.actor-avatar') === null,
+      titleAndAvatar: boxes.length > 0 && near(header.height, boxes.length * lineHeight) &&
+        boxes.every((line) => line.left >= textLeft - 0.5 && line.right <= header.right + 0.5) &&
+        !heading.contains(number) && getComputedStyle(name).visibility === "hidden" && bounds(name).width === 0 &&
+        Math.abs(bounds(avatar).top + bounds(avatar).height / 2 - (header.bottom - lineHeight / 2)) <= 1,
       lastLine: near(summary.top, header.bottom) && near(bounds(change).left, textLeft) &&
         near(time.left, bounds(change).right + dateGap) && near(bounds(item).height, box.height),
       iconOnFirst: near(icon.top, header.top) && near(icon.height, lineHeight),
@@ -3081,7 +3087,7 @@ async function main() {
           check(
             where +
               ": the title wraps beside the state icon and the summary holds the age and number",
-            row.titleOnly &&
+            row.titleAndAvatar &&
               row.lastLine &&
               row.iconOnFirst &&
               row.whole &&

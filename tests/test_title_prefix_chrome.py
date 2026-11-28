@@ -49,7 +49,7 @@ SURFACES = (
     # A Pulls row, drawn and patched by the member row's builder (stack-member-row.js, below).
     (
         PLUGINS / "github" / "pulls-panel.js",
-        "stackMemberRow(heading, mb.titleNodes, undefined, PULLS_RUN)",
+        "stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN)",
     ),
     # The pull request page's title, the record's or, cold, its Pulls row's; the member row of
     # its stack menu and of a stack's page (stack-member-row.js); and its Conversation's

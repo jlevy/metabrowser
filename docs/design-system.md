@@ -3667,8 +3667,8 @@ newest first. Like the page it opens, it has almost no vocabulary of its own.
 
 A pull request is one item, its link, with one hover, one selection, and one keyboard
 stop: a run and a last line.
-The first part shows the state icon and title.
-The title wraps in the text column past the icon.
+The first part shows the state icon and title, followed by a muted dot and the author’s
+avatar. The title and avatar wrap in the text column past the state icon.
 The second part starts in that same column with the brief change line and its chevron,
 followed by the age with a small gap.
 A muted dot, the readiness glyph, and the PR number sit at the right edge.
@@ -4172,9 +4172,9 @@ to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 
 ### One Order for a Pull Request’s Fields
 
-The Pulls sidebar gives the state icon and wrapping title the full first portion of the
-row. The summary line puts the change toggle and age on the left and the readiness glyph
-and bold PR number on the right.
+The Pulls sidebar shows the state icon and wrapping title, then a muted dot and the
+author’s avatar. The summary line puts the change toggle and age on the left and the
+readiness glyph and bold PR number on the right.
 
 The stack menu, the expanded Pulls list on Stack Overview, and Guided Review references
 have more room. After the state icon, they show the title, stack position when
@@ -4184,8 +4184,8 @@ All four surfaces use `stackMemberRow` in `stack-member-row.js`.
 
 ### Authors Follow Pull Requests
 
-The sidebar includes the login in the row’s accessible name.
-The wider rows can show the avatar and login inline.
+The sidebar shows the avatar after the title and includes the login in the row’s
+accessible name. The wider rows can show the avatar and login inline.
 
 ### Titles
 
@@ -4249,7 +4249,7 @@ holds the one helper and the one rule in source.
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.ageLabel`, in its freshness ink, after the diff toggle with the Files tree’s age gap. The page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), at the summary line’s right edge after the status glyph, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
-| Author | The accessible name includes the login. | [Authors Follow Pull Requests](#authors-follow-pull-requests) |
+| Author | The avatar follows the title after a muted dot. The accessible name includes the login. | [Authors Follow Pull Requests](#authors-follow-pull-requests) |
 | Stack place | `.github-pulls-place` adds the stack position to the accessible name. | [Stacks](#stacks) |
 | Stack group | A row of the tree: the chevron, then “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no icon, the stack’s size as a count summary, “· 4 pulls” ([Heading Tallies](#heading-tallies)), and its age just after the count; its Stack Overview row and its pull requests one icon slot and gap in, that row’s Layers glyph and each state icon under the label’s start, and each title under “Stack Overview” | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |

@@ -579,7 +579,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -593,7 +598,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 106",
+            "shown": "Work item 106 · ",
             "spoken": "contributor · #106 · 1m",
             "text": "",
             "line": [
@@ -617,7 +622,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -631,7 +641,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 105",
+            "shown": "Work item 105 · ",
             "spoken": "contributor · #105 · 1m",
             "text": "",
             "words": "Changed files",
@@ -644,7 +654,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -658,7 +673,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 104",
+            "shown": "Work item 104 · ",
             "spoken": "contributor · #104 · 1m",
             "text": "",
             "words": "Changed files",
@@ -671,7 +686,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -685,7 +705,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 103",
+            "shown": "Work item 103 · ",
             "spoken": "contributor · #103 · 1m",
             "text": "",
             "words": "Changed files",
@@ -704,7 +724,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -718,7 +743,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 106",
+            "shown": "Work item 106 · ",
             "spoken": "contributor · #106 · 1m",
             "text": "+1,093−493",
             "line": [
@@ -755,7 +780,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -769,7 +799,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 105",
+            "shown": "Work item 105 · ",
             "spoken": "contributor · #105 · 1m",
             "text": "+3−1",
             "words": "Changed files: 3 lines added, 1 deleted",
@@ -782,7 +812,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -796,7 +831,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 104",
+            "shown": "Work item 104 · ",
             "spoken": "contributor · #104 · 1m",
             "text": "",
             "words": "Changed files",
@@ -809,7 +844,12 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-title",
               "github-pulls-place sr-only",
               {
-                "github-pulls-by": []
+                "github-pulls-by": [
+                  " ",
+                  "github-pull-stack-dot",
+                  " ",
+                  "actor-identity github-pull-identity"
+                ]
               }
             ],
             "last": [
@@ -823,7 +863,7 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-readiness",
               "github-pulls-number"
             ],
-            "shown": "Work item 103",
+            "shown": "Work item 103 · ",
             "spoken": "contributor · #103 · 1m",
             "text": "",
             "words": "Changed files",

@@ -578,7 +578,7 @@ async function rowStory(lines, totals = null) {
     const shownOf = (node) =>
       node.data !== undefined
         ? node.data
-        : node.getAttribute("hidden") !== null
+        : node.getAttribute("hidden") !== null || node.classList?.contains("github-pulls-author")
           ? ""
           : node.childNodes.map(shownOf).join("");
     /** A part of a row's run: its class, and the parts of the author. */
