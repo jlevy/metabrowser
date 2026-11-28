@@ -5,7 +5,7 @@ title: Align structured view spacing, source line display, and nested table prev
 kind: bug
 status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
 refs:
   - kind: pr
@@ -25,10 +25,11 @@ child_order_hints:
   - is-01m8hpqnahvssf4k6ahxhm0emf
   - is-01m8hq9ytcgazb26e0t6v5navr
   - is-01m8hq9zb52x9hcmy3s3jf5nj1
+  - is-01m8hqdt07csxbpqwfyfcsdjfe
 hold: null
 hold_until: null
 created_at: 2026-11-28T18:27:38.384Z
-updated_at: 2026-11-28T18:39:59.332Z
+updated_at: 2026-11-28T18:42:04.929Z
 started_at: 2026-11-28T18:29:35.870Z
 ---
 Check exact source slices for nested frontmatter and fenced/standalone YAML and JSON; align Table/Tree/Source chooser spacing across embeddings; show bounded inline JSON-style collection previews with counts and omission marks when condensed.
