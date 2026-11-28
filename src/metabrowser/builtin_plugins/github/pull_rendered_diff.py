@@ -523,7 +523,7 @@ async def _project(
             tree = dict(
                 await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
             )
-        if tree.get("reason") == "deadline":
+        if tree.get("reason") in ("deadline", "memory"):
             raise _Unkept(_encoded(tree), stopped=True)
         return tree
     patches = getattr(state, "pull_rendered_diff_patches", None)
@@ -551,9 +551,9 @@ async def _project(
             old=old, new=new, patch=patch, namespace=namespace
         )
     answered = prepared.projection
-    if answered["status"] == "too_large" and answered.get("reason") in (None, "deadline"):
+    if answered["status"] == "too_large" and answered.get("reason") in (None, "deadline", "memory"):
         # Not the pair's own answer: the child has no input budget, so this is a thread's
-        # budget where no child could be had, or the child's deadline.
+        # budget where no child could be had, or the child reached its time or memory budget.
         raise _Unkept(_encoded(dict(answered)), stopped="reason" in answered)
     projection = bind_markdown_diff(prepared, rewrite)
     shown = sum(len(block["html"].encode()) for block in projection["blocks"])

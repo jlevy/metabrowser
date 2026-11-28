@@ -156,7 +156,7 @@ class StructuredDiffEntry(TypedDict):
 
 # Why a projection refuses, where that says more than its status, as a Markdown
 # projection's ``reason`` does: both sides hold the same bytes, or the worker stopped it.
-type StructuredRefusal = Literal["no_changes", "deadline"]
+type StructuredRefusal = Literal["no_changes", "deadline", "memory"]
 
 
 class StructuredDiffProjection(TypedDict):

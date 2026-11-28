@@ -1043,3 +1043,73 @@ def test_a_reload_of_a_refused_document_does_not_walk_its_front_matter(
 
     again = asyncio.run(run())
     assert again.code == "render_deadline" and again.remembered is True
+
+
+def test_memory_exit_refuses_documents_and_projections(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(worker_module, "_gil_enabled", lambda: True)
+    caplog.set_level(logging.INFO, logger=worker_module.__name__)
+
+    async def run() -> None:
+        worker = ProjectionWorker(command=_standin("--rss-exit", str(worker_module._RSS_EXIT)))  # pyright: ignore[reportPrivateUsage]
+        try:
+            request = _request("memory")
+            with pytest.raises(InertRenderRefused) as first:
+                await worker.render_inert(request)
+            assert first.value.code == "renderer_exited"
+            with pytest.raises(InertRenderRefused) as second:
+                await worker.render_inert(request)
+            assert second.value.remembered
+            await worker.render_inert(_request("echo"))
+            result = await worker.prepare(old=OLD, new=NEW, patch=_patch(OLD, NEW), namespace="n")
+            assert result.projection.get("reason") == "memory"
+            assert "rendering it on a new child" not in caplog.text
+            assert (await worker.render_inert(_request("recovered")))["html"] == "<p>recovered</p>"
+        finally:
+            await worker.aclose()
+
+    asyncio.run(run())
+
+
+def test_child_checks_peak_before_ready_and_before_sending_its_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import io
+
+    sink = io.BytesIO()
+    watching = threading.Event()
+    monkeypatch.setattr(worker_module, "_warm", lambda: None)
+    monkeypatch.setattr(worker_module, "_answer", lambda request: {"answer": request})
+    frame = worker_module._frame  # pyright: ignore[reportPrivateUsage]
+    ready = frame({"ready": True})
+
+    def check() -> None:
+        assert watching.is_set()
+        if sink.getvalue() == ready:
+            raise MemoryError("simulated child exit")
+        assert not sink.getvalue()
+
+    monkeypatch.setattr(worker_module, "_check_rss", check)
+    with pytest.raises(MemoryError, match="simulated child exit"):
+        worker_module.serve(io.BytesIO(frame({"op": "example"})), sink, watching=watching)
+    assert sink.getvalue() == ready
+
+
+@pytest.mark.parametrize(("platform", "units"), [("darwin", 1), ("linux", 1024)])
+def test_child_memory_budget_uses_platform_rss_units(
+    monkeypatch: pytest.MonkeyPatch, platform: str, units: int
+) -> None:
+    import resource
+    from types import SimpleNamespace
+
+    limit = worker_module._RSS_BYTES  # pyright: ignore[reportPrivateUsage]
+    report = SimpleNamespace(ru_maxrss=limit // units)
+    monkeypatch.setattr(resource, "getrusage", lambda who: report)
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(os, "_exit", sys.exit)
+    worker_module._check_rss()  # pyright: ignore[reportPrivateUsage]
+    report.ru_maxrss += 1
+    with pytest.raises(SystemExit) as stopped:
+        worker_module._check_rss()  # pyright: ignore[reportPrivateUsage]
+    assert stopped.value.code == worker_module._RSS_EXIT  # pyright: ignore[reportPrivateUsage]

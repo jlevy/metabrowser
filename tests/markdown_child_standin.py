@@ -42,6 +42,8 @@ def _render(request: dict[str, Any]) -> object:
     command, _, rest = text.partition("\n")[0].partition(" ")
     if command == "sleep":
         time.sleep(float(rest))
+    if command == "memory":
+        os._exit(int(sys.argv[sys.argv.index("--rss-exit") + 1]))
     if command == "exit":
         os._exit(3)
     if command == "crash":
@@ -74,6 +76,8 @@ def main() -> None:
     _write(sink, {"ready": True})
     while len(header := source.read(4)) == 4:
         request = json.loads(source.read(int.from_bytes(header, "big")))
+        if request.get("op") != "render" and "--rss-exit" in sys.argv:
+            os._exit(int(sys.argv[sys.argv.index("--rss-exit") + 1]))
         if request.get("op") == "render":
             _write(sink, _render(request))
         else:

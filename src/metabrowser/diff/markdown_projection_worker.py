@@ -279,6 +279,15 @@ MAX_STOPPED: Final = _MAX_VERDICTS
 # How often the child looks whether the server that started it is still there, so it
 # ends with the server even while it renders a document that would take minutes.
 _PARENT_POLL_S = 1.0
+# A warm child used 63–70 MB over 434 ordinary Markdown pairs. On macOS arm64,
+# Python 3.14.7, four 10–92 KB project guides rendered twice peaked at 69.27 MiB;
+# a 256 MiB ceiling leaves over 3.6 times that peak. Reading ru_maxrss took
+# 0.61 µs and 50 ms samples ran 55 ms apart at the median, up to 65 ms.
+# This is a sampled budget: scheduling or a native call holding the GIL can
+# delay enforcement. Check again before giving the parent a completed answer.
+_RSS_BYTES = 256 * 1024 * 1024
+_RSS_POLL_S = 0.05
+_RSS_EXIT = 86
 
 type RefusalCode = Literal[
     "render_deadline", "renderer_exited", "renderer_unavailable", "renderer_busy"
@@ -597,21 +606,33 @@ def _warm() -> None:
     )
 
 
-def serve(source: BinaryIO, sink: BinaryIO) -> None:
+def serve(source: BinaryIO, sink: BinaryIO, *, watching: threading.Event | None = None) -> None:
     """The child's loop: one answer for each request until its input closes."""
 
+    if watching is not None:
+        watching.set()
     _warm()
+    if watching is not None:
+        _check_rss()
+        watching.clear()
     sink.write(_frame({"ready": True}))
     sink.flush()
     while len(header := source.read(4)) == 4:
         size = int.from_bytes(header, "big")
         if size > _MAX_REQUEST_FRAME:
             return
+        if watching is not None:
+            watching.set()
         body = source.read(size)
         if len(body) != size:
             return
-        sink.write(_frame(_answer(json.loads(body))))
+        answer = _frame(_answer(json.loads(body)))
+        if watching is not None:
+            _check_rss()
+            watching.clear()
+        sink.write(answer)
         sink.flush()
+        del answer, body
 
 
 async def _read_body(stream: asyncio.StreamReader, limit: int) -> bytes:
@@ -1156,7 +1177,9 @@ class ProjectionWorker:
         self,
         frame: Callable[[], bytes],
         decode: Callable[[dict[str, Any]], T],
-        refused: Callable[[Literal["unsupported", "too_large"], Literal["deadline"] | None], T],
+        refused: Callable[
+            [Literal["unsupported", "too_large"], Literal["deadline", "memory"] | None], T
+        ],
         local: Callable[[], T],
         *,
         heavy: bool = False,
@@ -1204,7 +1227,9 @@ class ProjectionWorker:
         lock: _ChildLock,
         request: bytes,
         decode: Callable[[dict[str, Any]], T],
-        refused: Callable[[Literal["unsupported", "too_large"], Literal["deadline"] | None], T],
+        refused: Callable[
+            [Literal["unsupported", "too_large"], Literal["deadline", "memory"] | None], T
+        ],
         *,
         wait: bool,
     ) -> _Answered[T] | None:
@@ -1237,7 +1262,10 @@ class ProjectionWorker:
                 if self._process is not process:
                     # Stopped from here, by a new loop or the server's end.
                     break
+                memory = outcome == "died" and await _rss_exit(process)
                 self._kill(process)
+                if memory:
+                    return _Answered(refused("too_large", "memory"))
                 if outcome == "died" and attempt == 2:
                     # Twice on two children: the input may be what stops it, so it is
                     # not run in this process.
@@ -1402,8 +1430,13 @@ class ProjectionWorker:
                     # Stopped from here, by a new loop or the server's end: not the
                     # document's doing, so nothing is kept.
                     return _Failed("refused", "renderer_unavailable")
+                memory = outcome == "exited" and await _rss_exit(process)
                 self._kill(process)
                 said = await self._said(process)
+                if memory:
+                    return self._refuse(
+                        request, "renderer_exited", began, "; memory budget exceeded"
+                    )
                 if attempt == 1:
                     # Dead before the request reached it, or killed from outside, as easily
                     # as by this document: once more, on a fresh child.
@@ -1543,24 +1576,46 @@ def _running_loop() -> asyncio.AbstractEventLoop | None:
         return None
 
 
-def _exit_with_parent(parent: int) -> None:
+async def _rss_exit(process: asyncio.subprocess.Process) -> bool:
+    """EOF may arrive just before asyncio records the child's exit status."""
+    if process.returncode is None and process.stdout is not None and process.stdout.at_eof():
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(process.wait(), _REAP_S)
+    return process.returncode == _RSS_EXIT
+
+
+def _check_rss() -> None:
+    if sys.platform not in {"darwin", "linux"}:
+        return
+    import resource
+
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    used = peak if sys.platform == "darwin" else peak * 1024
+    if used > _RSS_BYTES:
+        os._exit(_RSS_EXIT)
+
+
+def _exit_with_parent(parent: int, watching: threading.Event) -> None:
     """End this child once the server that started it has gone, even mid-render."""
 
     while True:
-        time.sleep(_PARENT_POLL_S)
+        if watching.wait(_PARENT_POLL_S):
+            _check_rss()
+            time.sleep(_RSS_POLL_S)
         if os.getppid() != parent:
             os._exit(0)
 
 
 def main() -> None:
+    watching = threading.Event()
     threading.Thread(
-        target=_exit_with_parent, args=(os.getppid(),), name="parent-watch", daemon=True
+        target=_exit_with_parent, args=(os.getppid(), watching), name="parent-watch", daemon=True
     ).start()
     # The protocol owns the original standard output; anything a library prints goes to
     # standard error instead of into a frame.
     sink = os.fdopen(os.dup(1), "wb")
     os.dup2(2, 1)
-    serve(sys.stdin.buffer, sink)
+    serve(sys.stdin.buffer, sink, watching=watching)
 
 
 if __name__ == "__main__":

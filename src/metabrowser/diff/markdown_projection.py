@@ -377,7 +377,7 @@ class FrontmatterDiff(TypedDict):
 # reader in each one's own sentence (`REFUSALS` in builtin_plugins/diff/diff-markdown.js).
 # ``no_changes`` is the route's, for a file whose content did not change, and ``deadline``
 # the worker's, for a projection it stopped.
-type MarkdownRefusal = Literal["nesting", "deadline", "no_changes"]
+type MarkdownRefusal = Literal["nesting", "deadline", "memory", "no_changes"]
 
 
 class MarkdownDiffProjection(TypedDict):
@@ -462,7 +462,7 @@ class _Limits:
     A side that holds raw HTML is refused on a thread with a budget's refusal,
     which names no cause, so the server asks the child for the pair (``past_a_thread``
     in ``markdown_projection_worker.py``). The child, as when it renders the same file
-    for the Document view, is bounded by its deadline in time only: stopped 10 s after
+    for the Document view, now has an RSS watchdog. Before that bound, stopped 10 s after
     the call, 47,988 bytes had reached 1,295 MB, and 2,000 elements left open then
     20,000 blocks (258,902 bytes) 1,016 MB (mb-zrng).
     """
