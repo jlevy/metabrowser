@@ -13,6 +13,8 @@ $ node tests/dom/softschema-collection-session.js
 {
   "cold index": "Indexing collection…",
   "collection discovery": "Indexing collection… 512 paths checked",
+  "partial index": "Some records may be missing because the scan reached its total size limit and 2 paths could not be read.",
+  "bounded scan": "Some records may be missing because the scan reached its file and folder limit and 1 file was too large to read.",
   "published table": {
     "label": "Person",
     "count": "577 records",
