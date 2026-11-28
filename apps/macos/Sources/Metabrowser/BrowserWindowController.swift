@@ -377,29 +377,42 @@ extension BrowserWindowController {
     }
 
     private static func historyIcon(_ name: String?) -> NSImage? {
-        let symbol: String
-        switch name {
-        case "folder": return RootMark.folder.image
-        case "folderDot": return RootMark.plainFolder.image
-        case "git", "folderGit2": return RootMark.gitCheckout.image
-        case "mirror", "folderCloud": return RootMark.mirror.image
-        case "gitPullRequest", "pull": symbol = "arrow.triangle.branch"
-        case "gitPullRequestDraft": symbol = "pencil.circle"
-        case "gitPullRequestClosed": symbol = "xmark.circle"
-        case "gitMerge": symbol = "arrow.triangle.merge"
-        case "layers", "stack": symbol = "square.3.layers.3d"
-        case "gitCommit", "commit": symbol = "circle.circle"
-        case "list": symbol = "list.bullet"
-        case "activity": symbol = "waveform.path"
-        case "alignLeft": symbol = "text.alignleft"
-        case "copy": symbol = "document.on.document"
-        case "doc", "fileText": symbol = "document.text"
-        case "grid": symbol = "square.grid.2x2"
-        case "monitor": symbol = "display"
-        case "fileCode": symbol = "document.badge.ellipsis"
-        default: symbol = "document"
+        let icon: NSImage? = switch name {
+        case "folder": RootMark.folder.image
+        case "folderDot": RootMark.plainFolder.image
+        case "git", "folderGit2": RootMark.gitCheckout.image
+        case "mirror", "folderCloud": RootMark.mirror.image
+        case "gitPullRequest", "pull":
+            NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: nil)
+        case "gitPullRequestDraft":
+            NSImage(systemSymbolName: "pencil.circle", accessibilityDescription: nil)
+        case "gitPullRequestClosed":
+            NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
+        case "gitMerge":
+            NSImage(systemSymbolName: "arrow.triangle.merge", accessibilityDescription: nil)
+        case "layers", "stack":
+            NSImage(systemSymbolName: "square.3.layers.3d", accessibilityDescription: nil)
+        case "gitCommit", "commit":
+            NSImage(systemSymbolName: "circle.circle", accessibilityDescription: nil)
+        case "list":
+            NSImage(systemSymbolName: "list.bullet", accessibilityDescription: nil)
+        case "activity":
+            NSImage(systemSymbolName: "waveform.path", accessibilityDescription: nil)
+        case "alignLeft":
+            NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
+        case "copy":
+            NSImage(systemSymbolName: "document.on.document", accessibilityDescription: nil)
+        case "doc", "fileText":
+            NSImage(systemSymbolName: "document.text", accessibilityDescription: nil)
+        case "grid":
+            NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)
+        case "monitor":
+            NSImage(systemSymbolName: "display", accessibilityDescription: nil)
+        case "fileCode":
+            NSImage(systemSymbolName: "document.badge.ellipsis", accessibilityDescription: nil)
+        default: nil
         }
-        return NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        return icon
             ?? NSImage(systemSymbolName: "document", accessibilityDescription: nil)
     }
 }

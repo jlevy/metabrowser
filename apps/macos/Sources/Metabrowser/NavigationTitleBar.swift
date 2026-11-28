@@ -227,7 +227,9 @@ final class NavigationArrow: NSButton {
         let isBack = direction == .back
         let title = isBack ? "Back" : "Forward"
         let key = isBack ? "[" : "]"
-        image = NSImage(systemSymbolName: isBack ? "chevron.backward" : "chevron.forward", accessibilityDescription: nil)
+        image = isBack
+            ? NSImage(systemSymbolName: "chevron.backward", accessibilityDescription: nil)
+            : NSImage(systemSymbolName: "chevron.forward", accessibilityDescription: nil)
         imagePosition = .imageOnly
         bezelStyle = .accessoryBarAction
         setButtonType(.momentaryChange)
