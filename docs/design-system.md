@@ -683,9 +683,8 @@ plugin’s `authorLabel` builds every author on a pull request’s page through 
 form, with GitHub’s avatar, so the box is one size on both pages and core reaches no
 plugin for it. A pull request’s author with no usable avatar shows the glyph too, in the
 header and on a Conversation card head, so the two pages read alike whether GitHub gave
-an avatar or not. A Pulls row, a dense list whose avatar comes with its row, passes
-`placeholder: false` and draws no box for an author without one, and so does a stack
-menu’s member row, which draws the author its Pulls row has.
+an avatar or not. A Pulls sidebar row shows the person glyph when the author has no
+usable image. A stack menu member with a missing avatar shows the login alone.
 A commit’s page has no source of avatars of its own, so its author shows the glyph.
 `tests/dom/actor-identity-session.js` holds what each form draws
 (`cli-ui-actor-identity.tryscript.md`), `test_a_person_is_one_identity_on_every_page` in
@@ -3503,8 +3502,9 @@ The avatar centers independently beside that text baseline.
 In the navigation column an age reads at its row’s list size, and a branch chip keeps
 its ratio.
 
-Author avatars are decorative circles beside the visible username, with fixed dimensions
-so image arrival or failure does not move the text.
+Author avatars are decorative circles with fixed dimensions so image arrival or failure
+does not move the text.
+The Pulls sidebar gives the author’s login in the row’s accessible name.
 Images load at low priority and decode asynchronously, and when they load depends on
 where they are ([A Repaint Keeps Its Images](#a-repaint-keeps-its-images)). The header’s
 avatar is eager: it is at the top of the page, and it is a new image whenever its actor
@@ -3512,13 +3512,13 @@ changes. A Pulls row’s is eager, because only mounted catalog rows can create 
 which bounds what the Pulls tab asks for.
 The conversation’s are lazy: its sections are kept across tabs and polls, and an avatar
 far down a long conversation waits until the reader nears it.
-Missing or unsupported image URLs, and an image that fails, leave the username readable
-and the box holding the person glyph, on the page; a Pulls row and a stack menu’s member
-row draw no box for a missing one ([Actor Identity](#actor-identity)). Use the avatar of
-the named actor: a merged header naming the merger shows the merger’s image, while the
-description shows its author’s image.
-Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted, checked
-again before assigning the browser image source.
+A missing or unsupported image URL gives the page and Pulls sidebar the person glyph.
+A failed image leaves the same fallback in its box.
+A stack menu row gives a missing image’s space to the login
+([Actor Identity](#actor-identity)). Use the avatar of the named actor: a merged header
+naming the merger shows the merger’s image, while the description shows its author’s
+image. Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted,
+checked again before assigning the browser image source.
 Anonymous CORS and a no-referrer policy omit credentials and the local page URL. The
 browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
 Document image sanitization remains independent; see [Content Trust](../SECURITY.md).

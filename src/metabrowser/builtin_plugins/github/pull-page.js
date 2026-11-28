@@ -4681,8 +4681,7 @@ export function retellAges(mb, node) {
 
 /** An actor, as the shell draws every person (docs/design-system.md, "Actor Identity"): the
  * SDK's identity, the avatar's box and then the bold name, with GitHub's avatar in the box
- * where the record carries one that passes `avatarUrl`. The image is decorative beside the
- * same visible name, never a replacement for it.
+ * where the record carries one that passes `avatarUrl`. The identity's caller supplies the accessible name when it shows the avatar alone.
  *
  * When the image loads is its placement's (docs/design-system.md, "A Repaint Keeps Its
  * Images"). Lazy, the default, leaves an avatar the reader has not scrolled to unasked, as
@@ -4695,8 +4694,7 @@ export function retellAges(mb, node) {
  * An author with no usable avatar keeps the box, holding the shell's person glyph, in the
  * header and on a Conversation card head: the name starts where it would beside an avatar,
  * as a commit's author's does on its page, and the timeline's line meets the head where an
- * avatar would be (docs/design-system.md, "Conversation Timeline"). A Pulls row passes
- * `placeholder: false`, and its name stays where it is.
+ * avatar would be (docs/design-system.md, "Conversation Timeline"). Pulls rows keep the same fallback.
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {string} name
@@ -4723,8 +4721,7 @@ export function authorLabel(
 
 /**
  * A stack member's author, as the stack menu and a stack's page draw it at the end of its
- * member row (`stackMemberRow`): as a Pulls row draws one, no box where it has no avatar,
- * and its avatar asked for once the row is drawn (docs/design-system.md, "Actor Identity").
+ * member row (`stackMemberRow`). The login stays visible when there is no avatar box.
  *
  * @param {MetabrowserPublicSdk} mb
  * @returns {(login: string, avatar: string | null) => HTMLElement}

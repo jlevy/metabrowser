@@ -1409,7 +1409,7 @@
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
 /* The heading opens the PR. The diff summary and its chevron toggle the changed files.
-   The tail keeps the age at the right even when the change summary is unavailable. */
+   The age follows the toggle even when the diff summary is unavailable. */
 .github-pulls-row {
   /* The last line's height, and the room the lines' placeholder takes
      (`.github-pulls-change-pending`). Measured in
@@ -2085,11 +2085,10 @@
    docs/design-system.md, "Actor Identity"): the avatar's box, `--actor-avatar-size`, then
    the bold name, the identity's gap apart. The box is there for every author on the page,
    the person glyph in it where GitHub gave no avatar or the image failed, so the
-   Conversation timeline's line meets every head where an avatar is; a Pulls row draws no
-   box for an author with no avatar.
+   Conversation timeline's line meets every head where an avatar is.
    In the pull request's author row the author gives way after the action
    (`.github-pull-meta-details`): down to its avatar's box and a little of the name, which
-   then ends in an ellipsis, as a Pulls row's author does (`.github-pulls-by`). Without a
+   then ends in an ellipsis. Without a
    floor of its own a long login kept its whole width and pushed what followed it out of the
    row. The box's share is its size and the identity's gap. */
 .github-pull-meta-details > .github-pull-identity {
