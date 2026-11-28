@@ -150,7 +150,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "ready (success): Ready to merge",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -172,7 +172,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "ready (success): Ready to merge",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -189,7 +189,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "ready (success): Ready to merge",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -206,7 +206,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -229,7 +229,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -251,7 +251,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -273,7 +273,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -290,7 +290,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -369,7 +369,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -391,7 +391,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -408,7 +408,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -431,7 +431,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "ready (success): Ready to merge",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -448,7 +448,7 @@ $ node tests/dom/github-pulls-readiness-session.js
       "draws": {
         "#106": "none",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -469,9 +469,9 @@ $ node tests/dom/github-pulls-readiness-session.js
     {
       "step": "a minute on, the draft is read again, and draws the server's verdict on it",
       "draws": {
-        "#106": "ready_for_review (success): Ready for review",
+        "#106": "ready_for_review (success): No other blockers",
         "#105": "none",
-        "#10": "conflicts (danger): Merge conflicts",
+        "#10": "conflicts (severe): Merge conflicts",
         "#9": "none",
         "#8": "none",
         "#7": "checks_pending (attention): Checks pending"
@@ -556,10 +556,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 106 #106 · contributor · 1m"
+          "name": "Open Work item 106 contributor · #106 · 1m"
         },
         "#105": {
           "glyph": null,
@@ -568,10 +568,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 105 #105 · contributor · 1m"
+          "name": "Open Work item 105 contributor · #105 · 1m"
         },
         "#10": {
           "glyph": null,
@@ -580,10 +580,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Draft WIP: draft the next page #10 · maintainer · 1m"
+          "name": "Draft WIP: draft the next page maintainer · #10 · 1m"
         },
         "#9": {
           "glyph": null,
@@ -592,10 +592,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Closed spam #9 · ghost · 1m"
+          "name": "Closed spam ghost · #9 · 1m"
         },
         "#8": {
           "glyph": null,
@@ -604,10 +604,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Merged Say more in the guide #8 · maintainer · 1m"
+          "name": "Merged Say more in the guide maintainer · #8 · 1m"
         },
         "#7": {
           "glyph": null,
@@ -616,10 +616,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Count to two in the app #7 · forker · 1m"
+          "name": "Open Count to two in the app forker · #7 · 1m"
         }
       },
       "requests": []
@@ -634,10 +634,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 106 #106 · contributor · 1m"
+          "name": "Open Work item 106 contributor · #106 · 1m"
         },
         "#105": {
           "glyph": null,
@@ -646,10 +646,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 105 #105 · contributor · 1m"
+          "name": "Open Work item 105 contributor · #105 · 1m"
         },
         "#10": {
           "glyph": null,
@@ -658,10 +658,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Draft WIP: draft the next page #10 · maintainer · 1m"
+          "name": "Draft WIP: draft the next page maintainer · #10 · 1m"
         },
         "#9": {
           "glyph": null,
@@ -670,10 +670,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Closed spam #9 · ghost · 1m"
+          "name": "Closed spam ghost · #9 · 1m"
         },
         "#8": {
           "glyph": null,
@@ -682,10 +682,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Merged Say more in the guide #8 · maintainer · 1m"
+          "name": "Merged Say more in the guide maintainer · #8 · 1m"
         },
         "#7": {
           "glyph": null,
@@ -694,10 +694,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Count to two in the app #7 · forker · 1m"
+          "name": "Open Count to two in the app forker · #7 · 1m"
         }
       },
       "requests": [
@@ -714,10 +714,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 106 #106 · contributor · 1m"
+          "name": "Open Work item 106 contributor · #106 · 1m"
         },
         "#105": {
           "glyph": null,
@@ -726,10 +726,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 105 #105 · contributor · 1m"
+          "name": "Open Work item 105 contributor · #105 · 1m"
         },
         "#10": {
           "glyph": null,
@@ -738,10 +738,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Draft WIP: draft the next page #10 · maintainer · 1m"
+          "name": "Draft WIP: draft the next page maintainer · #10 · 1m"
         },
         "#9": {
           "glyph": null,
@@ -750,10 +750,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Closed spam #9 · ghost · 1m"
+          "name": "Closed spam ghost · #9 · 1m"
         },
         "#8": {
           "glyph": null,
@@ -762,10 +762,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Merged Say more in the guide #8 · maintainer · 1m"
+          "name": "Merged Say more in the guide maintainer · #8 · 1m"
         },
         "#7": {
           "glyph": null,
@@ -774,10 +774,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Count to two in the app #7 · forker · 1m"
+          "name": "Open Count to two in the app forker · #7 · 1m"
         }
       },
       "requests": [
@@ -795,10 +795,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Ready to merge",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Ready to merge Work item 106 #106 · contributor · 1m"
+          "name": "Open Ready to merge Work item 106 contributor · #106 · 1m"
         },
         "#105": {
           "glyph": "ready (success)",
@@ -807,22 +807,22 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Ready to merge",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Ready to merge Work item 105 #105 · contributor · 1m"
+          "name": "Open Ready to merge Work item 105 contributor · #105 · 1m"
         },
         "#10": {
-          "glyph": "conflicts (danger)",
+          "glyph": "conflicts (severe)",
           "label": "Merge conflicts",
           "hidden": true,
           "words": "Merge conflicts",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Draft Merge conflicts WIP: draft the next page #10 · maintainer · 1m"
+          "name": "Draft Merge conflicts WIP: draft the next page maintainer · #10 · 1m"
         },
         "#9": {
           "glyph": null,
@@ -831,10 +831,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Closed spam #9 · ghost · 1m"
+          "name": "Closed spam ghost · #9 · 1m"
         },
         "#8": {
           "glyph": null,
@@ -843,10 +843,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Merged Say more in the guide #8 · maintainer · 1m"
+          "name": "Merged Say more in the guide maintainer · #8 · 1m"
         },
         "#7": {
           "glyph": "checks_pending (attention)",
@@ -855,10 +855,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Checks pending",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Checks pending Count to two in the app #7 · forker · 1m"
+          "name": "Open Checks pending Count to two in the app forker · #7 · 1m"
         }
       },
       "requests": [
@@ -876,10 +876,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Ready to merge",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Ready to merge Work item 106 #106 · contributor · 1m"
+          "name": "Open Ready to merge Work item 106 contributor · #106 · 1m"
         },
         "#105": {
           "glyph": null,
@@ -888,22 +888,22 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 105 #105 · contributor · 1m"
+          "name": "Open Work item 105 contributor · #105 · 1m"
         },
         "#10": {
-          "glyph": "conflicts (danger)",
+          "glyph": "conflicts (severe)",
           "label": "Merge conflicts",
           "hidden": true,
           "words": "Merge conflicts",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Draft Merge conflicts WIP: draft the next page #10 · maintainer · 1m"
+          "name": "Draft Merge conflicts WIP: draft the next page maintainer · #10 · 1m"
         },
         "#9": {
           "glyph": null,
@@ -912,10 +912,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Closed spam #9 · ghost · 1m"
+          "name": "Closed spam ghost · #9 · 1m"
         },
         "#8": {
           "glyph": null,
@@ -924,10 +924,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Merged Say more in the guide #8 · maintainer · 1m"
+          "name": "Merged Say more in the guide maintainer · #8 · 1m"
         },
         "#7": {
           "glyph": "checks_pending (attention)",
@@ -936,10 +936,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Checks pending",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Checks pending Count to two in the app #7 · forker · 1m"
+          "name": "Open Checks pending Count to two in the app forker · #7 · 1m"
         }
       },
       "requests": [
@@ -962,10 +962,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Ready to merge",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Ready to merge Work item 106 #106 · contributor · 1m"
+          "name": "Open Ready to merge Work item 106 contributor · #106 · 1m"
         },
         "#105": {
           "glyph": null,
@@ -974,22 +974,22 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Work item 105 #105 · contributor · 1m"
+          "name": "Open Work item 105 contributor · #105 · 1m"
         },
         "#10": {
-          "glyph": "conflicts (danger)",
+          "glyph": "conflicts (severe)",
           "label": "Merge conflicts",
           "hidden": true,
           "words": "Merge conflicts",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Draft Merge conflicts WIP: draft the next page #10 · maintainer · 1m"
+          "name": "Draft Merge conflicts WIP: draft the next page maintainer · #10 · 1m"
         },
         "#9": {
           "glyph": null,
@@ -998,10 +998,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Closed spam #9 · ghost · 1m"
+          "name": "Closed spam ghost · #9 · 1m"
         },
         "#8": {
           "glyph": null,
@@ -1010,10 +1010,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Merged Say more in the guide #8 · maintainer · 1m"
+          "name": "Merged Say more in the guide maintainer · #8 · 1m"
         },
         "#7": {
           "glyph": "checks_pending (attention)",
@@ -1022,10 +1022,10 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "words": "Checks pending",
           "last": [
             "github-pulls-change",
-            "github-pulls-readiness",
-            "github-pulls-age"
+            "github-pulls-age",
+            "github-pull-row-end"
           ],
-          "name": "Open Checks pending Count to two in the app #7 · forker · 1m"
+          "name": "Open Checks pending Count to two in the app forker · #7 · 1m"
         }
       },
       "requests": []
@@ -1039,8 +1039,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": null,
           "hidden": true,
@@ -1050,8 +1049,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": "checks_pending (attention)",
           "hidden": true,
@@ -1061,8 +1059,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": null,
           "hidden": true,
@@ -1078,8 +1075,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": null,
           "hidden": true,
@@ -1089,8 +1085,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": "checks_pending (attention)",
           "hidden": true,
@@ -1100,8 +1095,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": "ready (success)",
           "hidden": true,
@@ -1122,8 +1116,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": null,
           "hidden": true,
@@ -1133,8 +1126,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": "checks_pending (attention)",
           "hidden": true,
@@ -1144,8 +1136,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
           "parts": [
             "github-pull-state-icon",
             "github-pull-readiness-said",
-            "github-pull-stack-member-copy",
-            "github-pull-stack-member-readiness"
+            "github-pull-row-copy"
           ],
           "glyph": "ready (success)",
           "hidden": true,
@@ -1267,7 +1258,7 @@ $ node tests/dom/github-pulls-readiness-surfaces-session.js
       "9": null,
       "10": {
         "verdict": "conflicts",
-        "tone": "danger",
+        "tone": "severe",
         "label": "Merge conflicts"
       },
       "105": {

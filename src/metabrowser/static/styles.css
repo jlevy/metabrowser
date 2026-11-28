@@ -18,7 +18,7 @@
      1. Hue encodes *family*. Tokens that share a hue are meant to
         read as related. Example — adapter and model chips both sit
         on ~sea-green; file-age grades keep every non-live age in a
-        yellow-to-neutral family while Live has one salmon state; chart
+        yellow-to-neutral family while Live has one amber state; chart
         threshold colors use the same info / warning / error hues
         as the status palette so dashboards and alerts speak the
         same language. To introduce a new token, pick the hue that
@@ -508,6 +508,7 @@
      inset and a category heading's icon (--category-icon-gap) also take, so a heading's
      name and its rows' names stay on one column. */
   --tree-icon-gap: 6px;
+  --tree-inline-age-gap: 6px;
   /* The disclosure chevron's glyph (.toggle-chevron), 2px under --icon-glyph. A tree's
      folder and container toggles center it in the slot, half the slot's spare width each
      side, 1px. */
@@ -1316,7 +1317,7 @@
      something *just happen*?" — when runs write new files, the user's
      eye should land on them without scanning names. The text itself
      carries the hue, and weight boosts the very-recent tiers. Live is a
-     warm salmon activity state. Every elapsed age stays yellow and loses
+     warm amber activity state. Every elapsed age stays yellow and loses
      chroma and prominence as it gets older. */
   --file-age-weight: var(--weight-medium); /* base — 11px labels read */
   /* as light at normal 400, */
@@ -1324,10 +1325,17 @@
   /* legibility floor */
   --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
   /* Live remains a distinct activity state, but it and the under-one-
-     minute bucket share the freshest reddish-orange visual. Later ages
+     minute bucket share the freshest visual, a warm amber a step before
+     the minute tier's yellow. It was oklch(74% 0.22 55), an orange too
+     bright beside the yellow ramp and the orange of a merge conflict, the
+     shell's warning ink (docs/design-system.md, "File Age"), so it moved
+     to hue 72, 22 degrees past the warning ink's 50, with chroma 0.15, the
+     most sRGB holds at this lightness. Measured 2026-11-26 in OKLab: 0.115
+     from the minute tier, a step seen at a glance, and 0.182 from the
+     warning ink; it reads 2.64:1 on --bg, as the orange did. Later ages
      retain the approved swatch hues while using darker lightness and
      stronger chroma so the text stays vivid without a marker. */
-  --file-age-live: oklch(74% 0.22 55);
+  --file-age-live: oklch(71% 0.15 72);
   --file-age-sec: var(--file-age-live); /* < 1 minute */
   --file-age-min: oklch(72% 0.23 97.5); /* < 1 hour */
   --file-age-hr: oklch(64% 0.2 104); /* < 1 day */
@@ -1336,7 +1344,7 @@
   --file-age-old: oklch(48% 0.012 106.6); /* ≥ 1 month */
 
   /* Translucent surface variants for badges and area encodings. */
-  --file-age-fill-live: oklch(71% 0.151 55 / 0.22);
+  --file-age-fill-live: oklch(71% 0.15 72 / 0.22);
   --file-age-fill-sec: var(--file-age-fill-live);
   --file-age-fill-min: oklch(78.6% 0.159 97.5 / 0.28);
   --file-age-fill-hr: oklch(71.4% 0.138 104 / 0.24);
@@ -1568,8 +1576,11 @@
   --color-syntax-deletion-bg: oklch(27.8% 0.077 18.8);
 
   /* Dark surfaces keep the same semantics and hue families while
-     raising foreground lightness and fill alpha. */
-  --file-age-live: oklch(78% 0.109 55);
+     raising foreground lightness and fill alpha. The freshest tier, at the
+     light theme's hue: 0.092 from the minute tier in OKLab, 0.069 from the
+     dark warning ink (the orange it replaced was 0.042 from it), and
+     10.04:1 on --bg, 6.94:1 on --hover-bg (2026-11-26). */
+  --file-age-live: oklch(82% 0.135 72);
   --file-age-sec: var(--file-age-live);
   --file-age-min: oklch(89% 0.136 97.5);
   --file-age-hr: oklch(86% 0.121 104);
@@ -1577,7 +1588,7 @@
   --file-age-wk: oklch(74.1% 0.043 107.8);
   --file-age-old: oklch(69.7% 0.006 106.6);
 
-  --file-age-fill-live: oklch(75.1% 0.126 55 / 0.26);
+  --file-age-fill-live: oklch(75.1% 0.126 72 / 0.26);
   --file-age-fill-sec: var(--file-age-fill-live);
   --file-age-fill-min: oklch(85.9% 0.161 97.5 / 0.36);
   --file-age-fill-hr: oklch(81.4% 0.149 104 / 0.3);
@@ -3867,7 +3878,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   white-space: nowrap;
   display: flex;
   align-items: center;
-  margin-left: 6px;
+  margin-inline-start: var(--tree-inline-age-gap);
 }
 /* Positioning only — color / weight / tabular-nums come from the shared
    .size / .size-large rule (the sole source of truth), and the size from

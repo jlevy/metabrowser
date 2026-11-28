@@ -614,17 +614,18 @@ async function panelStory() {
     const rowOf = (number) => childByClass(item(number), "github-pulls-entry").childNodes[0];
     const headingOf = (number) => childByClass(rowOf(number), "github-pulls-heading");
     const tailOf = (number) => childByClass(rowOf(number), "github-pulls-tail");
-    const cellOf = (number) => childByClass(tailOf(number), "github-pulls-readiness");
+    const cellOf = (number) =>
+      childByClass(childByClass(tailOf(number), "github-pull-row-end"), "github-pulls-readiness");
     /** What a row draws of its readiness: the glyph's verdict and tone, the label after it,
      * whether the column is hidden from assistive technology, the words after the state icon,
      * the last line's parts, and the name its link is read by. */
     const drawnRow = (number) => {
       const cell = cellOf(number);
       const glyph = childByClass(cell, "github-pull-readiness-icon") ?? null;
-      const label = childByClass(cell, "github-pulls-readiness-label") ?? null;
+      const label = childByClass(headingOf(number), "github-pull-readiness-said").textContent;
       return {
         glyph: glyph === null ? null : `${glyph.dataset.verdict} (${glyph.dataset.tone})`,
-        label: label === null ? null : label.textContent,
+        label: label || null,
         hidden: cell.getAttribute("aria-hidden") === "true",
         words: childByClass(headingOf(number), "github-pull-readiness-said").textContent,
         last: tailOf(number).childNodes.map((node) => node.className.split(" ")[0]),
@@ -685,7 +686,7 @@ async function panelStory() {
     const invariants = Object.fromEntries(
       SHOWN.map((number) => {
         const glyph = childByClass(cellOf(number), "github-pull-readiness-icon") ?? null;
-        const label = childByClass(cellOf(number), "github-pulls-readiness-label") ?? null;
+        const label = childByClass(headingOf(number), "github-pull-readiness-said").textContent;
         return [
           String(number),
           glyph === null
@@ -693,7 +694,7 @@ async function panelStory() {
             : {
                 verdict: glyph.dataset.verdict,
                 tone: glyph.dataset.tone,
-                label: label.textContent,
+                label,
               },
         ];
       }),
@@ -702,8 +703,8 @@ async function panelStory() {
       const row = settled[`#${number}`];
       assert.deepEqual(row.last, [
         "github-pulls-change",
-        "github-pulls-readiness",
         "github-pulls-age",
+        "github-pull-row-end",
       ]);
       assert.ok(row.hidden, `#${number}'s column is hidden from assistive technology`);
       const drawn = invariants[String(number)];
@@ -905,7 +906,10 @@ async function menuStory(readiness) {
       Object.fromEntries(
         links(menu).map((link) => {
           const parts = elements(link);
-          const cell = parts.at(-1);
+          const end = elements(parts.at(-1)).at(-1);
+          const cell = elements(end).find((part) =>
+            part.classList.contains("github-pull-stack-member-readiness"),
+          );
           const glyph = elements(cell)[0] ?? null;
           return [
             `#${link.dataset.number}`,

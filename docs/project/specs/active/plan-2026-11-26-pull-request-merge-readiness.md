@@ -830,7 +830,7 @@ A test holds its keys to the server’s verdict enum.
 | Verdict | Label | Glyph (Lucide) | Tone | GitHub’s equivalent |
 | --- | --- | --- | --- | --- |
 | `ready` | Ready to merge | `circle-check` | success | Green merge button |
-| `ready_for_review` | Ready for review | `circle-check` | success | A draft marked “ready for review” |
+| `ready_for_review` | No other blockers | `check-check` | success | A draft that GitHub reports no other blockers for |
 | `conflicts` | Merge conflicts | `triangle-alert` | danger | `gh`: red “Merge conflicts” |
 | `checks_failing` | Checks failing | `circle-x` | danger | `gh`: red “checks failing”; red `x` |
 | `changes_requested` | Changes requested | `file-diff` | danger | `gh`: red “Changes requested” |
@@ -876,6 +876,20 @@ running, since it means an issue.
 
 No color is the only signal: each verdict has its own glyph and its label, in the
 accessible name in the list and as text on the page.
+
+**Addendum, 2026-11-26 (mb-omc0).** The owner asked that merge conflicts read in a color
+of their own, orange rather than failing checks’ red, and that the page’s chips and the
+compact glyphs be one vocabulary.
+The design system’s
+[Pull Request Status Vocabulary](../../../design-system.md#pull-request-status-vocabulary)
+now holds it, with GitHub’s marks beside it, and supersedes the table above where they
+differ: a fourth tone, severe, Primer’s high-priority warning, for a merge conflict, in
+the shell’s warning ink; each requirement’s tone decided by the server from its kind and
+status (`requirement_tone`) and sent with it; a verdict’s tone that of the requirement
+heading it; a glyph in every chip, the compact glyph’s own; the checks’ marks all
+circles, each check’s chip among them; and new glyphs for ready (`check-check`),
+conflicts (`git-merge-conflict`), a rule’s block (`shield-ban`), and leaving the queue
+(`list-x`).
 
 ### Alignment With the Object Data Model
 
@@ -1109,7 +1123,7 @@ The owner’s decisions of 2026-11-26:
    ([How GitHub Classifies Each State](#how-github-classifies-each-state)). This settled
    two questions the draft left open: failing checks that no rule requires are red, as
    GitHub’s rollup and CLI show them, and a draft is judged as an open pull request is,
-   with Ready for review in place of Ready to merge.
+   with No other blockers in place of Ready to merge.
 2. **Implement everything as one stack of pull requests**, in the layers under
    [Implementation Plan](#implementation-plan).
 3. **Measure and tune GitHub request performance as a later phase**,

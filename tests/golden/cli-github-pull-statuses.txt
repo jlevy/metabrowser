@@ -68,7 +68,7 @@ status: 200
 scanning=false scan={"outcome": "succeeded", "message": null, "reset_at": null, "at": "2026-09-17T12:00:20Z", "reader": "gh:octo-reader", "trigger": "periodic", "pages": 1, "rows": 14, "cost": 1, "unknown": 1, "settle_at": "2026-09-17T12:00:50Z"}
 #101 status reason=- lifecycle=open observed_by=scan verdict=ready/success conflicts:met,checks:met
 #102 status reason=- lifecycle=draft observed_by=scan verdict=ready_for_review/success conflicts:met,checks:met
-#103 status reason=- lifecycle=open observed_by=scan verdict=conflicts/danger conflicts:unmet,checks:met
+#103 status reason=- lifecycle=open observed_by=scan verdict=conflicts/severe conflicts:unmet,checks:met
 #104 status reason=- lifecycle=open observed_by=scan verdict=checks_failing/danger conflicts:met,checks:unmet
 #105 status reason=- lifecycle=open observed_by=scan verdict=changes_requested/danger conflicts:met,checks:met,reviews:unmet
 #106 status reason=- lifecycle=open observed_by=scan verdict=blocked/danger conflicts:met,checks:met,rules:unmet
@@ -151,13 +151,15 @@ status: 200
             "kind": "conflicts",
             "status": "met",
             "summary": "No merge conflicts with topic.",
-            "github_url": null
+            "github_url": null,
+            "tone": "success"
           },
           {
             "kind": "checks",
             "status": "unmet",
             "summary": "Some checks were not successful: 1 failing, and 2 successful. GitHub allows merging, since no failing check is required.",
-            "github_url": "https://github.com/octo/demo/pull/104/checks"
+            "github_url": "https://github.com/octo/demo/pull/104/checks",
+            "tone": "danger"
           }
         ],
         "auto_merge": null,

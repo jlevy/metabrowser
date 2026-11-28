@@ -529,8 +529,8 @@ async function headingStory() {
             `Stack #${row.dataset.stack}`,
             {
               heading: {
-                text: heading.childNodes.map(textOf).join(" "),
-                age: textOf(childByClass(row, "github-pulls-age")),
+                text: heading.childNodes.slice(0, 2).map(textOf).join(" "),
+                age: textOf(childByClass(heading, "github-pulls-age")),
                 name: row.getAttribute("aria-label"),
               },
               text: textOf(change),

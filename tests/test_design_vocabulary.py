@@ -8,6 +8,7 @@ hover token. A failure here means a surface forked the vocabulary.
 
 from __future__ import annotations
 
+import itertools
 import math
 import re
 from pathlib import Path
@@ -1712,7 +1713,6 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".view-header-age"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
-    ("github/styles.css", ".github-pulls-by"),
     ("github/styles.css", ".github-pulls-number"),
     ("github/styles.css", ".github-pulls-place"),
     ("github/styles.css", ".github-pulls-empty"),
@@ -2556,46 +2556,59 @@ def test_pull_state_colors_keep_their_hue_and_read_on_both_grounds() -> None:
                 )
 
 
-def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> None:
-    """A readiness's glyph and badge take their tone's ink, never their verdict's.
+# The least distance in OKLab between two status tones' inks in one theme, which a reader
+# must tell apart in a column of glyphs: success, attention, severe, and danger. Measured on
+# the inks as shipped (2026-11-26): the closest pair is severe and danger, 0.079 in the light
+# theme and 0.093 in the dark, where Primer's own severe and danger are 0.078 apart in light.
+# The bound sits just below, so a change that crowds two tones fails.
+MIN_TONE_DISTANCE = 0.075
+# The marks' tones besides a readiness's: neutral, a skipped or cancelled check's, which only
+# the Checks tab draws, on the page, so it is held on the page's ground alone.
+_MARK_TONES = ("neutral",)
+# The data a status mark carries for what reads the page, which no rule may color it by.
+_MEANING_ATTRIBUTES = ("data-verdict", "data-bucket", "data-status")
 
-    The server gives each verdict its tone (`Tone` in pull_readiness.py), and pull-readiness.js
-    writes both on the mark; only the tone may color it, so a verdict cannot read in one color
-    on one surface and another elsewhere (docs/design-system.md, "A Pull Request’s
-    Readiness"). The glyph and the badge of a tone are one ink, each tone is its own, the
-    section's table of each tone's ink is the stylesheet's, and each is held to the 4.5:1 of
+
+def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> None:
+    """Every status mark takes its tone's ink, by one rule for each tone, and nothing else.
+
+    The server gives each verdict and each requirement its tone (`Tone` in pull_readiness.py),
+    and pull-readiness.js writes it on every mark, a verdict's glyph and chip, a requirement's
+    chip, and a check's, with the class `github-pull-tone`; only the tone may color a mark, so
+    one meaning cannot read in one color on one surface and another elsewhere
+    (docs/design-system.md, "Pull Request Status Vocabulary"). Each tone is its own ink, the
+    design system's table of each tone's ink is the stylesheet's, each reads at the 4.5:1 of
     text in both themes on the page, where the header and the Checks tab draw it, and on the
-    panel, where a Pulls row does. Attention is not the shell's warning ink, which is
-    reserved for a degraded result: its hue is outside the family
+    panel, where a Pulls row does, and at a glyph's 3:1 on a row under the pointer and the open
+    one; neutral, which only a check's chip on the page takes, on the page. The four
+    readiness tones are `MIN_TONE_DISTANCE` apart. Attention is not the shell's
+    warning ink, which is severe's: its hue is outside the family
     `test_status_text_inks_keep_their_fills_hue` allows one ink.
     """
 
-    by_verdict = [
+    github_sheet = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    by_meaning = [
         f"{_sheet_name(sheet)} {selector}"
         for sheet in _stylesheets()
         for selector, _declarations in _rules_of(sheet)
-        if "data-verdict" in selector
+        if any(attribute in selector for attribute in _MEANING_ATTRIBUTES)
+        and (sheet == github_sheet or "data-verdict" in selector)
     ]
-    assert by_verdict == [], "a readiness is colored by its tone, never its verdict"
-    rules = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
-    github = dict(rules)
-    tones = get_args(Tone.__value__)
-    inks: dict[str, str] = {}
-    for tone in tones:
-        icon = github[f'.github-pull-readiness-icon[data-tone="{tone}"]']["color"]
-        badge = github[f'.github-pull-badge.github-pull-readiness[data-tone="{tone}"]']["color"]
-        requirement = github[f'.github-pull-badge.github-pull-requirement[data-tone="{tone}"]'][
-            "color"
-        ]
-        assert icon == badge == requirement, (
-            f"the {tone} glyph, verdict's badge, and requirement's badge are one ink"
-        )
-        inks[tone] = icon
+    assert by_meaning == [], "a status mark is colored by its tone, never its meaning"
+    rules = _rules_of(github_sheet)
+    readiness_tones = get_args(Tone.__value__)
+    tones = (*readiness_tones, *_MARK_TONES)
+    by_tone = {
+        selector: declarations
+        for selector, declarations in rules
+        if "data-tone" in selector and "color" in declarations
+    }
+    expected = {f'.github-pull-tone[data-tone="{tone}"]' for tone in tones}
+    assert set(by_tone) == expected, "one rule for each tone colors every status mark"
+    inks = {tone: by_tone[f'.github-pull-tone[data-tone="{tone}"]']["color"] for tone in tones}
     assert len(set(inks.values())) == len(tones), "each tone is its own ink"
-    # Waiting is one color across the plugin: a pending check is the attention tone's ink.
-    assert github['.github-pull-badge[data-state="pending"]']["color"] == inks["attention"]
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
-    section = doc[doc.index("### A Pull Request’s Readiness") :]
+    section = doc[doc.index("### Pull Request Status Vocabulary") :]
     section = section[: section.index("\n### ")]
     table = dict(re.findall(r"^\| `(\w+)` \| `(--[\w-]+)`", section, flags=re.MULTILINE))
     assert {tone: f"var({token})" for tone, token in table.items()} == inks
@@ -2620,33 +2633,23 @@ def test_a_readinesss_color_is_its_tones_alone_and_reads_where_it_is_drawn() -> 
             assert alias is not None, f"the {tone} ink is a token: {ink}"
             colors[tone] = _resolved(tokens, alias[1])
             ink_luminance = _srgb_luminance(_srgb(colors[tone]))
-            for ground in ("--bg", "--sidebar-bg"):
+            on_page_only = tone in _MARK_TONES
+            for ground in ("--bg",) if on_page_only else ("--bg", "--sidebar-bg"):
                 ratio = _ratio(ink_luminance, _srgb_luminance(_ground(tokens, ground)))
                 assert ratio >= _AA_TEXT, (
                     f"the {tone} ink on {ground} in the {theme} theme reads at {ratio:.2f}:1"
                 )
             # A Pulls row's glyph, a mark and not text, on the row under the pointer and as
             # the open one, the highlight's tint over the panel (mb-3n21).
-            for ground in ("--hover-bg", "--highlight-bg"):
+            for ground in () if on_page_only else ("--hover-bg", "--highlight-bg"):
                 ratio = _ratio(ink_luminance, _srgb_luminance(_ground(tokens, ground)))
                 assert ratio >= _AA_GRAPHIC, (
                     f"the {tone} glyph on {ground} in the {theme} theme reads at {ratio:.2f}:1"
                 )
-        # The label after it is text, in an ink no tone sets, and reads at a text's contrast
-        # on every ground a row has.
-        label = next(
-            declarations["color"]
-            for selector, declarations in rules
-            if selector == ".github-pulls-readiness-label" and "color" in declarations
-        )
-        assert label not in inks.values(), "a row's label takes no tone's ink"
-        label_alias = re.fullmatch(r"var\((--[\w-]+)\)", label)
-        assert label_alias is not None, f"the label's ink is a token: {label}"
-        label_luminance = _srgb_luminance(_srgb(_resolved(tokens, label_alias[1])))
-        for ground in ("--sidebar-bg", "--hover-bg", "--highlight-bg"):
-            ratio = _ratio(label_luminance, _srgb_luminance(_ground(tokens, ground)))
-            assert ratio >= _AA_TEXT, (
-                f"a row's label on {ground} in the {theme} theme reads at {ratio:.2f}:1"
+        for first, second in itertools.combinations(readiness_tones, 2):
+            distance = math.dist(_oklab(colors[first]), _oklab(colors[second]))
+            assert distance >= MIN_TONE_DISTANCE, (
+                f"{first} and {second} are {distance:.3f} apart in the {theme} theme"
             )
         warning = _oklch_channels(_resolved(tokens, "--status-warning-text"))[2]
         assert _hue_gap(_oklch_channels(colors["attention"])[2], warning) > 15, (
@@ -3114,18 +3117,10 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert github[".github-pulls-row > .github-pulls-tail"]["height"] == (
         "var(--github-pulls-change-line)"
     )
-    assert github[".github-pulls-tail > .github-pulls-age"]["justify-self"] == "end"
-    # The author is the run's secondary metadata, at its size, which it inherits.
-    assert "font-size" not in github[".github-pulls-by"]
-    assert ".github-pulls-id" not in github, "the run names the number once"
+    assert github[".github-pulls-tail > .github-pull-row-end"]["margin-inline-start"] == "auto"
+    assert github[".github-pulls-row > .github-pulls-tail"]["gap"] == "var(--tree-inline-age-gap)"
+    assert ".github-pulls-id" not in github, "the row names the number once"
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
-    assert github[".github-pulls-by"]["--actor-avatar-size"] == (
-        "var(--github-pull-row-avatar-size)"
-    ), "a list row's avatar"
-    assert github[".github-pulls-by > .github-pull-identity"]["max-width"] == "100%"
-    assert ".github-pulls-by:has(.actor-avatar)" not in github
-    author = github[".github-pulls-by .github-pulls-author"]
-    assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
     # The header's details may be narrower than its merge, whose chips then ellipsize.
     assert github[".github-pull-meta-details"]["min-width"] == "0"

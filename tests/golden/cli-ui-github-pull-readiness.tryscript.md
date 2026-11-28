@@ -69,11 +69,11 @@ $ node tests/dom/github-pull-readiness-session.js
     },
     "conflicts": {
       "readiness": {
-        "badge": "[danger: Merge conflicts] -> the checks tab",
+        "badge": "[severe: Merge conflicts] -> the checks tab",
         "tip": "Merge conflicts with topic must be resolved. Some checks were not successful: 1 failing (1 required), and 2 successful. Changes requested.",
         "sentence": "Merge conflicts with topic must be resolved.",
         "rows": [
-          "[danger: Unmet] conflicts: Merge conflicts with topic must be resolved. -> View on GitHub https://github.com/octo/demo/pull/7/conflicts",
+          "[severe: Unmet] conflicts: Merge conflicts with topic must be resolved. -> View on GitHub https://github.com/octo/demo/pull/7/conflicts",
           "[danger: Unmet] checks: Some checks were not successful: 1 failing (1 required), and 2 successful. -> View check -> the list's check 1, \"docs\"",
           "[danger: Unmet] reviews: Changes requested. -> View on GitHub https://github.com/octo/demo/pull/7"
         ]
@@ -147,7 +147,7 @@ $ node tests/dom/github-pull-readiness-session.js
       }
     },
     "conflicts, with a review in the conversation that requested changes": [
-      "[danger: Unmet] conflicts: Merge conflicts with topic must be resolved. -> View on GitHub https://github.com/octo/demo/pull/7/conflicts",
+      "[severe: Unmet] conflicts: Merge conflicts with topic must be resolved. -> View on GitHub https://github.com/octo/demo/pull/7/conflicts",
       "[danger: Unmet] checks: Some checks were not successful: 1 failing (1 required), and 2 successful. -> View check -> the list's check 1, \"docs\"",
       "[danger: Unmet] reviews: Changes requested. -> View in Conversation -> the conversation tab"
     ],

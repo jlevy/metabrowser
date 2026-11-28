@@ -153,7 +153,7 @@ them.
 The header gives the title and number; the state and dates, with any stack button at the
 end of their line, and for an open pull request, right after its state, whether it can
 merge, in GitHub’s words, such as **Merge conflicts**, **Checks pending**, or **Ready to
-merge** (**Ready for review** for a draft); the author’s sentence, such as “octo wants
+merge** (**No other blockers** for a draft); the author’s sentence, such as “octo wants
 to merge 2 commits”; the head and base branches on a line of their own, head → base; and
 the labels, each in the color GitHub gives it, with its description, if any, shown on
 hover.
@@ -161,9 +161,14 @@ The verdict is green when nothing stands in the way, yellow while the pull reque
 waits on a check, a reviewer, the merge queue, or GitHub itself, and red when its author
 must change something.
 In a narrow pane it is its icon alone, in the same color.
-Hovering it lists what stands in the way, and clicking it opens **Checks**. Until GitHub
-has answered for the head shown it says **Checking**; a closed or merged pull request
-shows its state alone.
+Hovering it lists what stands in the way, and clicking it opens **Checks**. If a draft
+says **No other blockers**, use **Ready for review** on GitHub to take it out of draft
+mode. **Mergeability pending** means GitHub has returned a status for the current commit
+and base but has yet to report whether they can merge.
+**Checks pending** means GitHub reports that checks are expected or still running.
+**Status unavailable** means Metabrowser has no observation for the current commit and
+base. If an attempt failed, the chip explains how to retry.
+A closed or merged PR shows its state alone.
 Where the Pulls tab learned of a merge, a close, or a draft before the page’s own copy
 did, the page shows the new state, and no verdict until it reads one for that state.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place

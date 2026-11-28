@@ -1114,15 +1114,15 @@ def test_the_envelope_carries_the_status_its_verdict_and_checks_beside_the_recor
     moved = _read(client, 7, etag=etag)
     assert moved.status_code == 200 and moved.headers["etag"] != etag
     assert moved.json()["status"]["observed_at"] == "2026-09-17T12:05:00Z"
-    # One for another head is kept and shown, and judges nothing: the verdict is checking.
+    # One for another head is kept and shown, and judges nothing: the verdict is status unavailable.
     pushed = later.model_copy(update={"head": "f" * 40, "observed_at": "2026-09-17T12:06:00Z"})
     assert write_pull_status(repository, pushed)
     other = _read(client, 7, etag=moved.headers["etag"])
     assert other.status_code == 200
     assert other.json()["readiness"] == {
-        "verdict": "checking",
+        "verdict": "status_unavailable",
         "tone": "attention",
-        "label": "Checking",
+        "label": "Status unavailable",
         "head": head,
         "observed_at": None,
         "requirements": [],
