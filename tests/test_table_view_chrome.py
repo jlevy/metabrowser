@@ -24,7 +24,7 @@ shell's own page, and measures what no browserless DOM computes:
   left; and a reload returns there too.
 - the structured kind's Table tab draws a JSON record list and its nested values in the
   shared grid, and presents a mapping and a mixed list in the structured node table;
-- an embedded Markdown Source excerpt reports its original line and preserves CRLF
+- an embedded Markdown Source excerpt numbers and wraps its own lines and preserves CRLF
   in the copy payload after expanding branches in the frontmatter table;
 - the Files scan and a plugin's index status use the same type and spinner paint;
 - a real SQLite table refreshes after a WAL-only commit and after its file is replaced at
@@ -105,12 +105,15 @@ def _write_folder(root: Path) -> None:
     (root / "records.json").write_text(json.dumps(records), encoding="utf-8")
     (root / "mapping.json").write_text('{"name": "metabrowser"}', encoding="utf-8")
     (root / "mixed.json").write_text('[{"name": "Ada"}, "Grace"]', encoding="utf-8")
+    (root / "previews.json").write_text(
+        json.dumps({"tiny": [1, 2], "long": ["wide" * 15]}), encoding="utf-8"
+    )
     (root / "frontmatter.md").write_bytes(
         b"---\r\ntitle: " + b"unbroken" * 30 + b"\r\n"
         b"person: {section: {slot: {roles: [host,\r\n editor]}}}\r\n"
         b"---\r\n# Body\r\n"
         b"\r\n~~~yaml\r\nroles: [host, editor]\r\n~~~\r\n"
-        b'\r\n```json\r\n{"roles": ["host", "editor"]}\r\n```\r\n'
+        b'\r\n```json\r\n\r\n{"roles": ["host", "editor"]}\r\n```\r\n'
     )
 
 
@@ -263,12 +266,22 @@ def _check_a_record_list_draws_its_records_and_their_trees(measured: dict[str, A
     assert measured["mappingTabs"] == ["table", "tree", "source"]
     assert measured["mappingRow"] == ["name", '"metabrowser"']
     assert measured["mappingCopy"] == '{"name": "metabrowser"}'
-    assert measured["mixed"] == [["0", "Mapping (1)"], ["name", '"Ada"'], ["1", '"Grace"']]
+    assert measured["mixed"] == [["0", '{"name": "Ada"}'], ["name", '"Ada"'], ["1", '"Grace"']]
     assert measured["branchLayout"] == {
         "usesTableTextSize": True,
         "iconAfterLabel": True,
         "iconCentered": True,
         "rowHeightMatches": True,
+    }
+    assert measured["previewFit"] == {
+        "tinyWhole": True,
+        "tinyCountHidden": True,
+        "completeLongPreview": True,
+        "longClipped": True,
+        "longCountShown": True,
+        "countFits": True,
+        "chevronFits": True,
+        "chevronAfterCount": True,
     }
     assert measured["initialFrontmatter"] == {
         "keys": ["title", "person", "section", "slot"],
@@ -278,10 +291,11 @@ def _check_a_record_list_draws_its_records_and_their_trees(measured: dict[str, A
     assert measured["branchCopy"] == "{slot: {roles: [host,\r\n editor]}}"
     assert measured["inlineExpansion"] is True
     assert measured["frontmatterFits"] is True
-    assert measured["frontmatter"] == {"firstLine": 3, "copy": "[host,\r\n editor]"}
+    assert measured["frontmatter"] == {"firstLine": 1, "copy": "[host,\r\n editor]"}
     assert measured["fencedViews"] == {
-        "firstLine": 13,
-        "source": '{"roles": ["host", "editor"]}\r\n',
+        "firstLine": 1,
+        "wraps": True,
+        "source": '\r\n{"roles": ["host", "editor"]}\r\n',
         "yamlTableStaysOpen": True,
         "jsonFallbackReturns": True,
     }

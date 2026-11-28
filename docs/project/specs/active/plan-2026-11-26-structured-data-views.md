@@ -1,4 +1,4 @@
-# Shared Table, Tree, and Source Views for Structured Data
+# Shared Values, Tree, and Source Views for Structured Data
 
 **Status:** In progress, November 2026. This is follow-up work to
 [SoftSchema Collection Tables](plan-2026-11-26-softschema-collection-tables.md).
@@ -6,7 +6,7 @@ The collection preview can ship independently.
 
 ## What a Reader Can Do
 
-Open a JSON or YAML file in Table.
+Open a JSON or YAML file in Values.
 Open a nested value, switch to Tree to inspect its shape, and choose Source to see
 exactly how the author wrote it.
 A Frontmatter disclosure in a rendered Markdown document offers the same views in place.
@@ -25,7 +25,7 @@ speakers:
 ---
 ```
 
-Table shows `title` and `speakers` with the first few levels already expanded.
+Values shows `title` and `speakers` with the first few levels already expanded.
 Ada’s `roles` can be expanded in place to show two indexed values.
 The speaker rows and `title` stay visible.
 Tree in the frontmatter disclosure shows the same sequence.
@@ -37,30 +37,30 @@ Source exposes differences in spelling and layout.
 
 ## Current Implementation
 
-- Standalone files open in Table, with Tree and Source on the same tab strip.
+- Standalone files open in Values, with Tree and Source on the same tab strip.
   A schema-free projection shows ordered children and supplies exact UTF-8 byte ranges.
   The Table plugin supplies the record grid for lists of mappings.
   The node table supports paging, document selection, and in-place expansion and copy.
   [Structured manifest](../../../../src/metabrowser/builtin_plugins/structured/manifest.toml),
   [node model](../../../../src/metabrowser/structured_nodes.py), and
   [core table renderer](../../../../src/metabrowser/static/structured-node-table.js).
-- Metabrowser enhances the closed KPress Frontmatter disclosure with Table, Tree, and
+- Metabrowser enhances the closed KPress Frontmatter disclosure with Values, Tree, and
   Source when a Markdown file provides frontmatter.
   Opening it requests the bounded projection.
   Switching to Tree or Source retains the selected value.
-  The main app provides the Table, Tree and Source renderers and the revision-aware page
-  reader. The Markdown plugin connects them to the disclosure and file envelope.
-  Source uses original file line numbers and preserves the selected text in the
-  clipboard. KPress continues to supply its definition list to hosts that lack the
-  Metabrowser file envelope.
+  The main app provides the Values, Tree and Source renderers and the revision-aware
+  page reader. The Markdown plugin connects them to the disclosure and file envelope.
+  Source preserves the selected text in the clipboard and numbers the displayed excerpt
+  from its first line.
+  Its source range retains the coordinates in the enclosing file.
+  KPress supplies its definition list to hosts that lack the Metabrowser file envelope.
   [KPress adapter](../../../../src/metabrowser/kpress_adapter.py) and
   [Markdown placement](../../../../src/metabrowser/builtin_plugins/markdown/place-rendered.js).
 - Closed top-level YAML and JSON code fences can open the same views through an Explore
   disclosure. KPress identifies genuine fences in the rendered document and matches their
   opening line and content to the exact file revision.
   The code remains visible while the disclosure is closed.
-  Each opened excerpt reads data on demand and keeps Source line numbers in the original
-  Markdown file.
+  Each opened excerpt reads data on demand from its original Markdown file.
 - The rendered Markdown diff constructs its own disclosure from key, text and change
   entries. The structured diff builds changed rows from a merged tree and shares the
   structured plugin’s Tree internals.
@@ -86,7 +86,7 @@ numeric-looking object keys.
 The model distinguishes an absent field, an explicit null, an empty string and an empty
 container.
 
-| Selected value | Table at that position | Open a value |
+| Selected value | Values at that position | Open a value |
 | --- | --- | --- |
 | Mapping | Field and Value rows in source order | Expand a nested mapping or sequence below its row |
 | Sequence of mappings | One row per item, with columns in first-seen field order; integrate the existing record grid and its paging | A cell opens its value; the row detail exposes the complete mapping, including fields outside the visible columns |
@@ -100,6 +100,9 @@ The node table renders the initial preview at `PREVIEW_DEPTH` in
 remaining `PAGE_MAX` rows among sibling containers.
 A disclosure chevron expands the rows below its field in place.
 It keeps focus on that control and leaves the surrounding rows visible.
+A compact JSON preview identifies the value in the disclosure.
+A condensed preview uses an ellipsis and gives the total number of keys or items.
+The chevron follows the text, and the control fits the existing row height.
 Use More to page through a branch beyond its preview.
 Tree keeps its disclosure, expansion and virtualization behavior.
 
@@ -112,13 +115,15 @@ At depth four, the largest page reached the cap.
 These counts come from `project_structured` and include all descendant rows sent in the
 first page.
 
-Source uses the core Source surface with its gutter, syntax highlighting and addressable
-lines. Switching tabs retains the selected node.
+Source uses the core Source surface with its gutter, syntax highlighting and wrapping.
+Standalone Source numbers the file.
+Embedded Source numbers the displayed excerpt from one while keeping its exact position
+in the file. Switching tabs retains the selected node.
 Source shows original quotes, whitespace, comments, anchors, delimiters, line endings
 and trailing newlines as present in the selected range; exact copy reads that range from
 the original input. Visual wrapping or highlighting never changes the copy.
 
-The copy button at the end of each Table row reads a single fragment on demand at the
+The copy button at the end of each Values row reads a single fragment on demand at the
 displayed revision. Mapping rows include the field key and complete value.
 Sequence items copy their value, including descendants beyond the visible page.
 The shared record grid uses the item’s source position even when rows are sorted or
@@ -161,9 +166,9 @@ It cannot claim reconstructed text as Source.
 
 | Host | How the shared surface appears | What Source opens |
 | --- | --- | --- |
-| Standalone YAML or JSON | The existing file tab bar offers Table first, then Tree and Source, across all supported root shapes | Original file at the active filesystem version or pinned Git blob |
-| Rendered Markdown | Keep the Frontmatter summary and surrounding document. Mount the shared layout when the disclosure opens. Both YAML and JSON frontmatter use this placement. Document the recognized frontmatter delimiters and parser selection in the KPress contract. Explicit YAML or JSON code fences show an excerpt without changing page metadata | Original fenced region, with opening and closing fences available as context and original line numbers |
-| Rendered structured or Markdown diff | Keep change marks, current-side filtering, folds, side labels and the enclosing comparison. Table, Tree and Source act on the selected side or paired entries; unchanged context may remain collapsed | Exact base or head range, including deleted values from base and added values from head; a merged projection alone cannot supply either side’s original text |
+| Standalone YAML or JSON | The existing file tab bar offers Values first, then Tree and Source, across all supported root shapes | Original file at the active filesystem version or pinned Git blob |
+| Rendered Markdown | Keep the Frontmatter summary and surrounding document. Mount the shared layout when the disclosure opens. Both YAML and JSON frontmatter use this placement. Document the recognized frontmatter delimiters and parser selection in the KPress contract. Explicit YAML or JSON code fences show an excerpt without changing page metadata | Authored YAML or JSON inside the selected region, with the original source coordinates available to the reader |
+| Rendered structured or Markdown diff | Keep change marks, current-side filtering, folds, side labels and the enclosing comparison. Values, Tree and Source act on the selected side or paired entries; unchanged context may remain collapsed | Exact base or head range, including deleted values from base and added values from head; a merged projection alone cannot supply either side’s original text |
 | Embedded value or collection cell | Use the same tabs and recursive layout inside the host’s detail surface. A plugin can add validation, references and field descriptions around it | Original backing file and field range when reliably identified. A repaired, inferred or projected value identifies its provenance and any difference from the original |
 
 A malformed fenced region shows a scoped diagnostic and its source while the readable
@@ -184,9 +189,12 @@ Never recover a missing pinned value by reading the working tree.
 
 The main app supplies the tab strip, current path, Back and Forward controls, empty and
 error states, and content panel.
+Use Values for document data and Table for collections and database tables.
 Standalone views reuse the file tab bar.
 Embedded views use the same visual and keyboard conventions at the disclosure or detail
-boundary, without a second toolbar nested around the same value.
+boundary. The shared chooser uses design-system spacing between the host label, tabs and
+content. A failure notice names the available reason and offers a Source action at the
+affected excerpt or file.
 Use the existing design-system icon registry, icon-button sizing, focus rings and
 tooltips for left and right arrows.
 Their accessible names are “Back” and “Forward”.
@@ -202,7 +210,7 @@ embedded value preserves the file view, table selection, filters and comparison
 identity. Stable host and side-specific node identity must outlive rerenders; a virtual
 DOM row index is insufficient.
 An explicit node visit or tab switch creates one entry.
-Expanding or collapsing a Table branch only updates that view’s state.
+Expanding or collapsing a Values branch only updates that view’s state.
 Repeated selection is a no-op.
 Startup normalization and invalid-path recovery replace the current entry.
 A new branch of navigation clears Forward.
@@ -264,7 +272,7 @@ and moving between excerpts.
    multi-document boundaries, exact ranges, losses in projection and malformed inputs.
 2. **Core controls and standalone files.** Extract the SDK mount, shared controls and
    address transitions.
-   Register Table, Tree and Source on the structured kind and retire its
+   Register Values, Tree and Source on the structured kind and retire its
    record-list-only offer.
    Preserve explicit Tree and Source links.
    Run production JavaScript browserlessly against nested tab changes, Back/Forward,

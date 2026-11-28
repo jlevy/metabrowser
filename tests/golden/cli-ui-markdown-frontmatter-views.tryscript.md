@@ -67,7 +67,12 @@ $ node tests/dom/markdown-frontmatter-views-session.js
       "Source"
     ]
   ],
-  "source": "{\"key\": null}\r\n"
+  "source": "\r\n{\"key\": null}\r\n"
+}
+{
+  "standalone": "@pin:notes/data.yaml",
+  "excerpt": "Source",
+  "unavailableExcerpt": "@pin:article.md"
 }
 ? 0
 ```

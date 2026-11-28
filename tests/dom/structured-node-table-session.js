@@ -15,6 +15,126 @@ async function main() {
     createElement: (tag) => new FakeElement(tag),
     createComment: () => new FakeElement("#comment"),
   };
+  const scalar = (value, kind = typeof value) => ({ kind, value, child_count: 0 });
+  const array = (children, child_count = children.length) => ({
+    kind: "array",
+    child_count,
+    children: children.map((node, segment) => ({ segment, node })),
+  });
+  const object = (children, child_count = children.length) => ({
+    kind: "object",
+    child_count,
+    children: children.map(([segment, node]) => ({ segment, node })),
+  });
+  const summaries = [];
+  function visibleText(node) {
+    if (node.hidden) {
+      return "";
+    }
+    return node.childNodes?.length ? node.childNodes.map(visibleText).join("") : node.textContent;
+  }
+  for (const [node, expected, total] of [
+    [array([scalar("host"), scalar("editor")]), '["host", "editor"]', "2 items"],
+    [
+      object([
+        ["a", scalar(1)],
+        ["b", array([scalar(true), scalar(null, "null")])],
+      ]),
+      '{"a": 1, "b": [true, null]}',
+      "2 keys",
+    ],
+    [object([['quote"', scalar("line\nnext")]]), '{"quote\\"": "line\\nnext"}', "1 key"],
+    [array([scalar("9007199254740993", "number")]), "[9007199254740993]", "1 item"],
+    [array([scalar(1)], 12), "[1, …] (12 items)", "12 items"],
+    [object([], 2), "{…} (2 keys)", "2 keys"],
+  ]) {
+    const previewHost = document.createElement("div");
+    const preview = mountNodeTable(previewHost, async () => ({
+      status: "ready",
+      node: object([], 1),
+      children: [{ segment: "value", node }],
+    }));
+    await preview.ready;
+    const toggle = previewHost.lastChild.firstChild.lastChild.firstChild.childNodes[1].firstChild;
+    assert.equal(visibleText(toggle), expected);
+    assert.equal(toggle.getAttribute("aria-label"), `${toggle.firstChild.textContent} (${total})`);
+    assert.ok(toggle.dataset.tipText.includes(total));
+    assert.equal(toggle.lastChild.getAttribute("aria-hidden"), "true");
+    summaries.push(expected);
+    preview.dispose();
+  }
+  const boundedHost = document.createElement("div");
+  const bounded = mountNodeTable(boundedHost, async () => ({
+    status: "ready",
+    node: object([], 1),
+    children: [{ segment: "value", node: array([scalar("x".repeat(10_000))], 100) }],
+  }));
+  await bounded.ready;
+  const boundedToggle =
+    boundedHost.lastChild.firstChild.lastChild.firstChild.childNodes[1].firstChild;
+  assert.ok(boundedToggle.textContent.startsWith('["'));
+  assert.ok(boundedToggle.textContent.includes("…"));
+  assert.ok(boundedToggle.textContent.endsWith("(100 items)"));
+  assert.ok(boundedToggle.textContent.length < 120);
+  bounded.dispose();
+
+  const observed = [];
+  document.defaultView = {
+    ResizeObserver: class {
+      constructor(callback) {
+        this.callback = callback;
+        observed.push(this);
+      }
+      observe(target) {
+        this.target = target;
+      }
+      disconnect() {
+        this.disconnected = true;
+      }
+    },
+  };
+  const resizeHost = document.createElement("div");
+  const resizing = mountNodeTable(resizeHost, async () => ({
+    status: "ready",
+    node: object([], 1),
+    children: [{ segment: "value", node: array([array([scalar("host")])]) }],
+  }));
+  await resizing.ready;
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].target, resizeHost);
+  const rows = resizeHost.lastChild.firstChild.lastChild;
+  const resizeToggle = rows.firstChild.childNodes[1].firstChild;
+  const previewText = resizeToggle.firstChild;
+  const previewCount = resizeToggle.childNodes[1];
+  assert.equal(previewCount.hidden, true);
+  previewText.scrollWidth = 140;
+  previewText.clientWidth = 50;
+  observed[0].callback();
+  await new Promise(setImmediate);
+  assert.equal(previewCount.hidden, false);
+  assert.ok(visibleText(resizeToggle).endsWith("(1 item)"));
+  previewText.clientWidth = 180;
+  observed[0].callback();
+  await new Promise(setImmediate);
+  assert.equal(previewCount.hidden, true);
+  const detachedPreview = rows.childNodes[1].childNodes[1].firstChild.firstChild;
+  Object.defineProperty(detachedPreview, "clientWidth", {
+    get() {
+      assert.fail("A collapsed branch must leave the measured previews");
+    },
+  });
+  resizeToggle.listeners.get("click")();
+  await new Promise(setImmediate);
+  resizing.dispose();
+  assert.equal(observed[0].disconnected, true);
+  Object.defineProperty(previewText, "clientWidth", {
+    get() {
+      assert.fail("A disposed table must not measure its old rows");
+    },
+  });
+  observed[0].callback();
+  await new Promise(setImmediate);
+  delete document.defaultView;
   const host = document.createElement("div");
   const root = { kind: "object", child_count: 2 };
   const list = { kind: "array", child_count: 1 };
@@ -82,7 +202,7 @@ async function main() {
   const sibling = grid.lastChild.lastChild;
   const branch = grid.lastChild.childNodes.find((row) => row.firstChild?.textContent === "record")
     .lastChild.firstChild;
-  const rootText = host.lastChild.textContent;
+  const rootText = visibleText(host.lastChild);
   assert.equal(branch.getAttribute("aria-expanded"), "false");
   async function toggleBranch() {
     branch.focus();
@@ -90,20 +210,20 @@ async function main() {
     await new Promise(setImmediate);
   }
   await toggleBranch();
-  const nested = host.lastChild.textContent;
+  const nested = visibleText(host.lastChild);
   assert.ok(nested.includes("id9007199254740993"));
   assert.equal(branch.getAttribute("aria-expanded"), "true");
   assert.equal(host.lastChild.firstChild, grid);
   assert.equal(grid.lastChild.lastChild, sibling);
   assert.equal(document.activeElement, branch);
   await toggleBranch();
-  assert.equal(host.lastChild.textContent, rootText);
+  assert.equal(visibleText(host.lastChild), rootText);
   assert.equal(branch.getAttribute("aria-expanded"), "false");
   await toggleBranch();
-  assert.equal(host.lastChild.textContent, nested);
+  assert.equal(visibleText(host.lastChild), nested);
   assert.equal(positions.length, 2);
   await click("More");
-  const paged = host.lastChild.textContent;
+  const paged = visibleText(host.lastChild);
   assert.ok(paged.includes("last9007199254740993"));
   assert.equal(grid.lastChild.lastChild, sibling);
   await click("Next page");
@@ -151,7 +271,9 @@ async function main() {
   assert.ok(host.textContent.includes("Record grid"));
   recordGrid.dispose();
   assert.equal(recordDisposed, true);
-  console.log(JSON.stringify({ root: rootText, nested, paged, positions, selections }, null, 2));
+  console.log(
+    JSON.stringify({ summaries, root: rootText, nested, paged, positions, selections }, null, 2),
+  );
 }
 main().catch((error) => {
   console.error(error);

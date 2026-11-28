@@ -337,8 +337,8 @@ directory’s JavaScript-only plugin cannot declare one.
   Only a file served as text is asked: an image, a binary, a JSONL log, or a container’s
   entry reads no leading bytes for it, so a view of such a kind that declares `offer` is
   never served, and the server logs a warning the first time it leaves one out.
-  The structured kind offers its Table view this way, only on a file that starts as a
-  list of records (`structured/offer.py`).
+  Its Values view covers YAML and JSON. The structured kind’s record-grid offer uses
+  this predicate to recognize lists of records (`structured/offer.py`).
 
 `key` is an optional one-letter key for the view’s tab.
 A kind with more than one view should give each view one: `v` for a rendered view, `s`

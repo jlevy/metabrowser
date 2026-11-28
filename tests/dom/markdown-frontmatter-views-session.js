@@ -108,7 +108,7 @@ async function testFences(doc, mount, mountNodeTable, pageReader) {
       assert.equal(revision, "exact");
       reads.push([line, params.source ? "Source" : params.tree ? "Tree" : "Table"]);
       if (params.source) {
-        return { status: "ready", source_text: '{"key": null}\r\n', source_start_line: 12 };
+        return { status: "ready", source_text: '\r\n{"key": null}\r\n', source_start_line: 12 };
       }
       if (params.tree) {
         return { status: "ready", tree_value: { key: null } };
@@ -126,7 +126,7 @@ async function testFences(doc, mount, mountNodeTable, pageReader) {
     },
     renderSourceView(el, { content, ext }, { lineStart }) {
       assert.equal(ext, ".json");
-      assert.equal(lineStart, 12);
+      assert.equal(lineStart, 1);
       el.textContent = content;
     },
   };
@@ -163,13 +163,155 @@ async function testFences(doc, mount, mountNodeTable, pageReader) {
   switchJson("structured-excerpt-view", "Source");
   await turn();
   assert.ok(yamlViews.textContent.includes("sample"));
-  assert.equal(jsonViews.lastChild.textContent, '{"key": null}\r\n');
+  assert.equal(jsonViews.lastChild.textContent, '\r\n{"key": null}\r\n');
   const result = { reads, source: jsonViews.lastChild.textContent };
   lifetime.abort();
   assert.equal(modes.size, 0);
   assert.equal(yaml.hidden, false);
   assert.equal(json.hidden, false);
   return result;
+}
+
+async function testSourceRecovery(doc, mount, nodeTable, pageReader) {
+  const turn = () => new Promise(setImmediate);
+  const destinations = [];
+  const path = "@pin:notes/data.yaml";
+  const views = new Map();
+  const calls = [];
+  let response;
+  const mb = {
+    filterControls: { groupHtml: () => "", keepFocus: () => () => {}, bind: () => () => {} },
+    navigation: { open: (target, options) => destinations.push([target, options]) },
+    loadStructuredTree: async () => ({}),
+    registerView: (_kind, view, shape) => views.set(view, shape),
+    createStructuredPageReader: (identity, options) =>
+      pageReader(
+        async (_plugin, _hook, query) => {
+          assert.equal(query.path, identity);
+          calls.push(query.source ? "Source" : "Values");
+          if (response instanceof Error) {
+            throw response;
+          }
+          return response;
+        },
+        identity,
+        options,
+      ),
+    mountStructuredNodeTable: nodeTable,
+    renderSourceView(el, { content }) {
+      el.textContent = content;
+    },
+  };
+  global.window = { metabrowser: mb };
+  await import("../../src/metabrowser/builtin_plugins/structured/index.js");
+  const host = doc.createElement("div");
+  function action(label) {
+    const button = host.find((el) => el.localName === "button" && el.textContent === label);
+    assert.ok(button, label);
+    button.listeners.get("click")();
+  }
+  for (const [failure, message] of [
+    [{ status: "too_large" }, "exceeds the Values view’s parsing limit"],
+    [{ status: "invalid", diagnostic: "Duplicate mapping key" }, "Duplicate mapping key"],
+    [{ status: "missing" }, "selected value is unavailable"],
+    [Object.assign(new Error(), { status: 409 }), "file changed"],
+    [new Error(), "Values view could not be loaded"],
+  ]) {
+    response = failure;
+    const mounted = await views.get("table").render(host, { path });
+    await mounted.ready;
+    assert.ok(host.textContent.includes(message), host.textContent);
+    action("Open Source");
+    assert.deepEqual(destinations.pop(), [{ path }, { viewId: "source" }]);
+    mounted.dispose();
+  }
+  const embeddedPath = "@pin:article.md";
+  let selected;
+  const branch = nodeTable(
+    host,
+    async (position) =>
+      position.path.length
+        ? { status: "missing" }
+        : {
+            status: "ready",
+            node: { kind: "object", child_count: 1 },
+            children: [{ segment: "people", node: { kind: "array", child_count: 2 } }],
+          },
+    {
+      openSource: (position) => {
+        selected = position;
+      },
+    },
+  );
+  await branch.ready;
+  host
+    .find((element) => element.getAttribute?.("aria-expanded") === "false")
+    .listeners.get("click")();
+  await turn();
+  action("Open Source");
+  assert.deepEqual(selected, { document: 0, path: ["people"], offset: 0 });
+  branch.dispose();
+  const options = {
+    label: "Frontmatter",
+    ext: ".yaml",
+    path: embeddedPath,
+    pages: () =>
+      mb.createStructuredPageReader(embeddedPath, { revision: "exact", frontmatter: true }),
+  };
+  for (const available of [true, false]) {
+    calls.length = 0;
+    response = { status: "too_large" };
+    const mounted = mount(host, mb, options);
+    await turn();
+    assert.deepEqual(calls, ["Values"]);
+    response = available ? { status: "invalid", source_text: "key: [\r\n" } : { status: "missing" };
+    action("Open Source");
+    await turn();
+    assert.deepEqual(calls, ["Values", "Source"]);
+    if (available) {
+      assert.equal(host.lastChild.textContent, "key: [\r\n");
+      assert.equal(destinations.length, 0);
+    } else {
+      action("Open file in Source");
+      assert.deepEqual(destinations.pop(), [{ path: embeddedPath }, { viewId: "source" }]);
+    }
+    mounted.dispose();
+  }
+  const failed = mount(host, mb, { ...options, pages: () => Promise.reject(new Error()) });
+  await turn();
+  action("Open file in Source");
+  assert.deepEqual(destinations.pop(), [{ path: embeddedPath }, { viewId: "source" }]);
+  failed.dispose();
+  const { attachStructuredDisclosure } = await import(
+    "../../src/metabrowser/builtin_plugins/markdown/structured-disclosure.js"
+  );
+  const details = doc.createElement("details");
+  host.replaceChildren(details);
+  details.append(doc.createElement("summary"));
+  details.open = true;
+  const lifetime = new AbortController();
+  const logged = require("node:test").mock.method(console, "error", () => {});
+  try {
+    attachStructuredDisclosure(
+      details,
+      {
+        ...mb,
+        mountStructuredExcerpt: async () => {
+          throw new Error("UI unavailable");
+        },
+      },
+      options,
+      lifetime.signal,
+    );
+    await turn();
+    assert.equal(logged.mock.callCount(), 1);
+  } finally {
+    logged.mock.restore();
+  }
+  action("Open file in Source");
+  assert.deepEqual(destinations.pop(), [{ path: embeddedPath }, { viewId: "source" }]);
+  lifetime.abort();
+  return { standalone: path, excerpt: "Source", unavailableExcerpt: embeddedPath };
 }
 
 async function main() {
@@ -307,7 +449,7 @@ async function main() {
           };
         },
         renderSourceView(el, { content, ext }, { lineStart }) {
-          assert.equal(lineStart, 7);
+          assert.equal(lineStart, 1);
           assert.equal(ext, ".yaml");
           assert.equal(content, exact);
           const wrap = doc.createElement("div");
@@ -325,7 +467,11 @@ async function main() {
     const turn = () => new Promise(setImmediate);
     await turn();
     async function click(label) {
-      const item = host.find((node) => node.localName === "button" && node.textContent === label);
+      const item = host.find(
+        (node) =>
+          node.localName === "button" &&
+          (node.textContent === label || node.getAttribute?.("aria-label") === label),
+      );
       if (item) {
         item.listeners.get("click")();
       } else {
@@ -334,7 +480,7 @@ async function main() {
       }
       await turn();
     }
-    await click("Sequence (2)");
+    await click("[…] (2 items)");
     const copy = host.find((node) => node.getAttribute?.("aria-label") === "Copy title");
     copy.listeners.get("click")();
     await turn();
@@ -369,6 +515,18 @@ async function main() {
     createStructuredPageReader,
   );
   console.log(JSON.stringify(fences, null, 2));
+  console.log(
+    JSON.stringify(
+      await testSourceRecovery(
+        doc,
+        mountStructuredExcerpt,
+        mountNodeTable,
+        createStructuredPageReader,
+      ),
+      null,
+      2,
+    ),
+  );
 }
 main().catch((error) => {
   console.error(error);

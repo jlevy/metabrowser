@@ -2071,11 +2071,13 @@
         return;
       }
       const doc = code.ownerDocument;
-      const fragment = doc.createDocumentFragment();
+      const rows = code.children;
       for (const [index, runs] of lines.entries()) {
-        if (index > 0) {
-          fragment.append("\n");
+        const row = rows[index];
+        if (!row || !runs.some((run) => run.classes.length)) {
+          continue;
         }
+        const fragment = doc.createDocumentFragment();
         for (const run of runs) {
           if (run.classes.length === 0) {
             fragment.append(run.text);
@@ -2086,8 +2088,8 @@
             fragment.append(token);
           }
         }
+        row.replaceChildren(fragment);
       }
-      code.replaceChildren(fragment);
       code.classList.add("hljs");
     } catch (error) {
       if (!signal?.aborted) {
@@ -2144,25 +2146,39 @@
               : "plaintext",
           }))
         : [{ text: content, languageClass }];
-    const codes = parts
-      .map(
-        (part) => `<code class="${part.languageClass}">${escapeHtml(normalize(part.text))}</code>`,
-      )
-      .join("");
-    // Copy takes the first code element in the wrap, so several parts copy one payload.
-    const payload =
-      parts.length > 1
-        ? `<code data-mb-copy-payload class="no-highlight" hidden>${escapeHtml(text)}</code>`
-        : "";
     const lineStart =
       options.lineStart !== undefined &&
       Number.isSafeInteger(options.lineStart) &&
       options.lineStart > 0
         ? options.lineStart
         : undefined;
+    let nextLine = lineStart ?? 1;
+    const codes = parts
+      .map((part) => {
+        const plain = normalize(part.text);
+        const body =
+          lineStart === undefined
+            ? escapeHtml(plain)
+            : plain
+                .split("\n")
+                .map((line, index, lines) =>
+                  !line && index === lines.length - 1
+                    ? ""
+                    : `<span class="source-excerpt-line" data-line="${nextLine++}">${escapeHtml(line)}</span>`,
+                )
+                .join("\n");
+        return `<code class="${part.languageClass}">${body}</code>`;
+      })
+      .join("");
+    // Copy takes the first code element in the wrap, so several parts copy one payload.
+    const payload =
+      parts.length > 1
+        ? `<code data-mb-copy-payload class="no-highlight" hidden>${escapeHtml(text)}</code>`
+        : "";
     const code =
-      `${payload}<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text, lineStart)}` +
-      `${codes}</pre>`;
+      lineStart === undefined
+        ? `${payload}<pre class="code-block metabrowser-source-lines">${lineAnchors.gutterHtml(text)}${codes}</pre>`
+        : `<pre class="code-block metabrowser-source-lines source-excerpt" style="--mb-excerpt-digits:${String(nextLine - 1).length}ch">${codes}</pre>`;
     container.classList.add("metabrowser-source-host");
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
     if (lineStart !== undefined) {

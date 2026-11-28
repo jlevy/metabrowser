@@ -5,10 +5,10 @@ version = "0.0.1"
 sdk_version = "0.8"
 python_requires = ["cachetools", "frontmatter-format", "json5", "pyyaml", "ruamel.yaml", "starlette"]
 # The table plugin's routes serve this plugin's [[table_source]], and its view draws the
-# Table view (mb.plugins.load("table") in index.js).
+# record grid in Values (mb.plugins.load("table") in index.js).
 requires = ["table"]
 
-# Generic JSON / YAML browser. Table offers the ordered projection or the
+# Generic JSON / YAML browser. Values offers the ordered projection or the
 # shared record grid. Tree and Source keep their existing entry points.
 # Schema-aware variants
 # (e.g. analysis-report, report-bundle) can claim specific files
@@ -22,7 +22,7 @@ priority = 0
 [[view]]
 kind = "structured"
 id = "table"
-label = "Table"
+label = "Values"
 key = "a"
 default = true
 container_class = "content-body table-view-host"

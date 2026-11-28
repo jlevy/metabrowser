@@ -45,6 +45,7 @@ export function attachFencedViews(host, path, revision, fences, mb, lifetime) {
       details,
       mb,
       {
+        path,
         label: `${language} code at line ${opening_line}`,
         ext: `.${format}`,
         pages: () => mb.createStructuredPageReader(path, { fenceLine: opening_line, revision }),

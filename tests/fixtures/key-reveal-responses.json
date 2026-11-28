@@ -110,7 +110,7 @@
           "views": [
             {
               "id": "table",
-              "label": "Table",
+              "label": "Values",
               "key": "a",
               "default": true,
               "container_class": "content-body table-view-host",
