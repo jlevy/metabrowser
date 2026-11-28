@@ -1586,13 +1586,32 @@ async def _rss_exit(process: asyncio.subprocess.Process) -> bool:
     return process.returncode == _RSS_EXIT
 
 
-def _check_rss() -> None:
-    if sys.platform not in {"darwin", "linux"}:
-        return
-    import resource
+_LINUX_PROCESS_STATUS = Path("/proc/self/status")
 
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    used = peak if sys.platform == "darwin" else peak * 1024
+
+def _check_rss() -> None:
+    if sys.platform == "linux":
+        # Linux ru_maxrss can retain an earlier process image's peak across exec.
+        # VmHWM measures this image alone. Without procfs the parent deadline still runs.
+        try:
+            with _LINUX_PROCESS_STATUS.open("rb") as status:
+                for line in status:
+                    if line.startswith(b"VmHWM:"):
+                        break
+                else:
+                    return
+        except OSError:
+            return
+        fields = line.split()
+        if len(fields) != 3 or fields[2] != b"kB" or not fields[1].isdigit():
+            return
+        used = int(fields[1]) * 1024
+    elif sys.platform == "darwin":
+        import resource
+
+        used = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    else:
+        return
     if used > _RSS_BYTES:
         os._exit(_RSS_EXIT)
 

@@ -1096,20 +1096,46 @@ def test_child_checks_peak_before_ready_and_before_sending_its_answer(
     assert sink.getvalue() == ready
 
 
-@pytest.mark.parametrize(("platform", "units"), [("darwin", 1), ("linux", 1024)])
-def test_child_memory_budget_uses_platform_rss_units(
-    monkeypatch: pytest.MonkeyPatch, platform: str, units: int
-) -> None:
+def test_child_memory_budget_uses_darwin_rss_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
     import resource
     from types import SimpleNamespace
 
     limit = worker_module._RSS_BYTES  # pyright: ignore[reportPrivateUsage]
-    report = SimpleNamespace(ru_maxrss=limit // units)
+    report = SimpleNamespace(ru_maxrss=limit)
     monkeypatch.setattr(resource, "getrusage", lambda who: report)
-    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(os, "_exit", sys.exit)
     worker_module._check_rss()  # pyright: ignore[reportPrivateUsage]
     report.ru_maxrss += 1
     with pytest.raises(SystemExit) as stopped:
         worker_module._check_rss()  # pyright: ignore[reportPrivateUsage]
+    assert stopped.value.code == worker_module._RSS_EXIT  # pyright: ignore[reportPrivateUsage]
+
+
+def test_linux_child_uses_the_current_image_peak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import resource
+
+    def unexpected_rusage(_who: int) -> None:
+        pytest.fail("Linux must not consult the pre-exec peak")
+
+    monkeypatch.setattr(resource, "getrusage", unexpected_rusage)
+    status = tmp_path / "status"
+    monkeypatch.setattr(worker_module, "_LINUX_PROCESS_STATUS", status)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(os, "_exit", sys.exit)
+    check = worker_module._check_rss  # pyright: ignore[reportPrivateUsage]
+    limit_kib = worker_module._RSS_BYTES // 1024  # pyright: ignore[reportPrivateUsage]
+    check()  # procfs can be unavailable
+    for report in (
+        b"Name:\tpython\n",
+        b"VmHWM:\tunavailable\n",
+        f"VmHWM:\t{limit_kib} kB\n".encode(),
+    ):
+        status.write_bytes(report)
+        check()
+    status.write_text(f"Name:\tpython\nVmHWM:\t{limit_kib + 1} kB\n")
+    with pytest.raises(SystemExit) as stopped:
+        check()
     assert stopped.value.code == worker_module._RSS_EXIT  # pyright: ignore[reportPrivateUsage]
