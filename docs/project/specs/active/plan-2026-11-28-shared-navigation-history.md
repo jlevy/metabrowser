@@ -174,16 +174,16 @@ A regular browser tab on a stopped origin follows the browser’s own behavior.
 ### One Row in the macOS Title Bar
 
 Use the existing title row.
-In leading-to-trailing order, place the system window buttons, a Back and Forward pair,
-the existing folder chooser, a flexible read-only URL field, and the Metabrowser project
+In leading-to-trailing order, place the system window buttons, the existing project
+chooser, Back and Forward, a flexible read-only URL field, and the Metabrowser project
 mark. Keep a real window-drag region beside the field.
-The folder chooser still identifies the workspace and opens its folder and
-represented-path menus.
-The URL field describes the page within that workspace.
+The chooser identifies the project and opens its folder and represented-path menus.
+The arrows come after it because they navigate within that project’s page history.
+The URL field describes the current page within that history.
 
 ```text
-Wide:     ● ● ●   ‹ ›   example-project ⌄   [ 127.0.0.1:8457/view/docs/architecture.md#L42 ]      ◇
-480 pt:   ● ● ●   ‹ ›   example-proj… ⌄   [ /view/…/architecture.md#L42 ]      ◇
+Wide:     ● ● ●   example-project ⌄   ‹ ›   [ 🔗 127.0.0.1:8457/view/docs/architecture.md#L42 ]      ◇
+480 pt:   ● ● ●   example-proj… ⌄   ‹ ›   [ 🔗 /view/…/architecture.md#L42 ]      ◇
 ```
 
 The current main window has a 480 pt minimum and an approximately 36 pt trailing mark
@@ -202,13 +202,13 @@ middle of the path where possible so the selected item remains recognizable.
 Keep both history buttons in fixed positions and disable each independently.
 Give each its own accessible name and keyboard focus.
 Keep the folder chooser usable if its visible name truncates.
-If supported system metrics or localization make the field too narrow to read, compact
-it to a labeled **Current URL** control that opens the same disclosure.
-Keep a visible URL field at 480 pt in the ordinary layout.
+If system metrics or localization make the address text too narrow to read, shorten it
+to an address-details button and keep the link icon available for direct copying.
+Keep a readable URL field at 480 pt in the ordinary layout, with the copy icon inside
+the field’s width.
 
-Start with one window-owned leading accessory that lays out the history pair, the
-chooser, and the URL together.
-Keep the existing independent trailing mark.
+Start with one window-owned leading accessory that lays out the chooser, history pair,
+and URL together. Keep the existing independent trailing mark.
 Give the chooser an assigned width so its current self-sizing leaves room for the URL.
 Evaluate an AppKit unified compact toolbar if the leading accessory cannot meet the fit
 or accessibility criteria.
@@ -251,13 +251,80 @@ Exercise title-bar drag, click, and focus behavior with the disclosure open.
   [Claude Code desktop shortcuts](https://code.claude.com/docs/en/desktop#keyboard-shortcuts)
 - **Metabrowser** already assigns Command-L to **File > Open URL…**. Keep that command
   and binding. The read-only field participates in native keyboard navigation.
-  Pressing it opens a disclosure with a selectable full URL, **Copy Current URL**, and
-  **Open in Default Browser**. Escape returns focus to the field.
+  Pressing the address text opens a disclosure with a selectable full URL and **Open in
+  Default Browser**. Escape returns focus to the field.
+
+### Bare Brackets and Native Key Hints
+
+Keep Command-[ and Command-] as the native menu shortcuts.
+In the macOS app, allow unmodified `[` and `]` when the active project can navigate in
+that direction.
+Match literal characters from the current input source with all modifiers
+clear, and ignore auto-repeat.
+Leave brackets to editable controls, IME composition, and the URL disclosure, and leave
+shifted braces and other chords alone.
+Browser windows retain their own navigation controls and shortcuts.
+
+With focus in the project’s embedded page, the web shortcut registry handles the bare
+keys with its existing focus and modal checks.
+Add both brackets to the registry’s character vocabulary and register the commands only
+when the native host offers the action.
+Give the registry availability for each arrow and send the navigation intent to the
+focused native window’s existing actions.
+Scope the bridge to the active local main frame.
+The AppKit responder owns native chrome focus.
+Only the focused surface handles an event; Command brackets still use the normal menu
+path.
+
+Hold Shift alone to reveal `[` and `]` in yellow keycaps beside the available arrows,
+alongside the page’s own shortcut hints.
+Reuse the web reveal’s hold and cancellation rules, including the current 200 ms
+threshold. Mirror the registry’s published reveal state while the page owns focus.
+Native chrome uses the same rules while it owns focus.
+Only the current focus owner runs a timer.
+Clear state when ownership changes and discard delayed messages from the old focus
+owner. Clear the reveal on release, an unhandled key or chord, pointer press or scroll,
+text focus, or window deactivation.
+Release Shift before pressing a bare bracket.
+Match the web keycaps’ colors and placement in both appearances.
+Overlays leave layout, hit targets, and accessibility focus intact.
+The persistent arrow tooltips and accessible shortcut descriptions list both bindings.
+
+### Back and Forward History Menus
+
+A short click traverses one entry.
+Click and hold an enabled arrow to open that direction’s native history menu, following
+Safari’s pattern. Secondary click opens the same menu.
+Expose it to keyboard and VoiceOver through **View > Back History** and **View > Forward
+History** even when the toolbar is out of focus.
+
+Show the nearest reachable entries first.
+Read the current project WebView’s `WKBackForwardList`, reverse its Back entries, and
+keep its Forward entries in order.
+Use the page title and add route context where titles repeat or are unavailable.
+Jump to the selected WebKit item with `go(to:)`, preserving exact route and in-page
+state. Closing the menu does not navigate, and releasing the hold does not trigger an
+extra step. Before activation, revalidate the original hosting window, WebView, origin,
+current history item, and the chosen item’s presence in that direction.
+Dismiss stale menus if any check fails.
+Use entry identity so visits that share a URL retain their own history state.
+A new navigation after Back clears the forward branch as usual.
+
+[Safari history controls](https://support.apple.com/guide/safari/keyboard-shortcuts-and-gestures-cpsh003/mac)
+·
+[WebKit’s history list](https://developer.apple.com/documentation/webkit/wkbackforwardlist)
+·
+[Jump to a history item](https://developer.apple.com/documentation/webkit/wkwebview/go%28to%3A%29)
 
 ### Current URL and API
 
 In the macOS host, expose the validated current Metabrowser URL in native chrome, with
 **Copy Current URL** and the existing **Open in Default Browser** action.
+Click the field’s link icon to copy the full URL directly.
+Its tooltip reads “Internal Metabrowser server URL · Click to copy”.
+Give the icon an accessible **Copy internal Metabrowser server URL** label and show a
+brief **URL copied** confirmation on success.
+Clicking the address text still opens its details.
 Make the full address available without hiding meaningful query values or position
 anchors behind the folder title.
 Use a compact read-only presentation, with enough room to inspect the whole URL on
@@ -324,13 +391,21 @@ existing links. No history stack crosses the process boundary.
    restart on a different port.
    Confirm that copying and opening the current URL tracks in-place changes and that an
    invalid or retired origin never gets copied.
+   Click the link icon and verify the exact clipboard contents without opening the
+   address disclosure. Exercise bare brackets and the synchronized Shift hints with page,
+   native chrome, and text focus.
+   Verify that braces, IME composition, and disabled directions leave the page alone.
 
 4. Keep the checkout Back case in Chrome as the baseline for unqualified addresses.
    Add source-qualified cases in both engines.
    Open two windows on the same server and verify that restoring one window’s explicit
    source leaves the other window on its own target.
 
-5. In the native trace, go Back and open a different route.
+5. In the native trace, open Back and Forward history by holding and by keyboard.
+   Check nearest-first order, jump to a non-adjacent item, and cancel a menu without
+   navigating. Cover repeated URLs with different history state and a history branch that
+   changes while the menu is open.
+   Then go Back and open a different route.
    Forward disables. Cover stale observations from a WebView replaced during a folder
    switch, a canceled provisional navigation, and an exact encoded URL with an IPv6
    origin. Measure the actual native row, drag region, and control hit targets while
