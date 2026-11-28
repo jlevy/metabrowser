@@ -20,12 +20,18 @@ current Metabrowser address for copying or opening in a browser.
 - Restore the same item, view, and document location through Back, Forward, direct
   links, and reload in both hosts.
   Restore reading position when a history entry saved it.
+
 - Use one route grammar and one set of rules for when a navigation adds, replaces, or
   restores an entry. Let the browser or WebKit own the history stack in its window.
+
 - Keep the native Back and Forward controls, menus, keyboard shortcuts, and gestures
   consistent. Make the current internal address available without crowding the title bar.
+
 - Define what happens on a Git source switch, a missing historical target, and a native
   server restart that changes its local origin.
+
+- Use the same abbreviated page names and icons in headings and Metabrowser navigation
+  menus.
 
 ## Non-Goals
 
@@ -290,6 +296,44 @@ Match the web keycaps’ colors and placement in both appearances.
 Overlays leave layout, hit targets, and accessibility focus intact.
 The persistent arrow tooltips and accessible shortcut descriptions list both bindings.
 
+### Page Names and Icons
+
+Use the page heading’s title and icon as the starting point for a compact menu label.
+The heading and history entry get these parts from the same view data.
+Keep the canonical URL separate for traversal and copying.
+Browser history uses the page title through the browser’s own UI. Native history and
+other Metabrowser menus can also render the matching per-page icon.
+
+| Page | Primary title and icon | Context when needed |
+| --- | --- | --- |
+| File or folder | File basename and its file-type icon, or folder name and folder icon | Shortest useful parent path, view, line, or heading |
+| Pull request | PR title and the page’s pull request icon | PR number, then Conversation, Changes, or a changed file when relevant |
+| Stack | Stack page title and stack icon | Stack number or selected view |
+| Commit | Commit subject and commit icon | Short revision or changed file |
+| List or overview | Visible view name and its icon where it has one | Active filter or view |
+
+Keep the primary title readable.
+Add enough context to tell similar entries apart, such as **index.ts · app** and
+**index.ts · tests**, or **Preserve reading position · Changes** and **Preserve reading
+position · Conversation**. Truncation is presentation.
+Expose the full title and context to accessibility, and show the full label on hover
+where it is clipped.
+Where two visits share a URL and meaningful description, keep both in visit order and
+clarify their relative position if needed.
+
+Reuse the title and icon data already used by the file, PR, stack, and commit heading
+renderers. Send plain text, an identifier from the existing icon mapping, and structured
+context across the local bridge.
+Use bundled icons in native menus.
+Retain label data only for the WebKit entries it describes, keyed by entry identity
+rather than URL. This lets the menu label previously visited entries without new
+fetches.
+When metadata is missing, use the safe title or identifier already available for
+that route with its kind icon.
+History selection still uses the exact WebKit item.
+
+[View headers in the design system](../../../design-system.md#view-headers)
+
 ### Back and Forward History Menus
 
 A short click traverses one entry.
@@ -304,7 +348,7 @@ history.
 Show the nearest reachable entries first.
 Read the current project WebView’s `WKBackForwardList`, reverse its Back entries, and
 keep its Forward entries in order.
-Use the page title and add route context where titles repeat or are unavailable.
+Label each entry with the shared page title, icon, and any distinguishing context.
 Jump to the selected WebKit item with `go(to:)`, preserving exact route and in-page
 state. Closing the menu does not navigate, and releasing the hold does not trigger an
 extra step. Return keyboard focus to the invoking arrow when canceling.
@@ -419,6 +463,12 @@ existing links. No history stack crosses the process boundary.
    origin. Measure the actual native row, drag region, and control hit targets while
    resizing. Confirm accessibility names and values, right-to-left layout with
    left-to-right URL text, and title-bar behavior in fullscreen.
+
+6. Compare menu labels and icons with their page headings.
+   Cover duplicate file basenames, two tabs of the same pull request, long or
+   untranslated titles, and a page whose metadata was unavailable when visited.
+   Verify the menu can tell those entries apart while Back and Forward restore their
+   exact addresses.
 
 ## Rollout Plan
 
