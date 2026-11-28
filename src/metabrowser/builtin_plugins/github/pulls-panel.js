@@ -12,11 +12,9 @@
 // role of its own, and the row's changed files hang off it as a folder's children do
 // (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
 // `aria-expanded` on it. A pull request is one item, its anchor (mb-1z7j, mb-pw8t, mb-rb3n): a
-// run of its title, a stack member's place, its number, and its author, one flow that wraps
-// with every line after the first in the text column, then its last line, its brief change
-// line (row-lines.js, mb-lqkb) with the chevron after it, and its age at the row's end, in
-// the column every row's age has. The item is one hover, one
-// selection, and one keyboard stop (`.github-pulls-entry`). Its toggle is the brief change
+// wrapping title followed by a dot and the author avatar, then its summary line with the
+// diff toggle and age on the left and readiness and number on the right. The item has one
+// hover, one selection, and one keyboard stop (`.github-pulls-entry`). Its toggle is the brief change
 // line and the chevron after it, the summary the chevron expands (docs/design-system.md, "A
 // Click on the Toggle's Line Toggles"): a click on them toggles the files and opens no page,
 // and a click anywhere else on the item opens the pull request and expands nothing; a
@@ -28,11 +26,8 @@
 // is the pointer's alone: hidden from assistive technology, it leaves the tree its items and
 // groups, and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
-// An open pull request's last line has a readiness column between its change line and its age
-// (row-readiness.js, mb-3n21): the verdict's glyph in its tone, and its label after it where
-// the list is wide enough, "+1,234 −567 › ⊗ 3d", so the glyphs down the list read as a checks
-// column. A closed or merged row, and one the server has no status of, keeps the column's width
-// empty. The link's name says the verdict after the state, as the state icon says the state.
+// The readiness glyph sits just before the number. A row without a verdict reserves
+// the glyph's width. The accessible name says the verdict after the PR state.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -358,7 +353,7 @@ export function describeRow(row) {
     author,
     avatar: avatarUrl(row.author_avatar_url),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
-    meta: `#${row.number} · ${author}`,
+    meta: `${author} · #${row.number}`,
     // The head commit the catalog reported, which the row's change line (row-lines.js) and
     // its stack's (stack-lines.js) are read again for when it moves; it is not shown.
     head: typeof row.head_oid === "string" ? row.head_oid : null,
@@ -4641,25 +4636,6 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The author, its avatar and its name, which ends the row's run, after the number (mb-rb3n;
-   * github/styles.css, `.github-pulls-by`).
-   *
-   * @param {string} login
-   * @param {string | null} avatar
-   */
-  function rowAuthor(login, avatar) {
-    // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so this asks
-    // for no avatar outside that window, and a row the window mounts again as the list scrolls
-    // back draws its avatar at once: WebKit fetches a new lazy image again
-    // (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row draws no box for an
-    // author with no avatar: its avatar comes with the row.
-    return authorLabel(mb, login, avatar, "github-pulls-author", {
-      loading: "eager",
-      placeholder: false,
-    });
-  }
-
-  /**
    * A row's fields as its run shows them (stack-member-row.js), with the place it showed
    * last: the place is the list's to decide (`paintPlace`).
    *
@@ -4681,11 +4657,16 @@ export function mountPullsPanel(container, ctx, mb) {
     };
   }
 
+  /** Use the shared identity and let the heading's styles show its avatar only.
+   * @param {string} login
+   * @param {string | null} avatar
+   */
+  function rowAuthor(login, avatar) {
+    return authorLabel(mb, login, avatar, "github-pulls-author", { loading: "eager" });
+  }
+
   /**
-   * The number, the author, and the age said in words for the row's link, "#455 · jlevy ·
-   * 3d", in the order the row shows them: the run's own number and author and the last line's
-   * age are hidden from assistive technology, so the link's name says them once, after its
-   * title and place.
+   * Say the author, PR number, and age once, after the title and stack position.
    *
    * @param {PullRow} row
    * @param {string} age
@@ -4741,38 +4722,24 @@ export function mountPullsPanel(container, ctx, mb) {
       ],
     );
     change.dataset.number = String(row.number);
-    // The age, at the row's end in the column every row's age has, as a list row's time is
-    // (docs/design-system.md, "Ages End the Row"). No tooltip, as nothing in the Pulls column
-    // has one: the page has the exact time (docs/design-system.md, "Tooltips Add
-    // Information"). The link's name says it (`rowSaid`).
+    // The age follows the toggle. The link's name says it (rowSaid).
     const updated = mb.ageLabel(at, { className: "github-pulls-age" });
     updated.setAttribute("aria-hidden", "true");
     const label = updated.textContent ?? "";
-    // The row's run: the state icon, then the title, the place, the number, and the author,
-    // in the one order every row of a pull request's fields has, drawn by the one builder that
-    // draws a stack's members too (stack-member-row.js), a dot before each field after the
-    // title; one flow that wraps with every line after the first in the text column, past the
-    // icon, as a tree's title does (github/styles.css, `.github-pulls-heading`). The title's
-    // conventional-commit prefix is regular and the rest bold (docs/design-system.md,
-    // "Titles"). The place is the list's to draw (`paintPlace`), hidden while the row is in no
-    // stack. The number and the author are hidden from assistive technology: the link's name
-    // says them (`rowSaid`).
+    // The avatar follows the title in the same wrapping flow.
     const heading = h("span", { class: "github-pulls-heading" });
     const run = stackMemberRow(heading, mb.titleNodes, rowAuthor, PULLS_RUN);
     const line = runLine(row, null);
     run.show(line);
-    // The row's last line, the lines and the chevron in the text column under the run, then the
-    // readiness's column, its glyph and its label, hidden, since the run says the verdict after
-    // the state (stack-member-row.js), and the age at its end: one line tall whether the lines
-    // are shown, waited for, or cannot be had, so nothing moves when they or the readiness
-    // arrive (github/styles.css, `.github-pulls-tail`).
-    const tail = h("span", { class: "github-pulls-tail" }, [change, run.readiness, updated]);
+    const separator = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
+    run.end.insertBefore(separator, run.end.firstChild);
+    const tail = h("span", { class: "github-pulls-tail" }, [change, updated, run.end]);
     const said = h("span", { class: "sr-only" }, [rowSaid(row, label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
     // are its children, as a folder's are, closed until the reader opens them; the tree that
     // draws them owns them from it (pull-files-view.js, `attach`). Its name is the state, the
-    // title, the place, and the number, the author, and the age in words (`rowSaid`); its
+    // title, the place, the author, the number, and the age in words (`rowSaid`); its
     // lines' words describe it, so they are read with it, as its toggle is no stop and no node
     // of the tree.
     const anchor = /** @type {HTMLAnchorElement} */ (
@@ -4828,11 +4795,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A row's readiness as it is now (row-readiness.js): the verdict's glyph in its tone in the
-   * last line's readiness column, its label after it where the list is wide enough, and its
-   * words after the state in the link's name; or the column empty, at its width, for a closed
-   * or merged pull request, one the server has no status of, and one not read yet, so the
-   * glyphs and the ages down the list stay in their columns.
+   * Update the summary line’s readiness in place. An empty glyph slot keeps the number still.
    *
    * @param {PaintedRow} entry
    */
@@ -5003,9 +4966,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * A stack's row: the chevron, then its heading, the stack's label in the label register
    * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"), then,
    * after a muted dot, how many pull requests the stack has, a count summary with its number
-   * bold (`metabrowser.countPartsNodes`; "Heading Tallies"), and, at the row's end, the age
-   * of the stack's most recent change in the column every row's age has ("Ages End the
-   * Row"): "Stack #286 · 4 pulls   2h". The count is the stack's size (`stackPullsCount`),
+   * bold (`metabrowser.countPartsNodes`; "Heading Tallies"), then the age of the stack's
+   * most recent change: "Stack #286 · 4 pulls  2h". The count is the stack's size (`stackPullsCount`),
    * which the row's accessible name says first, and the age the newest of its listed pull
    * requests' (`stackUpdatedAt`); both are known when the row is first drawn, the stacks'
    * snapshot and the list's rows being what draws it, so the row has no pending state and
@@ -5022,12 +4984,10 @@ export function mountPullsPanel(container, ctx, mb) {
     if (entry === undefined) {
       const label = h("span", { class: "group-heading github-pull-stack-label" });
       const count = h("span", { class: "github-pulls-stack-count" });
-      const heading = h("span", { class: "github-pulls-stack-heading" }, [label, count]);
       const at = stackUpdatedSeconds(group);
-      // The age, in the column a pull request's row has for its own, there whether or not
-      // the list has a time for the stack. The row's name says it (`stackSaid`).
       const age = mb.ageLabel(at, { className: "github-pulls-age" });
       age.setAttribute("aria-hidden", "true");
+      const heading = h("span", { class: "github-pulls-stack-heading" }, [label, count, age]);
       const row = h(
         "div",
         {
@@ -5036,11 +4996,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-level": "1",
           tabindex: "-1",
         },
-        [
-          h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
-          heading,
-          age,
-        ],
+        [h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]), heading],
       );
       row.dataset.stack = String(group.stack.number);
       const item = h("li", { class: "github-pulls-item github-pulls-stack-item", role: "none" }, [

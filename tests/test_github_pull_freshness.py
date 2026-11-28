@@ -283,7 +283,7 @@ def test_a_status_of_the_base_before_a_retarget_is_read_again_before_anything_ju
     the merged layer's base and keeps its head; its conflicts, merge verdict, and required
     checks are then the new base's. A status observed against the old base, and the list
     it counts, describe nothing current: the record has a status read due, the verdict is
-    ``checking``, the route serves none of its checks, and ``--show`` says so."""
+    ``status_unavailable``, the route serves none of its checks, and ``--show`` says so."""
 
     record = _record(fetched=NOW - timedelta(seconds=5))
     before = _status(record).model_copy(update={"base_ref": "layer-1"})
@@ -299,7 +299,10 @@ def test_a_status_of_the_base_before_a_retarget_is_read_again_before_anything_ju
     assert kept.listed_checks == listed
     shown = record.pull.model_dump(mode="json")
     judged = judged_readiness(shown, kept)
-    assert judged is not None and (judged["verdict"], judged["requirements"]) == ("checking", [])
+    assert judged is not None and (judged["verdict"], judged["requirements"]) == (
+        "status_unavailable",
+        [],
+    )
     assert shown_checks(shown, kept) is None
     envelope = {
         "state": "current",
@@ -309,7 +312,7 @@ def test_a_status_of_the_base_before_a_retarget_is_read_again_before_anything_ju
         "status_unavailable": None,
     }
     said = _describe_pull(envelope, "checks").split()
-    assert {"readiness=checking", "checks=none"} <= set(said)
+    assert {"readiness=status_unavailable", "checks=none"} <= set(said)
     # Read again into the new base, the same head and list judge the pull request.
     after = before.model_copy(update={"base_ref": record.pull.base.ref})
     again = KeptStatus(after, listed, None)

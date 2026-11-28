@@ -135,18 +135,14 @@ try {
   const pulls = "the Pulls panel";
   await role(pulls, "list text", "#tab-pulls .github-pulls-title");
   await role(pulls, "list text", "#tab-pulls .github-pulls-number");
-  await role(pulls, "list text", "#tab-pulls .github-pulls-author");
   await role(pulls, "list text", "#tab-pulls .github-pulls-age");
   await role(pulls, "list text", ".github-pulls-status");
   await role(pulls, "control", ".github-pulls-filters .chip");
   await role(pulls, "label", ".nav-tab-bar .tab-btn");
   await role(pulls, "hint strip", ".nav-shortcut-label");
-  await accompanies(pulls, "#tab-pulls .github-pulls-author", "#tab-pulls .github-pulls-number");
   await accompanies(pulls, "#tab-pulls .github-pulls-age", "#tab-pulls .github-pulls-title");
   await accompanies(pulls, ".github-pulls-status", "#tab-pulls .github-pulls-title");
-  // The age's column is 5ch of the row's type, at the end of its last line (mb-lqkb, mb-rb3n),
-  // and the longest compact age is four characters, "12mo": written into a row's age, it is
-  // whole inside the column.
+  // The longest compact age stays whole in the metadata line.
   const longestAge = await evaluate(`(async () => {
     const age = [...document.querySelectorAll("#tab-pulls .github-pulls-age")].find((e) => e.getClientRects().length);
     const saved = age.textContent;
@@ -157,14 +153,13 @@ try {
     const range = document.createRange();
     range.selectNodeContents(age);
     const text = range.getBoundingClientRect();
-    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-tail")).gridTemplateColumns.split(" ").pop());
-    const read = { text: Math.round(text.width * 100) / 100, box: Math.round(box.width * 100) / 100, column: Math.round(column * 100) / 100, cut: age.scrollWidth > age.clientWidth, inside: text.right <= row.right + 0.5 };
+    const read = { text: Math.round(text.width * 100) / 100, box: Math.round(box.width * 100) / 100, cut: age.scrollWidth > age.clientWidth, inside: text.right <= row.right + 0.5 };
     age.textContent = saved;
     return read;
   })()`);
   check(
-    `${pulls}: the longest age, "12mo", is whole in its column`,
-    !longestAge.cut && longestAge.inside && longestAge.text <= longestAge.column,
+    `${pulls}: the longest age, "12mo", is whole beside the diff toggle`,
+    !longestAge.cut && longestAge.inside && longestAge.text <= longestAge.box + 0.5,
     JSON.stringify(longestAge),
   );
   process.stderr.write(`measured 12mo ${JSON.stringify(longestAge)}\n`);
