@@ -487,3 +487,20 @@ status: 200
 }
 ? 0
 ```
+
+```console
+$ (printf 'inventory: demo\nentries:\n'; awk 'BEGIN {for(i=1;i<=1200;i++) printf "  entry_%04d: generated member for the documented inventory\n",i}') > corpus/large.yaml
+? 0
+```
+
+```console
+$ metab corpus --api '/api/plugin/structured/parsed?projection=nodes&path=large.yaml&depth=2' --format json | jq -c '{status,preview,partial:.node.partial,child_preview:(.children[]|select(.segment=="entries")|.node.partial),has_source_range:(.node|has("source_range"))}'
+{"status":"ready","preview":true,"partial":true,"child_preview":true,"has_source_range":false}
+? 0
+```
+
+```console
+$ metab corpus --api '/api/plugin/structured/parsed?projection=nodes&path=large.yaml&node=%5B%22entries%22,%22entry_0001%22%5D&copy=row' --format json | jq -c '{status,copy_text}'
+{"status":"ready","copy_text":"entry_0001: generated member for the documented inventory"}
+? 0
+```

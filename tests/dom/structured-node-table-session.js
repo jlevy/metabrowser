@@ -78,6 +78,38 @@ async function main() {
   assert.ok(boundedToggle.textContent.length < 120);
   bounded.dispose();
 
+  const previewHost = document.createElement("div");
+  const partialMap = {
+    ...object([["first", scalar("a".repeat(55) + "🙂".repeat(60))]]),
+    partial: true,
+  };
+  const positionsOpened = [];
+  const preview = mountNodeTable(
+    previewHost,
+    async () => ({
+      status: "ready",
+      preview: true,
+      node: { ...object([], 1), partial: true },
+      children: [{ segment: "entries", node: partialMap }],
+    }),
+    {
+      openSource: (position) => positionsOpened.push(position),
+      copyRow: async () => "example",
+    },
+  );
+  await preview.ready;
+  const notice = previewHost.lastChild.firstChild.firstChild;
+  assert.ok(notice.textContent.includes("first complete YAML values"));
+  notice.lastChild.listeners.get("click")();
+  assert.deepEqual(positionsOpened, [{ document: 0, path: [], offset: 0 }]);
+  const previewRows = previewHost.lastChild.lastChild.lastChild.childNodes;
+  const parent = previewRows[0];
+  assert.ok(parent.childNodes[1].textContent.includes("at least 1 key"));
+  assert.ok(!/\\ud[89ab][0-9a-f]{2}/i.test(parent.childNodes[1].textContent));
+  assert.equal(parent.childNodes[2].childNodes.length, 0);
+  assert.equal(previewRows[1].childNodes[2].firstChild.getAttribute("aria-label"), "Copy first");
+  preview.dispose();
+
   const observed = [];
   document.defaultView = {
     ResizeObserver: class {

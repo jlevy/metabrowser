@@ -4,9 +4,9 @@ import { createCopyButton } from "./copy-button.js";
 import { showStructuredNotice, structuredFailure } from "./structured-page-reader.js";
 
 /** @typedef {string | number} Segment */
-/** @typedef {{kind: string, child_count: number, value?: unknown, children?: Child[]}} ProjectionNode */
+/** @typedef {{kind: string, child_count: number, partial?: boolean, value?: unknown, children?: Child[]}} ProjectionNode */
 /** @typedef {{segment: Segment, node: ProjectionNode}} Child */
-/** @typedef {{status: string, diagnostic?: string, mtime_hash?: string, document_count?: number, record_table?: boolean, node?: ProjectionNode, children?: Child[], next_offset?: number | null, copy_text?: string}} Page */
+/** @typedef {{status: string, diagnostic?: string, mtime_hash?: string, document_count?: number, record_table?: boolean, preview?: boolean, node?: ProjectionNode, children?: Child[], next_offset?: number | null, copy_text?: string}} Page */
 /** @typedef {{document: number, path: Segment[], offset: number}} Position */
 /** @typedef {(position: Position, signal: AbortSignal, depth: number) => Promise<Page>} ReadPage */
 /** @typedef {(label: string, position: Position) => HTMLButtonElement} CreateRowCopy */
@@ -25,6 +25,9 @@ function isContainer(node) {
 /** @param {ProjectionNode} node */
 function describe(node) {
   if (isContainer(node)) {
+    if (node.partial) {
+      return node.kind === "object" ? "{…}" : "[…]";
+    }
     return node.kind === "object" ? "{}" : "[]";
   }
   return node.kind === "string" ? JSON.stringify(node.value) : String(node.value);
@@ -33,12 +36,14 @@ function describe(node) {
 /** @param {ProjectionNode} node */
 function total(node) {
   const unit = node.kind === "object" ? "key" : "item";
-  return `${node.child_count} ${unit}${node.child_count === 1 ? "" : "s"}`;
+  const prefix = node.partial ? "at least " : "";
+  return `${prefix}${node.child_count} ${unit}${node.child_count === 1 ? "" : "s"}`;
 }
 
 /** @param {string} value @param {number} budget */
 function quotedPreview(value, budget) {
-  let prefix = value.slice(0, budget);
+  const unmatchedHighSurrogate = /[\uD800-\uDBFF]$/u;
+  let prefix = value.slice(0, budget).replace(unmatchedHighSurrogate, "");
   const complete = JSON.stringify(prefix);
   if (prefix.length === value.length && complete.length <= budget) {
     return { text: complete, complete: true };
@@ -47,7 +52,7 @@ function quotedPreview(value, budget) {
     return { text: "…", complete: false };
   }
   while (JSON.stringify(`${prefix}…`).length > budget) {
-    prefix = prefix.slice(0, -1);
+    prefix = prefix.slice(0, -1).replace(unmatchedHighSurrogate, "");
   }
   return { text: JSON.stringify(`${prefix}…`), complete: false };
 }
@@ -65,7 +70,7 @@ function valuePreview(node, budget) {
       ? { text, complete: true }
       : { text: `${text.slice(0, Math.max(0, budget - 1))}…`, complete: false };
   }
-  if (budget < 2 || (node.child_count && budget < 3)) {
+  if (budget < 2 || ((node.child_count || node.partial) && budget < 3)) {
     return { text: "…", complete: false };
   }
   const [open, close] = node.kind === "object" ? ["{", "}"] : ["[", "]"];
@@ -84,7 +89,7 @@ function valuePreview(node, budget) {
       }
       key = `${preview.text}: `;
     }
-    const omission = parts.length + 1 < node.child_count ? 3 : 0;
+    const omission = node.partial || parts.length + 1 < node.child_count ? 3 : 0;
     const available = remaining - separator - key.length - omission;
     if (available < 1) {
       break;
@@ -97,7 +102,7 @@ function valuePreview(node, budget) {
       break;
     }
   }
-  if (parts.length < node.child_count) {
+  if (node.partial || parts.length < node.child_count) {
     // Leave room for the omission mark rather than making a partial page look whole.
     while (parts.length && remaining < 3) {
       remaining += (parts.pop()?.length ?? 0) + (parts.length ? 2 : 0);
@@ -181,8 +186,8 @@ export function mountNodeTable(host, readPage, options = {}) {
     return item;
   }
 
-  /** @param {HTMLTableRowElement} row @param {Position} address @param {AbortSignal} signal */
-  function addCopy(row, address, signal) {
+  /** @param {HTMLTableRowElement} row @param {Position} address @param {AbortSignal} signal @param {boolean} available */
+  function addCopy(row, address, signal, available) {
     if (!copyRow) {
       return;
     }
@@ -190,9 +195,11 @@ export function mountNodeTable(host, readPage, options = {}) {
     cell.className = "structured-row-action data-grid-row-action";
     const segment = address.path.at(-1);
     const subject = segment === undefined ? "value" : String(segment) || '""';
-    cell.append(
-      createCopyButton(doc, `Copy ${subject}`, (attempt) => copyRow(address, attempt), signal),
-    );
+    if (available) {
+      cell.append(
+        createCopyButton(doc, `Copy ${subject}`, (attempt) => copyRow(address, attempt), signal),
+      );
+    }
     row.append(cell);
   }
 
@@ -215,7 +222,7 @@ export function mountNodeTable(host, readPage, options = {}) {
       }
       const value = doc.createElement("td");
       row.append(key, value);
-      addCopy(row, address, signal);
+      addCopy(row, address, signal, !node.partial);
       body.insertBefore(row, before);
       if (!isContainer(node) || !node.child_count) {
         value.textContent = describe(node);
@@ -377,6 +384,19 @@ export function mountNodeTable(host, readPage, options = {}) {
         showFailure(content, structuredFailure(page, "Values"), address);
         return;
       }
+      if (page.preview) {
+        const preview = doc.createElement("div");
+        preview.className = "structured-values-notice";
+        const open = options.openSource;
+        showStructuredNotice(
+          preview,
+          "This preview shows the first complete YAML values.",
+          open ? () => open({ document: 0, path: [], offset: 0 }) : undefined,
+          "Open Source",
+          "info",
+        );
+        content.append(preview);
+      }
       if ((page.document_count ?? 0) > 1) {
         const picker = doc.createElement("select");
         picker.setAttribute("aria-label", "Document");
@@ -428,7 +448,7 @@ export function mountNodeTable(host, readPage, options = {}) {
           ? `Empty ${node.kind === "object" ? "mapping" : "sequence"}`
           : describe(node);
         row.append(value);
-        addCopy(row, address, request.signal);
+        addCopy(row, address, request.signal, !node.partial);
         body.append(row);
       }
       table.append(head, body);

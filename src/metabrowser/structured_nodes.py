@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import io
 import json
 import re
@@ -15,7 +16,14 @@ from typing import Any, Literal
 from ruamel.yaml import YAML
 from ruamel.yaml.composer import MaxDepthExceededError
 from ruamel.yaml.error import MarkedYAMLError, YAMLError
-from ruamel.yaml.events import AliasEvent
+from ruamel.yaml.events import (
+    AliasEvent,
+    CollectionEndEvent,
+    CollectionStartEvent,
+    MappingStartEvent,
+    ScalarEvent,
+    SequenceStartEvent,
+)
 from ruamel.yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from metabrowser.diff.structured_projection import (
@@ -334,6 +342,103 @@ def _inline_rows(
     return rows
 
 
+def _yaml_preview_boundary(text: str) -> tuple[int, str | None] | None:
+    """Find a proven sibling boundary, never a close synthesized at prefix EOF."""
+    depth = nodes = item_count = 0
+    key: str | None = None
+    sequence: str | None = None
+    mapping: str | None = None
+    mapping_needs_key = True
+    nested_keys: set[str] = set()
+    seen: set[str] = set()
+    boundary = None
+    try:
+        for event in YAML(typ="safe", pure=True).parse(text):
+            if isinstance(event, CollectionEndEvent):
+                depth -= 1
+                if depth == 0:
+                    break
+                if depth == 1:
+                    sequence = None
+                    mapping = None
+                continue
+            if isinstance(event, AliasEvent):
+                return None
+            if not isinstance(event, (CollectionStartEvent, ScalarEvent)):
+                continue
+            nodes += 1
+            if nodes > STRUCTURED_YAML_MAX_NODES or depth >= YAML_MAX_DEPTH:
+                break
+            mark = event.start_mark
+            if depth == 0:
+                if not isinstance(event, MappingStartEvent) or event.flow_style:
+                    return None
+            elif depth == 1:
+                if key is None:
+                    if (
+                        not isinstance(event, ScalarEvent)
+                        or not isinstance(event.value, str)
+                        or mark.column
+                        or event.value in seen
+                    ):
+                        return None
+                    key = event.value
+                    # Require the actual mapping delimiter inside the window.
+                    end = event.end_mark.index
+                    if text[end : end + 1] != ":" or end + 1 >= len(text):
+                        break
+                    if seen:
+                        boundary = (mark.index, None)
+                    seen.add(key)
+                else:
+                    if isinstance(event, SequenceStartEvent) and not event.flow_style:
+                        sequence, item_count = key, 0
+                    elif isinstance(event, MappingStartEvent) and not event.flow_style:
+                        mapping, mapping_needs_key = key, True
+                        nested_keys.clear()
+                    key = None
+            elif depth == 2 and mapping is not None:
+                if mapping_needs_key:
+                    if (
+                        not isinstance(event, ScalarEvent)
+                        or not isinstance(event.value, str)
+                        or event.value in nested_keys
+                    ):
+                        return None
+                    end = event.end_mark.index
+                    if (
+                        text[mark.index - mark.column : mark.index].strip(" ")
+                        or text[end : end + 1] != ":"
+                        or end + 1 >= len(text)
+                    ):
+                        break
+                    if nested_keys:
+                        boundary = (mark.index, mapping)
+                    nested_keys.add(event.value)
+                mapping_needs_key = not mapping_needs_key
+            elif depth == 2 and sequence is not None:
+                # The parser identifies a direct child. Locate its own block-entry
+                # indicator on that line; a dash inside a scalar cannot arrive here.
+                line = mark.index - mark.column
+                leader = text[line : mark.index]
+                dash = leader.find("-")
+                if (
+                    item_count
+                    and dash >= 0
+                    and not leader[:dash].strip(" ")
+                    and leader[dash + 1 :]
+                    and not leader[dash + 1 :].strip(" \t")
+                ):
+                    boundary = (line + dash, sequence)
+                item_count += 1
+            if isinstance(event, CollectionStartEvent):
+                depth += 1
+    except MarkedYAMLError as exc:
+        if exc.problem_mark is None or exc.problem_mark.index < len(text):
+            return None
+    return boundary
+
+
 def project_structured(
     data: bytes,
     format: Format,
@@ -345,6 +450,7 @@ def project_structured(
     depth: int = 1,
     copy_row: bool = False,
     tree: bool = False,
+    truncated_yaml: bool = False,
 ) -> dict[str, Any]:
     """Return one node and a page of immediate children. Ranges are half-open UTF-8 bytes.
 
@@ -363,10 +469,24 @@ def project_structured(
         return {"status": "invalid", "diagnostic": "Invalid projection parameters"}
     if len(path) > YAML_MAX_DEPTH or len(data) > projection_byte_limit(format):
         return {"status": "too_large", "diagnostic": "Projection input exceeds its budget"}
+    unavailable = {"status": "too_large", "preview": True, "record_table": False}
+    partial_collection = None
+    partial_node = False
     try:
-        text = data.decode("utf-8")
+        text = codecs.getincrementaldecoder("utf-8")().decode(data, final=not truncated_yaml)
+        if truncated_yaml:
+            boundary = _yaml_preview_boundary(text) if format == "yaml" else None
+            if boundary is None or document:
+                return unavailable
+            cut, partial_collection = boundary
+            text = text[:cut]
+            partial_node = not path or (len(path) == 1 and path[0] == partial_collection)
+            if partial_node and (copy_row or tree):
+                return unavailable
     except UnicodeDecodeError as exc:
         return {"status": "invalid", "diagnostic": "Invalid UTF-8", "error_byte": exc.start}
+    except (YAMLError, AssertionError, ValueError, RecursionError):
+        return unavailable
     offsets = [0]
     for char in text:
         offsets.append(offsets[-1] + len(char.encode("utf-8")))
@@ -398,10 +518,20 @@ def project_structured(
     parent = None
     for part in path:
         if type(part) not in (str, int) or node.children is None or part not in node.children:
-            return missing
+            return unavailable if truncated_yaml else missing
         parent, node = node, node.children[part]
     children = node.children or {}
     page = islice(children.items(), min(offset, len(children)), min(offset + limit, len(children)))
+    summary = _summary(node, offsets)
+    rows = _inline_rows(page, offsets, depth)
+    if partial_node:
+        summary.pop("source_range")
+        summary["partial"] = True
+        if not path:
+            for row in rows:
+                if row["segment"] == partial_collection:
+                    row["node"].pop("source_range")
+                    row["node"]["partial"] = True
     return {
         **(
             {"copy_text": _copy_row(text, node, path[-1] if path else None, parent)}
@@ -410,7 +540,7 @@ def project_structured(
         ),
         **({"tree_value": _tree_value(node)} if tree else {}),
         "status": "ready",
-        "document_count": len(docs),
+        **({"preview": True} if truncated_yaml else {"document_count": len(docs)}),
         "record_table": (
             len(docs) == 1
             and not path
@@ -418,7 +548,7 @@ def project_structured(
             and bool(children)
             and all(child.kind == "object" for child in children.values())
         ),
-        "node": _summary(node, offsets),
-        "children": _inline_rows(page, offsets, depth),
+        "node": summary,
+        "children": rows,
         "next_offset": offset + limit if offset + limit < len(children) else None,
     }

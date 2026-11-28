@@ -35,12 +35,18 @@ export function structuredFailure(reason, view) {
 }
 
 /** @param {HTMLElement} host @param {string} message @param {(() => void) | undefined} openSource
- * @param {string} [label] */
-export function showStructuredNotice(host, message, openSource, label = "Open Source") {
+ * @param {string} [label] @param {"warning" | "info"} [severity] */
+export function showStructuredNotice(
+  host,
+  message,
+  openSource,
+  label = "Open Source",
+  severity = "warning",
+) {
   const doc = host.ownerDocument;
   const notice = doc.createElement("div");
   notice.className = "notice";
-  notice.dataset.severity = "warning";
+  notice.dataset.severity = severity;
   notice.setAttribute("role", "status");
   notice.textContent = message;
   if (openSource) {

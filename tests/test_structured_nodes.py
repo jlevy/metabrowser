@@ -339,3 +339,105 @@ def test_value_only_grid_caps_alias_expansion_independently_of_input_bytes() -> 
     data += b"- *item\n" * 10
     assert len(data) < projection_byte_limit("yaml")
     assert not _fallback_grid(data, ".yaml", data.index(b"*"))
+
+
+@pytest.mark.parametrize("indent", ["", "  "])
+def test_yaml_preview_exposes_only_proven_siblings(indent: str) -> None:
+    text = (
+        "title: Café\r\nitems:\r\n"
+        f"{indent}- note: |\r\n{indent}    - text inside a scalar\r\n"
+        f"{indent}- name: second\r\n{indent}- name: third\r\n"
+        f"{indent}- name: Café\r\n"
+    ).encode()
+    prefix = text[: text.rindex("é".encode()) + 1]
+    root = project_structured(prefix, "yaml", truncated_yaml=True, depth=3)
+    assert root["preview"] and "document_count" not in root
+    assert root["node"]["partial"] and "source_range" not in root["node"]
+    seq = root["children"][1]["node"]
+    assert seq["partial"] and "source_range" not in seq
+    assert seq["child_count"] == 3
+    for index in range(3):
+        full = project_structured(text, "yaml", path=["items", index], copy_row=True, tree=True)
+        page = project_structured(
+            prefix, "yaml", path=["items", index], copy_row=True, tree=True, truncated_yaml=True
+        )
+        for field in ["node", "copy_text", "tree_value", "children"]:
+            assert page[field] == full[field]
+    for path in [[], ["items"], ["items", 3]]:
+        refused = project_structured(prefix, "yaml", truncated_yaml=True, path=path, copy_row=True)
+        assert refused["status"] == "too_large" and "copy_text" not in refused
+    corrupt = project_structured(prefix + b"\xff!", "yaml", truncated_yaml=True)
+    assert corrupt["status"] == "invalid"
+
+
+def test_large_yaml_route_previews_complete_mapping_children(tmp_path: Path) -> None:
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from metabrowser import server
+    from metabrowser.plugin_loader.static_assets import build_plugin_routes
+
+    data = b"summary: ordinary\nitems:\n" + b"- name: " + b"x" * 50 + b"\n"
+    data += (b"- name: " + b"y" * 64 + b"\n") * 800
+    (tmp_path / "inventory.yaml").write_bytes(data)
+    server._set_root_dir(tmp_path)
+    plugins = [p for p in server._LOADED_PLUGINS if p.name == "structured"]
+    with TestClient(Starlette(routes=build_plugin_routes(plugins))) as client:
+        params = {"path": "inventory.yaml", "projection": "nodes", "node": '["items"]'}
+        page = client.get("/api/plugin/structured/parsed", params=params).json()
+        assert page["status"] == "ready" and page["preview"]
+        assert page["node"]["partial"] and 1 < page["node"]["child_count"] < 801
+        assert "source_range" not in page["node"] and not page["record_table"]
+
+
+def test_oversized_yaml_mapping_finishes_prior_sequence_and_excludes_open_scalar() -> None:
+    prefix = b"title: collection\nitems:\n- one\n- two\nnotes: |\n  unfinished"
+    page = project_structured(prefix, "yaml", truncated_yaml=True)
+    assert [row["segment"] for row in page["children"]] == ["title", "items"]
+    items = project_structured(prefix, "yaml", truncated_yaml=True, path=["items"], tree=True)
+    assert items["tree_value"] == ["one", "two"]
+    span = items["node"]["source_range"]
+    assert prefix[span["start_byte"] : span["end_byte"]] == b"- one\n- two\n"
+    assert project_structured(b"title: only", "yaml", truncated_yaml=True)["status"] == "too_large"
+
+
+def test_yaml_preview_observes_node_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser import structured_nodes
+
+    monkeypatch.setattr(structured_nodes, "STRUCTURED_YAML_MAX_NODES", 8)
+    data = b"title: collection\nitems:\n" + b"- value\n" * 100
+    page = project_structured(data, "yaml", truncated_yaml=True, path=["items"])
+    assert page["status"] == "ready"
+    assert 0 < page["node"]["child_count"] < 8
+
+
+def test_large_yaml_nested_mapping_keeps_complete_entry_ranges(tmp_path: Path) -> None:
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from metabrowser import server
+    from metabrowser.plugin_loader.static_assets import build_plugin_routes
+
+    header = "title: Café\r\nentries:\r\n  first:\r\n    note: |\r\n      possible: key\r\n"
+    entries = [f"  item-{n}: {'x' * 64}\r\n" for n in range(900)]
+    data = (header + "".join(entries) + "later: true\r\n").encode()
+    (tmp_path / "catalog.yaml").write_bytes(data)
+    server._set_root_dir(tmp_path)
+    plugins = [p for p in server._LOADED_PLUGINS if p.name == "structured"]
+    url = "/api/plugin/structured/parsed"
+    params = {"path": "catalog.yaml", "projection": "nodes"}
+    with TestClient(Starlette(routes=build_plugin_routes(plugins))) as client:
+        root = client.get(url, params=params).json()
+        entries_node = root["children"][1]["node"]
+        assert entries_node["partial"] and "source_range" not in entries_node
+        page = client.get(url, params={**params, "node": '["entries"]'}).json()
+        assert page["preview"] and page["node"] == entries_node
+        assert 1 < entries_node["child_count"] < 901
+        copied = client.get(url, params={**params, "node": '["entries","first"]', "copy": "row"})
+        expected = project_structured(
+            (header + entries[0]).encode(), "yaml", path=["entries", "first"], copy_row=True
+        )
+        for field in ["node", "children", "copy_text"]:
+            assert copied.json()[field] == expected[field]
+        refused = client.get(url, params={**params, "node": '["entries"]', "copy": "row"}).json()
+        assert refused["status"] == "too_large" and "copy_text" not in refused
