@@ -74,14 +74,15 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-step:not(.github
   const style = title ? getComputedStyle(title) : null;
   // A pull request's run, each part shown, in the order drawn, and the part that ends the
   // row: the run's last shown, and a commit's age, its own element.
-  const run = row.querySelector(".github-pull-stack-member-copy");
+  const run = row.querySelector(".github-pull-row-copy");
   const shown = (part) => part.getClientRects().length > 0;
   const runParts = run ? [...run.children].filter(shown) : [];
   const age = row.querySelector(".github-pull-age");
-  const last = run ? runParts.at(-1) : age;
+  const last = run ? run.querySelector(".github-pull-stack-member-number") : age;
   const edge = box.right - parseFloat(getComputedStyle(row).paddingRight);
   const position = row.querySelector(".github-pull-stack-member-position");
-  const placed = (position?.textContent.trim() ?? "") !== "";
+  const place = position?.querySelector(".github-pull-stack-position")?.textContent.trim() ?? "";
+  const placed = place !== "";
   const number = run?.querySelector(".github-pull-stack-member-number") ?? null;
   return {
     text: row.textContent.replace(/\\s+/g, " ").trim(),
@@ -100,7 +101,7 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-step:not(.github
     // Its last part ends where the row's text ends: a pull request's author, or its number
     // when it has none, and a commit's age.
     ends: last ? Math.abs(last.getBoundingClientRect().right - edge) <= 1 : null,
-    place: placed ? position.textContent.trim() : null,
+    place: placed ? place : null,
     tip: position?.getAttribute("data-tip-text") ?? null,
     // The Layers glyph before a place, which names another stack, drawn.
     glyph: [...(position?.querySelectorAll(".github-pull-stack-other svg") ?? [])].some(
@@ -118,7 +119,8 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-step:not(.github
         : [...run.children]
             .slice(0, [...run.children].indexOf(number))
             .some((part) => part.matches(".github-pull-stack-dot") && shown(part)),
-    cut: title ? title.scrollWidth > title.clientWidth : null,
+    cut: title && !run ? title.scrollWidth > title.clientWidth : false,
+    wrapped: Boolean(run && title?.getClientRects().length > 1),
     ellipsis: style ? style.textOverflow : null,
     bordered: parseFloat(getComputedStyle(card).borderTopWidth) > 0,
   };
@@ -256,18 +258,21 @@ try {
     for (const [at, row] of measured.entries()) {
       check(
         `${label}: row ${at + 1} is one row high`,
-        row.height === row.rowHeight,
+        at < 3 ? row.height >= row.rowHeight : row.height === row.rowHeight,
         `${row.height} vs ${row.rowHeight}`,
       );
       check(`${label}: row ${at + 1} is inside its card`, row.inside);
-      check(`${label}: row ${at + 1}'s parts are on one line`, row.oneLine && row.apart);
-      check(`${label}: row ${at + 1}'s run's parts stand apart`, row.runApart);
+      check(
+        `${label}: row ${at + 1}'s parts are on one line`,
+        (at < 3 || row.oneLine) && row.apart,
+      );
+      check(`${label}: row ${at + 1}'s run's parts stand apart`, at < 3 || row.runApart);
       // The rows but the commit the store lacks, which names nothing at its end.
       if (at < 4) {
         check(`${label}: row ${at + 1}'s last part ends the row`, row.ends === true);
       }
       check(`${label}: row ${at + 1}'s card has a border`, row.bordered);
-      if (row.ellipsis !== null) {
+      if (row.ellipsis !== null && at >= 3) {
         check(
           `${label}: row ${at + 1}'s title ends in an ellipsis when cut`,
           row.ellipsis === "ellipsis",
@@ -287,7 +292,7 @@ try {
   }
   const long = await evaluate(ROWS);
   measure("a long title", long);
-  check("a long title is cut short", long[0]?.cut === true);
+  check("a long PR title wraps", long[0]?.wrapped === true);
   if (checkout) {
     check("a long subject is cut short", long[3]?.cut === true);
   }

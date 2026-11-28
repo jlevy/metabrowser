@@ -1216,7 +1216,7 @@ status: 202
     },
     "readiness": {
       "verdict": "conflicts",
-      "tone": "danger",
+      "tone": "severe",
       "label": "Merge conflicts",
       "head": "<draft_head>",
       "observed_at": "2026-09-17T12:00:00Z",
@@ -1225,13 +1225,15 @@ status: 202
           "kind": "conflicts",
           "status": "unmet",
           "summary": "Merge conflicts with topic must be resolved.",
-          "github_url": "https://github.com/octo/demo/pull/10/conflicts"
+          "github_url": "https://github.com/octo/demo/pull/10/conflicts",
+          "tone": "severe"
         },
         {
           "kind": "checks",
           "status": "met",
           "summary": "No checks.",
-          "github_url": null
+          "github_url": null,
+          "tone": "success"
         }
       ],
       "auto_merge": null,

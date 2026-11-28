@@ -129,6 +129,10 @@ const rowOfItem = (item) => item?.firstElementChild.firstElementChild;
 // A row's link holds its title's flow: the state icon, a stack member's place, and the title
 // (pulls-panel.js, `buildRow`).
 const headingOf = (row) => row.childNodes[0];
+const titleIn = (row) =>
+  headingOf(row)
+    .childNodes.find((node) => node.classList?.contains("github-pull-row-copy"))
+    .childNodes.find((node) => node.classList?.contains("github-pulls-title"));
 const frames = new Map(),
   timers = new Map(),
   observers = [];
@@ -548,11 +552,7 @@ async function paint() {
   assert.equal(scroll.scrollTop, 0, "a new leading PR stays visible when at the top");
   assert.equal(rowFor(500), retained);
   assert.equal(document.activeElement, retained);
-  assert.equal(
-    headingOf(retained).childNodes.find((node) => node.classList?.contains("github-pulls-title"))
-      .textContent,
-    retitled,
-  );
+  assert.equal(titleIn(retained).textContent, retitled);
   assert.equal(headingOf(retained).childNodes[0].dataset.state, "draft");
   const flash = "tree-item-flash-in";
   assert.equal(retained.classList.contains(flash), false);
@@ -608,10 +608,7 @@ async function paint() {
   // receipt ends it, a replaced window moves it, and so does losing the network (A1 of review
   // A on #354: offline cancelled the retry but left the titles breathing). Titles are paint
   // only: no row is marked busy. A title drawn into a breathing window joins its beat.
-  const titleOf = (item) =>
-    headingOf(rowOfItem(item)).childNodes.find((node) =>
-      node.classList?.contains("github-pulls-title"),
-    );
+  const titleOf = (item) => titleIn(rowOfItem(item));
   const breathingTitles = () =>
     items()
       .filter((item) => titleOf(item).classList.contains("mb-refreshing"))

@@ -83,7 +83,7 @@ globalThis.DOMParser = class {
 };
 
 // The order the design sets (docs/design-system.md, "One Order for a Pull Request's Fields").
-const ORDER = ["title", "place", "number", "by"];
+const ORDER = ["title", "place", "by", "number"];
 
 // What a reader meets, in order: each field the row draws, by the layout's name for it, and
 // each dot. A hidden node draws nothing; a field drawn empty still counts, as its element is
@@ -102,7 +102,7 @@ const tokens = (link, layout) => {
       }
       return;
     }
-    if (node.hidden) {
+    if (node.hidden || node.className.split(" ").includes("sr-only")) {
       return;
     }
     const name = fieldOf.get(node.className);
@@ -153,10 +153,15 @@ const tokens = (link, layout) => {
     authorLost: [member("2/3", "jlevy"), member("2/3", null)],
   };
   const draw = (layout, members) => {
-    const link = new Element(layout.flow ? "span" : "a");
+    const sidebar = layout === PULLS_RUN;
+    const link = new Element(sidebar ? "span" : "a");
     const row = stackMemberRow(link, titleNodes, identity, layout);
     for (const line of members) {
       row.show(line);
+    }
+    if (sidebar) {
+      assert.equal(row.end.parentNode, null, "the sidebar places the suffix on its summary line");
+      link.append(row.end);
     }
     return tokens(link, layout);
   };
@@ -182,19 +187,27 @@ const tokens = (link, layout) => {
         .filter((dot) => dot !== null);
       assert.deepEqual(
         dotted,
-        dotted.map((_, at) => layout.flow || at > 0),
+        dotted.map((_, at) => after.filter((token) => token !== "·")[at] !== "number"),
         said,
       );
       // An absent field draws nothing, not even an empty element, and the fields drawn keep
       // the one order.
       const shown = met.filter((token) => token !== "·");
-      assert.deepEqual(shown, given(last), said);
+      assert.deepEqual(
+        shown,
+        layout === PULLS_RUN ? given(last).filter((field) => field !== "place") : given(last),
+        said,
+      );
       // A row that got here by changing reads as one drawn so at once.
       assert.deepEqual(met, draw(layout, [last]), said);
       return shown;
     });
     // A line and a run show the same fields in the same order.
-    assert.deepEqual(byLayout[0], byLayout[1], name);
+    assert.deepEqual(
+      byLayout[0].filter((field) => field !== "place"),
+      byLayout[1],
+      name,
+    );
   }
   console.log(
     JSON.stringify({

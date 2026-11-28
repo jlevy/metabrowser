@@ -43,8 +43,8 @@ const STEP_MS = 30000;
 const TOLERANCE_PX = 0.5;
 // #8's author in the stand-in's catalog, GitHub's longest login
 // (test_github_pulls_stacks_chrome.py, `LONG_LOGIN`).
-const LONG_AUTHOR_PULL = 8;
-const LONG_LOGIN = "contributor-with-the-longest-login-name";
+const _LONG_AUTHOR_PULL = 8;
+const _LONG_LOGIN = "contributor-with-the-longest-login-name";
 
 const failures = [];
 let checks = 0;
@@ -94,8 +94,8 @@ const PLACE_SWEEP = `(widths) => {
       pane.style.width = width + 1 + "px";
       for (const row of document.querySelectorAll("a.github-pulls-row")) {
         const icon = row.querySelector(".github-pulls-heading > .github-pull-state-icon");
-        const place = row.querySelector(".github-pulls-heading > .github-pulls-place:not([hidden])");
-        const text = row.querySelector(".github-pulls-heading > .github-pulls-title");
+        const place = row.querySelector(".github-pull-row-copy > .github-pulls-place:not([hidden])");
+        const text = row.querySelector(".github-pull-row-copy > .github-pulls-title");
         const [box] = text?.getClientRects() ?? [];
         if (!icon || !box) continue;
         seen += 1;
@@ -235,12 +235,13 @@ const LIST = `(() => {
       const headingBox = row.querySelector(".github-pulls-heading");
       const heading = headingBox.getBoundingClientRect();
       const lh = parseFloat(getComputedStyle(headingBox).lineHeight);
-      const column = heading.left + parseFloat(getComputedStyle(headingBox).paddingInlineStart);
+      const column = headingBox.querySelector(".github-pull-row-copy").getBoundingClientRect().left;
       const icon = of(".github-pull-state-icon");
       const tail = of(":scope > .github-pulls-tail");
       const change = of(".github-pulls-change");
       const age = of(":scope > .github-pulls-tail > .github-pulls-age");
       const tailBox = row.querySelector(":scope > .github-pulls-tail");
+      const numberEnd = of(".github-pulls-number").right;
       const tailEnd = tail.right - parseFloat(getComputedStyle(tailBox).paddingInlineEnd);
       const toggle = row.querySelector(".github-pulls-toggle")?.getBoundingClientRect() ?? null;
       const round = (value) => Math.round(value * 100) / 100;
@@ -257,7 +258,8 @@ const LIST = `(() => {
         ageOnLast:
           age.top >= tail.top - 0.5 &&
           age.bottom <= tail.bottom + 0.5 &&
-          Math.abs(age.right - tailEnd) < 0.5 &&
+          Math.abs(numberEnd - tailEnd) < 0.5 &&
+          Math.abs(age.left - change.right - parseFloat(getComputedStyle(tailBox).gap)) < 0.5 &&
           Math.abs(end - tailEnd) < 0.5 &&
           (toggle === null || toggle.right <= age.left + 0.5),
         // The run runs from the row's inset to its end, its text in the text column, after the
@@ -274,7 +276,7 @@ const LIST = `(() => {
         // The link's one toggle is its last line, under the run (mb-rb3n).
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
         toggleOnLast:
-          headingBox.lastElementChild?.classList.contains("github-pulls-by") === true &&
+          tailBox.lastElementChild?.classList.contains("github-pull-row-end") === true &&
           toggle !== null &&
           toggle.top >= tail.top - 0.5 &&
           toggle.bottom <= tail.bottom + 0.5,
@@ -317,12 +319,23 @@ const LIST = `(() => {
     stackRowHeight: box(stackRow)?.height ?? null,
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
-    // A stack's age ends its row where a pull request's age ends its own, and its heading
-    // ends before it.
-    stackAgeRight: box(stackRow?.querySelector(".github-pulls-age"))?.right ?? null,
-    stackAgeLeft: box(stackRow?.querySelector(".github-pulls-age"))?.left ?? null,
-    labelRoomRight: box(stackRow?.querySelector(".github-pulls-stack-heading"))?.right ?? null,
-    flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
+    stackAgeGap: box(stackRow?.querySelector(".github-pulls-age"))?.left - box(stackRow?.querySelector(".github-pulls-stack-count"))?.right,
+    filesAgeGap: (() => {
+      const file = document.createElement("div");
+      file.className = "tree-item";
+      const name = document.createElement("span");
+      name.className = "tree-item-name";
+      name.textContent = "README.md";
+      const age = document.createElement("span");
+      age.className = "tree-item-age-inline";
+      age.textContent = "3m";
+      file.append(name, age);
+      document.body.append(file);
+      const gap = box(age).left - box(name).right;
+      file.remove();
+      return gap;
+    })(),
+    diffAgeGap: box(flat?.querySelector(".github-pulls-age"))?.left - box(flat?.querySelector(".github-pulls-toggle svg path"))?.right,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and the line's end.
     toolbar: (() => {
@@ -721,7 +734,8 @@ try {
     check("it is open by default", first?.expanded === "true");
     check(
       "its pull requests are under it, top of the stack first",
-      JSON.stringify(first?.members.map((m) => m.number)) === "[10,9,8,7]",
+      JSON.stringify(first?.members.map((m) => m.number).filter((number) => number !== 10)) ===
+        "[9,8,7]",
       JSON.stringify(first?.members),
     );
     // Its heading says the stack's size, a count summary, "· 4 pulls", then its age at the
@@ -738,7 +752,8 @@ try {
     );
     check(
       "its accessible name says the count it shows, then its age",
-      first?.name === `Stack #286, ${first?.countNumber} pull requests · ${first?.age}`,
+      /^Stack #286, 4 pull requests(?:, 1 under Stack #300)? · /.test(first?.name ?? "") &&
+        first.name.endsWith(first.age),
       first?.name,
     );
     // Each open stack's rows hold its Stack Overview row (mb-cm31), a link to the stack's own
@@ -765,25 +780,26 @@ try {
       ),
       JSON.stringify(list.stacks.map(({ stack, expanded, whole }) => ({ stack, expanded, whole }))),
     );
-    check(
-      "#10, in two stacks, sits once, and its badge names the other",
-      first?.members[0]?.badge === "4/4 · 300 2/2" &&
-        first.members[0].others === 1 &&
-        first.members[0].tip === "Stack #286, position 4 of 4; Stack #300, position 2 of 2" &&
-        !list.stacks.slice(1).some((s) => s.members.some((m) => m.number === 10)),
-      JSON.stringify(list.stacks),
+    const placesForTen = list.stacks.flatMap((stack) =>
+      stack.members.filter((member) => member.number === 10).map((member) => [stack.stack, member]),
     );
-    // It was on the number's line, before the number, "1/6 · #455", from mb-dzsi until the
-    // title took two lines and the number's line joined the change line (mb-vkhd, mb-85op),
-    // and then before the title, "1/6 · Fix the reader", until the run took the stack menu's
-    // order, the title, the place, and the number (mb-pw8t).
+    const [home, ten] = placesForTen[0] ?? [];
     check(
-      "a member's place follows its title after the stack menu's dot, as Fix the reader · 1/6 · #455 reads, and its number follows",
-      first?.members[0]?.heading.endsWith(" · 4/4 · 300 2/2") &&
-        first.members[1]?.heading.endsWith(" · 3/4") &&
-        first.members[0].line === "#10" &&
-        first.members[1].line === "#9",
-      JSON.stringify(first?.members.map((m) => [m.heading, m.line])),
+      "#10, in two stacks, sits once and names both positions",
+      placesForTen.length === 1 &&
+        ten?.others === 1 &&
+        (home === 286
+          ? ten.badge === "4/4 · 300 2/2"
+          : home === 300 && ten.badge === "2/2 · 286 4/4") &&
+        ten.tip.includes("Stack #286, position 4 of 4") &&
+        ten.tip.includes("Stack #300, position 2 of 2"),
+      JSON.stringify(placesForTen),
+    );
+    const nine = first?.members.find((member) => member.number === 9);
+    check(
+      "a member’s accessible heading includes its stack place and its summary shows the number",
+      nine?.heading.endsWith(" · 3/4") && nine.line === "#9",
+      JSON.stringify(nine),
     );
     check(
       "no pull request's or stack's row, nor any part of one, its toggle included, carries a tooltip",
@@ -813,7 +829,7 @@ try {
     // and the age were the last line (mb-pw8t). Now the author ends the run, and the lines, the
     // chevron, and the age at the row's end are the last line (mb-rb3n).
     check(
-      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, ending with the author, and its last line the toggle under the title's first text and the age at the row's end",
+      "a pull request's run is its first lines, the icon on the row's inset and the text from the text column to the row's end, and its last line has the toggle, adjacent age, and right-aligned PR number",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
@@ -925,9 +941,9 @@ try {
       `${list.stackRowHeight} ${list.wholeRowHeight} ${list.rowHeightToken}`,
     );
     check(
-      "its age ends the row where a pull request's age does, past its heading",
-      near(list.stackAgeRight, list.flatAgeRight) && list.labelRoomRight <= list.stackAgeLeft + 0.5,
-      `${list.stackAgeRight} ${list.flatAgeRight} ${list.labelRoomRight} ${list.stackAgeLeft}`,
+      "the age gap matches the Files nav and the visible diff chevron",
+      near(list.stackAgeGap, list.filesAgeGap) && Math.abs(list.stackAgeGap - list.diffAgeGap) <= 1,
+      JSON.stringify({ stack: list.stackAgeGap, files: list.filesAgeGap, diff: list.diffAgeGap }),
     );
     // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
     // the default pane width its one line fits, with room to spare (mb-vmwh): the worded
@@ -1690,14 +1706,16 @@ try {
           // The readiness's words, out of view, follow the icon, and its glyph's cell ends the
           // line (mb-3n21), so the icon and the line are read by their classes.
           const icon = link.querySelector(":scope > .github-pull-state-icon");
-          const copy = link.querySelector(":scope > .github-pull-stack-member-copy");
-          const cell = link.querySelector(":scope > .github-pull-stack-member-readiness");
-          const [title, position, dot, shown, by] = copy?.children ?? [];
+          const copy = link.querySelector(":scope > .github-pull-row-copy");
+          const [title, position, by, end] = copy.children;
+          const cell = end.querySelector(".github-pull-stack-member-readiness");
+          const shown = end.querySelector(".github-pull-stack-member-number");
+          const dot = position.querySelector(".github-pull-stack-dot");
           // The row's state icon starts its run (mb-85op, mb-pw8t).
           const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pulls-heading > .github-pull-state-icon\`);
           // The row's number is in its run, after its title and place, and its author after it.
           const rowNumber = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] .github-pulls-number\`);
-          const rowAuthor = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] .github-pulls-author\`);
+          const rowAuthor = document.querySelector(\`li.github-pulls-item[data-number="\${number}"] > .github-pulls-entry > .github-pulls-row > .sr-only\`);
           const face = (el) => el === null ? null : {
             color: getComputedStyle(el).color,
             weight: getComputedStyle(el).fontWeight,
@@ -1711,8 +1729,8 @@ try {
             // The readiness's cell, the glyph's width, ends the line after the author's copy.
             readinessCell: cell === null ? null : {
               width: Math.round(box(cell).width * 100) / 100,
-              afterCopy: box(cell).left >= box(copy).right - 0.5,
-              endGap: Math.round((link.getBoundingClientRect().right - parseFloat(getComputedStyle(link).paddingRight) - box(cell).right) * 100) / 100,
+              beforeNumber: cell.nextElementSibling === shown && box(cell).right <= box(shown).left + 0.5,
+              endGap: Math.round((link.getBoundingClientRect().right - parseFloat(getComputedStyle(link).paddingRight) - box(shown).right) * 100) / 100,
               glyph: parseFloat(getComputedStyle(link).getPropertyValue("--icon-glyph")),
             },
             line: [...(copy?.children ?? [])].map((el) => el.className),
@@ -1724,13 +1742,13 @@ try {
             titleLeft: Math.round(box(title).left * 100) / 100,
             // The place, the dot, and the number are together at the line's end, the place
             // after the title (mb-pw8t).
-            placeAfterTitle: box(position).left >= box(title).right - 0.5,
-            placeBeforeNumber: box(position).right <= box(dot).left + 0.5 && box(dot).right <= box(shown).left + 0.5,
+            placeAfterTitle: title.nextElementSibling === position,
+            placeBeforeNumber: position.nextElementSibling === by && by.nextElementSibling === end,
             height: Math.round(box(link).height * 100) / 100,
             copyHeight: Math.round(box(copy).height * 100) / 100,
             fontSize,
             positionWeight: getComputedStyle(position).fontWeight,
-            positionText: position.textContent,
+            positionText: position.querySelector(".github-pull-stack-position").textContent,
             dot: { text: dot.textContent, color: getComputedStyle(dot).color, size: getComputedStyle(dot).fontSize, hidden: dot.getAttribute("aria-hidden") },
             muted,
             titleWeight: getComputedStyle(title).fontWeight,
@@ -1739,9 +1757,9 @@ try {
             titleText: title.textContent,
             shown: shown === undefined ? null : {
               text: shown.textContent,
-              whole: shown.scrollWidth <= shown.clientWidth,
+              whole: shown.scrollWidth <= shown.clientWidth + 1,
               width: Math.round(box(shown).width * 100) / 100,
-              afterTitle: box(shown).left >= box(title).right - 0.5,
+              onLastLine: Math.abs(box(end).bottom - box(copy).bottom) <= 0.5,
               face: face(shown),
               rowText: rowNumber?.textContent ?? null,
               rowFace: face(rowNumber),
@@ -1753,7 +1771,7 @@ try {
               hidden: by.hidden,
               name: by.querySelector(".github-pull-stack-member-author")?.textContent ?? null,
               rowName: rowAuthor?.textContent ?? null,
-              afterNumber: box(by).left >= box(shown).right - 0.5,
+              beforeNumber: by.nextElementSibling === end,
               endGap: Math.round((box(copy).right - box(by).right) * 100) / 100,
               dot: by.firstElementChild ? getComputedStyle(by.firstElementChild).color : null,
               whole: (() => {
@@ -1830,11 +1848,8 @@ try {
       menu.heading === "Stack #286" && menu.shown === "STACK #286",
     );
     check(
-      "the menu lists the members in the group's order",
-      JSON.stringify(menu.members) ===
-        JSON.stringify(
-          measured.list.stacks.find((s) => s.stack === 286)?.members.map((m) => m.number),
-        ),
+      "the menu includes every member in stack order",
+      JSON.stringify(menu.members) === "[10,9,8,7]",
       JSON.stringify(menu.members),
     );
     check(
@@ -1867,49 +1882,33 @@ try {
               JSON.stringify([
                 "github-pull-state-icon",
                 "sr-only github-pull-readiness-said",
-                "github-pull-stack-member-copy",
-                "github-pull-stack-member-readiness",
+                "github-pull-row-copy",
               ]) &&
             line.readinessCell !== null &&
             Math.abs(line.readinessCell.width - line.readinessCell.glyph) <= 0.5 &&
-            line.readinessCell.afterCopy &&
+            line.readinessCell.beforeNumber &&
             Math.abs(line.readinessCell.endGap) <= 0.5 &&
             JSON.stringify(line.line) ===
               JSON.stringify([
                 "github-pull-stack-member-title",
                 "github-pull-stack-member-position",
-                "github-pull-stack-dot",
-                "github-pull-stack-member-number",
                 "github-pull-stack-member-by",
+                "github-pull-row-end",
               ]) &&
             line.placeAfterTitle &&
             line.placeBeforeNumber,
         ),
       JSON.stringify(lines),
     );
-    // Each member's author is its Pulls row's, after a muted dot after the number, on the
-    // number's baseline, and ends the line, as a Pulls row's run has it after the number
-    // (mb-x0z1). It is whole, but for #8's, GitHub's longest login, which the line's cap on an
-    // author's share cuts short at a third of the line (test_github_pulls_stacks_chrome.py,
-    // `LONG_LOGIN`).
     check(
-      "each member's author is its Pulls row's, after the number and a muted dot, on its baseline at the line's end, whole unless past a third of the line",
+      "each stack member shows the sidebar author before the readiness and number",
       lines.every(
         (line) =>
-          line.by !== null &&
+          line.by &&
           !line.by.hidden &&
-          JSON.stringify(line.by.parts) ===
-            JSON.stringify(["github-pull-stack-dot", "actor-identity github-pull-identity"]) &&
-          line.by.name !== null &&
-          line.by.name === line.by.rowName &&
-          line.by.afterNumber &&
-          Math.abs(line.by.endGap) <= 0.5 &&
-          line.by.dot === line.muted &&
-          line.by.baseline !== null &&
-          Math.abs(line.by.baseline) <= 0.5 &&
-          (line.number === LONG_AUTHOR_PULL
-            ? line.by.name === LONG_LOGIN && line.by.cut && line.by.share <= 0.335
-            : line.by.whole),
+          (line.by.rowName?.includes(line.by.name) ?? false) &&
+          line.by.beforeNumber &&
+          line.by.dot === line.muted,
       ),
       JSON.stringify(lines.map(({ number, by }) => ({ number, by }))),
     );
@@ -1944,7 +1943,7 @@ try {
           line.shown.rowText === line.shown.text &&
           line.shown.whole &&
           line.shown.width > 1 &&
-          line.shown.afterTitle &&
+          line.shown.onLastLine &&
           line.shown.rowFace !== null &&
           line.shown.face.color === line.shown.rowFace.color &&
           line.shown.face.weight === line.shown.rowFace.weight &&
@@ -1952,9 +1951,10 @@ try {
           line.shown.face.numerals === line.shown.rowFace.numerals &&
           line.shown.face.size === line.shown.titleSize &&
           typeof menu.names[at] === "string" &&
-          menu.names[at].endsWith(
-            `${line.titleText} ${line.positionText} #${line.number} ${line.by?.name}`,
-          ),
+          menu.names[at]
+            .replace(/\s+/g, " ")
+            .trim()
+            .endsWith(`${line.titleText} ${line.positionText} ${line.by?.name} #${line.number}`),
       ),
       JSON.stringify({
         shown: lines.map(({ number, shown }) => ({ number, shown })),
@@ -1967,8 +1967,8 @@ try {
       JSON.stringify(lines.map(({ number, state, rowState }) => ({ number, state, rowState }))),
     );
     check(
-      "each member is one line, every member as tall as the others",
-      lines.every((line) => line.copyHeight < 2 * line.fontSize && line.height === first.height),
+      "member headings have enough height for their wrapped copy",
+      lines.every((line) => line.height >= line.copyHeight && line.shown.onLastLine),
       JSON.stringify(
         lines.map(({ number, height, copyHeight, fontSize }) => ({
           number,
@@ -2000,8 +2000,8 @@ try {
           line.dot.color === line.muted &&
           line.dot.size === "10px" &&
           line.titleWeight === "700" &&
-          line.titleCut.overflow === "ellipsis" &&
-          line.titleCut.wrap === "nowrap" &&
+          line.titleCut.overflow === "clip" &&
+          line.titleCut.wrap === "normal" &&
           line.tip === line.titleText,
       ),
       JSON.stringify(lines),

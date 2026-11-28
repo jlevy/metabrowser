@@ -43,6 +43,7 @@ from typing import NamedTuple, get_args
 from urllib.parse import unquote
 
 from metabrowser import kpress_adapter, shell_glyphs
+from metabrowser.builtin_plugins.github.pull_status import BUCKETS
 from metabrowser.root_identity import KIND_LABELS, IdentityKind
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -513,26 +514,59 @@ def test_a_plugins_pull_states_draw_the_plugins_glyphs() -> None:
     assert sorted(states.values()) == sorted(_svg_definitions(state))
 
 
+def _literal_glyphs(source: str, table: str) -> dict[str, str]:
+    """The entries of a frozen object literal in *source* whose glyph is a name, not a call."""
+
+    start = source.index(f"export const {table} = Object.freeze({{")
+    body = source[start : source.index("});", start)]
+    return dict(re.findall(r"^\s+(\w+): \"(\w+)\",$", body, flags=re.M))
+
+
+def _vocabulary_rows(design: str) -> list[tuple[str, str]]:
+    """The design system's status vocabulary: each row's meaning cell and its Lucide id."""
+
+    section = design[design.index("### Pull Request Status Vocabulary") :]
+    section = section[: section.index("\n### ")]
+    return re.findall(
+        r"^\| [^|]+ \| ([^|]+) \| [^|]+ \| Lucide `([a-z0-9-]+)` \|", section, flags=re.M
+    )
+
+
 def test_a_plugins_readiness_verdicts_draw_the_plugins_glyphs() -> None:
-    """Every glyph pull-readiness.js defines is some verdict's, and every verdict's is defined.
+    """Every glyph pull-readiness.js defines is some meaning's, and every meaning's is defined.
 
     A glyph two verdicts share is one row, so its meaning covers both
     (docs/design-system-icons.md, "Git and GitHub Objects"). The design system's table of
-    each verdict's glyph is the vocabulary, by Lucide id (docs/design-system.md, "A Pull
-    Request’s Readiness").
+    each meaning's glyph is the vocabulary, by Lucide id (docs/design-system.md, "Pull Request
+    Status Vocabulary"): each verdict, each met requirement, and each check bucket the module
+    names a glyph for, in the row that names it.
     """
     readiness = (BUILTIN_PLUGINS / "github" / "pull-readiness.js").read_text(encoding="utf-8")
-    start = readiness.index("export const VERDICT_GLYPHS = Object.freeze({")
-    body = readiness[start : readiness.index("});", start)]
-    verdicts = dict(re.findall(r"^\s+(\w+): \"(\w+)\",$", body, flags=re.M))
-    assert verdicts, "the vocabulary is a frozen object literal of verdict to glyph"
+    verdicts = _literal_glyphs(readiness, "VERDICT_GLYPHS")
+    met = _literal_glyphs(readiness, "MET_GLYPHS")
+    buckets = _literal_glyphs(readiness, "CHECK_GLYPHS")
+    assert verdicts and met and buckets, "the vocabulary is frozen object literals of glyphs"
     definitions = _svg_definitions(readiness)
-    assert sorted(set(verdicts.values())) == sorted(definitions)
+    drawn = {*verdicts.values(), *met.values(), *buckets.values()}
+    assert sorted(drawn) == sorted(definitions), "every glyph defined is some meaning's"
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
-    section = design[design.index("### A Pull Request’s Readiness") :]
-    section = section[: section.index("\n### ")]
-    table = dict(re.findall(r"^\| `(\w+)` \| Lucide `([a-z0-9-]+)` \|$", section, flags=re.M))
-    assert table == {verdict: definitions[name][1] for verdict, name in verdicts.items()}
+    documented: dict[str, dict[str, str]] = {"verdict": {}, "met": {}, "bucket": {}}
+    for cell, lucide in _vocabulary_rows(design):
+        for part in cell.strip().split("; "):
+            if part.startswith("`"):
+                for verdict in re.findall(r"`(\w+)`", part):
+                    documented["verdict"][verdict] = lucide
+            elif found := re.fullmatch(r"(\w+) met", part):
+                documented["met"][found[1]] = lucide
+            elif found := re.fullmatch(r"bucket `(\w+)`", part):
+                documented["bucket"][found[1]] = lucide
+    lucide_of = {name: definition[1] for name, definition in definitions.items()}
+    assert documented["verdict"] == {v: lucide_of[name] for v, name in verdicts.items()}
+    assert documented["met"] == {kind: lucide_of[name] for kind, name in met.items()}
+    assert {
+        bucket: lucide for bucket, lucide in documented["bucket"].items() if bucket in buckets
+    } == {bucket: lucide_of[name] for bucket, name in buckets.items()}
+    assert sorted(documented["bucket"]) == sorted(BUCKETS), "every bucket has its row"
 
 
 def test_an_upstream_glyph_is_one_drawing_under_its_own_id() -> None:

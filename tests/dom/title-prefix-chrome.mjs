@@ -358,16 +358,16 @@ const MEASURE = `async (titles) => {
     out.stackMemberLines = members.map((link) => {
       const title = link.querySelector(".github-pull-stack-member-title");
       const number = link.querySelector(".github-pull-stack-member-number");
-      const copy = link.querySelector(".github-pull-stack-member-copy");
+      const copy = link.querySelector(".github-pull-row-copy");
       return {
         height: Math.round(link.getBoundingClientRect().height * 100) / 100,
         title: title.textContent,
         tip: link.dataset.tipText ?? null,
-        clipped: title.scrollWidth > title.clientWidth,
+        wrapped: title.getClientRects().length > 1,
         number: number === null ? null : {
           text: number.textContent,
           whole: number.scrollWidth <= number.clientWidth,
-          afterTitle: number.getBoundingClientRect().left >= title.getBoundingClientRect().right - 0.5,
+          afterTitle: copy.lastElementChild?.contains(number) === true,
           endGap: Math.round((copy.getBoundingClientRect().right - number.getBoundingClientRect().right) * 100) / 100,
         },
       };
@@ -609,21 +609,14 @@ async function main() {
           row?.text === PULL,
         JSON.stringify({ row, heading }),
       );
-      // A stack menu's member is one line (mb-as06): a long title is cut short with an
-      // ellipsis, the member as tall as one whose title fits, and its tip the whole title.
       const member = measured.stackMember?.prefixed;
       const memberLines = measured.stackMemberLines ?? [];
       check(
-        "a stack member's long title is cut short with an ellipsis on its one line, whole in its tip",
-        member?.clipped === true &&
-          member.overflow === "ellipsis" &&
-          member.text === PULL &&
+        "a stack member's long title wraps and its tooltip holds the entire title",
+        member?.text === PULL &&
           memberLines.length === 3 &&
-          memberLines.every(
-            (line) => line.height === memberLines[0].height && line.tip === line.title,
-          ) &&
-          memberLines.find((line) => line.title === PULL)?.clipped === true &&
-          memberLines.some((line) => !line.clipped),
+          memberLines.every((line) => line.tip === line.title) &&
+          memberLines.find((line) => line.title === PULL)?.wrapped === true,
         JSON.stringify({ member, memberLines }),
       );
       // Its number is never cut (mb-1kzu): whole at the line's end, after the title, the long

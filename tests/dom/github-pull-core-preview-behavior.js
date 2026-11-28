@@ -902,15 +902,16 @@ async function run() {
     ["1", "1"],
   );
   assert.match(checksBody.textContent, /tests \(3\.13\)/);
-  // The pending check leads, as `gh pr checks` lists it, in the pending ink.
+  // The pending check leads, as `gh pr checks` lists it, in the pending tone, its chip the
+  // checks' circle for its bucket (pull-readiness.js, `checkBadge`).
   assert.deepEqual(
     checksBody
       .querySelector(".github-pull-checks")
       .querySelectorAll(".github-pull-badge")
-      .map((badge) => [badge.getAttribute("data-state"), badge.textContent]),
+      .map((badge) => [badge.dataset.bucket, badge.dataset.tone, badge.textContent]),
     [
-      ["pending", "In progress"],
-      ["pass", "Success"],
+      ["pending", "attention", "In progress"],
+      ["pass", "success", "Success"],
     ],
   );
   // One note for the checks: the list was cut short, and still shows what it holds.

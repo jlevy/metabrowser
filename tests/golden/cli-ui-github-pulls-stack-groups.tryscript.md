@@ -584,11 +584,11 @@ $ node tests/dom/github-pulls-stack-groups-session.js
   ],
   "mounted": {
     "member lines": [
-      "#8: Say more in the guide · 3/3 · #8",
-      "#7: Count to two in the app · 2/3 · #7",
-      "#6: Work item 6 · 1/3 · #6"
+      "#8: Say more in the guide · 3/3 #8",
+      "#7: Count to two in the app · 2/3 #7",
+      "#6: Work item 6 · 1/3 #6"
     ],
-    "a pull request in no stack": "#106: Work item 106 · #106",
+    "a pull request in no stack": "#106: Work item 106 #106",
     "files": {
       "Right on #8": "false",
       "then Left": "false"
@@ -819,18 +819,17 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       8
     ],
     "lines": [
-      "draft Stack change 10 3/3 · #10",
-      "closed Stack change 9 2/3 · #9",
-      "merged Stack change 8 1/3 · #8"
+      "draft Stack change 10 · 3/3 #10",
+      "closed Stack change 9 · 2/3 #9",
+      "merged Stack change 8 · 1/3 #8"
     ],
     "layout": [
       "github-pull-state-icon",
-      "github-pull-stack-member-copy",
+      "github-pull-row-copy",
       "github-pull-stack-member-title",
       "github-pull-stack-member-position",
-      "github-pull-stack-dot",
-      "github-pull-stack-member-number",
-      "github-pull-stack-member-by"
+      "github-pull-stack-member-by",
+      "github-pull-row-end"
     ],
     "groupRow": {
       "label": "Stack #290",

@@ -317,11 +317,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       .filter((node) => !String(node.getAttribute?.("class") ?? "").includes("sr-only"))
       .map((node) => node.textContent)
       .join("");
-  assert.deepEqual(memberLinks().map(shownText), [
-    "Stack change 8 3/3 · #8 · contributor",
-    "Stack change 7 2/3 · #7 · forker",
-    "Stack change 6 1/3 · #6 · contributor",
-  ]);
+  assert.deepEqual(
+    memberLinks().map((link) => shownText(link).replaceAll("\u00a0", " ")),
+    [
+      "Stack change 8 · 3/3 · contributor #8",
+      "Stack change 7 · 2/3 · forker #7",
+      "Stack change 6 · 1/3 · contributor #6",
+    ],
+  );
   // Every member is one line in one layout (mb-as06): the state icon, then the title, whose
   // whole is the member's tip, then, together at the line's end, the bold place, a muted dot,
   // the number, and another dot and the author, in a Pulls row's order, the title, the place,
@@ -341,10 +344,9 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   });
   const line = [
     "span.github-pull-stack-member-title",
-    "strong.github-pull-stack-member-position",
-    "span.github-pull-stack-dot",
-    "span.github-pull-stack-member-number",
+    "span.github-pull-stack-member-position",
     "span.github-pull-stack-member-by",
+    "span.github-pull-row-end",
   ];
   // The readiness's words follow the state icon, out of view, and its glyph's cell ends the
   // line (mb-3n21): the page's own member says the readiness its header shows, and draws its
@@ -354,8 +356,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const parts = [
     "github-pull-state-icon",
     "sr-only github-pull-readiness-said",
-    "github-pull-stack-member-copy",
-    "github-pull-stack-member-readiness",
+    "github-pull-row-copy",
   ];
   assert.deepEqual(memberLinks().map(layout), [
     { parts, line, state: null, named: null, tip: "Stack change 8" },
@@ -363,11 +364,16 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     { parts, line, state: null, named: null, tip: "Stack change 6" },
   ]);
   const readinessOf = (link) => {
-    const glyph = link.children[3].children[0];
+    const cell = link.children[2].children
+      .at(-1)
+      .children.find(
+        (node) => node.getAttribute?.("class") === "github-pull-stack-member-readiness",
+      );
+    const glyph = cell.children[0];
     return {
       said: link.children[1].textContent,
       glyph: glyph === undefined ? null : `${glyph.dataset.verdict} ${glyph.dataset.tone}`,
-      hidden: link.children[3].getAttribute("aria-hidden"),
+      hidden: cell.getAttribute("aria-hidden"),
     };
   };
   assert.deepEqual(memberLinks().map(readinessOf), [
@@ -375,20 +381,13 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     { said: "Checks pending", glyph: "checks_pending attention", hidden: "true" },
     { said: "", glyph: null, hidden: "true" },
   ]);
-  assert.deepEqual(
-    memberLinks().map((link) =>
-      link.children[2].children
-        .filter((node) => typeof node === "object")
-        .slice(-2)
-        .map((node) => node.textContent),
-    ),
-    [
-      ["#8", " · contributor"],
-      ["#7", " · forker"],
-      ["#6", " · contributor"],
-    ],
-    "each member's number is followed by its author, which ends its line",
-  );
+  for (const [at, link] of memberLinks().entries()) {
+    assert.equal(link.children[2].children.at(-1).children.at(-1).textContent, `#${8 - at}`);
+    assert.equal(
+      classOf(link.children[2].children.filter((node) => typeof node === "object").at(-2)),
+      "github-pull-stack-member-by",
+    );
+  }
   // Once the Pulls list has said the others' states, the menu opened again draws them.
   pullState.noteListed(source, "all", [
     { number: 8, state: "draft", updatedAt: "2026-11-24T00:00:00Z" },
@@ -543,17 +542,17 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       (element) => element.getAttribute("class") === "github-pull-stack-member-by",
     );
   assert.equal(byOf(anchors[2]).hidden, false);
-  assert.equal(byOf(anchors[2]).textContent, " · forker");
+  assert.equal(byOf(anchors[2]).textContent, "\u00a0· forker");
   assert.deepEqual(
     [anchors[1], anchors[3]].map((anchor) => [byOf(anchor).hidden, byOf(anchor).textContent]),
     [
-      [false, " · contributor"],
-      [false, " · contributor"],
+      [false, "\u00a0· contributor"],
+      [false, "\u00a0· contributor"],
     ],
   );
   assert.deepEqual(
     anchors[0].children.map((node) => node.getAttribute("class")),
-    ["github-pull-stack-icon", "github-pull-stack-member-copy"],
+    ["github-pull-stack-icon", "github-pull-row-copy"],
   );
   // This fake parser makes no glyph, so the slot stands empty here and keeps the column; the
   // stacks Chrome check pins the glyph itself and where it and the words start.

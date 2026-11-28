@@ -60,13 +60,15 @@ import {
   guideReads,
 } from "./guide-reads.js";
 import {
+  checkBadge,
   readinessBadge,
   readinessForState,
   readinessIcon,
   readinessSizers,
   requirementBadge,
-  STATUS_TONES,
+  STATUS_ORDER,
   statusWord,
+  TONES,
 } from "./pull-readiness.js";
 import {
   createStackIndex,
@@ -555,7 +557,8 @@ const TRUNCATED = Object.freeze({
  * The server's verdict on a pull request's head and the requirements behind it
  * (`Readiness` in pull_readiness.py).
  *
- * @typedef {{kind: string, status: string, summary: string, github_url?: string | null}} PullRequirement
+ * @typedef {{kind: string, status: string, summary: string, github_url?: string | null,
+ *   tone?: string}} PullRequirement
  * @typedef {{verdict: string, tone: string, label: string, head: string,
  *   observed_at?: string | null, requirements?: PullRequirement[],
  *   auto_merge_summary?: string | null}} PullReadiness
@@ -578,8 +581,8 @@ const TRUNCATED = Object.freeze({
  * sentence, a row for each requirement, and auto-merge's. Everything said is the server's
  * (`Readiness` in pull_readiness.py); the page decides only where each row links.
  *
- * @typedef {{kind: string, status: string, tone: string, word: string, summary: string,
- *   link: RequirementLink | null}} RequirementRow
+ * @typedef {{kind: string, status: string, tone: import("./pull-readiness.js").ReadinessTone,
+ *   word: string, summary: string, link: RequirementLink | null}} RequirementRow
  * @typedef {{verdict: import("./pull-readiness.js").ReadinessVerdict,
  *   tone: import("./pull-readiness.js").ReadinessTone, label: string, name: string,
  *   tip: string | null, sentence: string | null, rows: RequirementRow[],
@@ -639,8 +642,8 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
- * One row of the Checks tab. `bucket` is the server's, and the badge's ink
- * (`data-state`, github/styles.css); `label` is the check's own state in words.
+ * One row of the Checks tab. `bucket` is the server's, and gives the badge its glyph and its
+ * tone (`checkBadge` in pull-readiness.js); `label` is the check's own state in words.
  *
  * @typedef {{name: string, detail: string | null, bucket: string, label: string,
  *   required: boolean, action: CheckAction | null}} CheckItem
@@ -1508,52 +1511,76 @@ function requirementLink(requirement, shownChecks, shownTimeline, base) {
  *
  * - The header's badge says the server's label, its accessible name adds auto-merge's
  *   sentence while it is on, and its tooltip (`tip`) the requirements that are not met,
- *   which the badge abbreviates.
+ *   which the badge abbreviates. A clear draft's tooltip explains how to leave draft mode.
  * - The Merge status section's sentence is the requirement that heads the verdict: the first,
- *   in the server's order, at the worst status among them (`STATUS_TONES`' order, the
- *   server's `STATUS_ORDER`), as the server chose the verdict by. A verdict no requirement
- *   stands in the way of has none, and its badge says it all.
- * - Each requirement's row is its status's word in the tone its status gives a verdict, the
- *   server's sentence, and its link (`requirementLink`).
+ *   in the server's order, at the worst status among them (`STATUS_ORDER`, the server's), as
+ *   the server chose the verdict by. For a clear draft, it explains how to leave draft mode.
+ * - Each requirement's row is its chip, the glyph of the verdict it heads and its status's
+ *   word in the tone the server gave it, then the server's sentence and its link
+ *   (`requirementLink`). A row with a status or a tone this build does not draw is left out.
  *
  * @param {PullReadiness | null | undefined} readiness
  * @param {PullModel["checks"]} shownChecks
  * @param {TimelineItem[]} shownTimeline
  * @param {string} base The pull request's page.
+ * @param {boolean} [statusReadFailed]
  * @returns {ReadinessModel | null}
  */
-export function readinessModel(readiness, shownChecks, shownTimeline, base) {
+export function readinessModel(
+  readiness,
+  shownChecks,
+  shownTimeline,
+  base,
+  statusReadFailed = false,
+) {
   if (readiness === null || readiness === undefined || typeof readiness !== "object") {
     return null;
   }
   const label = text(readiness.label);
+  const verdict = /** @type {ReadinessModel["verdict"]} */ (text(readiness.verdict));
+  let note = null;
+  if (verdict === "ready_for_review") {
+    note = "This PR is a draft. Mark it ready for review on GitHub before merging.";
+  } else if (verdict === "status_unavailable") {
+    note = statusReadFailed
+      ? "Merge status could not be loaded. Use Refresh to try again."
+      : "There is no merge status for the current commit and base branch yet.";
+  }
   const autoMerge = text(readiness.auto_merge_summary) || null;
   /** @type {RequirementRow[]} */
   const rows = list(readiness.requirements)
-    .filter((requirement) => Object.hasOwn(STATUS_TONES, text(requirement?.status)))
+    .filter(
+      (requirement) =>
+        STATUS_ORDER.includes(
+          /** @type {import("./pull-readiness.js").RequirementStatus} */ (
+            text(requirement?.status)
+          ),
+        ) &&
+        TONES.includes(
+          /** @type {import("./pull-readiness.js").ReadinessTone} */ (text(requirement?.tone)),
+        ),
+    )
     .map((requirement) => {
-      const status = /** @type {keyof typeof STATUS_TONES} */ (text(requirement.status));
+      const status = text(requirement.status);
       return {
         kind: text(requirement.kind),
         status,
-        tone: STATUS_TONES[status],
+        tone: /** @type {import("./pull-readiness.js").ReadinessTone} */ (text(requirement.tone)),
         word: statusWord(status),
         summary: text(requirement.summary),
         link: requirementLink(requirement, shownChecks, shownTimeline, base),
       };
     });
   const unmet = rows.filter((row) => row.status !== "met");
-  const worst = Object.keys(STATUS_TONES).find((status) =>
-    unmet.some((row) => row.status === status),
-  );
+  const worst = STATUS_ORDER.find((status) => unmet.some((row) => row.status === status));
   return {
     // The server's, as it named them: the page draws a verdict and a tone it was given.
-    verdict: /** @type {ReadinessModel["verdict"]} */ (text(readiness.verdict)),
+    verdict,
     tone: /** @type {ReadinessModel["tone"]} */ (text(readiness.tone)),
     label,
     name: autoMerge === null ? label : `${label}. ${autoMerge}`,
-    tip: unmet.length === 0 ? null : unmet.map((row) => row.summary).join(" "),
-    sentence: rows.find((row) => row.status === worst)?.summary ?? null,
+    tip: unmet.length === 0 ? note : unmet.map((row) => row.summary).join(" "),
+    sentence: rows.find((row) => row.status === worst)?.summary ?? note,
     rows,
     autoMerge,
   };
@@ -1946,7 +1973,13 @@ export function describePull(envelope, page) {
     // while the record is on its way, and the Checks tab has no list to link into yet. It
     // judged the core's state, so a state the list says instead draws none.
     model.readiness = readinessForState(
-      readinessModel(envelope.readiness, null, [], model.pull.htmlUrl),
+      readinessModel(
+        envelope.readiness,
+        null,
+        [],
+        model.pull.htmlUrl,
+        typeof envelope.status_unavailable === "string",
+      ),
       displayState(preview.pull),
       model.pull.state,
     );
@@ -2036,7 +2069,13 @@ export function describePull(envelope, page) {
   model.checks = checks(envelope.checks, head, model.pull.htmlUrl) ?? checksListing(envelope, head);
   model.checkNotes = checkNotes(envelope, head);
   model.readiness = readinessForState(
-    readinessModel(envelope.readiness, model.checks, model.timeline, model.pull.htmlUrl),
+    readinessModel(
+      envelope.readiness,
+      model.checks,
+      model.timeline,
+      model.pull.htmlUrl,
+      typeof envelope.status_unavailable === "string",
+    ),
     displayState(pull),
     model.pull.state,
   );
@@ -4669,8 +4708,7 @@ export function retellAges(mb, node) {
 
 /** An actor, as the shell draws every person (docs/design-system.md, "Actor Identity"): the
  * SDK's identity, the avatar's box and then the bold name, with GitHub's avatar in the box
- * where the record carries one that passes `avatarUrl`. The image is decorative beside the
- * same visible name, never a replacement for it.
+ * where the record carries one that passes `avatarUrl`. The identity's caller supplies the accessible name when it shows the avatar alone.
  *
  * When the image loads is its placement's (docs/design-system.md, "A Repaint Keeps Its
  * Images"). Lazy, the default, leaves an avatar the reader has not scrolled to unasked, as
@@ -4683,8 +4721,7 @@ export function retellAges(mb, node) {
  * An author with no usable avatar keeps the box, holding the shell's person glyph, in the
  * header and on a Conversation card head: the name starts where it would beside an avatar,
  * as a commit's author's does on its page, and the timeline's line meets the head where an
- * avatar would be (docs/design-system.md, "Conversation Timeline"). A Pulls row passes
- * `placeholder: false`, and its name stays where it is.
+ * avatar would be (docs/design-system.md, "Conversation Timeline"). Pulls rows keep the same fallback.
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {string} name
@@ -4711,8 +4748,7 @@ export function authorLabel(
 
 /**
  * A stack member's author, as the stack menu and a stack's page draw it at the end of its
- * member row (`stackMemberRow`): as a Pulls row draws one, no box where it has no avatar,
- * and its avatar asked for once the row is drawn (docs/design-system.md, "Actor Identity").
+ * member row (`stackMemberRow`). The login stays visible when there is no avatar box.
  *
  * @param {MetabrowserPublicSdk} mb
  * @returns {(login: string, avatar: string | null) => HTMLElement}
@@ -4847,7 +4883,8 @@ export function showNote(meta, text, { sized, after }) {
  * A state's badge, as a pull request's header leads its row of ages with it: *label* in the
  * state's ink and edge (`data-state`, github/styles.css), its first letter a capital. A
  * pull request's says its state, "Merged", and a stack's tally one state's members, "2 Pulls
- * Merged". *kind* is another badge's, a review's or a check's.
+ * Merged". *kind* is another badge's, a review's. A check's is a status chip (`checkBadge` in
+ * pull-readiness.js).
  *
  * @param {string} state
  * @param {string} label
@@ -5298,7 +5335,7 @@ export function createStackMenu(initial, number, deps) {
         h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
           deps.icon === null ? null : document.importNode(deps.icon, true),
         ]),
-        h("span", { class: "github-pull-stack-member-copy" }, [
+        h("span", { class: "github-pull-row-copy" }, [
           h("span", { class: "github-pull-stack-member-title" }, [STACK_OVERVIEW]),
         ]),
       );
@@ -5368,11 +5405,7 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The member row the stack's page draws too (stack-member-row.js): the state icon, the
-        // title, and at the line's end the place, the number, and the author, "14/15 · #N ·
-        // jlevy" (mb-1kzu, mb-pw8t, mb-x0z1); the place, the dot, and the number never give
-        // way, the author gives way only past its share of the line, and the title is cut
-        // short before them.
+        // Use the same member row as the stack page.
         row = stackMemberRow(link, deps.titleNodes, deps.identity);
         rows.set(target, row);
       }
@@ -7984,7 +8017,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       checkRows = summary.items.map((item) =>
         h("li", {}, [
-          stateBadge(item.bucket, item.label, "check"),
+          checkBadge(item),
           " ",
           h("span", {}, [item.name]),
           // A rule on the base branch requires it: the compact outlined tag, muted, after the
@@ -8019,8 +8052,9 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * The Checks tab's Merge status section, which opens it (docs/design-system.md, "On the
-   * Pull Request Page"): the verdict's badge and its sentence, then a row for each requirement, its
-   * status's badge, the server's sentence, and its link, and auto-merge's row while it is on.
+   * Pull Request Page"): the verdict's chip and its sentence, then a row for each requirement, its
+   * chip (`requirementBadge`), the server's sentence, and its link, and auto-merge's row while
+   * it is on.
    *
    * @param {PullModel} model
    * @param {ReadinessModel} readiness
@@ -8032,7 +8066,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const row of readiness.rows) {
       rows.append(
         h("li", { "data-kind": row.kind }, [
-          requirementBadge(row.status),
+          requirementBadge(row),
           // The sentence and its link share the row's second column, the link after the
           // sentence on its line, as a check's action follows its name.
           h("span", { class: "github-pull-requirement-said" }, [

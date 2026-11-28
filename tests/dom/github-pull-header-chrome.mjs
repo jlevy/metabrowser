@@ -213,9 +213,20 @@ const MEASURE = `async (name, change, tab, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const body = structuredClone(recorded[name].body);
   for (const envelope of [body, body.pull]) {
-    const holder = envelope?.record?.same_as;
-    if (holder !== undefined) {
-      envelope.record = structuredClone(recorded[holder].body.record);
+    // The recording keeps a record or a readiness another answer holds by that answer's name,
+    // with any part it differs in beside the name, a dotted name for a part's part, as
+    // github-pull-page-session.js reads it back.
+    for (const field of ["record", "readiness"]) {
+      const holder = envelope?.[field]?.same_as;
+      if (holder !== undefined) {
+        const { same_as: _held, ...own } = envelope[field];
+        const value = structuredClone(recorded[holder].body[field]);
+        for (const [part, kept] of Object.entries(own)) {
+          const [outer, inner] = part.split(".");
+          value[outer] = inner === undefined ? kept : { ...value[outer], [inner]: kept };
+        }
+        envelope[field] = value;
+      }
     }
   }
   // A checkout, which has no pin, at the pull request's head draws the offer to browse it.
@@ -689,23 +700,25 @@ const MEASURE = `async (name, change, tab, width) => {
         agesNatural: r2(agesText.scrollWidth),
         text: agesText.textContent,
       };
-  // The readiness slot (mb-io36): as wide as the widest label the server gives a verdict, so
-  // each label in its badge leaves the slot's width and the ages' place as they were. Each
-  // label is set in the badge in turn, measured, and the server's put back.
+  // The readiness slot (mb-io36): as wide as the widest chip, its glyph and the widest label
+  // the server gives a verdict, so each label in its chip leaves the slot's width and the ages'
+  // place as they were. Each label is set in the chip in turn, beside its glyph, measured, and
+  // the server's put back.
   const readinessSlot = header.querySelector(".github-pull-opened .github-pull-readiness-slot");
+  const labelOf = (chip) => [...chip.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
   const readiness = (() => {
     if (readinessSlot === null) return null;
     const shownBadge = readinessSlot.querySelector(".github-pull-readiness-link .github-pull-badge");
     const ages = header.querySelector(".github-pull-opened .github-pull-quiet");
-    const said = shownBadge.textContent;
+    const said = labelOf(shownBadge).data;
     const at = () => ({ slot: r2(box(readinessSlot).width), ages: r2(box(ages).left) });
     const before = at();
     const labels = [...readinessSlot.querySelectorAll(".github-pull-badge-sizer")].map(
       (sizer) => sizer.textContent,
     );
     const natural = (label) => {
-      const probe = shownBadge.cloneNode(false);
-      probe.textContent = label;
+      const probe = shownBadge.cloneNode(true);
+      labelOf(probe).data = label;
       probe.style.cssText = "position:absolute;visibility:hidden;width:max-content";
       document.body.append(probe);
       const measuredWidth = probe.getBoundingClientRect().width;
@@ -718,13 +731,13 @@ const MEASURE = `async (name, change, tab, width) => {
     );
     const moved = [];
     for (const label of labels) {
-      shownBadge.textContent = label;
+      labelOf(shownBadge).data = label;
       const now = at();
       if (Math.abs(now.slot - before.slot) > 0.5 || Math.abs(now.ages - before.ages) > 0.5) {
         moved.push({ label, ...now });
       }
     }
-    shownBadge.textContent = said;
+    labelOf(shownBadge).data = said;
     // A narrow row draws the glyph alone (mb-io36): the slot is then the glyph's width.
     const glyph = readinessSlot.querySelector(".github-pull-readiness-link .github-pull-readiness-icon");
     const compact = getComputedStyle(glyph).display !== "none" && getComputedStyle(shownBadge).display === "none";
@@ -1610,236 +1623,91 @@ const CORNER_DONE = `(() => {
   return true;
 })()`;
 
-// Pulls rows built as pulls-panel.js#buildRow builds them, whose order
-// github-pulls-panel-session.js pins (mb-pw8t, mb-rb3n): the row's link, its run, one flow of
-// the state icon in the row's one slot, the title, a stack member's place after a dot, the
-// number after a dot, and the author after a dot, every line of it in the text column; then
-// its last line, the lines and the chevron in the text column, here with no lines yet, and the
-// age at the row's end. Each row is a member, a level in under its stack's row.
-// The icon and the title's first box are read, from the row's top, before and after each
-// row's place arrives: the place is after the title, so nothing before it moves, and the
-// number and the toggle after it move along the run, to a next line where it takes one, which
-// the row grows by (`grew`), and the item by that alone (`itemGrew`).
+// Use the shared row builder so the layout checks follow the production markup.
 const PULLS_ROWS = `async (rows, width) => {
+  const { stackMemberRow, PULLS_RUN } = await import("/github/stack-member-row.js");
+  const { authorLabel } = await import("/github/pull-page.js");
   const mb = window.metabrowser;
-  const page = window.__page ??= await import("/github/pull-page.js");
-  const state = window.__state ??= await import("/github/pull-state.js");
   const h = (tag, attributes = {}, children = []) => {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
     node.append(...children);
     return node;
   };
-  // The panel's own container, as pulls-panel.js#mountPullsPanel marks it. The avatar's size
-  // and gap are the shell's, --actor-avatar-size and --actor-identity-gap, on its root.
   const nav = h("div", { class: "github-pulls" });
   nav.style.width = width + "px";
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   nav.append(list);
   document.getElementById("preview-pane").replaceChildren(nav);
-  // The run's dot, as pulls-panel.js#separator draws it: kept to the part before it, and a
-  // break after it.
-  const separator = () =>
-    h("span", { class: "github-pulls-sep", "aria-hidden": "true" }, [
-      "\u00a0",
-      h("span", { class: "github-pull-stack-dot" }, ["·"]),
-      " ",
-    ]);
   const built = rows.map((row) => {
-    const identity = page.authorLabel(mb, row.author, null, "github-pulls-author", {
-      placeholder: false,
-    });
-    if (row.avatar) {
-      // The box authorLabel draws for an avatar, with its image, without a request.
-      identity.prepend(
-        h("span", { class: "actor-avatar", "aria-hidden": "true" }, [
-          h("img", { class: "actor-avatar-image", alt: "", width: "18", height: "18" }),
-        ]),
-      );
-    }
-    const icon = state.pullStateIcon("open");
-    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
-    const place = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
-    const number = h("span", { class: "github-pulls-number", "aria-hidden": "true" }, ["#" + row.number]);
-    // The registry's chevron is the shell's .toggle-chevron, which sizes it; its drawing is
-    // not read here.
-    const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    chevron.setAttribute("class", "toggle-chevron");
-    chevron.setAttribute("viewBox", "0 0 24 24");
-    const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]);
-    const change = h("span", { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" }, [
-      h("span", { class: "github-pulls-change-line" }),
-      toggle,
-      h("span", { class: "github-pulls-change-words", hidden: "" }),
-    ]);
+    const heading = h("span", { class: "github-pulls-heading" });
+    const identity = (login, avatar) => authorLabel(mb, login, avatar, "github-pulls-author");
+    const run = stackMemberRow(heading, mb.titleNodes, identity, PULLS_RUN);
+    const initial = { number: row.number, title: row.title, state: "open", place: null, author: {login: row.author, avatar: null}, readiness: null };
+    run.show(initial);
     const age = h("span", { class: "github-pulls-age", "aria-hidden": "true" }, ["12mo"]);
-    // The readiness's column between the toggle and the age, empty here, as a row the server
-    // has no status of has it (stack-member-row.js, mb-3n21).
-    const readiness = h("span", { class: "github-pulls-readiness", "aria-hidden": "true" });
-    const tail = h("span", { class: "github-pulls-tail" }, [change, readiness, age]);
-    const by = h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [identity]);
-    const heading = h("span", { class: "github-pulls-heading" }, [
-      icon,
-      h("span", { class: "sr-only github-pull-readiness-said" }),
-      title,
-      place,
-      separator(),
-      number,
-      separator(),
-      by,
-    ]);
-    // As pulls-panel.js#buildRow draws a pull request's item, its run and its last line in
-    // its link (mb-1z7j, mb-pw8t, mb-rb3n).
+    const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" });
+    const change = h("span", { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" }, [toggle]);
+    run.end.prepend(h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]));
+    const tail = h("span", { class: "github-pulls-tail" }, [change, age, run.end]);
     const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "false" }, [
-      heading,
-      tail,
-      h("span", { class: "sr-only" }, ["#" + row.number + " · " + row.author + " · 12mo"]),
+      heading, tail,
+      h("span", { class: "sr-only" }, [row.author + " · #" + row.number + " · 12mo"]),
     ]);
     const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
       h("div", { class: "github-pulls-entry" }, [anchor]),
     ]);
     list.append(item);
-    return { item, anchor, heading, toggle, change, icon, by, place, number, title, tail, age, row };
+    return { row, run, initial, item, anchor, heading, tail, age, change };
   });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
-  const round = (value) => Math.round(value * 100) / 100;
-  // What comes before the place, read from its row's top: the icon, and the title's first box.
-  const firstBox = (node) => node.getClientRects()[0] ?? node.getBoundingClientRect();
-  const read = () =>
-    built.map(({ item, icon, title }) => {
-      const top = item.getBoundingClientRect().top;
-      return [icon, title].map((node) => {
-        const r = firstBox(node);
-        return [r.left, r.top - top, r.width, r.height].map(round);
-      });
-    });
-  const before = read();
-  const heights = built.map(({ anchor }) => anchor.getBoundingClientRect().height);
-  const itemHeights = built.map(({ item }) => item.getBoundingClientRect().height);
-  for (const { place, row } of built) {
-    place.hidden = false;
-    // As pulls-panel.js#paintPlace draws it: the stack menu's dot, after a no-break space,
-    // then the position; another stack is the Layers glyph before its number, written here
-    // as "#N".
-    place.append(
-      "\u00a0",
-      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-      " ",
-      h(
-        "span",
-        { class: "github-pull-stack-position" },
-        row.stack.split(" · ").flatMap((part, at) => {
-          const named = /^#([0-9]+) (.+)$/.exec(part);
-          return [
-            ...(at === 0 ? [] : [" · "]),
-            ...(named === null
-              ? [part]
-              : [
-                  h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }),
-                  named[1] + " " + named[2],
-                ]),
-          ];
-        }),
-      ),
-    );
+  const bounds = (node) => node.getBoundingClientRect();
+  const firstLine = (title) => title.getClientRects()[0]?.toJSON();
+  const before = built.map(({ anchor, run }) => ({ height: bounds(anchor).height, title: firstLine(run.title) }));
+  for (const { row, run, initial } of built) {
+    run.show({ ...initial, place: row.stack, placeHint: row.stack });
   }
   await frames();
-  const after = read();
-  return built.map(({ item, anchor, heading, toggle, change, icon, by, place, number, title, tail, age, row }, at) => {
-    const moved = ["icon", "title"].flatMap((name, index) =>
-      JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
-        ? []
-        : [[name, before[at][index], after[at][index]]],
-    );
-    const p = place.querySelector(".github-pull-stack-position").getBoundingClientRect();
-    const dot = place.querySelector(".github-pull-stack-dot").getBoundingClientRect();
-    const n = number.getBoundingClientRect();
-    const box = anchor.getBoundingClientRect();
-    const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
-    const hd = heading.getBoundingClientRect();
-    const runStyle = getComputedStyle(heading);
-    const lh = parseFloat(runStyle.lineHeight);
-    const column = hd.left + parseFloat(runStyle.paddingInlineStart);
-    const style = getComputedStyle(anchor);
-    const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
-    const i = icon.getBoundingClientRect();
-    const t = toggle.getBoundingClientRect();
-    const b = by.getBoundingClientRect();
-    const a = age.getBoundingClientRect();
-    const name = by.querySelector(".github-pulls-author").getBoundingClientRect();
-    // The line of the run a box is on, by its middle.
-    const lineOf = (r) => Math.floor((r.top + r.height / 2 - hd.top) / lh);
-    // The run's lines, from its parts' fragments: a line's start is its first fragment's.
-    const lines = [];
-    for (const piece of [title, place, number, by]) {
-      for (const r of piece.getClientRects()) {
-        if (r.width === 0) continue;
-        const k = lineOf(r);
-        lines[k] = lines[k] ? Math.min(lines[k], r.left) : r.left;
-      }
+  return built.map(({ row, run, item, anchor, heading, tail, age, change }, at) => {
+    const icon = bounds(heading.querySelector(".github-pull-state-icon"));
+    const number = run.end.querySelector(".github-pulls-number");
+    const end = bounds(number);
+    const summary = bounds(tail);
+    const header = bounds(heading);
+    const time = bounds(age);
+    const box = bounds(anchor);
+    const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
+    const avatar = heading.querySelector(".github-pulls-by .actor-avatar");
+    const dot = heading.querySelector(".github-pulls-by .github-pull-stack-dot");
+    const name = heading.querySelector(".github-pulls-author");
+    const lines = new Map();
+    for (const rect of [...run.title.getClientRects(), bounds(avatar), bounds(dot)]) {
+      if (rect.width === 0) continue;
+      const index = Math.floor((rect.top + rect.height / 2 - header.top) / lineHeight);
+      const before = lines.get(index);
+      lines.set(index, { left: Math.min(before?.left ?? rect.left, rect.left), right: Math.max(before?.right ?? rect.right, rect.right) });
     }
-    const starts = Array.from(lines, (left) => (left === undefined ? null : round(left - column)));
-    const titleBoxes = [...title.getClientRects()].filter((r) => r.width > 0);
-    const titleEnd = titleBoxes.at(-1) ?? null;
+    const boxes = [...lines.values()];
+    const textLeft = bounds(run.title.parentElement).left;
+    const dateGap = parseFloat(getComputedStyle(tail).gap);
+    const near = (a, b) => Math.abs(a - b) < 0.5;
     return {
       number: row.number,
-      moved,
-      // The place follows the title: its dot after the title's last box, on its line or the
-      // next, the position after the dot on its line or, a line breaking after a dot as after
-      // a word, first on the next; and the number follows the place.
-      placeAfter:
-        p.width > 0 &&
-        titleEnd !== null &&
-        (lineOf(dot) > lineOf(titleEnd) || dot.left >= titleEnd.right - 0.5) &&
-        (lineOf(p) === lineOf(dot) ? p.left >= dot.right - 0.5 : lineOf(p) === lineOf(dot) + 1) &&
-        (lineOf(n) > lineOf(p) || n.left >= p.right - 0.5),
-      placeLines: [titleEnd === null ? null : lineOf(titleEnd), lineOf(dot), lineOf(p), lineOf(n)],
-      // Where each line of the run starts, from the text column.
-      starts,
-      columnFrom: round(column - inset),
-      // The number shows whole, inside the row.
-      whole: number.scrollWidth <= Math.ceil(n.width) && n.right <= end,
-      // Nothing of the row ends past its padding box, and the pane does not scroll sideways.
-      inside:
-        [age, number, tail].every((node) => node.getBoundingClientRect().right <= end) &&
-        hd.right <= end &&
-        nav.scrollWidth <= nav.clientWidth,
-      cut: p.right > hd.right + 0.5,
-      grew: round(box.height - heights[at]),
-      itemGrew: round(item.getBoundingClientRect().height - itemHeights[at]),
-      height: round(box.height),
-      itemHeight: round(item.getBoundingClientRect().height),
-      // The run is as tall as its lines, and ends with the author on its last line; the last
-      // line follows it, the chevron on it and the age at its end, past the chevron, and the
-      // closed item is its link.
-      headingHeight: round(hd.height),
-      lineHeight: round(lh),
-      drawnLines: lines.length,
-      endsWithAuthor: heading.lastElementChild === by && lineOf(b) === lines.length - 1,
-      lastLine:
-        Math.abs(tail.getBoundingClientRect().top - hd.bottom) < 0.5 &&
-        t.top >= hd.bottom - 0.5 &&
-        a.top >= hd.bottom - 0.5 &&
-        Math.abs(a.right - (box.right - parseFloat(getComputedStyle(anchor).paddingRight))) < 0.5 &&
-        t.right <= a.left + 0.5 &&
-        Math.abs(item.getBoundingClientRect().height - box.height) < 0.5,
-      tailFrom: round(change.getBoundingClientRect().left - inset),
-      textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
-      // The icon is the run's first line's start, one line tall, on the row's inset (mb-3vil).
-      iconOnFirst: i.height > 0 && Math.abs(i.top - hd.top) < 0.5 && Math.abs(i.height - lh) < 0.5,
-      iconFrom: round(i.left - inset),
-      // The author follows the number, after its dot, and its name, one line, cut short only
-      // where it is wider than a line and never broken after a hyphen, ends the run.
-      byAfter: lineOf(b) > lineOf(n) || b.left >= n.right - 0.5,
-      authorEnds:
-        name.left < name.right &&
-        name.right <= hd.right + 0.5 &&
-        name.height < 1.5 * lh &&
-        lineOf(name) === lines.length - 1,
-      authorAt: { left: round(name.left), right: round(name.right), runRight: round(hd.right), line: lineOf(name), top: round(name.top - hd.top), height: round(name.height) },
-      title: Math.round(titleBoxes.reduce((sum, r) => sum + r.width, 0) * 10) / 10,
+      placeAccessible: run.place.classList.contains('sr-only') && run.place.getAttribute('aria-label') === row.stack,
+      placeKeepsLayout: near(box.height, before[at].height) && JSON.stringify(firstLine(run.title)) === JSON.stringify(before[at].title),
+      whole: number.scrollWidth <= Math.ceil(end.width) && near(end.right, summary.right),
+      inside: near(summary.right, header.right) && time.right < end.left && nav.scrollWidth <= nav.clientWidth,
+      titleAndAvatar: boxes.length > 0 && near(header.height, boxes.length * lineHeight) &&
+        boxes.every((line) => line.left >= textLeft - 0.5 && line.right <= header.right + 0.5) &&
+        !heading.contains(number) && getComputedStyle(name).visibility === "hidden" && bounds(name).width === 0 &&
+        Math.abs(bounds(avatar).top + bounds(avatar).height / 2 - (header.bottom - lineHeight / 2)) <= 1,
+      lastLine: near(summary.top, header.bottom) && near(bounds(change).left, textLeft) &&
+        near(time.left, bounds(change).right + dateGap) && near(bounds(item).height, box.height),
+      iconOnFirst: near(icon.top, header.top) && near(icon.height, lineHeight),
+      titleWidth: boxes.reduce((sum, line) => sum + line.right - line.left, 0),
+      lines: boxes.length,
     };
   });
 }`;
@@ -1877,36 +1745,31 @@ const PULLS = [
     number: 370,
     title: "perf: decide every region's box at first paint",
     author: "jlevy",
-    avatar: true,
     stack: "2/3",
   },
   {
     number: 12345,
     title: "A five-digit pull request",
     author: "a-thirty-nine-character-github-login-x",
-    avatar: true,
     stack: "3/3 · #900 1/2",
   },
   {
     number: 7,
     title: "Short",
     author: "octo",
-    avatar: false,
     stack: "1/2",
   },
-  // Two stacks and three: wider than a narrow pane's muted line, the place is cut short.
+  // Include multiple stack positions in the row’s accessible name.
   {
     number: 4242,
     title: "Two stacks, two digits each",
     author: "octo",
-    avatar: true,
     stack: "12/23 · #901 10/14",
   },
   {
     number: 4243,
     title: "Three stacks",
     author: "octo",
-    avatar: false,
     stack: "3/3 · #900 1/2 · #902 4/7",
   },
 ];
@@ -2829,7 +2692,7 @@ async function main() {
         for (let each = 400; each <= 760; each += 8) {
           sweepWidths.push(each);
         }
-        for (let each = 540; each <= 556; each += 1) {
+        for (let each = 568; each <= 587; each += 1) {
           sweepWidths.push(each);
         }
         const shape = await browser.evaluate(
@@ -3216,63 +3079,20 @@ async function main() {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
-          // The place is after the title (mb-pw8t): nothing before it moves when it arrives, and
-          // the number and the toggle after it move along the run, the row growing by whole
-          // lines where the place takes one, and the item by that alone. Before, the place led
-          // the title, which moved after it (mb-vkhd, mb-zuy0).
           check(
-            `${where}: a late stack place moves nothing before it, and the row grows by whole lines alone`,
-            row.moved.length === 0 &&
-              Math.abs(row.grew / row.lineHeight - Math.round(row.grew / row.lineHeight)) < 0.03 &&
-              row.itemGrew === row.grew,
-            JSON.stringify({ moved: row.moved, grew: row.grew, itemGrew: row.itemGrew }),
-          );
-          // The place follows the title, after the stack menu's dot, and the number follows
-          // it, as the stack menu's member line has them (mb-pw8t).
-          check(
-            `${where}: the stack place follows the title after its dot, and the number follows it`,
-            row.placeAfter,
+            `${where}: a late stack place stays accessible and leaves the layout stable`,
+            row.placeAccessible && row.placeKeepsLayout,
             JSON.stringify(row),
           );
-          check(`${where}: the number shows whole`, row.whole, JSON.stringify(row));
           check(
-            `${where}: the title, the number, the toggle, and the age end inside the row, and nothing scrolls sideways`,
-            row.inside,
-            JSON.stringify(row),
-          );
-          const oneStack = !PULLS.find((pull) => pull.number === row.number).stack.includes(" · ");
-          check(
-            `${where}: one stack's place shows whole`,
-            !row.cut || !oneStack,
-            JSON.stringify(row),
-          );
-          // The run is as tall as its lines, never cut short, every line of it in the text
-          // column, and it ends with the author; the last line follows it, the toggle on it in
-          // the text column and the age at its end (mb-pw8t, mb-rb3n).
-          check(
-            `${where}: the run is as tall as its lines, each in the text column, and ends with the author, the last line under it, the toggle and then the age at the row's end`,
-            Math.abs(row.headingHeight - row.drawnLines * row.lineHeight) < 0.5 &&
-              row.starts.every((start) => start !== null && Math.abs(start) < 0.5) &&
-              Math.abs(row.columnFrom - row.textColumn) < 0.5 &&
-              row.endsWithAuthor &&
+            where +
+              ": the title wraps beside the state icon and the summary holds the age and number",
+            row.titleAndAvatar &&
               row.lastLine &&
-              Math.abs(row.tailFrom - row.textColumn) < 0.5,
-            JSON.stringify(row),
-          );
-          // The icon leads the run's first line, in its slot, on the row's inset (mb-3vil).
-          check(
-            `${where}: the icon leads the run's first line on the row's inset`,
-            row.iconOnFirst && Math.abs(row.iconFrom) < 0.5,
-            JSON.stringify(row),
-          );
-          check(
-            `${where}: the author follows the number, and its name ends the run inside the row`,
-            row.byAfter && row.authorEnds,
-            JSON.stringify(row),
-          );
-          check(
-            `${where}: the title keeps a share of its lines`,
-            row.title >= 20,
+              row.iconOnFirst &&
+              row.whole &&
+              row.inside &&
+              row.titleWidth >= 20,
             JSON.stringify(row),
           );
         }
