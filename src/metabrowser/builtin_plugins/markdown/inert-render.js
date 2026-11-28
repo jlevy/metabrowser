@@ -92,17 +92,20 @@ function frontmatterErrorNotice(doc, said) {
  *
  * @template T
  * @param {HTMLElement} target
- * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}, diagnostics?: Array<unknown>}} rendered
+ * @param {{html: string, inert?: boolean, toc?: boolean, frontmatter_disclosure?: boolean, model?: {headings?: unknown}, diagnostics?: Array<unknown>}} rendered
  * @param {MetabrowserPublicSdk} mb
  * @param {((root: HTMLElement) => T) | null} [enhance] Resolves the render's links and
  *   images under *root*. For an inert render it runs before the page adopts the nodes,
  *   on the prose alone: the page's table of contents, which navigates by itself
  *   (inert-toc.js), takes none of the enhancer's limit from the document's own links.
+ * @param {((root: HTMLElement) => void) | null} [prepare] Consumes renderer-owned
+ *   markers after sanitization and before the link budget is applied.
  * @returns {Promise<T | null>}
  */
-export async function placeRendered(target, rendered, mb, enhance = null) {
+export async function placeRendered(target, rendered, mb, enhance = null, prepare = null) {
   if (!isInertRender(rendered)) {
     target.innerHTML = rendered.html;
+    prepare?.(target);
     return enhance ? enhance(target) : null;
   }
   await mb.ensureAsset("inert-html");
@@ -136,11 +139,21 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
   if (frontmatterError) {
     article.append(frontmatterErrorNotice(scratch, frontmatterError.message));
   }
+  // The server saw the disclosure in KPress's generated chrome before sanitizing
+  // the article. That disclosure precedes every authored detail in the document.
+  if (rendered.frontmatter_disclosure) {
+    const metadata = prose.querySelector("details");
+    if (metadata) {
+      metadata.className = "kpress-frontmatter kpress-no-print";
+      article.append(metadata);
+    }
+  }
   article.append(layout);
-  dropUnadmittedTargets(prose);
-  const enhanced = enhance
-    ? enhance(/** @type {HTMLElement} */ (/** @type {unknown} */ (prose)))
-    : null;
+
+  const content = /** @type {HTMLElement} */ (/** @type {unknown} */ (prose));
+  prepare?.(content);
+  dropUnadmittedTargets(content);
+  const enhanced = enhance ? enhance(content) : null;
   target.replaceChildren(article);
   return enhanced;
 }

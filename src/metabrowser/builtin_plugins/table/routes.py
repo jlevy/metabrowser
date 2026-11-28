@@ -48,7 +48,19 @@ async def _answer(request: Request, answer: Answer) -> JSONResponse:
     path = request.query_params.get("path", "")
     budget = Budget.start()
     try:
-        opened = await open_table_source(path)
+        selected = request.query_params.getlist("table")
+        if len(selected) > 1 or (selected and not selected[0]):
+            raise TableQueryError("table must name one table", param="table")
+        waiting = request.query_params.getlist("wait")
+        if waiting and waiting != ["1"]:
+            raise TableQueryError("wait must be 1", param="wait")
+        opened = await open_table_source(
+            path,
+            selected_table=selected[0] if selected else None,
+            wait=bool(waiting),
+        )
+        if waiting:
+            budget = Budget.start()
         payload = await run_in_threadpool(answer, opened, budget)
     except TableSourceError as exc:
         return JSONResponse(error_wire(path, exc), status_code=exc.http_status)
@@ -73,7 +85,9 @@ async def tables_handler(request: Request) -> JSONResponse:
 
     def answer(opened: OpenedTableSource, _budget: Budget) -> dict[str, Any]:
         generation = opened.source.generation()
-        return tables_wire(opened.ref.identity, generation, opened.source.tables())
+        return tables_wire(
+            opened.identity, generation, opened.source.tables(), folder=opened.folder
+        )
 
     return await _answer(request, answer)
 

@@ -45,11 +45,6 @@ function drawError(root, message) {
   root.replaceChildren(box);
 }
 
-/** @param {MouseEvent} event */
-function plainClick(event) {
-  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
-}
-
 /**
  * A route's refusal in its own words, or *fallback*.
  *
@@ -65,10 +60,11 @@ function refusal(error, fallback) {
  * Fetch one answer into *root*, drawing it with *draw* unless the view was disposed
  * first, or the refusal with *fail*.
  *
+ * @template Payload
  * @param {HTMLElement} container
  * @param {string} rootClass
- * @param {(signal: AbortSignal) => Promise<unknown>} fetch
- * @param {(root: HTMLElement, payload: unknown) => void} draw
+ * @param {(signal: AbortSignal) => Promise<Payload>} fetch
+ * @param {(root: HTMLElement, payload: Payload) => void} draw
  * @param {(root: HTMLElement, error: unknown) => void} fail
  * @returns {Mounted}
  */
@@ -105,43 +101,25 @@ function mountFetched(container, rootClass, fetch, draw, fail) {
  * @param {HTMLElement} root
  * @param {import("./tables-model.js").OverviewModel} model
  * @param {TablesSdk} sdk
+ * @param {typeof import("../table/table-catalog.js").renderTableCatalog} renderTableCatalog
  */
-export function drawOverview(root, model, sdk) {
-  root.replaceChildren();
+function drawOverview(root, model, sdk, renderTableCatalog) {
   if (model.empty) {
-    root.append(element("p", "sqlite-empty", model.empty));
+    root.replaceChildren(element("p", "sqlite-empty", model.empty));
     return;
   }
-  for (const group of model.groups) {
-    const block = element("section", "sqlite-overview-section");
-    block.dataset.group = group.group;
-    block.append(element("h2", "data-label sqlite-heading", group.title));
-    const table = element("table", "data-grid sqlite-overview-table");
-    const body = element("tbody");
-    for (const row of group.rows) {
-      const line = element("tr");
-      const name = element("th", "sqlite-overview-name");
-      name.setAttribute("scope", "row");
-      const link = element("a", "sqlite-overview-link", row.label);
-      link.setAttribute("href", sdk.navigation.href({ path: row.path }));
-      link.addEventListener("click", (event) => {
-        if (!plainClick(/** @type {MouseEvent} */ (event))) {
-          return;
-        }
-        event.preventDefault();
-        void sdk.navigation.open({ path: row.path }).catch(() => {});
-      });
-      name.append(link);
-      if (row.note) {
-        name.append(element("span", "sqlite-overview-note", row.note));
-      }
-      line.append(name, element("td", "data-num sqlite-overview-estimate", row.estimate));
-      body.append(line);
-    }
-    table.append(body);
-    block.append(table);
-    root.append(block);
-  }
+  renderTableCatalog(
+    root,
+    model.groups.map((group) => ({
+      ...group,
+      rows: group.rows.map((row) => ({
+        ...row,
+        note: row.note ?? undefined,
+        href: sdk.navigation.href({ path: row.path }),
+        open: () => sdk.navigation.open({ path: row.path }),
+      })),
+    })),
+  );
 }
 
 /**
@@ -156,14 +134,19 @@ export function mountOverview(container, ctx, sdk) {
   return mountFetched(
     container,
     "sqlite-overview",
-    (signal) => sdk.fetchPluginData("table", "tables", { path: ctx.path ?? "" }, { signal }),
-    (root, payload) =>
+    (signal) =>
+      Promise.all([
+        sdk.fetchPluginData("table", "tables", { path: ctx.path ?? "" }, { signal }),
+        /** @type {Promise<typeof import("../table/index.js")>} */ (sdk.plugins.load("table")),
+      ]),
+    (root, [payload, { renderTableCatalog }]) =>
       drawOverview(
         root,
         overviewModel(/** @type {import("./tables-model.js").TablesPayload} */ (payload), {
           formatInteger: sdk.formatInteger,
         }),
         sdk,
+        renderTableCatalog,
       ),
     (root, error) => drawError(root, refusal(error, "Could not read this database.")),
   );

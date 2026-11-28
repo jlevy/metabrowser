@@ -50,12 +50,12 @@ route-backed selections of `cli/show_cli.py` register them.
 
 | Kind | Matches | Views (default first) and keys | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O` and Treemap `M` on every folder | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes |
-| `markdown` | `.md` | Document `V`, Source `S` | File envelope; KPress render |
+| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O`, Table where the SoftSchema collection offer accepts the folder, then Treemap `M` | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes; Table reads `softschema/collection` and the shared table routes |
+| `markdown` | `.md` | Document `V`, Source `S` | File envelope and KPress render. Frontmatter and verified YAML and JSON fences use `structured/parsed?projection=nodes` with `frontmatter=1` or `fence_line` for embedded Table, Tree and exact Source |
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
-| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Table `A` on a file that starts as a list of records (`structured/offer.py`), Source `S` | File envelope and the `structured/parsed` hook; Table reads a top-level list of mappings as one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
+| `structured` | `.json`, `.yaml`, `.yml` | Table `A`, Tree `V`, Source `S` | File envelope and the `structured/parsed` hook. Table requests a page of addressed nodes with `projection=nodes` or opens the shared grid for a record list through `table/*` ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `sqlite` | Any file that would otherwise be binary and starts with SQLite’s magic number, whatever its name (`magic`); `.sqlite`, `.sqlite3`, `.db`, `.db3`, and `.s3db` give the tree its chevron | Table `V`, Schema `S`, Info `I` | A container: the `sqlite/children` hook lists its tables, each at `<database>/<segment>`. Table is the overview at the database’s address, from `table/tables`, and the table plugin’s view at a table’s, through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)); Schema reads `sqlite/schema` and Info `sqlite/info`, each read in a reader process |
@@ -246,9 +246,10 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `agents/sessions`, `agents/session`, `agents/records`, and `agents/live`, the catalog of
 Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-catalog));
 `table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
-([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`, `sqlite/schema`,
-and `sqlite/children`, a SQLite database’s Info and Schema views and its tables as
-container children
+([Table Sources](arch-plugin-system.md#table-sources)); `softschema/collection`, which
+reports a served folder’s index state and contract tables; `sqlite/info`,
+`sqlite/schema`, and `sqlite/children`, a SQLite database’s Info and Schema views and
+its tables as container children
 ([Navigation Containers](arch-plugin-system.md#navigation-containers)); `pdf/preview`
 and `pdf/preview-image`, a PDF’s first page as a PNG the server draws
 ([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)); and

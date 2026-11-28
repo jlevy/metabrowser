@@ -425,6 +425,7 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
+sandbox.URLSearchParams = URLSearchParams;
 fakeDocument.defaultView = sandbox;
 vm.createContext(sandbox);
 
@@ -522,6 +523,8 @@ const preferredView = Object.fromEntries(
     ["README.md?plain=10", { path: "README.md", query: "plain=10" }],
     ["README.md#install", { path: "README.md", fragment: "install" }],
     ["README.md", { path: "README.md" }],
+    ["records?table=Person", { path: "records", query: "table=Person" }],
+    ["records?table=", { path: "records", query: "table=" }],
   ].map(([label, target]) => [label, anchors.preferredView(target)]),
 );
 const lineAt = {

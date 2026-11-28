@@ -2,8 +2,8 @@
 //
 // Owns kind "structured" (declared in manifest.toml for the three
 // extensions .json / .yaml / .yml at priority 0). Three views:
-//   ("structured", "tree")   — virtualized YAML-styled tree (default)
-//   ("structured", "table")  — a list of mappings as a table (recordTableView below)
+//   ("structured", "tree")   — virtualized YAML-styled tree
+//   ("structured", "table")  — ordered node table or record grid (default)
 //   ("structured", "source") — raw text via mb.renderSourceView
 //
 // Exports the renderer + helpers from this module so other plugins
@@ -17,17 +17,9 @@ if (!mb) {
   throw new Error("metabrowser structured plugin: window.metabrowser missing — SDK not loaded");
 }
 
-// preview.js + tree.js loaded before this file via manifest
-// [plugin].extra_scripts. They publish their helpers on globals.
-const preview = window.__structuredPreview;
-const tree = window.__structuredTree;
-if (!preview || !tree) {
-  throw new Error("metabrowser structured plugin: preview.js / tree.js did not initialize");
-}
-const renderInlineTree = tree.renderInlineTree;
-// tree.js's `expansion` says why the file view opens what it opens; a rendered diff
-// reads it too.
-const expansion = tree.expansion;
+// The SDK loads the shared Tree library for this adapter and other embedding views.
+const tree = await mb.loadStructuredTree();
+const { renderInlineTree, expansion } = tree;
 
 // Track the currently mounted tree-view instance so dispose can
 // tear down its scroll listener when the preview pane is replaced.
@@ -120,24 +112,12 @@ function disposeTree() {
 // `mb.plugins.load("structured")`.
 export const materializeRows = tree.materializeRows;
 export const renderRowHtml = tree.renderRowHtml;
-export const formatValue = preview.formatValue;
-export const generateStructuredPreview = preview.generateStructuredPreview;
-export const calculateOptimalExpansion = preview.calculateOptimalExpansion;
+export const formatValue = tree.formatValue;
+export const generateStructuredPreview = tree.generateStructuredPreview;
+export const calculateOptimalExpansion = tree.calculateOptimalExpansion;
 export { expansion, renderInlineTree, renderSourceFallback as renderSource, renderTree };
 
-// ── The Table view ─────────────────────────────────────────────
-//
-// A JSON or YAML list of mappings as a table (plan Decision 12). The server offers the
-// tab only on a file that starts as a list of records (offer.py). The table plugin draws
-// it from its routes, which ask this plugin's record-list source (records.py), and a
-// file that starts as one but is not, a later item that is not a mapping, is the
-// source's refusal, which the view says in place of a table. Tree stays the kind's
-// default, so the table plugin's module is asked for when the tab is first shown, not
-// when the file opens; the view is a few lines here rather than a module of its own,
-// which every file of this kind would fetch for a tab it rarely opens.
-//
-// The table plugin needs no other plugin, so it cannot draw a JSON value as a tree
-// itself; this view hands it the inline tree for a record's nested values.
+// The Table view delegates qualifying roots to the shared record grid.
 
 /**
  * @typedef {{
@@ -148,24 +128,49 @@ export { expansion, renderInlineTree, renderSourceFallback as renderSource, rend
 /** @type {Promise<TableExports> | null} */
 let table = null;
 
+// A record's value is at most TABLE_RECORD_VALUE_BYTES of JSON, and its tree is
+// drawn whole, not virtualized. Its first draw opens a flat list whole: in headless
+// Chrome a record holding a list of 12,750 integers (65,391 bytes of JSON, the
+// largest the bound passes) drew 12,751 rows in 0.64 s, where a list of 50 took
+// 0.03 s, and expanding it again after a collapse took 0.5 s (load average 2.5,
+// 2026-11-20).
+/** @param {HTMLElement} host @param {unknown} value */
+export function renderRecordValue(host, value) {
+  const mount = host.ownerDocument.createElement("div");
+  mount.className = "structured-tree-mount";
+  host.append(mount);
+  return renderInlineTree(mount, value, { virtualize: false });
+}
+
 mb.registerView("structured", "table", {
-  /** @param {HTMLElement} container @param {{path?: string}} ctx */
+  /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} ctx */
   async render(container, ctx) {
-    table ??= /** @type {Promise<TableExports>} */ (mb.plugins.load("table"));
-    const { mountTable } = await table;
-    return mountTable(container, {
-      path: ctx.path ?? "",
-      // A record's value is at most TABLE_RECORD_VALUE_BYTES of JSON, and its tree is
-      // drawn whole, not virtualized. Its first draw opens a flat list whole: in headless
-      // Chrome a record holding a list of 12,750 integers (65,391 bytes of JSON, the
-      // largest the bound passes) drew 12,751 rows in 0.64 s, where a list of 50 took
-      // 0.03 s, and expanding it again after a collapse took 0.5 s (load average 2.5,
-      // 2026-11-20).
-      renderJson: (host, value) => {
-        const mount = host.ownerDocument.createElement("div");
-        mount.className = "structured-tree-mount";
-        host.append(mount);
-        return renderInlineTree(mount, value, { virtualize: false });
+    const path = ctx.path ?? "";
+    const revision = /** @type {{mtime_hash?: string} | undefined} */ (ctx.raw)?.mtime_hash;
+    const pages = await mb.createStructuredPageReader(path, { revision });
+    return mb.mountStructuredNodeTable(container, pages.table, {
+      copyRow: pages.copyRow,
+      async mountRecords(host, createRowCopy) {
+        table ??= /** @type {Promise<TableExports>} */ (mb.plugins.load("table"));
+        const { mountTable } = await table;
+        return mountTable(host, {
+          path,
+          renderJson: renderRecordValue,
+          rowAction: createRowCopy
+            ? {
+                label: "Copy record",
+                render(_key, position) {
+                  return position === null
+                    ? null
+                    : createRowCopy(`Copy record ${position}`, {
+                        document: 0,
+                        path: [position - 1],
+                        offset: 0,
+                      });
+                },
+              }
+            : undefined,
+        });
       },
     });
   },

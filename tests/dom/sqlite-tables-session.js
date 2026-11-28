@@ -30,6 +30,7 @@ const { answers } = JSON.parse(
 globalThis.document = { createElement: (tag) => new FakeElement(tag) };
 
 const formatInteger = (value) => value.toLocaleString("en-US");
+let renderTableCatalog;
 
 /** Every element under *node*, in document order. */
 function* walk(node) {
@@ -84,6 +85,7 @@ function page() {
         load: (name) => {
           loaded.push(name);
           return Promise.resolve({
+            renderTableCatalog,
             mountTable: (container, ctx) => {
               container.replaceChildren(new FakeElement("table-view"));
               return { ready: Promise.resolve(), dispose() {}, path: ctx.path };
@@ -117,7 +119,7 @@ function shownOverview(container) {
         .filter((node) => node.localName === "tr")
         .map((row) => {
           const link = [...walk(row)].find((node) => node.localName === "a");
-          const note = [...walk(row)].find((node) => node.classes.has("sqlite-overview-note"));
+          const note = [...walk(row)].find((node) => node.classes.has("table-catalog-note"));
           const estimate = [...walk(row)].find((node) => node.localName === "td");
           return [
             `${link.textContent} → ${link.getAttribute("href")}`,
@@ -178,6 +180,9 @@ function presented(presentCell, rows, schema) {
 
 async function main() {
   const sqlite = path.join(plugins, "sqlite");
+  ({ renderTableCatalog } = await import(
+    pathToFileURL(path.join(plugins, "table/table-catalog.js")).href
+  ));
   const { mountOverview, mountSchema, mountTableView } = await import(
     pathToFileURL(path.join(sqlite, "tables-view.js")).href
   );

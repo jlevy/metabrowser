@@ -222,6 +222,7 @@ const CELL_PAD_PX = 20;
  * @typedef {{
  *   fetchPluginData: Window["metabrowser"]["fetchPluginData"],
  *   navigation: Window["metabrowser"]["navigation"],
+ *   fileTypeIcon: Window["metabrowser"]["fileTypeIcon"],
  *   tooltip?: Window["metabrowser"]["tooltip"],
  *   escapeHtml: Window["metabrowser"]["escapeHtml"],
  *   watchFile?: Window["metabrowser"]["watchFile"],
@@ -242,7 +243,7 @@ const CELL_PAD_PX = 20;
  *   ready: Promise<void>,
  *   dispose(): void,
  *   state(): TableState,
- *   refresh(): Promise<void>,
+ *   refresh(options?: {generation?: string}): Promise<void>,
  * }} TableHandle
  */
 /**
@@ -252,6 +253,11 @@ const CELL_PAD_PX = 20;
  *
  * @typedef {{
  *   path: string,
+ *   table?: string,
+ *   collectionRoot?: string,
+ *   catalogAddress?: {path: string, query?: string},
+ *   openCollectionAddress?: (target: {path: string, query: string}) => void,
+ *   rowAction?: {label: string, render(key: string, position: number | null): HTMLButtonElement | null},
  *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose?: () => void} | void),
  * }} TableContext
  */
@@ -288,6 +294,8 @@ export function mountTable(container, ctx, host = {}) {
   /** The table id the schema answered for, "" for a source that is its own table. */
   /** @type {string | null} */
   let tableId = null;
+  /** The generation whose field metadata is mounted. @type {string | null} */
+  let schemaGeneration = null;
   /** The question `page` answers, whose rows its `next_after` continues. @type {TableState} */
   let answered = state;
   /** @type {string[]} */
@@ -328,7 +336,7 @@ export function mountTable(container, ctx, host = {}) {
   const cards = new Map();
   /** @type {Map<string, string>} */
   const hrefs = new Map();
-  /** @type {string | null} */
+  /** @type {{before: string, after: string} | null} */
   let recordTemplate = null;
 
   // Live: the file watch, and what a change does while it is on or paused.
@@ -400,6 +408,11 @@ export function mountTable(container, ctx, host = {}) {
   // After the fit note, and before Columns, which its own margin holds at the toolbar's
   // end, so neither moves as these come and go; once shown, each keeps its slot while
   // hidden (styles.css).
+  if (ctx.catalogAddress) {
+    toolbar.append(
+      parentLink("table-catalog-link", sdk.navigation.href(ctx.catalogAddress), "Tables"),
+    );
+  }
   toolbar.append(search, chips, status, fitNote, offer, livePill, columnsButton);
   const notes = el("div", { class: "table-notes" });
   /** On paper only: which rows a windowed table printed, when rows past them were not read. */
@@ -439,6 +452,17 @@ export function mountTable(container, ctx, host = {}) {
     return parseState(current.query ?? "");
   }
 
+  /** @param {TableState} next */
+  function scopedStateQuery(next) {
+    const query = stateQuery(next);
+    if (ctx.table === undefined) {
+      return query;
+    }
+    const scoped = new URLSearchParams(query);
+    scoped.set("table", ctx.table);
+    return scoped.toString();
+  }
+
   /**
    * Put *next* in the address and show it. A step the reader takes (a sort, a filter, a
    * record) is an entry Back returns from; typing in Search replaces the entry.
@@ -454,7 +478,7 @@ export function mountTable(container, ctx, host = {}) {
     } else {
       flushPlace();
     }
-    const query = stateQuery(next);
+    const query = scopedStateQuery(next);
     void sdk.navigation
       .open(query ? { path, query } : { path }, { replace: Boolean(how.replace) })
       .catch((/** @type {unknown} */ error) => {
@@ -465,7 +489,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {TableState} next */
   function href(next) {
-    const query = stateQuery(next);
+    const query = scopedStateQuery(next);
     let made = hrefs.get(query);
     if (made === undefined) {
       made = sdk.navigation.href(query ? { path, query } : { path });
@@ -485,11 +509,17 @@ export function mountTable(container, ctx, host = {}) {
    * @param {string} key
    */
   function recordHref(key) {
-    recordTemplate ??= href(withRecord(state, RECORD_SLOT));
-    // `record` is the query's last parameter (stateQuery), so its slot is the last
-    // occurrence: a search or filter value spelled the same comes before it.
-    const at = recordTemplate.lastIndexOf(RECORD_SLOT);
-    return `${recordTemplate.slice(0, at)}${new URLSearchParams({ k: key }).toString().slice(2)}${recordTemplate.slice(at + RECORD_SLOT.length)}`;
+    if (recordTemplate === null) {
+      const address = href(withRecord(state, RECORD_SLOT));
+      // Other query values (including the collection table's name) can equal the slot.
+      const at = address.search(/[?&]record=/) + "?record=".length;
+      recordTemplate = {
+        before: address.slice(0, at),
+        after: address.slice(at + RECORD_SLOT.length),
+      };
+    }
+    const encoded = new URLSearchParams({ k: key }).toString().slice(2);
+    return `${recordTemplate.before}${encoded}${recordTemplate.after}`;
   }
 
   function onPopState() {
@@ -497,7 +527,11 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     const current = sdk.navigation.current();
-    if (current && normalPath(current.path) === normalPath(path)) {
+    if (
+      current &&
+      normalPath(current.path) === normalPath(path) &&
+      (ctx.table === undefined || new URLSearchParams(current.query).get("table") === ctx.table)
+    ) {
       cancelPlace();
       apply(parseState(current.query ?? ""));
     }
@@ -536,13 +570,18 @@ export function mountTable(container, ctx, host = {}) {
    * @param {AbortSignal} signal
    */
   function ask(route, params, signal) {
-    return sdk.fetchPluginData("table", route, { path, ...params }, { signal });
+    const scope = ctx.table === undefined ? { path } : { path, table: ctx.table };
+    return sdk.fetchPluginData("table", route, { ...scope, ...params }, { signal });
   }
 
   async function loadSchema() {
-    const schema = /** @type {{table?: unknown, fields: TableField[]}} */ (
+    const schema = /** @type {{table?: unknown, generation?: string, fields: TableField[]}} */ (
       /** @type {unknown} */ (await ask("schema", {}, abort.signal))
     );
+    if (disposed) {
+      return;
+    }
+    schemaGeneration = schema.generation ?? null;
     // The table this view shows, from the answer awaited before anything is drawn, so a
     // record's links are right before, and whatever, the rows answer.
     tableId = typeof schema.table === "string" ? schema.table : "";
@@ -557,7 +596,7 @@ export function mountTable(container, ctx, host = {}) {
         `This table has no ${reconciled.dropped.map((name) => `“${name}”`).join(", ")} now, so the view no longer uses it.`,
       );
       notes.append(stateNotice);
-      const query = stateQuery(state);
+      const query = scopedStateQuery(state);
       void sdk.navigation
         .open(query ? { path, query } : { path }, { replace: true })
         .catch(() => {});
@@ -1151,7 +1190,7 @@ export function mountTable(container, ctx, host = {}) {
       columns,
       widths: Object.fromEntries(columns.map((name) => [name, columnPx(name)])),
       chPx: 1,
-      fixedPx: positionPx(),
+      fixedPx: positionPx() + measureCh().action,
       padPx: 0,
       available: scroller.clientWidth || 0,
       chosen: state.cols !== null,
@@ -1172,7 +1211,9 @@ export function mountTable(container, ctx, host = {}) {
     if (fit.hidden.length) {
       table.setAttribute(
         "aria-colcount",
-        String(fit.visible.length + fit.hidden.length + (positional() ? 1 : 0)),
+        String(
+          fit.visible.length + fit.hidden.length + (positional() ? 1 : 0) + Number(!!ctx.rowAction),
+        ),
       );
     } else {
       table.removeAttribute("aria-colcount");
@@ -1188,7 +1229,7 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** One character's width in the table's face, and in a literal value's, and a cell's padding. @type {{sans: number, mono: number, pad: number} | null} */
+  /** One character's width in the table's face, and in a literal value's, and a cell's padding. @type {{sans: number, mono: number, pad: number, action: number} | null} */
   let chPx = null;
   function measureCh() {
     if (chPx) {
@@ -1211,7 +1252,22 @@ export function mountTable(container, ctx, host = {}) {
     table.append(padProbe);
     const pad = padProbe.getBoundingClientRect?.().width ?? 0;
     padProbe.remove();
-    chPx = { sans: width(""), mono: width("data-literal"), pad: pad > 0 ? pad : CELL_PAD_PX };
+    let action = 0;
+    if (ctx.rowAction) {
+      const probe = el("span", { class: "table-ch-probe icon-btn", "aria-hidden": "true" });
+      table.append(probe);
+      const token = doc.defaultView
+        ?.getComputedStyle(doc.documentElement)
+        .getPropertyValue("--icon-btn-size");
+      action = (probe.getBoundingClientRect?.().width || Number.parseFloat(token || "") || 0) + pad;
+      probe.remove();
+    }
+    chPx = {
+      action,
+      sans: width(""),
+      mono: width("data-literal"),
+      pad: pad > 0 ? pad : CELL_PAD_PX,
+    };
     return chPx;
   }
 
@@ -1267,10 +1323,25 @@ export function mountTable(container, ctx, host = {}) {
       cols.push(el("col", { style: `width: ${columnPx(name)}px` }));
       heads.push(headerCell(name, field));
     }
+    if (ctx.rowAction) {
+      cols.push(el("col", { class: "table-action-col", style: `width: ${measureCh().action}px` }));
+      heads.push(
+        el("th", {
+          scope: "col",
+          class: "table-action-cell",
+          "aria-label": ctx.rowAction.label,
+          "aria-colindex": String(columns.length + (positional() ? 1 : 0) + 1),
+        }),
+      );
+    }
     colgroup.replaceChildren(...cols);
+
     // The table is as wide as its columns, so each holds the width its 'col' gives it
     // rather than one its widest value would take.
-    const px = fit.visible.reduce((sum, name) => sum + columnPx(name), positionPx());
+    const px = fit.visible.reduce(
+      (sum, name) => sum + columnPx(name),
+      positionPx() + measureCh().action,
+    );
     table.style.setProperty("width", `${px}px`);
     const row = el("tr", windowed ? { "aria-rowindex": "1" } : {}, ...heads);
     thead.replaceChildren(row);
@@ -1370,7 +1441,7 @@ export function mountTable(container, ctx, host = {}) {
     const hadFocus = scroller.contains(doc.activeElement);
     drawn = range;
     rowElements.clear();
-    const span = fit.visible.length + (positional() ? 1 : 0);
+    const span = fit.visible.length + (positional() ? 1 : 0) + Number(!!ctx.rowAction);
     const before = spacer(range.start * rowHeight, span);
     const after = spacer((rows.length - range.end) * rowHeight, span);
     const drawnRows = [];
@@ -1465,19 +1536,46 @@ export function mountTable(container, ctx, host = {}) {
       );
       tr.append(el("th", { scope: "row", class: "table-position-cell" }, link));
     }
+    // Keyed rows have no position permalink. Their first plain scalar carries the
+    // record address, leaving reference and filter links their own destinations.
+    let needsRecordLink = position === null;
     for (const name of fit.visible) {
-      tr.append(cellElement(row.cells[name], fieldsByName.get(name)));
+      const field = fieldsByName.get(name);
+      const view = presentCell(row.cells[name], field);
+      const useRecordLink =
+        needsRecordLink &&
+        !view.filter &&
+        !view.missing &&
+        (view.kind === "text" || view.kind === "number") &&
+        Boolean(view.text.trim());
+      tr.append(cellElement(view, field, useRecordLink ? row.key : null));
+      if (useRecordLink) {
+        needsRecordLink = false;
+      }
+    }
+    if (ctx.rowAction) {
+      const action = ctx.rowAction.render(row.key, position);
+      const cell = el("td", {
+        class: "table-action-cell data-grid-row-action",
+        "aria-colindex": String(columns.length + (positional() ? 1 : 0) + 1),
+      });
+      if (action) {
+        action.tabIndex = -1;
+        cell.append(action);
+      }
+      tr.append(cell);
     }
     rowElements.set(index, tr);
+
     return tr;
   }
 
   /**
-   * @param {unknown} cell
+   * @param {ReturnType<typeof presentCell>} view
    * @param {TableField | undefined} field
+   * @param {string | null} recordKey
    */
-  function cellElement(cell, field) {
-    const view = presentCell(cell, field);
+  function cellElement(view, field, recordKey) {
     const classes = ["table-cell", `table-cell-${view.kind}`];
     if (view.literal) {
       classes.push("data-literal");
@@ -1509,6 +1607,18 @@ export function mountTable(container, ctx, host = {}) {
             tabindex: "-1",
             "data-filter-field": view.filter.field,
             "data-filter-value": view.filter.value ?? "",
+          },
+          view.text,
+        ),
+      );
+    } else if (recordKey !== null) {
+      box.append(
+        el(
+          "a",
+          {
+            class: "table-row-link",
+            href: recordHref(recordKey),
+            tabindex: "-1",
           },
           view.text,
         ),
@@ -1547,6 +1657,10 @@ export function mountTable(container, ctx, host = {}) {
    * @returns {{path: string, query: string}}
    */
   function referenceTarget(ref) {
+    if (ctx.table !== undefined) {
+      const query = new URLSearchParams({ table: ref.table, record: ref.key }).toString();
+      return { path: ctx.collectionRoot ?? path, query };
+    }
     const address = referenceAddress(path, tableOf(), ref.table);
     return { path: address, query: stateQuery(withRecord(EMPTY_STATE, ref.key)) };
   }
@@ -1734,7 +1848,7 @@ export function mountTable(container, ctx, host = {}) {
     const label = /** @type {HTMLElement} */ (pill.firstChild);
     const remove = /** @type {HTMLElement} */ (pill.lastChild);
     label.replaceChildren("Referencing ", link, context);
-    void getCard(target.path, ref.key).then(
+    void getCard(ref).then(
       (answer) => {
         if (!pill.isConnected) {
           return;
@@ -1797,6 +1911,9 @@ export function mountTable(container, ctx, host = {}) {
     const cell = cells[focus.col];
     if (!cell) {
       return tr;
+    }
+    if (cell.firstElementChild?.localName === "button") {
+      return /** @type {HTMLButtonElement} */ (cell.firstElementChild);
     }
     const link = /** @type {HTMLElement | undefined} */ (
       Array.from(cell.firstChild?.childNodes ?? []).find(
@@ -1901,9 +2018,18 @@ export function mountTable(container, ctx, host = {}) {
     if (!target || !scroller.contains(target) || rows.length === 0) {
       return;
     }
+    if (
+      event.key === "Enter" &&
+      target === focusElement() &&
+      focus.row >= 0 &&
+      ctx.rowAction &&
+      focus.col === fit.visible.length
+    ) {
+      return;
+    }
     const step = keyStep(focus, event, {
       rows: rows.length,
-      cols: fit.visible.length,
+      cols: fit.visible.length + Number(!!ctx.rowAction),
       pageRows: Math.max(1, Math.floor((scroller.clientHeight || rowHeight * 10) / rowHeight) - 1),
       heads: headControls().length,
       headStarts: headStarts(),
@@ -1987,11 +2113,15 @@ export function mountTable(container, ctx, host = {}) {
       ancestor(target, (node) => node.localName === "a")
     );
     if (link) {
-      if (!plainClick(event)) {
-        return;
+      if (plainClick(event) && activateLink(link)) {
+        event.preventDefault();
       }
-      event.preventDefault();
-      activateLink(link);
+      return;
+    }
+    if (
+      ctx.rowAction &&
+      ancestor(target, (node) => node.classList?.contains("table-action-cell"))
+    ) {
       return;
     }
     const tr = ancestor(
@@ -2030,7 +2160,10 @@ export function mountTable(container, ctx, host = {}) {
       go(EMPTY_STATE);
     } else if (link.classList.contains("table-unsort")) {
       go(withSort(state, state.sort ?? "", null));
-    } else if (link.classList.contains("table-position")) {
+    } else if (
+      link.classList.contains("table-position") ||
+      link.classList.contains("table-row-link")
+    ) {
       const tr = ancestor(link, (node) => node.localName === "tr");
       const index = Number(tr?.dataset.index ?? 0);
       focus = { row: index, col: -1 };
@@ -2040,9 +2173,20 @@ export function mountTable(container, ctx, host = {}) {
       openAddress(referenceTarget(ref));
     } else if (link.classList.contains("table-back")) {
       closeRecord();
+    } else if (link.classList.contains("table-catalog-link") && ctx.catalogAddress) {
+      openAddress({ path: ctx.catalogAddress.path, query: ctx.catalogAddress.query ?? "" });
     } else if (link.classList.contains("table-open-ref")) {
       openAddress({ path: link.dataset.path ?? path, query: link.dataset.query ?? "" });
+    } else if (link.dataset.sourcePath !== undefined) {
+      void sdk.navigation
+        .open({ path: link.dataset.sourcePath })
+        .catch((/** @type {unknown} */ error) => {
+          console.warn("metabrowser table: could not open the source file", error);
+        });
+    } else {
+      return false;
     }
+    return true;
   }
 
   /**
@@ -2053,6 +2197,14 @@ export function mountTable(container, ctx, host = {}) {
    * @param {{path: string, query: string}} target
    */
   function openAddress(target) {
+    if (
+      ctx.openCollectionAddress &&
+      (normalPath(target.path) !== normalPath(path) ||
+        new URLSearchParams(target.query).get("table") !== ctx.table)
+    ) {
+      ctx.openCollectionAddress(target);
+      return;
+    }
     if (normalPath(target.path) === normalPath(path)) {
       go(parseState(target.query));
       return;
@@ -2135,9 +2287,17 @@ export function mountTable(container, ctx, host = {}) {
           el("input", { type: "checkbox", "data-field": field.name })
         );
         box.checked = shown.has(field.name);
-        menu.append(
-          el("label", { class: "menu-item table-menu-check" }, box, field.title || field.name),
+        const label = el(
+          "label",
+          { class: "menu-item table-menu-check" },
+          box,
+          field.title || field.name,
         );
+        if (field.description) {
+          box.setAttribute("aria-description", field.description);
+          label.dataset.tipText = field.description;
+        }
+        menu.append(label);
       }
     }
     menu.append(
@@ -2308,7 +2468,7 @@ export function mountTable(container, ctx, host = {}) {
     const next = withRecord(state, key);
     // go writes the place to the table's entry before it pushes the record's.
     go(next);
-    pushedRecord = stateQuery(next);
+    pushedRecord = stateQuery(parseState(scopedStateQuery(next)));
   }
 
   /**
@@ -2345,8 +2505,9 @@ export function mountTable(container, ctx, host = {}) {
   /**
    * @param {string} key
    * @param {boolean} [again] a live refresh of the record on screen
+   * @param {boolean} [metadataChanged] Refresh field descriptions and backlinks even when cells agree.
    */
-  async function showRecord(key, again = false) {
+  async function showRecord(key, again = false, metadataChanged = false) {
     const seq = ++recordSeq;
     if (!again) {
       hideCard();
@@ -2386,6 +2547,7 @@ export function mountTable(container, ctx, host = {}) {
       }
       if (
         again &&
+        !metadataChanged &&
         shown.key === key &&
         shown.cells === cells &&
         shown.moved === shownRecord.moved
@@ -2416,6 +2578,8 @@ export function mountTable(container, ctx, host = {}) {
    *   key: string,
    *   positional: boolean,
    *   label?: string,
+   *   source_path?: string,
+   *   diagnostics?: string[],
    *   generation_moved?: boolean | null,
    *   cells: Record<string, unknown>,
    *   referenced_by: Array<{table: string, fields: string[], to: string[], count: number, count_complete: boolean}>,
@@ -2454,6 +2618,29 @@ export function mountTable(container, ctx, host = {}) {
     recordControls.set("live", recordPill);
     const head = el("div", { class: "table-record-head" }, back, heading, recordPill);
     const parts = [head];
+    if (record.source_path) {
+      const icon = sdk.fileTypeIcon(record.source_path);
+      const mark = el("span", {
+        class: `file-identity-icon ${icon.className}`,
+        "aria-hidden": "true",
+      });
+      mark.innerHTML = icon.svg;
+      const source = el(
+        "a",
+        {
+          class: "table-source-link",
+          href: sdk.navigation.href({ path: record.source_path }),
+          "data-source-path": record.source_path,
+        },
+        mark,
+        el("span", {}, record.source_path),
+      );
+      recordControls.set("source", source);
+      parts.push(el("p", { class: "table-record-note" }, source));
+    }
+    for (const diagnostic of record.diagnostics ?? []) {
+      parts.push(noticeBox("warning", diagnostic));
+    }
     if (record.positional) {
       parts.push(
         el(
@@ -2523,6 +2710,9 @@ export function mountTable(container, ctx, host = {}) {
         value.append(view.kind === "absent" ? `${ABSENT_TEXT}.` : view.text);
       }
       dd.append(value);
+      if (field.description) {
+        dd.append(el("p", { class: "table-record-note" }, field.description));
+      }
       if (view.cut !== null && view.kind === "text") {
         dd.append(
           el(
@@ -2571,16 +2761,20 @@ export function mountTable(container, ctx, host = {}) {
       );
       for (const ref of record.referenced_by) {
         const count = `${ref.count_complete ? "" : "at least "}${formatCount(ref.count)}`;
-        const target = {
-          path: referenceAddress(path, tableOf(), ref.table),
-          query: stateQuery(
+        const target = referenceTarget({ table: ref.table, key: "" });
+        const query = new URLSearchParams(
+          stateQuery(
             withRef(
               EMPTY_STATE,
               `${tableOf()}:${record.key}`,
               JSON.stringify([ref.fields, ref.to]),
             ),
           ),
-        };
+        );
+        if (ctx.table !== undefined) {
+          query.set("table", ref.table);
+        }
+        target.query = query.toString();
         const open = el(
           "a",
           {
@@ -2622,10 +2816,16 @@ export function mountTable(container, ctx, host = {}) {
   }
 
   function backLink() {
+    return parentLink("table-back", href(withRecord(state, null)), "Back to the table");
+  }
+
+  /** @param {string} purpose @param {string} destination @param {string} label */
+  function parentLink(purpose, destination, label) {
     return el(
       "a",
-      { class: "table-back", href: href(withRecord(state, null)) },
-      "← Back to the table",
+      { class: `btn parent-nav-btn table-parent-link ${purpose}`, href: destination },
+      el("span", { class: "parent-nav-arrow", "aria-hidden": "true" }, "←"),
+      ` ${label}`,
     );
   }
 
@@ -2678,10 +2878,9 @@ export function mountTable(container, ctx, host = {}) {
   /** @param {HTMLElement} anchor */
   async function showCard(anchor) {
     const ref = { table: anchor.dataset.refTable ?? "", key: anchor.dataset.refKey ?? "" };
-    const address = referenceAddress(path, tableOf(), ref.table);
     let answer;
     try {
-      answer = await getCard(address, ref.key);
+      answer = await getCard(ref);
     } catch {
       return;
     }
@@ -2691,15 +2890,20 @@ export function mountTable(container, ctx, host = {}) {
     sdk.tooltip?.show(cardHtml(answer), anchor);
   }
 
-  /** @param {string} address @param {string} key */
-  async function getCard(address, key) {
-    const cacheKey = `${address}\n${key}`;
+  /** @param {{table: string, key: string}} ref */
+  async function getCard(ref) {
+    const target = referenceTarget(ref);
+    const cacheKey = `${target.path}\n${ref.table}\n${ref.key}`;
     let card = cards.get(cacheKey);
     if (!card) {
       const asked = sdk.fetchPluginData(
         "table",
         "card",
-        { path: address, key },
+        {
+          path: target.path,
+          key: ref.key,
+          ...(ctx.table === undefined ? {} : { table: ref.table }),
+        },
         { signal: abort.signal },
       );
       asked.catch(() => cards.delete(cacheKey));
@@ -2956,6 +3160,14 @@ export function mountTable(container, ctx, host = {}) {
   root.addEventListener("pointerout", onPointerOut);
   root.addEventListener("focusin", (event) => {
     const target = /** @type {HTMLElement} */ (event.target);
+    if (ctx.rowAction && target.parentElement?.classList.contains("table-action-cell")) {
+      const row = Number(target.parentElement.parentElement?.dataset.index);
+      if (Number.isInteger(row) && (focus.row !== row || focus.col !== fit.visible.length)) {
+        focusElement()?.setAttribute("tabindex", "-1");
+        focus = { row, col: fit.visible.length };
+        syncFocusable();
+      }
+    }
     // A header control the pointer focused is where the keyboard's roving focus stands.
     const head = headControls().indexOf(target);
     if (head >= 0 && (focus.row >= 0 || focus.col !== head)) {
@@ -3008,13 +3220,35 @@ export function mountTable(container, ctx, host = {}) {
     /**
      * Ask the current question again and draw its new answer in place: the focused row,
      * the row at the top of the view, and the selection stay, by key, when the answer
-     * still holds them. For a source whose content changes under the view.
+     * still holds them. A published collection generation invalidates its schema,
+     * cards and open record as well as its rows.
+     * @param {{generation?: string}} [options]
      */
-    refresh() {
+    async refresh(options = {}) {
       if (disposed) {
-        return Promise.resolve();
+        return;
       }
-      return loadRows({ keep: true });
+      if (options.generation !== undefined) {
+        await schemaReady;
+        if (disposed) {
+          return;
+        }
+        if (options.generation !== schemaGeneration) {
+          hideCard();
+          cards.clear();
+          await loadSchema();
+          if (disposed) {
+            return;
+          }
+          drawChips();
+          if (state.record && !recordPane.hidden) {
+            await showRecord(state.record, true, true);
+          }
+        }
+      }
+      if (!disposed) {
+        await loadRows({ keep: true });
+      }
     },
     dispose() {
       if (disposed) {

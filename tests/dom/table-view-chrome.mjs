@@ -21,9 +21,8 @@
 // bound on history calls (200 in 10 seconds) still lets Enter push the record's address,
 // whose Back link returns to the grid where the keys left it, and that a reload returns
 // there too; and that the structured kind's Table tab draws a JSON list of records with
-// each nested value of a record as the structured plugin's own tree, that a JSON mapping
-// has no Table tab, and that the tab says a list with an item that is not a mapping is
-// not a list of records. Which rows, columns, and cells exist, what a key does, and what the
+// nested values in the shared grid, and shows a mapping or mixed sequence in the
+// structured node table. Which rows, columns, and cells exist, what a key does, and what the
 // address holds run browserlessly in tests/dom/table-view-session.js.
 
 // Key presses in a run: past the 200 history calls Chrome allows in 10 seconds.
@@ -126,7 +125,12 @@ async function main() {
   let chrome = null;
   const measured = {};
   try {
-    chrome = await launchChrome(process.env.CHROME_BIN, { profiles });
+    // The mouse journey requires hover capability even on runners without a mouse.
+    // Chromium defines HOVER_TYPE_HOVER as 2 in pointer_device.h.
+    chrome = await launchChrome(process.env.CHROME_BIN, {
+      profiles,
+      args: ["--blink-settings=primaryHoverType=2,availableHoverTypes=2"],
+    });
     phase("chrome");
     await chrome.send("Page.enable");
     await chrome.send("Runtime.enable");
@@ -167,6 +171,22 @@ async function main() {
     // One line a row: every row one height, a long value cut on its line, its whole text
     // in the tooltip, and no tooltip for a value shown whole.
     await open("short.csv", 3);
+    measured.progressPaint = await chrome.evaluate(`(() => {
+      const sidebar = document.querySelector("#index-progress");
+      const inline = document.createElement("div");
+      document.querySelector("#preview-pane").append(inline);
+      window.metabrowser.renderIndexProgress(inline, "Indexing collection…");
+      const paint = (status) => {
+        const text = getComputedStyle(status.querySelector(".index-progress-text"));
+        const spinner = getComputedStyle(status.querySelector(".index-progress-spinner"));
+        return [text.color, text.fontFamily, text.fontSize, text.lineHeight, spinner.width,
+          spinner.height, spinner.borderTop, spinner.borderRight, spinner.animationName,
+          spinner.animationDuration];
+      };
+      const equal = JSON.stringify(paint(sidebar)) === JSON.stringify(paint(inline));
+      inline.remove();
+      return equal;
+    })()`);
     measured.short = await chrome.evaluate(ROWS);
     measured.short.tip = await hover(
       `__t().qa(".table-cell").find((cell) => cell.textContent.startsWith("表表"))`,
@@ -394,10 +414,8 @@ async function main() {
     await shot("5-pinned");
     phase("fit");
 
-    // The structured kind's Table tab, which is not its default: a JSON list of records,
-    // a record whose nested values are the structured plugin's own tree; a mapping, which
-    // has no Table tab; and a list with an item that is not a mapping, whose tab says it
-    // is not a list of records.
+    // Standalone structured tables use the record grid for record lists and the node
+    // table for other shapes.
     const tableTab = async (address) => {
       await chrome.send("Page.navigate", { url: `${base}/view/${address}` });
       await chrome.waitFor(
@@ -405,6 +423,10 @@ async function main() {
       );
       await chrome.evaluate(VIEW);
     };
+    const captureCopy = `Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: async (value) => { window.__rowCopy = value; } },
+      configurable: true,
+    })`;
     await tableTab("records.json");
     await chrome.waitFor(
       `(() => { try { ${VIEW}; return __t().qa("tbody tr:not(.table-spacer)").length >= 2; } catch { return false; } })()`,
@@ -412,9 +434,13 @@ async function main() {
     await chrome.evaluate(VIEW);
     measured.records = await chrome.evaluate(`({
       tab: document.querySelector('#preview-pane .tab-btn.active')?.dataset.tab ?? null,
-      headers: __t().qa("thead th").map((th) => th.textContent.replace("▾", "").trim()),
+      headers: __t().qa("thead th").map((th) => th.textContent.replace("▾", "").trim()).filter(Boolean),
       rows: __t().qa("tbody tr:not(.table-spacer)").length,
     })`);
+    await chrome.evaluate(captureCopy);
+    await chrome.evaluate(`__t().q('button[aria-label="Copy record 1"]').click()`);
+    await chrome.waitFor(`typeof window.__rowCopy === "string"`);
+    measured.records.copy = await chrome.evaluate("window.__rowCopy");
     await chrome.evaluate(`__t().q(".table-position").click()`);
     await chrome.waitFor(
       `(() => { try { ${VIEW}; return __t().qa(".table-record-json .structured-tree").length >= 2; } catch { return false; } })()`,
@@ -425,20 +451,149 @@ async function main() {
     await shot("6-record");
     await chrome.send("Page.navigate", { url: `${base}/view/mapping.json` });
     await chrome.waitFor(
-      `(() => { const pane = document.querySelector("#preview-pane"); return pane?.dataset.renderedPath === "mapping.json" && Boolean(pane.querySelector('.tab-btn[data-tab="tree"]')); })()`,
+      `(() => { const pane = document.querySelector("#preview-pane"); return pane?.dataset.renderedPath === "mapping.json" && Boolean(pane.querySelector(".data-grid tbody tr")); })()`,
     );
     measured.mappingTabs = await chrome.evaluate(
       `[...document.querySelectorAll("#preview-pane .tab-btn")].map((tab) => tab.dataset.tab)`,
     );
-    await tableTab("mixed.json");
-    await chrome.waitFor(
-      `(() => { try { ${VIEW}; return Boolean(__t().q(".table-notice")); } catch { return false; } })()`,
+    measured.mappingRow = await chrome.evaluate(
+      `[...document.querySelectorAll("#preview-pane .data-grid tbody tr > :not(.structured-row-action)")].map((cell) => cell.textContent)`,
     );
-    measured.mixed = await chrome.evaluate(`({
-      notice: __t().q(".table-notice").textContent,
-      toolbar: !__t().q(".table-toolbar").hidden,
-      links: __t().qa(".table-reset").length,
+    assert.ok(await chrome.evaluate('matchMedia("(hover: hover)").matches'), "mouse hover");
+    const mappingCopy = `document.querySelector('button[aria-label="Copy name"]')`;
+    const copyPaint = (opacity, pointerEvents) =>
+      `getComputedStyle(${mappingCopy}).opacity === "${opacity}" && getComputedStyle(${mappingCopy}).pointerEvents === "${pointerEvents}"`;
+    await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 2, y: 2 });
+    await chrome.waitFor(copyPaint(0, "none"));
+    const mappingPoint = await chrome.evaluate(`(() => {
+      const row = ${mappingCopy}.closest("tr").getBoundingClientRect();
+      return { x: row.left + 10, y: row.top + row.height / 2 };
+    })()`);
+    await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...mappingPoint });
+    await chrome.waitFor(copyPaint(1, "auto"));
+    await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 2, y: 2 });
+    await chrome.waitFor(copyPaint(0, "none"));
+    await chrome.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+    await chrome.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+    await chrome.evaluate(`${mappingCopy}.focus()`);
+    await chrome.waitFor(copyPaint(1, "auto"));
+    await chrome.evaluate(captureCopy);
+    await chrome.evaluate(`${mappingCopy}.click()`);
+    await chrome.waitFor(`typeof window.__rowCopy === "string"`);
+    measured.mappingCopy = await chrome.evaluate("window.__rowCopy");
+    await tableTab("mixed.json");
+    const mixedGrid = 'document.querySelector("#preview-pane .data-grid")';
+    await chrome.waitFor(`${mixedGrid}?.tBodies[0].rows.length === 3`);
+    measured.mixed = await chrome.evaluate(
+      `[...${mixedGrid}.tBodies[0].rows].map((row) => [...row.cells].filter(
+        (cell) => !cell.classList.contains("structured-row-action"),
+      ).map(
+        (cell) => (cell.querySelector(":scope > button") ?? cell).textContent,
+      ))`,
+    );
+    measured.branchLayout = await chrome.evaluate(`(() => {
+      const rows = ${mixedGrid}.tBodies[0].rows;
+      const first = rows[0];
+      const button = first.querySelector(".structured-branch-toggle");
+      const icon = button.querySelector(".toggle-chevron").getBoundingClientRect();
+      const box = button.getBoundingClientRect();
+      const label = document.createRange();
+      label.selectNodeContents(button.firstChild);
+      return {
+        usesTableTextSize: getComputedStyle(button).fontSize === getComputedStyle(button.closest("td")).fontSize,
+        iconAfterLabel: label.getBoundingClientRect().right <= icon.left,
+        iconCentered: Math.abs((icon.top + icon.bottom - box.top - box.bottom) / 2) <= 1,
+        rowHeightMatches: Math.abs(first.getBoundingClientRect().height - rows[2].getBoundingClientRect().height) <= 1,
+      };
+    })()`);
+    await chrome.send("Emulation.setDeviceMetricsOverride", {
+      width: 720,
+      height: 840,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await chrome.send("Page.navigate", { url: `${base}/view/frontmatter.md` });
+    const frontmatter = "details.kpress-frontmatter";
+    await chrome.waitFor(`Boolean(document.querySelector("${frontmatter} > summary"))`);
+    await chrome.evaluate(`document.querySelector("${frontmatter} > summary").click()`);
+    const frontGrid = `document.querySelector("${frontmatter} .data-grid")`;
+    const rowNamed = (name) =>
+      `[...document.querySelectorAll("${frontmatter} .data-grid tbody tr")].find(
+        (candidate) => candidate.querySelector("th")?.textContent === ${JSON.stringify(name)}
+      )`;
+    await chrome.waitFor(`Boolean((${rowNamed("slot")})?.querySelector(".disclosure-toggle"))`);
+    measured.initialFrontmatter = await chrome.evaluate(`({
+      keys: [...${frontGrid}.tBodies[0].rows].map((row) => row.cells[0].textContent),
+      pickers: document.querySelectorAll("${frontmatter} select").length,
+      slotOpen: (${rowNamed("slot")}).querySelector(".disclosure-toggle").getAttribute("aria-expanded"),
     })`);
+    await chrome.evaluate(captureCopy);
+    await chrome.evaluate(`(${rowNamed("slot")}).lastElementChild.querySelector("button").click()`);
+    await chrome.waitFor(`typeof window.__rowCopy === "string"`);
+    measured.branchCopy = await chrome.evaluate("window.__rowCopy");
+    await chrome.evaluate(
+      `window.__frontGrid = ${frontGrid}; window.__titleRow = ${rowNamed("title")}`,
+    );
+    for (const name of ["slot", "roles"]) {
+      const row = rowNamed(name);
+      await chrome.waitFor(
+        `(${row})?.querySelector(".disclosure-toggle")?.getAttribute("aria-expanded") === "false"`,
+      );
+      await chrome.evaluate(`(${row}).querySelector(".disclosure-toggle").click()`);
+    }
+    await chrome.waitFor(
+      `[...document.querySelectorAll("${frontmatter} .data-grid tbody td")].some((cell) => cell.textContent === '"host"')`,
+    );
+    measured.inlineExpansion = await chrome.evaluate(
+      `window.__frontGrid === ${frontGrid} && window.__titleRow === ${rowNamed("title")}`,
+    );
+    measured.frontmatterFits = await chrome.evaluate(
+      `${frontGrid}.getBoundingClientRect().right <= document.querySelector("${frontmatter}").getBoundingClientRect().right`,
+    );
+    await chrome.evaluate(
+      `[...document.querySelectorAll("${frontmatter} button")].find((button) => button.textContent === "Source").click()`,
+    );
+    await chrome.waitFor(
+      `Boolean(document.querySelector("${frontmatter} [data-mb-copy-payload]"))`,
+    );
+    measured.frontmatter = await chrome.evaluate(`(() => {
+      const details = document.querySelector("${frontmatter}");
+      return {
+        firstLine: Number(details.querySelector(".source-line-numbers").textContent.split(String.fromCharCode(10))[0]),
+        copy: details.querySelector("[data-mb-copy-payload]").textContent,
+      };
+    })()`);
+    await chrome.send("Emulation.clearDeviceMetricsOverride");
+    const fences = `document.querySelectorAll("details.metabrowser-structured-fence")`;
+    const yamlFence = `${fences}[0]`;
+    const jsonFence = `${fences}[1]`;
+    await chrome.waitFor(`${fences}.length === 2`);
+    await chrome.evaluate(`${yamlFence}.querySelector("summary").click()`);
+    await chrome.evaluate(`${jsonFence}.querySelector("summary").click()`);
+    await chrome.waitFor(
+      `Boolean(${yamlFence}.querySelector(".structured-node-grid") && ${jsonFence}.querySelector(".structured-node-grid"))`,
+    );
+    await chrome.evaluate(`${yamlFence}.querySelector('[data-chip-value="Source"]').click()`);
+    const hasSourceColor = (fence, language) => `(() => {
+      const token = ${fence}.querySelector(".language-${language}.hljs .hljs-attr");
+      return token && getComputedStyle(token).color !== getComputedStyle(token.closest("code")).color;
+    })()`;
+    await chrome.waitFor(hasSourceColor(yamlFence, "yaml"));
+    await chrome.evaluate(`${yamlFence}.querySelector('[data-chip-value="Table"]').click()`);
+    await chrome.evaluate(`${jsonFence}.querySelector('[data-chip-value="Tree"]').click()`);
+    await chrome.waitFor(`Boolean(${jsonFence}.querySelector(".structured-tree"))`);
+    await chrome.evaluate(`${jsonFence}.querySelector('[data-chip-value="Source"]').click()`);
+    await chrome.waitFor(`Boolean(${jsonFence}.querySelector("[data-mb-copy-payload]"))`);
+    await chrome.waitFor(hasSourceColor(jsonFence, "json"));
+    measured.fencedViews = await chrome.evaluate(`(() => {
+      const json = ${jsonFence};
+      const firstLine = Number(json.querySelector(".source-line-numbers").textContent.split(String.fromCharCode(10))[0]);
+      const source = json.querySelector("[data-mb-copy-payload]").textContent;
+      json.querySelector("summary").click();
+      return { firstLine, source, yamlTableStaysOpen: ${yamlFence}.open && Boolean(${yamlFence}.querySelector(".structured-node-grid")) };
+    })()`);
+    await chrome.waitFor(`!${jsonFence}.nextElementSibling.hidden`);
+    measured.fencedViews.jsonFallbackReturns = true;
     phase("records");
     const hasCell = (text) =>
       `__t().qa(".table-cell").some((cell) => cell.textContent === ${JSON.stringify(text)})`;

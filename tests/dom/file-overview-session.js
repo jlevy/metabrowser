@@ -29,6 +29,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const vm = require("node:vm");
+const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const sourceRoot = path.join(repoRoot, "src/metabrowser");
@@ -169,6 +170,9 @@ class FakeElement {
     }
     return null;
   }
+  get ownerDocument() {
+    return global.document;
+  }
 }
 
 const windowListeners = new Map();
@@ -176,6 +180,7 @@ global.window = globalThis;
 global.addEventListener = (type, listener) => windowListeners.set(type, listener);
 global.removeEventListener = () => {};
 global.document = { createElement: (tag) => new FakeElement(tag) };
+global.metabrowser = createSdkSandbox().metabrowser;
 document.body = new FakeElement("body");
 global.METABROWSER_SETTINGS = {};
 const originalWarn = console.warn;

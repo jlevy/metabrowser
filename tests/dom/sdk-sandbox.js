@@ -27,6 +27,7 @@ function createSdkSandbox(overrides = {}) {
     Set,
     TextEncoder,
     URL,
+    URLSearchParams,
     addEventListener() {},
     clearInterval,
     clearTimeout,

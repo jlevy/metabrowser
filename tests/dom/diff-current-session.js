@@ -46,8 +46,8 @@ const ORIGIN = "http://127.0.0.1:8123";
 // The structured plugin's tree helpers are classic scripts that publish on the global object,
 // read here as the page reads them from the plugin's exports.
 const plugins = path.join(repoRoot, "src/metabrowser/builtin_plugins");
-require(path.join(plugins, "structured/preview.js"));
-require(path.join(plugins, "structured/tree.js"));
+require(path.join(plugins, "../static/structured-preview.js"));
+require(path.join(plugins, "../static/structured-tree.js"));
 const tree = globalThis.__structuredTree;
 const helpers = {
   materializeRows: tree.materializeRows,

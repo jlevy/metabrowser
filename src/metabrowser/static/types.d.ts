@@ -717,6 +717,8 @@ type KpressRenderPayload = {
   assets: KpressAssetManifest;
   diagnostics?: Array<unknown>;
   html: string;
+  structured_fences?: ReadonlyArray<KpressStructuredFence>;
+  fence_revision?: string;
   /** The version of each served file the document embeds, by `/raw` identity. */
   raw_versions?: Record<string, string>;
 };
@@ -1055,7 +1057,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
     fragment: string | null | undefined,
     loaded: Readonly<{ lines: number; truncated: boolean }>,
   ): MetabrowserSourceLineAnchorState;
-  gutterHtml(text: string): string;
+  gutterHtml(text: string, lineStart?: number): string;
   keyStep(
     current: string | null | undefined,
     focus: number,
@@ -1078,7 +1080,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
   nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
   normalizeLineEndings(text: string, afterCarriageReturn?: boolean): string;
   parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
-  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
+  preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | "table" | null;
   refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
   spoken(state: MetabrowserSourceLineAnchorState): string;
 }>;
@@ -1482,7 +1484,7 @@ type MetabrowserPluginData = {
 };
 
 /**
- * A row of the structured tree (structured/tree.js `materializeRows`). Its path is
+ * A row of the structured tree (static/structured-tree.js `materializeRows`). Its path is
  * positional ("$/3/0"). Internal to Metabrowser's own views: `renderInlineTree` is the
  * stable embedding contract, and a row's fields change with the views that draw them.
  */
@@ -1517,7 +1519,7 @@ type StructuredMaterializeOptions = {
   shown?: ReadonlyMap<string, number>;
 };
 
-/** The file view's first-draw expansion (structured/tree.js `EXPANSION`). */
+/** The file view's first-draw expansion (static/structured-tree.js `EXPANSION`). */
 type StructuredExpansion = Readonly<{
   maxLines: number;
   maxExpandThreshold: number;
@@ -1525,6 +1527,7 @@ type StructuredExpansion = Readonly<{
 }>;
 
 type StructuredExports = {
+  renderRecordValue(host: HTMLElement, value: unknown): DisposableHandle | undefined;
   calculateOptimalExpansion: (
     parsed: unknown,
     options: { maxLines?: number; maxExpandThreshold?: number; indentChars?: number },
@@ -2145,11 +2148,31 @@ type MetabrowserSdk = {
     state: { printable: boolean; profile?: string; runtime?: string },
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
+  /** Paint the shared Files-scan progress row. The caller controls visibility and live status. */
+  renderIndexProgress(container: HTMLElement, message: string): void;
   renderTextLoadMoreFooter(data: Record<string, unknown>): string;
+  loadStructuredTree(): Promise<StructuredPreviewGlobal & StructuredTreeGlobal>;
+  mountStructuredNodeTable(
+    ...args: Parameters<typeof import("./structured-node-table.js").mountNodeTable>
+  ): Promise<ReturnType<typeof import("./structured-node-table.js").mountNodeTable>>;
+  createStructuredPageReader(
+    path: string,
+    options?: Parameters<
+      typeof import("./structured-page-reader.js").createStructuredPageReader
+    >[2],
+  ): Promise<ReturnType<typeof import("./structured-page-reader.js").createStructuredPageReader>>;
+  mountStructuredExcerpt(
+    host: HTMLElement,
+    options: Parameters<typeof import("./structured-excerpt.js").mountStructuredExcerpt>[2],
+  ): Promise<ReturnType<typeof import("./structured-excerpt.js").mountStructuredExcerpt>>;
   renderSourceView(
     container: HTMLElement,
     data: Record<string, unknown> & { content?: string; ext?: string },
-    options?: { parts?: ReadonlyArray<Readonly<{ text: string; language: string }>> },
+    options?: {
+      parts?: ReadonlyArray<Readonly<{ text: string; language: string }>>;
+      lineStart?: number;
+      signal?: AbortSignal;
+    },
   ): void;
   partialNoticeHtml(
     progress: { loaded: string; total: string },
@@ -2169,6 +2192,7 @@ type MetabrowserSdk = {
   delegateOwnerAttribute(): string;
   /** Set that mark on a delegated control page code created; returns the element. */
   ownDelegate<T extends Element>(element: T): T;
+  showCopyResult(button: HTMLElement, writing: Promise<void>): void;
   viewState: Readonly<{
     isActive(container: HTMLElement): boolean;
     subscribeActive(container: HTMLElement, listener: (active: boolean) => void): () => void;
@@ -5325,6 +5349,11 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
+  type KpressStructuredFence = Readonly<{
+    id: string;
+    opening_line: number;
+    format: "json" | "yaml";
+  }>;
   type DiffFileDisclosure = DiffFileDisclosureShape;
   type MetabrowserPluginAssets = PluginAssets;
   type MetabrowserAgentLogRenderers = AgentLogRenderers;

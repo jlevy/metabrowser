@@ -155,9 +155,9 @@ async function abandon(chrome, exited, profile, spawned) {
  * from DevToolsActivePort, an answer on it, and a socket open to its page. A start that
  * fails is abandoned and says why, with the end of what Chrome wrote to stderr.
  * @param {string} bin @param {string} profiles @param {number} width @param {number} height
- * @param {number} boundMs
+ * @param {number} boundMs @param {string[]} args
  */
-async function startChrome(bin, profiles, width, height, boundMs) {
+async function startChrome(bin, profiles, width, height, boundMs, args) {
   const began = Date.now();
   const deadline = began + boundMs;
   const profile = fs.mkdtempSync(path.join(profiles, "chrome-"));
@@ -177,6 +177,7 @@ async function startChrome(bin, profiles, width, height, boundMs) {
       "--force-device-scale-factor=1",
       `--window-size=${width},${height}`,
       `--user-data-dir=${profile}`,
+      ...args,
       "about:blank",
     ],
     { stdio: ["ignore", "ignore", "pipe"] },
@@ -283,10 +284,10 @@ async function startChrome(bin, profiles, width, height, boundMs) {
  * and the last failure, or a start cut off at its bound, throws with every start's reason
  * and the last one's stderr. The suite's warm-up (tests/dom/chrome-warm-up.mjs) makes one
  * long start, and the test of the starts (tests/dom/chrome-start-retry.mjs) short ones;
- * every session takes the defaults.
+ * other sessions use the default retry timing.
  * @param {string} bin
  * @param {{profiles: string, width?: number, height?: number, startBoundMs?: number,
- *   attempts?: number}} options
+ *   attempts?: number, args?: string[]}} options
  */
 export async function launchChrome(
   bin,
@@ -296,12 +297,13 @@ export async function launchChrome(
     height = 900,
     startBoundMs = START_BOUND_MS,
     attempts = START_ATTEMPTS,
+    args = [],
   },
 ) {
   /** @type {string[]} */
   const failures = [];
   for (let attempt = 1; ; attempt += 1) {
-    const start = await startChrome(bin, profiles, width, height, startBoundMs);
+    const start = await startChrome(bin, profiles, width, height, startBoundMs, args);
     if (start.ok) {
       noteStart({ attempt, ok: true, ms: start.ms });
       return session(start);

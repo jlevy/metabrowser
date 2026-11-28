@@ -229,9 +229,16 @@ export function updateDistributionView(handle, model) {
     return;
   }
   handle.status.hidden = false;
-  handle.status.replaceChildren();
-  handle.status.classList?.remove("file-type-summary-status-progress");
   setStatusNotice(handle.status, null);
+  if (model.scanning && model.state !== "truncated" && !model.indexFailed) {
+    window.metabrowser.renderIndexProgress(
+      handle.status,
+      model.indexedFilesText ? `~${model.indexedFilesText} files scanned` : "Scanning…",
+    );
+    return;
+  }
+  handle.status.replaceChildren();
+  handle.status.classList?.remove("index-progress");
   if (model.state === "truncated") {
     setStatusNotice(handle.status, "warning");
     handle.status.textContent = `Only the first ${model.maxFilesText ?? "0 files"} were scanned; percentages cover those files.`;
@@ -239,38 +246,11 @@ export function updateDistributionView(handle, model) {
     setStatusNotice(handle.status, "warning");
     handle.status.textContent =
       "Could not finish scanning this folder; percentages cover the files found before it stopped.";
-  } else if (model.scanning) {
-    renderScanningProgress(handle.status, model.indexedFilesText);
   } else if (model.state === "zero-bytes") {
     handle.status.textContent = "All included files are zero bytes.";
   } else {
     handle.status.hidden = true;
   }
-}
-
-/**
- * Show the crawl the way the nav panel already shows it, rather than as a
- * sentence about what the percentages mean. Progress is a spinner and a
- * count; a reader watching a bar fill does not need to be told the number
- * beside it is provisional.
- *
- * The classes are the nav's own `#index-progress` internals, so this is
- * that component and cannot drift from it. The count rule is the nav's
- * too: a literal "~0 files scanned" reads as a stuck scan, so a count
- * that has not arrived yet falls back to the bare label.
- *
- * @param {HTMLElement} status
- * @param {string | undefined} indexedFilesText the formatted count, "" or absent before one arrives
- */
-function renderScanningProgress(status, indexedFilesText) {
-  status.classList?.add("file-type-summary-status-progress");
-  const spinner = document.createElement("span");
-  spinner.className = "index-progress-spinner";
-  spinner.setAttribute("aria-hidden", "true");
-  const text = document.createElement("span");
-  text.className = "index-progress-text";
-  text.textContent = indexedFilesText ? `~${indexedFilesText} files scanned` : "Scanning…";
-  status.append(spinner, text);
 }
 
 /** @param {DistributionHandle} handle @param {string} mode */

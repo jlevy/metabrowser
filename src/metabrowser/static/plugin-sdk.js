@@ -1669,27 +1669,18 @@
     },
   });
 
-  // Delegated click handler for copyable content and explicit identifiers.
-  // Fully SDK-owned: no reference to shell globals, so paths, revisions,
-  // and wrapWithCopy surfaces share one clipboard and feedback contract.
-  /** @param {Element & {classList?: DOMTokenList, dataset?: DOMStringMap}} btn */
+  /** @param {HTMLElement} btn */
   function _handleCopyClick(btn) {
-    var mode = btn.dataset?.mbCopy || "";
-    var restingTip = btn.dataset?.mbCopyLabel || "Copy content";
+    var mode = btn.dataset.mbCopy || "";
     var text = "";
-    var wrap = null;
-    var code = null;
     if (mode === "text") {
-      text = btn.dataset?.mbCopyText || "";
+      text = btn.dataset.mbCopyText || "";
     } else if (mode === "wrap") {
-      wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
+      const wrap = btn.closest(".content-copy-wrap");
       if (!wrap) {
         return;
       }
-      code =
-        typeof wrap.querySelector === "function"
-          ? wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code")
-          : null;
+      const code = wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code");
       text = code ? code.textContent || "" : "";
       if (!text) {
         // No <code> child: copy the wrap's text minus the button's label.
@@ -1707,24 +1698,24 @@
     if (!clipboard || typeof clipboard.writeText !== "function") {
       return;
     }
+    showCopyResult(btn, clipboard.writeText(text));
+  }
+
+  /** @param {HTMLElement} btn @param {Promise<void>} writing */
+  function showCopyResult(btn, writing) {
+    const restingTip = btn.dataset.mbCopyLabel || "Copy content";
     /** @param {string} tip @param {boolean} copied */
     function feedback(tip, copied) {
-      if (copied && btn.classList) {
+      if (copied) {
         btn.classList.add("copied");
       }
-      if (btn.dataset) {
-        btn.dataset.tipText = tip;
-      }
+      btn.dataset.tipText = tip;
       setTimeout(() => {
-        if (btn.classList) {
-          btn.classList.remove("copied");
-        }
-        if (btn.dataset) {
-          btn.dataset.tipText = restingTip;
-        }
+        btn.classList.remove("copied");
+        btn.dataset.tipText = restingTip;
       }, 1500);
     }
-    clipboard.writeText(text).then(
+    writing.then(
       () => feedback("Copied", true),
       () => feedback("Copy failed", false),
     );
@@ -1744,7 +1735,7 @@
         var btn = target.closest("[data-mb-copy]");
         if (btn) {
           if (isOwnedDelegate(btn)) {
-            _handleCopyClick(btn);
+            _handleCopyClick(/** @type {HTMLElement} */ (btn));
           }
           return;
         }
@@ -1788,6 +1779,18 @@
 
   global.metabrowser = {
     plugins: Object.freeze({ load: loadPluginExports }),
+    async loadStructuredTree() {
+      await Promise.all([
+        ensureAsset("structured-tree"),
+        _loadStylesheet("/static/structured-tree.css"),
+      ]);
+      const preview = global.__structuredPreview;
+      const tree = global.__structuredTree;
+      if (!preview || !tree) {
+        throw new Error("Structured Tree unavailable");
+      }
+      return { ...preview, ...tree };
+    },
     registerView: registerView,
     getRegisteredView: getRegisteredView,
     listViewsForKind: listViewsForKind,
@@ -1841,6 +1844,7 @@
     sizeHtml: sizeHtml,
     delegateOwnerAttribute: delegateOwnerAttribute,
     ownDelegate: ownDelegate,
+    showCopyResult,
     icons: icons,
     perf: perf,
     prefs: prefs,

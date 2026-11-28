@@ -58,6 +58,7 @@ introduces.
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `softschema==0.9.1` | `0.8.1` | Portable YAML guards and explicit validation execution. Release clears the ordinary cool-off. See [SoftSchema 0.9 review](#softschema-09-review). |
+| `softschema==0.10.0` | `0.9.1` | The [reviewed release](https://github.com/jlevy/softschema/releases/tag/v0.10.0) adds collection scanning and refresh, expands schema field annotations, and rejects Python implementation field names in authored metadata. Runtime requirements are unchanged. The lock delta is SoftSchema alone. Wheel SHA-256 `1a397bc9…d970fc` and sdist `e8134357…5bb1cf` match PyPI and the release CI artifacts. |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
 | `tryscript==0.3.1` | `0.3.0` | Security patch only; upgrades zod from 3.25.76 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 |
 | `tryscript==0.4.0` | `0.3.1` | Replaces tinyglobby with tryscript’s own matcher, removing tinyglobby, fdir, and picomatch and with them GHSA-fc5q-39xc-vjpf; rejects extended globs, alternation groups, and brace ranges in test patterns, none of which this repository uses |

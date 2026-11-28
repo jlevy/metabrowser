@@ -365,6 +365,7 @@ class InertRender:
     # What the log names the document by, where *source_path* is a route's token rather
     # than a name a reader knows (a pin's wire path); *source_path* otherwise.
     display_path: str | None = None
+    fence_origin: bytes | None = None
 
     @property
     def verdict_key(self) -> tuple[str, ...]:
@@ -402,6 +403,7 @@ class InertRender:
             self.include_toc,
             self.link_base,
             self.mark_path_relative,
+            self.fence_origin,
         )
 
 
@@ -462,6 +464,7 @@ def _encode_render(request: InertRender, asset_url_prefix: str) -> dict[str, Any
         "asset_url_prefix": asset_url_prefix,
         "link_base": request.link_base,
         "mark_path_relative": request.mark_path_relative,
+        "fence_origin": _blob(request.fence_origin),
     }
 
 
@@ -525,6 +528,7 @@ def _render(request: dict[str, Any]) -> dict[str, Any]:
             profile=cast("str | None", request["profile"]),
             include_toc=cast("Literal['auto', 'on', 'off']", request["include_toc"]),
             plain_code=True,
+            fence_origin=_unblob(request.get("fence_origin")),
             asset_url_prefix=str(request["asset_url_prefix"]),
         )
     except kpress_adapter.KPressInvalidRequestError as exc:

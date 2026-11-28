@@ -8109,6 +8109,15 @@ take its numeric and label rules.
 The view is drawn after the knowledge-base browser in
 [paraverse](https://github.com/jlevy/paraverse) and adapted to these tokens.
 
+When a source exposes several tables, use the shared linked catalog from
+`builtin_plugins/table/table-catalog.js`. SQLite and SoftSchema use its headings,
+table-name links and right-aligned counts.
+In the grid, keyed records expose a linked label, and the record’s source is an ordinary
+file link. A collection’s Tables button and a record’s return button use
+[Parent Navigation](#parent-navigation).
+[Shared structured data views](project/specs/active/plan-2026-11-26-structured-data-views.md)
+defines Table, Tree and Source for nested YAML and JSON across the main app.
+
 | Class | Rule |
 | --- | --- |
 | `.data-grid` | The table: chrome in `--font-sans` at the body size, a hairline in `--border` under each row, the header in the resting label type and on `--bg`, staying at the top of its scroll box, and `--hover-bg` under the pointer |
@@ -8503,11 +8512,12 @@ activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
 
-When a page can show partial results while an index is built, put the status line
-alongside the content in muted text (`--muted`) with the shared small
-`.index-progress-spinner`. Name the work and show a count when one is known.
-Keep the line in the page’s surface so it reads as secondary information beside the
-results.
+Use `renderIndexProgress` for a visible index status in a plugin.
+It shares the Files scan’s spinner, muted color and navigation type size.
+Name the work and show a count when one is known.
+A streaming scan can place the status alongside its partial results.
+A collection refresh that retains a published catalog or grid keeps that content
+visible.
 
 ### Loading States Are Shapes, Not Sentences
 

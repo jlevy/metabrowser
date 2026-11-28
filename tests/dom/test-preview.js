@@ -1,4 +1,4 @@
-// Pure-function tests for structured/preview.js.
+// Pure-function tests for static/structured-preview.js.
 //
 // Runs in a Node vm sandbox (same approach as load-plugins.js) — no
 // jsdom dependency. Exits 0 on success, 1 on first failed assertion;
@@ -18,7 +18,7 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
 const previewSrc = fs.readFileSync(
-  path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/structured/preview.js"),
+  path.resolve(__dirname, "../../src/metabrowser/static/structured-preview.js"),
   "utf-8",
 );
 vm.runInContext(previewSrc, sandbox, { filename: "preview.js" });
@@ -149,7 +149,7 @@ sandbox.document = {
   }),
 };
 const treeSrc = fs.readFileSync(
-  path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/structured/tree.js"),
+  path.resolve(__dirname, "../../src/metabrowser/static/structured-tree.js"),
   "utf-8",
 );
 vm.runInContext(treeSrc, sandbox, { filename: "tree.js" });

@@ -53,3 +53,12 @@ def test_shell_delegates_act_only_on_controls_the_page_created() -> None:
     # The file's eyebrow and the folder's header each have a served-root crumb, and each
     # acted.
     assert transcript["pageCalls"].count("folder:") == 2
+
+
+def test_lazy_clipboard_writes_and_cancellation() -> None:
+    require_node()
+    subprocess.run(
+        ["node", str(COPY_DELEGATE_TEST_JS.with_name("async-copy-button-behavior.mjs"))],
+        check=True,
+        timeout=20,
+    )

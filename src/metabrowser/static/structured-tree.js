@@ -1,10 +1,10 @@
-// Structured plugin — Tree renderer + windowed virtualization.
+// Shared structured Tree renderer and windowed virtualization.
 //
-// Loads after preview.js (manifest extra_scripts order). Reads the
+// Loads after structured-preview.js in the on-demand structured-tree bundle. Reads the
 // pure utility functions off __structuredPreview and emits DOM into
 // the container the shell hands us at render time.
 //
-// Public surface (assigned to window.__structuredTree):
+// Private bundle namespace, returned to consumers by mb.loadStructuredTree():
 //   materializeRows(parsed, expandedPaths, opts?) -> Row[]
 //     opts: {path, level, key, isArrayIndex, limit, shown}; see materializeRows
 //   renderRowHtml(row, indentChars) -> string
@@ -17,18 +17,16 @@
 // A path is as long as the value is deep, whatever its keys are, and two entries never
 // share one (mb-8274 review B1 and A14).
 //
-// renderInlineTree is the stable embedding contract that other
-// plugins (agent-log, future schema-aware variants) consume via
-// the exports of structured/index.js. materializeRows, renderRowHtml, a row's
+// renderInlineTree is the embedding contract for the shared Tree. The structured plugin
+// also exports it for plugins that already declare that dependency. The row helpers
+// materializeRows, renderRowHtml, a row's
 // fields (`change`, `text`, `hidden` and `changed` among them), and the "more" row are
 // internal to Metabrowser's own views (the rendered diff, diff-structured.js) and change
 // with them.
 ((global) => {
   var pv = global.__structuredPreview;
   if (!pv) {
-    console.error(
-      "structured/tree.js: __structuredPreview missing — preview.js did not load first",
-    );
+    console.error("structured-tree.js: structured-preview.js did not initialize");
     return;
   }
 

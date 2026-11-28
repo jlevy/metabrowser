@@ -6,6 +6,47 @@ env:
 ---
 # Golden test: the table view
 
+## Test: a collection publishes a stable catalog
+
+```console
+$ node tests/dom/softschema-collection-session.js
+{
+  "cold index": "Indexing collection…",
+  "collection discovery": "Indexing collection… 512 paths checked",
+  "published table": {
+    "label": "Person",
+    "count": "577 records",
+    "href": "/view/people?table=person%2Fv2"
+  },
+  "background refresh": "the catalog stays visible without its indexing spinner",
+  "return before the renderer arrives": "the catalog keeps the same links",
+  "return from a mounted table": "/view/people?table="
+}
+? 0
+```
+
+## Test: open a keyed row, its source file, and its table catalog
+
+```console
+$ node tests/dom/table-view-session.js record-links
+{
+  "return to the folder's table catalog": {
+    "href": "/view/archive/people?table="
+  },
+  "open the linked name of a keyed row": {
+    "name": "Ada Lovelace",
+    "href": "/view/archive/people?record=r.ada&table=people&context=__record__",
+    "title": "Ada Lovelace"
+  },
+  "open the record's source file": {
+    "path": "archive/people/ada.json",
+    "href": "/view/archive/people/ada.json",
+    "opened": "archive/people/ada.json"
+  }
+}
+? 0
+```
+
 ## Test: a direct relationship filter resolves its record after the schema
 
 ```console
@@ -23,7 +64,8 @@ $ node tests/dom/table-view-session.js relationships
       "rows?limit=200&path=market.db%2Forders&ref=people%3Ak.WzFd&via=%5B%5B%22buyer%22%5D%2C%5B%22id%22%5D%5D"
     ],
     "label": "Referencing Ada Lovelace via Buyer",
-    "target": "market.db/people"
+    "target": "market.db/people",
+    "description": "The person who bought it."
   },
   "removing the chip clears the scope": {
     "requests": [

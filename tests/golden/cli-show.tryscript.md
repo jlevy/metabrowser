@@ -82,15 +82,14 @@ model: text envelope; size=11 content_bytes=11 content_truncated=False
 
 ## Test: structured data
 
-A JSON mapping has no Table view: the structured kind offers it only on a file that
-starts as a list of records (`cli-api-table-records.tryscript.md`).
+A JSON mapping opens in Table, with Tree and Source available from the same file.
 
 ```console
 $ metab showroot --show data.json
 show: data.json
 route: /view/data.json
 kind: structured
-views: tree (default, key V), source (key S)
+views: table (default, key A), tree (key V), source (key S)
 model: text envelope; size=33 content_bytes=33 content_truncated=False
 ? 0
 ```

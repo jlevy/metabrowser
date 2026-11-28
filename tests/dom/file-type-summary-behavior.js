@@ -1,6 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { FakeElement } = require("./pulls-test-dom.js");
+const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 // The folder plugin's modules have no package.json saying they are modules, which the
 // browser never asks about, and distribution-view.js imports the legend it shows, so it is
@@ -118,6 +120,25 @@ class Element {
     }
     return null;
   }
+
+  get ownerDocument() {
+    return global.document;
+  }
+
+  get classList() {
+    const element = new FakeElement("div");
+    element.className = this.className;
+    const { classList } = element;
+    const change = (method, ...args) => {
+      classList[method](...args);
+      this.className = element.className;
+    };
+    return {
+      add: (...names) => change("add", ...names),
+      remove: (...names) => change("remove", ...names),
+      toggle: (name, force) => change("toggle", name, force),
+    };
+  }
 }
 
 global.document = {
@@ -125,6 +146,7 @@ global.document = {
   createElement: (tag) => new Element(tag),
   createTextNode: (text) => new TextNode(text),
 };
+global.window = { metabrowser: createSdkSandbox().metabrowser };
 
 function row(key, label, category, files, bytes, filePercent, bytePercent) {
   return {

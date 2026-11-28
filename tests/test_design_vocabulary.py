@@ -1458,7 +1458,11 @@ def _browser_sources() -> list[Path]:
 def _stylesheets() -> list[Path]:
     """Every stylesheet the app ships. Vendored ones are not ours to hold to this."""
 
-    return [STATIC / "styles.css", *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css"))]
+    return [
+        STATIC / "styles.css",
+        STATIC / "structured-tree.css",
+        *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")),
+    ]
 
 
 def _declarations(body: str) -> list[tuple[str, str]]:
@@ -1687,7 +1691,8 @@ _SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-
 # parts of a line whose box sets the line's size (a Pulls row's number and place). A size
 # restated here is a second place to change when the text beside it moves: the file header
 # took four edits to follow the body size where it now takes none. A rule left off this list
-# is not checked.
+# is not checked. Index progress has its own shared size across navigation and content;
+# the table Chrome session compares those two actual surfaces.
 _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".notice"),
     ("styles.css", ".tip-detail"),
@@ -1698,7 +1703,6 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".tree-empty-note"),
     ("styles.css", ".recent-empty"),
     ("styles.css", ".source-freshness"),
-    ("styles.css", ".index-progress"),
     ("styles.css", ".changed-file-stats"),
     ("styles.css", ".git-graph-meta"),
     ("styles.css", ".git-graph-more"),
@@ -1719,7 +1723,7 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("github/styles.css", ".github-pulls-foot"),
     ("github/styles.css", ".github-pull-files-line"),
     ("github/styles.css", ".github-pull-files-offer-floating"),
-    ("structured/styles.css", ".tok-meta"),
+    ("structured-tree.css", ".tok-meta"),
 )
 
 
@@ -2144,8 +2148,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     "agents/agent-log.js": ('class="log-event-header disclosure-toggle"',),
     "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
-    "structured/tree.js": ('" srow-container disclosure-toggle"',),
+    "structured-tree.js": ('" srow-container disclosure-toggle"',),
+    "structured-node-table.js": ('"btn structured-branch-toggle disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
+    "markdown/frontmatter-view.js": (
+        'summary.className = "section-disclosure-trigger disclosure-toggle"',
+    ),
+    "markdown/fenced-views.js": (
+        'summary.className = "section-disclosure-trigger disclosure-toggle"',
+    ),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
     "folder/distribution-view.js": (
         "file-type-summary-details-toggle disclosure-toggle",
@@ -2213,7 +2224,22 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ),
     ),
     "agents/agent-log.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
-    "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
+    "structured-tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
+    "structured-node-table.js": (
+        ("MetabrowserIcons?.toggle ??", '"btn structured-branch-toggle disclosure-toggle"'),
+    ),
+    "markdown/frontmatter-view.js": (
+        (
+            'createElement("summary")',
+            'summary.className = "section-disclosure-trigger disclosure-toggle"',
+        ),
+    ),
+    "markdown/fenced-views.js": (
+        (
+            'createElement("summary")',
+            'summary.className = "section-disclosure-trigger disclosure-toggle"',
+        ),
+    ),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
     ),

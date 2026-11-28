@@ -307,9 +307,10 @@ function keyOf(route, params) {
   return `${route}?${query}`;
 }
 
+const shellSdk = require("./sdk-sandbox.js").createSdkSandbox().metabrowser;
 const sdk = {
-  // The shell's menu closing, production filter-controls.js in the SDK's sandbox.
-  menus: require("./sdk-sandbox.js").createSdkSandbox().metabrowser.menus,
+  menus: shellSdk.menus,
+  fileTypeIcon: shellSdk.fileTypeIcon,
   escapeHtml: (value) => String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`),
   tooltip: {
     show: (html, anchor) => tooltips.push({ show: html, anchor: anchor.className }),
@@ -1659,6 +1660,47 @@ async function recordLists() {
   mixed.container.remove();
 }
 
+async function recordActionInvariant() {
+  const activated = [];
+  const view = mount("records.json", "", {
+    rowAction: {
+      label: "Copy record",
+      render(key, originalPosition) {
+        const button = new Element("button");
+        button.addEventListener("click", () => activated.push([key, originalPosition]));
+        return button;
+      },
+    },
+  });
+  await ready(view);
+  click(headerButton(view, "age"));
+  await settle();
+  takeRequests();
+  const address = sdk.navigation.current();
+  const [first, second] = rowsOf(view);
+  first.focus();
+  key(first, "ArrowDown");
+  assert.equal(documentStandIn.activeElement, second);
+  const dataCells = second.childNodes.filter((cell) => cell.localName === "td");
+  for (const _cell of dataCells) {
+    key(documentStandIn.activeElement, "ArrowRight");
+  }
+  const action = second.lastChild.firstElementChild;
+  assert.equal(documentStandIn.activeElement, action);
+  // Native buttons dispatch a click after an unconsumed Enter. The DOM stand-in
+  // delivers the key and its native activation separately.
+  assert.equal(key(action, "Enter").prevented, false);
+  click(action);
+  await settle();
+  assert.deepEqual(activated, [["@3", 3]], "the second sorted row copies the third source record");
+  assert.deepEqual(sdk.navigation.current(), address, "the action leaves the reader in the grid");
+  assert.deepEqual(takeRequests(), [], "activation requests no record detail");
+  key(action, "ArrowLeft");
+  assert.notEqual(documentStandIn.activeElement, action);
+  view.handle.dispose();
+  view.container.remove();
+}
+
 async function relationshipFilter() {
   const file = "market.db/orders";
   const ref = "people:k.WzFd";
@@ -1677,7 +1719,9 @@ async function relationshipFilter() {
     { path: file },
     {
       table: "orders",
-      fields: [{ name: "buyer", title: "Buyer", type: "text" }],
+      fields: [
+        { name: "buyer", title: "Buyer", type: "text", description: "The person who bought it." },
+      ],
     },
   );
   respond(
@@ -1709,10 +1753,18 @@ async function relationshipFilter() {
   const remove = find(view.container, hasClass("table-chip-remove"));
   assert.equal(text(link), "Ada Lovelace");
   assert.equal(link.dataset.path, "market.db/people");
+  const columns = find(view.container, hasClass("table-columns-button"));
+  click(columns);
+  const menu = find(view.container, hasClass("table-menu"));
+  const choice = find(menu, (element) => element.localName === "input");
+  const description = choice.attributes.get("aria-description");
+  assert.equal(description, "The person who bought it.");
+  click(columns);
   step("after the schema resolves", {
     requests: takeRequests(),
     label: text(link.parentNode),
     target: link.dataset.path,
+    description,
   });
   click(remove);
   await settle();
@@ -1723,16 +1775,244 @@ async function relationshipFilter() {
   assert.deepEqual(unrecorded, []);
 }
 
+async function recordLinks() {
+  const scope = { path: "archive/people", table: "people" };
+  const row = { key: "r.ada", cells: { active: true, name: "Ada Lovelace" } };
+  const sourcePath = "archive/people/ada.json";
+  const respond = (route, params, body) => {
+    answers[keyOf(route, { ...scope, ...params })] = { status: 200, body };
+  };
+  respond(
+    "schema",
+    {},
+    {
+      table: scope.table,
+      fields: [
+        { name: "active", type: "boolean", filterable: true },
+        { name: "name", type: "text" },
+      ],
+    },
+  );
+  respond(
+    "rows",
+    { limit: 200 },
+    {
+      columns: ["active", "name"],
+      rows: [row],
+      count: 1,
+      count_complete: true,
+      complete: true,
+    },
+  );
+  respond(
+    "record",
+    { key: row.key },
+    {
+      ...row,
+      positional: false,
+      label: row.cells.name,
+      source_path: sourcePath,
+      referenced_by: [],
+    },
+  );
+  let openedCatalog = null;
+  const catalogAddress = { path: scope.path, query: "table=" };
+  // A foreign query value is preserved even when it matches the renderer's template slot.
+  const query = "table=people&context=__record__";
+  const view = mount(scope.path, query, {
+    table: scope.table,
+    catalogAddress,
+    openCollectionAddress: (target) => {
+      openedCatalog = target;
+    },
+  });
+  await ready(view);
+  const catalogLink = find(view.container, hasClass("table-catalog-link"));
+  assert.equal(catalogLink.getAttribute("href"), sdk.navigation.href(catalogAddress));
+  assert.equal(click(catalogLink, { shiftKey: true }).prevented, false);
+  assert.equal(openedCatalog, null);
+  click(catalogLink);
+  assert.deepEqual(openedCatalog, catalogAddress);
+  step("return to the folder's table catalog", { href: catalogLink.getAttribute("href") });
+  const rowNode = rowsOf(view)[0];
+  const rowLink = find(rowNode, hasClass("table-row-link"));
+  const filterLink = find(rowNode, hasClass("table-value-filter"));
+  assert.ok(filterLink);
+  assert.equal(click(rowLink, { metaKey: true }).prevented, false);
+  assert.equal(sdk.navigation.current().query, query);
+  rowNode.focus();
+  key(rowNode, "ArrowRight");
+  assert.equal(documentStandIn.activeElement, filterLink);
+  key(filterLink, "ArrowRight");
+  assert.equal(documentStandIn.activeElement, rowLink);
+  key(rowLink, "Enter");
+  await settle();
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  assert.equal(sdk.navigation.current().query, query);
+  assert.equal(click(rowLink).prevented, true);
+  await settle();
+  assert.ok(catalogLink.parentNode.hidden);
+  const source = find(view.container, hasClass("table-source-link"));
+  const href = rowLink.getAttribute("href");
+  assert.equal(href, sdk.navigation.href(sdk.navigation.current()));
+  assert.equal(new URLSearchParams(sdk.navigation.current().query).get("record"), row.key);
+  step("open the linked name of a keyed row", {
+    name: text(rowLink),
+    href,
+    title: text(find(view.container, hasClass("table-record-title"))),
+  });
+  assert.equal(click(source, { ctrlKey: true }).prevented, false);
+  assert.equal(sdk.navigation.current().path, scope.path);
+  assert.equal(click(source).prevented, true);
+  assert.equal(sdk.navigation.current().path, sourcePath);
+  step("open the record's source file", {
+    path: text(source),
+    href: source.getAttribute("href"),
+    opened: sdk.navigation.current().path,
+  });
+  view.handle.dispose();
+  view.container.remove();
+  assert.deepEqual(unrecorded, []);
+}
+
+async function collectionRefreshInvariant() {
+  const originalFetch = sdk.fetchPluginData;
+  let generation = 1;
+  let disposedValues = 0;
+  let mountedValues = 0;
+  const reads = [];
+  let releaseSchema;
+  sdk.fetchPluginData = async (_plugin, route, params) => {
+    reads.push(route);
+    if (route === "schema" && generation === 4) {
+      await new Promise((resolve) => {
+        releaseSchema = resolve;
+      });
+    }
+    assert.equal(params.table, route === "card" ? "teams" : "people");
+    assert.equal(params.path, route === "card" ? "" : "people");
+    const name = generation === 1 ? "Before" : "After";
+    const cells = {
+      name,
+      friend: { ref: { table: "teams", key: "r.team", label: "Team" } },
+      nested: { json: { child: true }, preview: '{"child":true}' },
+    };
+    if (route === "schema") {
+      return {
+        generation: `G${generation}`,
+        table: "people",
+        fields: [
+          { name: "name", type: "text", sortable: true, description: `Description ${generation}` },
+          { name: "friend", type: "text" },
+          { name: "nested", type: "json" },
+        ],
+      };
+    }
+    if (route === "rows") {
+      return {
+        generation: `G${generation}`,
+        columns: ["name", "friend", "nested"],
+        rows: [{ key: "r.ada", cells }],
+        count: 1,
+        count_complete: true,
+        complete: true,
+        next_after: null,
+      };
+    }
+    if (route === "record") {
+      return {
+        generation: `G${generation}`,
+        key: "r.ada",
+        cells,
+        positional: false,
+        label: name,
+        referenced_by:
+          generation >= 3
+            ? [{ table: "orders", fields: ["buyer"], to: ["id"], count: 3, count_complete: true }]
+            : [],
+      };
+    }
+    if (route === "card") {
+      return { label: `Team ${generation}`, cells: {} };
+    }
+    throw Error(route);
+  };
+  const query = "table=people&sort=name&order=asc&record=r.ada";
+  const view = mount("people", query, {
+    table: "people",
+    collectionRoot: "",
+    renderJson() {
+      mountedValues += 1;
+      return {
+        dispose() {
+          disposedValues += 1;
+        },
+      };
+    },
+  });
+  async function hoverCard() {
+    const anchor = find(find(view.container, hasClass("table-record")), hasClass("table-ref"));
+    dispatch(anchor, "pointerover");
+    tick(1000);
+    await settle();
+    return tooltips.filter((item) => item.show).at(-1)?.show;
+  }
+  try {
+    await ready(view);
+    assert.equal(text(find(view.container, hasClass("table-record-title"))), "Before");
+    assert.match(await hoverCard(), /Team 1/);
+    reads.length = 0;
+    generation = 2;
+    await view.handle.refresh({ generation: "G2" });
+    await settle();
+    assert.equal(text(find(view.container, hasClass("table-record-title"))), "After");
+    assert.match(text(find(view.container, hasClass("table-record"))), /Description 2/);
+    assert.equal(disposedValues, 1);
+    assert.equal(sdk.navigation.current().query, query);
+    assert.deepEqual(reads, ["schema", "record", "rows"]);
+    assert.match(await hoverCard(), /Team 2/);
+    reads.length = 0;
+    await view.handle.refresh({ generation: "G2" });
+    assert.deepEqual(reads, ["rows"]);
+    generation = 3;
+    await view.handle.refresh({ generation: "G3" });
+    assert.match(text(find(view.container, hasClass("table-record"))), /Description 3/);
+    assert.equal(findAll(view.container, hasClass("table-open-ref")).length, 1);
+    assert.equal(disposedValues, 2);
+    generation = 4;
+    const pending = view.handle.refresh({ generation: "G4" });
+    await settle();
+    view.handle.dispose();
+    const mountsAtDisposal = mountedValues;
+    releaseSchema();
+    await pending;
+    assert.equal(mountedValues, mountsAtDisposal);
+    assert.equal(disposedValues, mountedValues);
+  } finally {
+    view.handle.dispose();
+    view.container.remove();
+    sdk.fetchPluginData = originalFetch;
+    tooltips.length = 0;
+  }
+}
+
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
   const view = await import(pathToFileURL(path.join(plugin, "table-view.js")).href);
   ({ mountTable, LIVE_COALESCE_MS: LIVE_COALESCE } = view);
   placeSaveMs = view.PLACE_SAVE_MS;
+  if (process.argv[2] === "record-links") {
+    await recordLinks();
+    process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+    return;
+  }
   if (process.argv[2] === "relationships") {
     await relationshipFilter();
     process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
     return;
   }
+  await collectionRefreshInvariant();
   modelInvariants();
   liveInvariants();
   await wholeTable();
@@ -1741,6 +2021,7 @@ async function main() {
   await placeAndHistory();
   await bounds();
   await recordLists();
+  await recordActionInvariant();
   await liveTable();
   await liveWindowTable();
   step("requests asked of the server", { unrecorded });

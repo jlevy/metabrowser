@@ -296,3 +296,25 @@ def test_a_trusted_folders_page_has_the_setting_and_no_policy_either_way(tmp_pat
         shell = client.get("/view/")
     assert "content-security-policy" not in shell.headers
     assert _settings(shell)["BLOCK_REMOTE_IMAGES"] is True
+
+
+def test_inert_pin_keeps_only_real_fences_addressable(tmp_path: Path, untrusted: None) -> None:
+    source = (
+        '<pre class="kpress-code"><code class="language-json">{}</code></pre>\n\n```json\n{}\n```\n'
+    )
+    store, commit = fast_import_store(tmp_path, {b"README.md": source.encode()})
+
+    async def fetch() -> Any:
+        async with pinned_client(store, commit) as (client, _subject):
+            return await client.get(
+                "/api/kpress/render", params={"path": README_WIRE, "view": "document"}
+            )
+
+    answer = asyncio.run(fetch())
+    assert answer.status_code == 200
+    rendered = answer.json()
+    (placement,) = rendered["structured_fences"]
+    assert rendered["inert"] and placement["opening_line"] == 3
+    assert re.fullmatch(r"[0-9a-f]{40}", rendered["fence_revision"])
+    assert allowlist_violations(rendered["html"], images=True) == []
+    assert f'<pre><code>{{}}\n<a href="#{placement["id"]}"></a></code></pre>' in rendered["html"]
