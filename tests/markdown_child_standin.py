@@ -37,11 +37,13 @@ def _write(sink: Any, payload: object) -> None:
     sink.flush()
 
 
-def _render(request: dict[str, Any]) -> object:
+def _render(request: dict[str, Any], *, reused: bool) -> object:
     text = base64.b64decode(request["source"]).decode()
     command, _, rest = text.partition("\n")[0].partition(" ")
     if command == "sleep":
         time.sleep(float(rest))
+    if command == "memory" and reused:
+        os._exit(int(sys.argv[sys.argv.index("--rss-exit") + 1]))
     if command == "exit":
         os._exit(3)
     if command == "crash":
@@ -72,10 +74,14 @@ def main() -> None:
         time.sleep(float(sys.argv[sys.argv.index("--slow-start") + 1]))
     source, sink = sys.stdin.buffer, sys.stdout.buffer
     _write(sink, {"ready": True})
+    reused = False
     while len(header := source.read(4)) == 4:
         request = json.loads(source.read(int.from_bytes(header, "big")))
+        if request.get("op") != "render" and "--rss-exit" in sys.argv:
+            os._exit(int(sys.argv[sys.argv.index("--rss-exit") + 1]))
         if request.get("op") == "render":
-            _write(sink, _render(request))
+            _write(sink, _render(request, reused=reused))
+            reused = True
         else:
             _write(
                 sink,

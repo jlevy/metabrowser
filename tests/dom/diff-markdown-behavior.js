@@ -430,6 +430,12 @@ async function main() {
   // its status where it names none or one this page does not know, and the format's own
   // sentence for a file it could not read as its format.
   const refused = (status, reason) => ({ status, ...(reason === undefined ? {} : { reason }) });
+  for (const format of ["markdown", "yaml", "json"]) {
+    assert.equal(
+      refusalReason(refused("too_large", "memory"), format),
+      "Rendering stopped at the memory limit. Reload the page to try again.",
+    );
+  }
   assert.equal(
     refusalReason(refused("too_large", "nesting"), "markdown"),
     "This file is nested too deeply to show rendered.",
