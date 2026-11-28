@@ -3,9 +3,9 @@ type: is
 id: is-01m8cnf4sgyjn4q4psvp77emx2
 title: Roll out the bounded SoftSchema folder plugin on a published dependency
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-26-softschema-collection-tables.md
 delegate: codex@spud10.local
 labels: []
@@ -17,7 +17,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T19:31:39.439Z
-updated_at: 2026-11-28T17:58:38.954Z
+updated_at: 2026-11-28T17:58:59.135Z
 started_at: 2026-11-28T17:58:38.949Z
+closed_at: 2026-11-28T17:58:59.134Z
+close_reason: "The bounded filesystem plugin shipped to main in stack #916 using the published SoftSchema 0.10.0 dependency. Merge and macOS CI passed, and the installed wheel served the exact reference collection. Cached Git support remains separately tracked."
+resolution: null
+duplicate_of: null
 ---
 Upgrade using the standard published SoftSchema dependency workflow after upstream PR #78 releases. Run normal installed-wheel and browser checks on the bounded preview, with Universe for real acceptance. Independent of the future streaming and million-row phase.
