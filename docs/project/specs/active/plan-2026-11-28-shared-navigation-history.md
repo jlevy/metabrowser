@@ -150,21 +150,109 @@ Bind them to the current folder page’s WebView and the same actions as the **V
 menu. Keep Command-[ and Command-] and swipe gestures.
 Verify correct dispatch when focus is in the pane, an editable field, the title bar, a
 modal sheet, or a popover.
-The action applies to the currently active browsing context.
+Title-bar clicks act on that window’s current folder page.
+Menu shortcuts use native responder targeting, so an active web popover can traverse its
+own history. Keep the address disclosure separate from browsing history and honor active
+sheets. Availability uses the same page-visible and history conditions as the View menu.
+Keep text editing shortcuts inside the selectable URL and respect the active input
+source.
 
 Rebind availability when the active page or WebView changes.
 An in-place route change must update the native controls and current address using
 WebKit’s observed state.
 If WebKit misses a same-document update, use a route-change notification to refresh the
-display. History traversal remains WebKit’s. Folder or window switching must not join
-histories, and a page temporarily given a different host retains only its own browsing
-history.
+display by asking native code to reread the active WebView’s state.
+History traversal remains WebKit’s. Folder or window switching must not join histories,
+and a page temporarily given a different host retains only its own browsing history.
 
 If the local server restarts on a different origin, save the current relative
 `PageAddress` and re-open it on the new origin.
 Reset obsolete WebKit history for that context so stale old-port items cannot enable
 Back or Forward. A same-origin reconnect keeps usable history.
 A regular browser tab on a stopped origin follows the browser’s own behavior.
+
+### One Row in the macOS Title Bar
+
+Use the existing title row.
+In leading-to-trailing order, place the system window buttons, a Back and Forward pair,
+the existing folder chooser, a flexible read-only URL field, and the Metabrowser project
+mark. Keep a real window-drag region beside the field.
+The folder chooser still identifies the workspace and opens its folder and
+represented-path menus.
+The URL field describes the page within that workspace.
+
+```text
+Wide:     ● ● ●   ‹ ›   example-project ⌄   [ 127.0.0.1:8457/view/docs/architecture.md#L42 ]      ◇
+480 pt:   ● ● ●   ‹ ›   example-proj… ⌄   [ /view/…/architecture.md#L42 ]      ◇
+```
+
+The current main window has a 480 pt minimum and an approximately 36 pt trailing mark
+accessory. For the sketch, allow 76 pt through the first gap after the system window
+buttons, 56 pt for the history pair, 126 pt for the chooser, 36 pt for the mark, and 40
+pt for remaining gaps and drag space.
+That leaves about 144 pt for the URL at the minimum, allowing for borders.
+At 760 pt a wider 174 pt chooser leaves about 376 pt.
+The existing mark’s layout tests record a 32 pt bar.
+Use the width budget as an estimate until the AppKit prototype measures the actual row
+and content rectangle.
+Preserve the existing content height and minimum window width.
+
+Let the full origin drop out of the resting field as space tightens, then elide the
+middle of the path where possible so the selected item remains recognizable.
+Keep both history buttons in fixed positions and disable each independently.
+Give each its own accessible name and keyboard focus.
+Keep the folder chooser usable if its visible name truncates.
+If supported system metrics or localization make the field too narrow to read, compact
+it to a labeled **Current URL** control that opens the same disclosure.
+Keep a visible URL field at 480 pt in the ordinary layout.
+
+Start with one window-owned leading accessory that lays out the history pair, the
+chooser, and the URL together.
+Keep the existing independent trailing mark.
+Give the chooser an assigned width so its current self-sizing leaves room for the URL.
+Evaluate an AppKit unified compact toolbar if the leading accessory cannot meet the fit
+or accessibility criteria.
+Either implementation must keep real system window buttons, drag and double-click
+behavior, the folder chooser’s represented-path menu, fullscreen behavior, and
+accessibility. Avoid giving the chooser and URL separate requests for all remaining
+space. Measure fit in both appearances, with long folder names and larger text.
+Exercise title-bar drag, click, and focus behavior with the disclosure open.
+
+### Conventions and Shortcuts
+
+- **Safari and Chrome** both use Command-[ and Command-] for page history.
+  Safari also offers a compact toolbar layout.
+  Chrome offers Command-arrow aliases.
+  Metabrowser already owns the brackets in its **View** menu.
+  Keep them and WebKit’s existing navigation gestures.
+  Leave Command-arrow to normal text navigation.
+  [Safari web-app shortcuts](https://support.apple.com/en-gb/guide/safari/ibrw3ceda9e7/27.0/mac/27)
+  ·
+  [Safari shortcuts](https://support.apple.com/guide/safari/keyboard-shortcuts-and-gestures-cpsh003/mac)
+  ·
+  [Safari toolbar](https://support.apple.com/en-euro/guide/safari/ibrw1012/27.0/mac/27)
+  · [Chrome shortcuts](https://support.google.com/chrome/answer/157179?hl=en)
+- **Arc and Dia** retain direct history actions in more compact browser chrome.
+  Arc exposes an optional toolbar and a command for copying the current URL. Dia’s
+  documented history controls and gestures reinforce keeping the buttons obvious even
+  when other toolbar items move.
+  [Arc toolbar notes](https://resources.arc.net/hc/en-us/articles/20498377604887-Arc-for-macOS-2023-Release-Notes)
+  · [Arc commands](https://start.arc.net/command-bar-actions) ·
+  [Dia product updates](https://www.diabrowser.com/changelog)
+- **ChatGPT desktop** documents Command-[ and Command-] for in-app history, along with
+  mouse Back and Forward.
+  **Claude desktop** publicly documents a separate Code session switcher using shifted
+  brackets. Its public material reviewed here does not establish the main window’s global
+  history keys. In both comparisons, distinguish revisiting an item from changing which
+  workspace or session is selected.
+  [ChatGPT desktop commands](https://learn.chatgpt.com/docs/app/commands) ·
+  [Claude desktop guide](https://academy.claude.com/tutorials/navigating-the-claude-desktop-app)
+  ·
+  [Claude Code desktop shortcuts](https://code.claude.com/docs/en/desktop#keyboard-shortcuts)
+- **Metabrowser** already assigns Command-L to **File > Open URL…**. Keep that command
+  and binding. The read-only field participates in native keyboard navigation.
+  Pressing it opens a disclosure with a selectable full URL, **Copy Current URL**, and
+  **Open in Default Browser**. Escape returns focus to the field.
 
 ### Current URL and API
 
@@ -173,8 +261,13 @@ In the macOS host, expose the validated current Metabrowser URL in native chrome
 Make the full address available without hiding meaningful query values or position
 anchors behind the folder title.
 Use a compact read-only presentation, with enough room to inspect the whole URL on
-demand. Never show or copy bootstrap credentials.
-Actions are disabled while no validated current server page is available.
+demand. The display and actions require a ready server endpoint and a visible, committed
+main document at that origin.
+Preserve the separate address used for recovery.
+Close the disclosure and clear its address when the committed page becomes unavailable
+or the window hosts another page.
+Validate again when copying or opening, preserve URL encoding including bracketed IPv6
+hosts, and exclude bootstrap credentials.
 A local URL works in an authorized browser on the same machine while that server is
 running. **View on GitHub** continues to name its own provider counterpart where
 available. Keep the two meanings distinct, particularly for uncommitted files and
@@ -215,6 +308,7 @@ existing links. No history stack crosses the process boundary.
    Include same-address state, rapid traversal, refresh without duplicate entries, and
    stale pin recovery. Verify source addresses through a direct server request and the
    project CLI route surface.
+
 2. Run the same PR → Browse code → Back → Forward trace in real Chromium and the native
    WebKit host. Check URL, selected tab or file, reading position, and navigation
    selection after each step.
@@ -223,16 +317,25 @@ existing links. No history stack crosses the process boundary.
    Verify the view with the source the server currently serves.
    Phase 2 also verifies that a source-qualified copy restores its intended source after
    another source has been selected.
+
 3. Verify native buttons, menu items, shortcuts, gestures, and their enabled states with
    and without prior history.
    Cover editable focus, a modal, popovers, multiple windows, page discard, and a
    restart on a different port.
    Confirm that copying and opening the current URL tracks in-place changes and that an
    invalid or retired origin never gets copied.
+
 4. Keep the checkout Back case in Chrome as the baseline for unqualified addresses.
    Add source-qualified cases in both engines.
    Open two windows on the same server and verify that restoring one window’s explicit
    source leaves the other window on its own target.
+
+5. In the native trace, go Back and open a different route.
+   Forward disables. Cover stale observations from a WebView replaced during a folder
+   switch, a canceled provisional navigation, and an exact encoded URL with an IPv6
+   origin. Measure the actual native row, drag region, and control hit targets while
+   resizing. Confirm accessibility names and values, right-to-left layout with
+   left-to-right URL text, and title-bar behavior in fullscreen.
 
 ## Rollout Plan
 
@@ -244,9 +347,8 @@ No migration of stored Back and Forward stacks is needed.
 
 ## Open Questions
 
-- Which compact placement exposes the native URL while preserving the folder chooser and
-  fitting the minimum window width?
-  Compare existing native title-bar and location patterns in a WebKit prototype.
+- Does the leading accessory fit at minimum width and preserve the folder chooser and
+  window behavior? Measure the AppKit prototype before settling the layout metrics.
 - Which source-qualified address can be served independently of the mutable session pin?
   Resolve server and route ownership before choosing the encoding.
 
@@ -259,6 +361,7 @@ No migration of stored Back and Forward stacks is needed.
 - [Navigation reveal in Chromium](../../../../tests/dom/nav-reveal-chrome.mjs)
 - [Checkout source and Back behavior in Chromium](../../../../tests/dom/checkout-ref-selector-chrome.mjs)
 - [Native page and actions](../../../../apps/macos/Sources/Metabrowser/FolderPage.swift)
+- [Apple’s toolbar guidance](https://developer.apple.com/design/human-interface-guidelines/toolbars)
 - [Native popover controls](../../../../apps/macos/Sources/Metabrowser/WebPane.swift)
 
 <!-- This document follows common-doc-guidelines.md.
