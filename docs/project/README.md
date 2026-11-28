@@ -72,6 +72,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Shared navigation history and native URL controls](specs/active/plan-2026-11-28-shared-navigation-history.md):
+  a draft for common browser and native history, visible macOS navigation controls, and
+  source-aware addresses
 - [Link preview tooltips](specs/active/plan-2026-11-26-link-preview-tooltips.md): a plan
   for a concise tooltip on a link that opens a page in Metabrowser, naming the object,
   its title where known, and that it opens here, with prefetch on rest, and one
