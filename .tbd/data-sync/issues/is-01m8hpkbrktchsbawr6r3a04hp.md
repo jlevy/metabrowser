@@ -5,7 +5,7 @@ title: Align structured view spacing, source line display, and nested table prev
 kind: bug
 status: in_progress
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-26-structured-data-views.md
 refs:
   - kind: pr
@@ -14,6 +14,12 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/929
     at: 2026-11-28T18:30:01.643Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/931
+    at: 2026-11-28T19:00:34.391Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/933
+    at: 2026-11-28T19:00:34.392Z
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -29,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-28T18:27:38.384Z
-updated_at: 2026-11-28T18:42:04.929Z
+updated_at: 2026-11-28T19:00:34.392Z
 started_at: 2026-11-28T18:29:35.870Z
 ---
 Check exact source slices for nested frontmatter and fenced/standalone YAML and JSON; align Table/Tree/Source chooser spacing across embeddings; show bounded inline JSON-style collection previews with counts and omission marks when condensed.
