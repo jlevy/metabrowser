@@ -1,0 +1,28 @@
+created_at: 2026-11-28T17:54:07.261Z
+ops:
+  - bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
+    block: |-
+      ⟦tbd⟧
+      `mb-ypme` · epic · in_progress · P2
+      Spec: [plan-2026-08-17-general-diff-rendering.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md)
+      Children: 65 (18 ready)
+      Bead: `tbd show mb-ypme`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
+    kind: splice_description
+  - bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
+    block: |-
+      ⟦tbd⟧
+      `mb-3s19` · epic · in_progress · P2
+      Children: 40 (24 ready)
+      Bead: `tbd show mb-3s19`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    kind: splice_description
+provider: linear
+run_id: 01m8hmnzrwpc15bccydpjp2h1m
+type: in
