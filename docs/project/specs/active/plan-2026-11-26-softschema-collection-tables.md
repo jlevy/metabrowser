@@ -575,6 +575,13 @@ these acceptance requirements.
 
 ### Phase 3: The Plugin, Its Table, Overview, and Record View (Metabrowser)
 
+The standard distribution loads the collection plugin by default.
+A custom build can leave out its directory under `builtin_plugins`. Folder Overview and
+Treemap, the shared structured views, and the SQLite table source work with the
+collection plugin absent.
+The SoftSchema library itself remains a runtime dependency for packaged cache contracts
+and other existing callers.
+
 The table works end to end over any folder of records, with every state visible, and
 browses as Paraverse’s does.
 
