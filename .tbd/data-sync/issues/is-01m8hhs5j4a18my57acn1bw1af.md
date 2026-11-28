@@ -5,11 +5,11 @@ title: Remove the standalone pull request link from the navigation footer
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 created_at: 2026-11-28T17:03:25.763Z
-updated_at: 2026-11-28T17:21:29.882Z
+updated_at: 2026-11-28T17:49:33.452Z
 closed_at: 2026-11-28T17:21:29.869Z
 close_reason: "Implemented, independently reviewed, and verified by green CI. Delivered in open PR #926."
 resolution: null
@@ -19,4 +19,4 @@ Use the existing browser and native navigation history to return to previously v
 
 ## Notes
 
-Cleanup PR #926. Removing the link uses existing history; follow-up work is described separately in draft plan PR #927.
+PR #926 merged at 31f1af0f after independent review and green exact-head and base CI. The combined merge tree matches the tested one. The separate title-bar design remains in draft PR #927.
