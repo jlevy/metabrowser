@@ -488,9 +488,22 @@ try {
   );
   await measure("pulls updated");
   await measureRules("pulls updated");
-  await waitFor(
-    "(() => { const button = document.querySelector('#nav-refresh'); button.dispatchEvent(new Event('pointerover')); return button.dataset.tipText.startsWith('Refreshed ') && button.dataset.tipText.includes(' in '); })()",
+  await waitFor(`(() => {
+    const button = document.querySelector('#nav-refresh');
+    button.dispatchEvent(new Event('pointerover'));
+    const [title, stats] = button.dataset.tipText.split("\\n");
+    return title.startsWith('Refreshed ') && stats?.includes('request') &&
+      stats.includes('GitHub CLI');
+  })()`);
+  await evaluate(
+    `document.querySelector('#nav-refresh').dispatchEvent(new MouseEvent('mouseenter'))`,
   );
+  await waitFor(`(() => {
+    const tip = document.querySelector('.custom-tooltip.visible');
+    const detail = tip?.querySelector('.tip-detail');
+    return detail?.textContent.includes('GitHub CLI') &&
+      detail.getBoundingClientRect().top > tip.getBoundingClientRect().top;
+  })()`);
   // As pulls-nav.js's showFailure puts it, first in the tab's panel.
   const pullsFailed = await givesWay(
     "nav-metadata-pulls",

@@ -67,7 +67,6 @@ import {
   isEnvelope as isPullEnvelope,
   pullComparison,
   REFRESH_ASK_MS,
-  relativeAge,
   SLOW_POLL_MS,
 } from "./pull-page.js";
 import {
@@ -241,7 +240,6 @@ const CHECKOUT_NOT_LISTED =
 
 /**
  * @typedef {{outcome: string, message: string | null, reset_at: string | null, at: string}} LastRefresh
- * @typedef {{finished_at: string, duration_ms: number}} RefreshTiming
  * @typedef {Record<keyof typeof LIST_LABELS, number>} PullFilterTotals
  * @typedef {{
  *   state: "absent" | "pending" | "current" | "stale",
@@ -255,7 +253,7 @@ const CHECKOUT_NOT_LISTED =
  *   probe_every_s?: number | null,
  *   refreshing: boolean,
  *   last_refresh: LastRefresh | null,
- *   refresh_timing?: RefreshTiming | null,
+ *   refresh_timing?: MetabrowserRefreshTooltipTiming | null,
  *   fetched: number,
  *   complete: boolean,
  *   truncated: boolean,
@@ -415,23 +413,6 @@ function rateHoldMs(envelope, nowMs) {
       ? Date.parse(last.at) + (envelope?.fresh_for_s ?? 0) * 1000
       : Date.parse(last.reset_at);
   return Number.isFinite(deadline) ? Math.max(0, deadline - nowMs) : 0;
-}
-
-/** @param {RefreshTiming | null | undefined} timing @param {number} nowMs */
-function refreshDetail(timing, nowMs) {
-  if (
-    timing === undefined ||
-    timing === null ||
-    typeof timing.finished_at !== "string" ||
-    !Number.isFinite(Date.parse(timing.finished_at)) ||
-    !Number.isFinite(timing.duration_ms) ||
-    timing.duration_ms < 0
-  ) {
-    return null;
-  }
-  const ms = timing.duration_ms;
-  const duration = ms < 1000 ? `${Math.round(ms)}ms` : `${Math.round(ms / 100) / 10}s`;
-  return `Refreshed ${relativeAge(timing.finished_at, nowMs)} in ${duration}`;
 }
 
 /** @param {PullsEnvelope | null} envelope */
@@ -722,6 +703,7 @@ function pinChanged(response) {
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
  *   retellAges?(): void,
+ *   refreshDetailChanged?(): void,
  *   warmComparisons?(numbers: number[]): void,
  *   stackFiles?(): number[],
  *   filesListed?(number: number): void,
@@ -1832,6 +1814,9 @@ export function createPullsController(deps, options = {}) {
   function holdEnvelope(list, envelope, request) {
     const previous = list.envelope;
     list.envelope = envelope;
+    if (JSON.stringify(previous?.refresh_timing) !== JSON.stringify(envelope.refresh_timing)) {
+      deps.refreshDetailChanged?.();
+    }
     const identity = coreCatalogIdentity(envelope);
     if (warmIdentity === null) {
       // Bind the startup hint before its first batch, not only when All is read.
@@ -3867,7 +3852,10 @@ export function createPullsController(deps, options = {}) {
         if (
           candidate === null ||
           candidate.refresh_timing == null ||
-          coreCatalogIdentity(candidate) !== identity
+          coreCatalogIdentity(candidate) !== identity ||
+          typeof candidate.refresh_timing.duration_ms !== "number" ||
+          !Number.isFinite(candidate.refresh_timing.duration_ms) ||
+          candidate.refresh_timing.duration_ms < 0
         ) {
           continue;
         }
@@ -3877,7 +3865,7 @@ export function createPullsController(deps, options = {}) {
           latestMs = finishedMs;
         }
       }
-      return refreshDetail(latest, deps.now());
+      return latest;
     },
     onFocus: wake,
     onOnline() {
@@ -4027,6 +4015,8 @@ export function mountPullsPanel(container, ctx, mb) {
   if (nav === undefined) {
     throw new Error("metabrowser github plugin: the Pulls panel needs its host");
   }
+  const refreshParts = nav.refreshParts ?? null;
+  const updateRefreshTooltip = () => refreshParts?.updateTooltip?.();
   const controls = mb.filterControls;
   if (controls === undefined) {
     throw new Error("metabrowser github plugin: the shared filter controls are unavailable");
@@ -4254,6 +4244,8 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {number | null} */
   let currentRow = nav.current;
   /** @type {number | null} */
+  let currentStack = null;
+  /** @type {number | null} */
   let anchorRow = null;
 
   /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
@@ -4341,15 +4333,43 @@ export function mountPullsPanel(container, ctx, mb) {
   let currentFile = nav.file ?? null;
   /** @type {unknown} */
   let followedPage = null;
+  /** @type {ReturnType<typeof refreshPage>} */
+  let timedPage = null;
   /** @type {(() => void) | null} */
   let unwatchFile = null;
+  /** @type {(() => void) | null} */
+  let unwatchRefreshDetail = null;
   let fileFollowEpoch = 0;
+
+  /** @returns {ReturnType<typeof import("./pull-page.js").mountPullPage> | null} */
+  function currentPage() {
+    return /** @type {ReturnType<typeof currentPage>} */ (
+      currentRow === null ? null : tab.pageFor(currentRow)
+    );
+  }
+
+  /** The preview that owns the page part of Refresh. */
+  function refreshPage() {
+    const stack =
+      /** @type {ReturnType<typeof import("./stack-page.js").mountStackPage> | null} */ (
+        currentStack === null ? null : (tab.stackFor?.(currentStack) ?? null)
+      );
+    return stack ?? currentPage();
+  }
+
   /** A null-file route replays the same page's current observation after address sync.
    * @param {boolean} [replay]
    */
   function followCurrentFile(replay = false) {
     const number = currentRow;
-    const page = number === null ? null : tab.pageFor(number);
+    const page = currentPage();
+    const timing = refreshPage();
+    if (timing !== timedPage) {
+      unwatchRefreshDetail?.();
+      timedPage = timing;
+      unwatchRefreshDetail = timing?.onRefreshDetail?.(updateRefreshTooltip) ?? null;
+      updateRefreshTooltip();
+    }
     if (!replay && page === followedPage) {
       return;
     }
@@ -5884,6 +5904,7 @@ export function mountPullsPanel(container, ctx, mb) {
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
       formatCount: (count) => mb.formatInteger(count),
       retellAges: tellAges,
+      refreshDetailChanged: updateRefreshTooltip,
       render(model, identity, arrivals) {
         stackIdentity = identity;
         mb.perf.measure("githubPulls:render", () => paint(model, arrivals), {
@@ -6105,19 +6126,13 @@ export function mountPullsPanel(container, ctx, mb) {
   // refresh, and the list through the repository's catalog job. The plan runs the page
   // among what is on screen, and the list there too while the tab is in front; the button,
   // its waiting state, and its number are the shell's.
-  const refreshParts = nav.refreshParts ?? null;
   const releaseRefreshParts = [
     refreshParts?.provide("page", () => {
-      const page = /** @type {{canRefresh?: unknown, refresh?: unknown} | null} */ (
-        currentRow === null ? null : tab.pageFor(currentRow)
-      );
-      return typeof page?.canRefresh === "function" &&
-        page.canRefresh() === true &&
-        typeof page.refresh === "function"
-        ? page.refresh()
-        : undefined;
+      const page = refreshPage();
+      return page?.canRefresh?.() === true ? page.refresh?.() : undefined;
     }),
     refreshParts?.provide("pulls", () => controller.refresh()),
+    refreshParts?.provideTooltip?.("page", () => refreshPage()?.refreshDetail?.() ?? null),
     refreshParts?.provideTooltip?.("pulls", controller.refreshDetail),
   ];
   // The state chips are situational: through the SDK's shortcut surface each takes a number,
@@ -6482,6 +6497,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (focusedTree !== null && focusedTree !== number) {
         trees.get(focusedTree)?.controller.cancelWalk();
       }
+      currentStack = options?.stack ?? null;
       controller.setCurrent(number, options);
       currentFile = file;
       const row = number === null ? undefined : painted.get(number)?.row;
@@ -6613,6 +6629,7 @@ export function mountPullsPanel(container, ctx, mb) {
       moved?.disconnect();
       unwatchPage();
       unwatchFile?.();
+      unwatchRefreshDetail?.();
       for (const release of releaseRefreshParts) {
         release?.();
       }

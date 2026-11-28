@@ -334,7 +334,14 @@ status: 200
     ],
     "truncated": false
   },
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 425,
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 2585
+  }
 }
 ? 0
 ```
@@ -971,7 +978,14 @@ status: 200
     ],
     "truncated": false
   },
-  "status_unavailable": null
+  "status_unavailable": null,
+  "refresh_timing": {
+    "finished_at": "2026-09-17T12:00:00Z",
+    "duration_ms": 425,
+    "provider": "github_cli",
+    "request_count": 6,
+    "response_body_bytes": 653
+  }
 }
 ? 0
 ```

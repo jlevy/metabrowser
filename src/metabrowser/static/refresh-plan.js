@@ -191,6 +191,46 @@
   /** @type {ReturnType<typeof createPlan> | null} */
   let mounted = null;
 
+  /** @param {string | MetabrowserRefreshTooltipTiming | null | undefined} timing */
+  function timingText(timing) {
+    if (timing == null || typeof timing === "string") {
+      return timing ?? null;
+    }
+    const at = Date.parse(timing.finished_at);
+    if (!Number.isFinite(at) || at <= 0) {
+      return null;
+    }
+    const format = window.MetabrowserFormatters;
+    const age = format.age(at / 1000, { style: "relative" }).label;
+    if (!age) {
+      return null;
+    }
+    const summary = `${timing.label ?? "Refreshed"} ${age}`;
+    const ms = timing.duration_ms;
+    const duration =
+      typeof ms !== "number" || !Number.isFinite(ms) || ms < 0
+        ? null
+        : ms < 1000
+          ? `${Math.round(ms)}ms`
+          : `${Math.round(ms / 100) / 10}s`;
+    if (timing.provider !== "github_cli") {
+      return duration === null ? summary : `${summary} in ${duration}`;
+    }
+    const requests = timing.request_count;
+    const bytes = timing.response_body_bytes;
+    const detail = [
+      typeof requests === "number" && Number.isSafeInteger(requests) && requests >= 0
+        ? `${format.formatInteger(requests)} ${requests === 1 ? "request" : "requests"}`
+        : null,
+      typeof bytes === "number" && Number.isSafeInteger(bytes) && bytes >= 0
+        ? format.formatBytes(bytes)
+        : null,
+      duration,
+      "GitHub CLI",
+    ];
+    return `${summary}\n${detail.filter(Boolean).join(" · ")}`;
+  }
+
   /**
    * The page's plan, on the server's button: its click, its waiting state, and the shell's
    * own parts. Browser only; the pull request's parts are provided by the Pulls tab's list
@@ -210,30 +250,42 @@
       // The chooser's root says whether its list is open (source-ref-selector.js, `paint`).
       chooser: document.getElementById("source-ref-selector")?.dataset.open === "true",
     });
-    /** @type {Map<string, () => string | null>} */
+    /** @type {Map<string, () => string | MetabrowserRefreshTooltipTiming | null>} */
     const tips = new Map();
     function paintTooltip() {
-      let detail = tips.get(view().front)?.() ?? null;
-      if (detail === null) {
-        const at = Date.parse(
-          document.getElementById("source-freshness")?.dataset.lastFetchAt ?? "",
+      const { front, owner } = view();
+      const source = document.getElementById("source-ref-selector")?.dataset;
+      const workingTree = source?.sourceMode === "working-tree";
+      const detail =
+        (owner === "pull-request" ? timingText(tips.get("page")?.()) : null) ??
+        timingText(tips.get(front)?.()) ??
+        timingText(
+          workingTree
+            ? { finished_at: source.sourceObservedAt ?? "", label: "Checkout state read" }
+            : {
+                finished_at:
+                  document.getElementById("source-freshness")?.dataset.lastFetchAt ||
+                  source?.sourceSyncedAt ||
+                  "",
+                label: "Last fetched",
+              },
         );
-        if (Number.isFinite(at)) {
-          const age = window.MetabrowserFormatters.age(at / 1000, { style: "relative" }).label;
-          if (age) {
-            detail = `Last fetched ${age}`;
-          }
-        }
+      const text = detail ?? "Refresh";
+      if (button.dataset.tipText !== text) {
+        button.dataset.tipText = text;
+        window.MetabrowserTooltip?.updateText?.(button);
       }
-      button.dataset.tipText = detail ?? "Refresh";
-      if (detail === null) {
-        button.removeAttribute("aria-description");
-      } else {
-        button.setAttribute("aria-description", detail);
+      const description = detail?.replace("\n", ". ") ?? null;
+      if (button.getAttribute("aria-description") !== description) {
+        if (description === null) {
+          button.removeAttribute("aria-description");
+        } else {
+          button.setAttribute("aria-description", description);
+        }
       }
     }
 
-    /** @param {string} tab @param {() => string | null} tip */
+    /** @param {string} tab @param {() => string | MetabrowserRefreshTooltipTiming | null} tip */
     function provideTooltip(tab, tip) {
       tips.set(tab, tip);
       paintTooltip();
@@ -272,6 +324,7 @@
         if (!on) {
           button.removeAttribute("aria-disabled");
           finishFeedback();
+          paintTooltip();
         }
       },
       failed: (id, error) => console.error(`Refresh of ${id} failed`, error),
@@ -336,7 +389,7 @@
       return plan.press();
     };
     button.addEventListener("click", () => void press());
-    mounted = Object.freeze({ ...plan, press, provideTooltip });
+    mounted = Object.freeze({ ...plan, press, provideTooltip, updateTooltip: paintTooltip });
     return mounted;
   }
 

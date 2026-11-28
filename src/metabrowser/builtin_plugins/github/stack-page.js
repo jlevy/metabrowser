@@ -82,7 +82,6 @@ import {
   changesDocuments,
   describeLabel,
   FAST_POLL_MS,
-  fetchedNote,
   h,
   headerSentence,
   holdDiff,
@@ -91,6 +90,7 @@ import {
   manifestFiles,
   noFiles,
   numberHeaderControls,
+  offlineFetchNote,
   PREFETCH_IDLE_TIMEOUT_MS,
   pageHeaderParts,
   paintSizeLine,
@@ -904,7 +904,8 @@ export function createStackController(deps, options) {
   let disposed = false;
   // One read at a time: a read asked for while one is on its way is made after it, since
   // the one on its way may have left before what the new one is for.
-  let polling = false;
+  /** @type {Promise<void> | null} */
+  let activeRead = null;
   let readAgain = false;
   // How many reads have been sent, which an ask's answer records so that only a read sent
   // after it counts as seeing its fetch end.
@@ -979,11 +980,6 @@ export function createStackController(deps, options) {
     if (disposed) {
       return;
     }
-    if (polling) {
-      readAgain = true;
-      return;
-    }
-    polling = true;
     reads += 1;
     const read = reads;
     let changed = false;
@@ -1021,8 +1017,6 @@ export function createStackController(deps, options) {
         error = UNREADABLE;
         changed = true;
       }
-    } finally {
-      polling = false;
     }
     if (answered) {
       const next = asksAfterRead(envelope, asks, read, deps.now(), reads);
@@ -1046,7 +1040,10 @@ export function createStackController(deps, options) {
     }
     const delay = nextDelay();
     if (delay !== null) {
-      timer = deps.schedule(() => void poll(), delay);
+      timer = deps.schedule(() => {
+        timer = null;
+        void start();
+      }, delay);
     }
   }
 
@@ -1056,7 +1053,14 @@ export function createStackController(deps, options) {
       deps.cancel(timer);
       timer = null;
     }
-    return poll();
+    if (activeRead !== null) {
+      readAgain = true;
+      return activeRead;
+    }
+    activeRead = poll().finally(() => {
+      activeRead = null;
+    });
+    return activeRead;
   }
 
   return Object.freeze({
@@ -1343,8 +1347,8 @@ export function stackSizeInput(answer, files) {
  * stack has, in a pull request's order (docs/design-system.md, "Stacks", "The Stack Page"):
  * its title and the View on GitHub corner; the row of ages, led by the tally of its members'
  * states (`stateTally`), when a member was last opened and last updated (`ages`); the
- * author's row, its sentence (`stackSentence`) and the freshness note, the oldest member
- * record's fetch (`note`); the merge the stack makes; the labels its members carry, each
+ * author's row, its sentence (`stackSentence`) and the offline note when needed; the merge
+ * the stack makes; the labels its members carry, each
  * once; the status line; the size line; the members, a toggle that shows them, "**12**
  * Pulls"; and the Diff summary. *rows* names them in order, and the rest is what they hold:
  * `status` the status line's notices, there only while it has something to say, and
@@ -1362,9 +1366,8 @@ export function stackSizeInput(answer, files) {
  * quiet period as a pull request's page with no record in hand is (`.github-pull-cold`), so
  * an answer that lands within it is the first header the reader sees.
  *
- * The freshness note says "Offline" as a pull request's does (`fetchedNote`) when the
- * browser reports no network (*offline*) and a member's record is behind (`pending`), since
- * no refresh can run.
+ * The notice gives the oldest cached record's fetch when the browser reports no network
+ * (*offline*) and a member's record needs refreshing (`pending`).
  *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
@@ -1405,12 +1408,9 @@ export function stackHeader(envelope, known, listed, status, drawn, nowMs, offli
     ages: envelope === null ? null : { opened: envelope.opened_at, updated: envelope.updated_at },
     sentence: stackSentence(envelope),
     note:
-      envelope === null || envelope.fetched_at === null
-        ? null
-        : fetchedNote(
-            relativeAge(envelope.fetched_at, nowMs),
-            offline && envelope.pending.length > 0,
-          ),
+      offline && envelope !== null && envelope.pending.length > 0 && envelope.fetched_at !== null
+        ? offlineFetchNote(relativeAge(envelope.fetched_at, nowMs))
+        : null,
     labels,
     members,
     merge: head === null || base === null ? null : { head, base },
@@ -2429,7 +2429,7 @@ export function mountStackPage(container, ctx, mb) {
     if (shown.drawn !== null) {
       summaryReading(shown.drawn);
     }
-    void controller.retry();
+    return controller.retry();
   }
 
   function disposeBody() {
@@ -2873,6 +2873,8 @@ export function mountStackPage(container, ctx, mb) {
     await paintDiff(action.tab, action.comparison, owns, adopt);
   }
 
+  /** @type {Set<() => void>} */
+  const refreshDetailListeners = new Set();
   const controller = createStackController(
     {
       async request(method, route, options) {
@@ -2907,7 +2909,13 @@ export function mountStackPage(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       since: () => shown.drawn?.key ?? null,
       render(model) {
+        const fetchedAt = envelope?.fetched_at;
         envelope = model.envelope;
+        if (fetchedAt !== envelope?.fetched_at) {
+          for (const listener of refreshDetailListeners) {
+            listener();
+          }
+        }
         error = model.error;
         failed = model.failed;
         shown = bodyAnswered(shown, envelope, interacted, failed);
@@ -2981,6 +2989,7 @@ export function mountStackPage(container, ctx, mb) {
     cancelGuideAhead?.();
     cancelGuideAhead = null;
     controller.dispose();
+    refreshDetailListeners.clear();
     stacks.dispose();
     memberReadiness?.dispose();
   }
@@ -2997,6 +3006,18 @@ export function mountStackPage(container, ctx, mb) {
       }
     },
     showFile,
+    canRefresh: () => !listening.signal.aborted && globalThis.navigator?.onLine !== false,
+    refresh: retryStack,
+    refreshDetail() {
+      return envelope?.fetched_at == null
+        ? null
+        : { finished_at: envelope.fetched_at, label: "Oldest stack member fetched" };
+    },
+    /** @param {() => void} listener */
+    onRefreshDetail(listener) {
+      refreshDetailListeners.add(listener);
+      return () => refreshDetailListeners.delete(listener);
+    },
     flush() {},
     cancelPending: stop,
     dispose() {

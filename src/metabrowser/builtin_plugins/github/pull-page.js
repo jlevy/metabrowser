@@ -21,7 +21,7 @@
 // freshness window, the first time only once a reader has stayed on it; the server holds each
 // number to one attempt per window, and a rate limit or a lost network holds the page too.
 // Content the page already shows stays as it is while it refreshes, with no spinner: only
-// the age line breathes (`.mb-refreshing`, "Refreshing Content" in docs/design-system.md).
+// the progress text breathes (`.mb-refreshing`, "Refreshing Content" in docs/design-system.md).
 //
 // All text is the pull request's own and untrusted. Paint writes it with textContent;
 // only KPress's Markdown HTML is parsed, and only after it is reduced to an allowlist of
@@ -470,6 +470,7 @@ const REFRESH_FAILURES = Object.freeze({
   lender_missing: "The checkout cannot supply these changes.",
 });
 const REFRESH_FAILED = "Could not refresh this pull request.";
+const REFRESH_PROGRESS = "Refreshing…";
 
 /**
  * A review's state, said by a chip after its heading where the verb does not say it
@@ -510,6 +511,7 @@ const TRUNCATED = Object.freeze({
  *   pin: string | null,
  *   pin_ref: string | null,
  *   fetched_at: string | null,
+ *   refresh_timing?: MetabrowserRefreshTooltipTiming | null,
  *   verified_at?: string | null,
  *   verified_by?: "catalog" | "fetch" | "probe" | null,
  *   head_moved?: boolean,
@@ -1726,16 +1728,12 @@ export function headerSentence(merged, authors, mergers, commits) {
 }
 
 /**
- * The freshness note's words for a fetch *age* ago (`relativeAge`): "Fetched just now via
- * GitHub CLI", or, *offline* with nothing to refresh it, "Offline · fetched 3 h ago via GitHub
- * CLI". One time, never two (mb-ne91). A pull request's page says it of its record, and a
- * stack's of the oldest of its members' records.
+ * An offline page explains where its cached content came from.
  *
  * @param {string} age
- * @param {boolean} [offline]
  */
-export function fetchedNote(age, offline = false) {
-  return offline ? `Offline · fetched ${age} via GitHub CLI` : `Fetched ${age} via GitHub CLI`;
+export function offlineFetchNote(age) {
+  return `Offline · fetched ${age} via GitHub CLI`;
 }
 
 /** Header and description fields shared by a full record and a validated core preview.
@@ -1828,9 +1826,8 @@ export function rateLimitLifts(envelope) {
  * locale where it is not given.
  *
  * Content already shown is never covered by progress: while a refresh runs or is about to,
- * `revalidating` says so, and the page breathes the age line instead of a spinner. The age is
- * the plain age. A stale record says why only when no refresh can run: offline, held by
- * GitHub's rate limit, or a failure the reader can retry.
+ * `revalidating` says so, and the page breathes its progress text. A cached page can
+ * explain why it cannot refresh when offline, rate limited, or waiting for a retry.
  *
  * *listed* is what the repository's list said of this pull request, whose state is shown
  * when the list saw a later update than the record or preview did.
@@ -1955,8 +1952,11 @@ export function describePull(envelope, page) {
     );
     model.contentReady = true;
     model.message = page.error ?? null;
-    const age = relativeAge(preview.observed_at, page.nowMs);
-    model.freshness = `${offline && !model.refreshing ? "Offline · description" : "Description"} fetched ${age} via GitHub CLI`;
+    if (model.refreshing) {
+      model.freshness = REFRESH_PROGRESS;
+    } else if (offline) {
+      model.freshness = `Offline · description fetched ${relativeAge(preview.observed_at, page.nowMs)} via GitHub CLI`;
+    }
     model.canRefresh =
       envelope.state === "absent" &&
       envelope.reason !== "not_github" &&
@@ -2010,30 +2010,12 @@ export function describePull(envelope, page) {
   // 27 px between tabs (B5 of review B on #506). Any other error is the header's, on every
   // tab, a refused Refresh's among them, whatever its words (C3 of review C).
   model.message = page.error && page.errorFromComparison !== true ? page.error : null;
-  // A stale record the page is refreshing by itself offers nothing to press: Refresh is for a
-  // failure, Changes, or a stale record whose automatic refresh did not run. A rate limit's
-  // hold offers none either: the page names when it asks again and asks then, as the Pulls
-  // tab's Refresh waits out the same hold, and a press would only meet the limit.
-  model.canRefresh =
-    !envelope.refreshing &&
-    !model.revalidating &&
-    !held &&
-    (envelope.state !== "stale" || !offline) &&
-    (envelope.state === "stale" ||
-      model.failure !== null ||
-      (diffTab(page.tab) &&
-        typeof record.comparison?.base === "string" &&
-        typeof record.comparison?.head === "string") ||
-      (typeof record.unavailable?.comparison === "string" &&
-        record.unavailable.comparison !== "no_store"));
-  const age = relativeAge(record.fetched_at ?? null, page.nowMs);
-  // The plain age while a refresh runs or is due: the page breathes it, and says nothing
-  // about being out of date. Offline is the one stale state named here, since no refresh
-  // can run; a hold or a failure is named by `failure`.
-  // One time, never two (mb-ne91): the record's own fetch, the earliest that says how fresh
-  // what is shown is. A later check of the repository's list that found nothing changed
-  // (`verified_at`) makes the record no newer, so the line does not say it.
-  model.freshness = fetchedNote(age, offline && envelope.state === "stale" && !model.revalidating);
+  model.canRefresh = !envelope.refreshing && !model.revalidating && !held && !offline;
+  if (model.failure === null && (model.revalidating || envelope.refreshing)) {
+    model.freshness = REFRESH_PROGRESS;
+  } else if (offline && envelope.state === "stale") {
+    model.freshness = offlineFetchNote(relativeAge(record.fetched_at ?? null, page.nowMs));
+  }
   if (envelope.head_moved === true) {
     // The diff on screen stays until the reader takes the newer one, which a refresh offers.
     model.newCommits = model.revalidating
@@ -2474,6 +2456,7 @@ export function renderedTextsHeld() {
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   noteRecord?(source: string, pull: Record<string, any>): void,
  *   heardStatus?(source: string, number: number, observedAt: string): void,
+ *   refreshDetailChanged?(): void,
  *   timelineStateChanged?(): void,
  *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
@@ -2523,6 +2506,32 @@ export function createPullController(deps, options) {
   let hasPolled = false;
   let inFlightRefreshes = 0;
   let disposed = false;
+
+  /** @returns {MetabrowserRefreshTooltipTiming | null} */
+  function refreshDetail() {
+    if (disposed || envelope === null) {
+      return null;
+    }
+    const { record, core_preview: preview, refresh_timing: timing } = envelope;
+    if (
+      record !== null &&
+      typeof timing?.finished_at === "string" &&
+      Number.isFinite(Date.parse(timing.finished_at))
+    ) {
+      return timing;
+    }
+    // Verification leaves the timestamp of the actual record or description fetch intact.
+    const at = record === null ? preview?.observed_at : (record.fetched_at ?? envelope.fetched_at);
+    if (typeof at !== "string" || !Number.isFinite(Date.parse(at))) {
+      return null;
+    }
+    const reader = record?.reader ?? preview?.reader;
+    return {
+      finished_at: at,
+      label: record === null ? "Description fetched" : "Last fetched",
+      ...(typeof reader === "string" && reader.startsWith("gh:") ? { provider: "github_cli" } : {}),
+    };
+  }
   // When this page last sent an automatic ask of its own, by `deps.now()`. While it shows a
   // record it asks every `probe_every_s`, current or stale: the server probes the record, a
   // free conditional read, or reads it in full when that is due, and holds each number to
@@ -2541,7 +2550,7 @@ export function createPullController(deps, options) {
   /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
   /** @type {"none" | "scheduled" | "sent"} */
   let autoAsk = "none";
-  // Whether that ask was for a stale record, which the age line shows as refreshing, or a
+  // Whether that ask was for a stale record, which the header shows as refreshing, or a
   // probe of a current one, which changes nothing the page shows unless it finds a change.
   let autoAskStale = false;
   // Once the repository's list of pull requests has vouched for this record, the page keeps
@@ -3053,7 +3062,11 @@ export function createPullController(deps, options) {
       return false;
     }
     shownRequest = request;
+    const previousTiming = JSON.stringify(refreshDetail());
     envelope = next;
+    if (JSON.stringify(refreshDetail()) !== previousTiming) {
+      deps.refreshDetailChanged?.();
+    }
     catalogBacked = catalogBacked || next.verified_by === "catalog";
     if (next.record !== null || !next.refreshing) {
       waitForFull = false;
@@ -3100,7 +3113,7 @@ export function createPullController(deps, options) {
    *
    * The revision leaves out the record's `fetched_at`, which a read that found the same
    * content moves, so the record takes the answer's: the envelope's `fetched_at` is its
-   * record's, and the age line is counted from the record.
+   * record's, and Refresh reports its age.
    *
    * Null when the page no longer holds that record as the server has it: another revision
    * since the ask, or a record whose comparison a server with no store drops (`no_store`),
@@ -3963,6 +3976,7 @@ export function createPullController(deps, options) {
       (envelope?.refreshing === false || envelope?.preparing_comparison === true),
     fetchIdleChanges,
     requestRefresh,
+    refreshDetail,
     requestComparison,
     browseCode,
     requestMarkdown,
@@ -5698,17 +5712,11 @@ export function mountPullPage(container, ctx, mb) {
   // has no slot.
   const readinessSlot = h("span", { class: "github-pull-readiness-slot" });
   const readinessSlotSizers = readinessSizers();
-  // The author's sentence ends in a muted note of how fresh what is shown is, one time
-  // (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via GitHub CLI". A rate
-  // limit's hold is said in its place, since it begins and lifts by itself and asks nothing of
-  // the reader. Before a record is shown the note is the page's word on it, "Fetching the pull
-  // request…", so the sentence landing changes no line. The note and its age are kept across
-  // paints, so the age's breathing while a refresh runs is one animation from start to end
-  // rather than one restarted at each paint. The note's slot is as wide as its widest age
-  // (`meta.sizer`, `showNote`), so the age ticking from "just now" to "12 min ago" changes
-  // its width not at all; `pageHeaderParts` says how the sentence and the note share the
-  // row. Refresh is not in the note, which can leave: it ends the row of ages, with the
-  // stack's chip just before it.
+  // The author's row can show a muted progress or connectivity notice. Before any record,
+  // "Fetching the pull request…" shares the row the author's sentence will occupy. The
+  // notice's DOM persists across paints, so refresh progress breathes continuously.
+  // Offline ages hold their width using `meta.sizer`; `pageHeaderParts` lays out the row.
+  // The navigation's Refresh button reports the completed fetch.
   // The head and base branches (`branchesRow`) are on a line of their own under the author's
   // sentence: a line tall, the merge's arrow's, while no record is shown too.
   // The pull request's state leads the row of its ages (`openedRow`): its badge, then when
@@ -5751,8 +5759,6 @@ export function mountPullPage(container, ctx, mb) {
   // message, and the offers, one of the header's metadata lines, a line tall as the author's
   // row is, there only while it has something to say. Its controls are text actions, a line
   // tall (mb-2u08). The row of ages is a stack chip's height (mb-646g). It is `status`.
-  /** Commits of the conversation are being read from GitHub for the record shown. */
-  let timelineBusy = false;
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
@@ -7098,21 +7104,18 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Breathe the age while a refresh of what is shown runs or is due, or the conversation's
-   * commits are read: the one sign of refreshing over content, with no spinner.
+   * Breathe the progress text while a refresh of what is shown runs or is due.
    *
    * @param {PullModel | null} model
    */
   function paintRefreshing(model) {
-    // The note breathes only while it says the age, not a rate limit's hold in its place.
     const busy =
       model !== null &&
       model.pull !== null &&
-      model.freshness !== null &&
-      model.failureHold !== true &&
-      (model.revalidating || (timelineBusy && model.tab === ""));
+      model.freshness === REFRESH_PROGRESS &&
+      model.failureHold !== true;
     meta.line.classList.toggle("mb-refreshing", busy);
-    // Busy is said of the age being updated, never of the status line's buttons and links.
+    // Busy belongs to the progress text; the header controls stay usable.
     if (busy) {
       meta.line.setAttribute("aria-busy", "true");
     } else {
@@ -7367,8 +7370,8 @@ export function mountPullPage(container, ctx, mb) {
     status.dataset.status = model.status;
     // A failure is the one text the row lets wrap: it carries its remedy.
     statusLine.failed(status, model.failure !== null && model.failureHold !== true);
-    // The author's row ends in the note (mb-ne91): a record's one time, or a rate limit's hold
-    // in its place, which begins and lifts by itself and asks nothing of the reader, so it
+    // The author's row can end in a progress or connectivity note. A rate limit's hold
+    // begins and lifts by itself and asks nothing of the reader, so it
     // changes no row: on the status line it added one, moving the tab bar 27 px as it began
     // and lifted (A3 of review A on #506). Before a record is shown the note is the page's
     // word on it, which the status line then does not repeat, unless a failure goes with that
@@ -10096,19 +10099,6 @@ export function mountPullPage(container, ctx, mb) {
         held.settled = held.heldUntil === null;
         held.heldUntil = null;
       }
-      // Commits join a conversation that is already shown, so the age line breathes for
-      // them as for a refresh; nothing spins in the description card.
-      const settleBusy = () => {
-        if (timelineBusy) {
-          timelineBusy = false;
-          paintRefreshing(shown);
-        }
-      };
-      if (!cachedOnly) {
-        timelineBusy = true;
-        paintRefreshing(shown);
-        read.abort.signal.addEventListener("abort", settleBusy, { once: true });
-      }
       /** @type {TimelineProjection | null} */
       let projection = null;
       try {
@@ -10128,10 +10118,6 @@ export function mountPullPage(container, ctx, mb) {
         }
       } catch {
         // The held discussion is already readable when the optional projection fails.
-      } finally {
-        if (!cachedOnly) {
-          settleBusy();
-        }
       }
       if (!owns()) {
         return;
@@ -10253,6 +10239,8 @@ export function mountPullPage(container, ctx, mb) {
     },
     listening.signal,
   );
+  /** @type {Set<() => void>} */
+  const refreshDetailListeners = new Set();
   const controller = createPullController(
     {
       async request(method, route, options) {
@@ -10340,6 +10328,11 @@ export function mountPullPage(container, ctx, mb) {
       listed: listedState,
       noteRecord,
       heardStatus: documentReadiness.heard,
+      refreshDetailChanged() {
+        for (const listener of refreshDetailListeners) {
+          listener();
+        }
+      },
       textUnavailable(part, text, note) {
         if (note) {
           refusedText(part, text, note);
@@ -10429,6 +10422,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    refreshDetailListeners.clear();
     // The handoff keeps the texts on screen, but their links' cards are this page's.
     unlinkTexts([container, ...sections.values()]);
     disposeGuided();
@@ -10607,9 +10601,8 @@ export function mountPullPage(container, ctx, mb) {
       return () => currentFileListeners.delete(listener);
     },
     /**
-     * Whether the page has something to refresh now: a stale record whose own refresh did
-     * not run, a failure, the comparison Changes or Docs shows, or a pull request not fetched
-     * yet. The navigation's Refresh reads it before it runs the page's part (mb-ablv).
+     * Whether the page can refresh now. The navigation checks this before it requests the
+     * displayed pull request and, on Changes or Docs, its displayed comparison.
      */
     canRefresh: () => !listening.signal.aborted && shown?.canRefresh === true,
     /**
@@ -10619,6 +10612,12 @@ export function mountPullPage(container, ctx, mb) {
      * page cannot refresh. Settles when the refresh it asked for has been answered.
      */
     refresh: refreshShown,
+    refreshDetail: controller.refreshDetail,
+    /** @param {() => void} listener */
+    onRefreshDetail(listener) {
+      refreshDetailListeners.add(listener);
+      return () => refreshDetailListeners.delete(listener);
+    },
     dispose() {
       cancelPending();
       disposeDiff();

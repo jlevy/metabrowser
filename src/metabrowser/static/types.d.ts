@@ -143,6 +143,7 @@ type MetabrowserPullsNavHost = Readonly<{
   stackFileHref(stack: number, path: string): string | null;
   /** The page of that pull request while it holds the pane, else null. */
   pageFor(number: number): unknown;
+  stackFor?(number: number): unknown;
   onPageChange(listener: () => void): () => void;
   filterChanged(state: string): void;
 }>;
@@ -1001,6 +1002,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     page(): Handle | null;
     /** The page of that pull request when it holds the pane, else null. */
     pageFor(number: number): Handle | null;
+    stackFor?(number: number): Handle | null;
     shown(): number | "list" | `stack:${number}` | null;
   }>;
   createViewMount(shell: {
@@ -1024,7 +1026,10 @@ type MetabrowserPullRouteRuntime = Readonly<{
     dispose(): void;
   } | null>;
   /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
-  attachedHost(): { pageFor(number: number): unknown } | null;
+  attachedHost(): {
+    pageFor(number: number): unknown;
+    stackFor?(number: number): unknown;
+  } | null;
   onPageChange(listener: () => void): () => void;
   parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
@@ -4856,11 +4861,25 @@ declare global {
   /** A part of the page the navigation's Refresh refreshes (static/refresh-plan.js). */
   type MetabrowserRefreshPart = "source" | "refs" | "page" | "files" | "pulls" | "git" | "origin";
 
+  /** A completed read, with provider measurements only when observed. */
+  type MetabrowserRefreshTooltipTiming = {
+    finished_at: string;
+    duration_ms?: number;
+    provider?: "github_cli";
+    request_count?: number;
+    response_body_bytes?: number;
+    label?: string;
+  };
+
   /** What a module that owns a part lends the plan: its refresh, until released. */
   type MetabrowserRefreshParts = Readonly<{
     provide(id: MetabrowserRefreshPart, refresh: () => unknown): () => void;
-    /** The refresh detail shown while this tab is in front, until released. */
-    provideTooltip?(tab: string, detail: () => string | null): () => void;
+    /** The refresh detail for a foreground tab or the current PR page, until released. */
+    provideTooltip?(
+      tab: string,
+      detail: () => string | MetabrowserRefreshTooltipTiming | null,
+    ): () => void;
+    updateTooltip?(): void;
   }>;
 
   type MetabrowserRefreshPlan = MetabrowserRefreshParts &
@@ -5611,6 +5630,7 @@ declare global {
     MetabrowserTooltip?: {
       hide(within?: Element | null): void;
       show(html: string, anchor: Element | null): void;
+      updateText?(anchor: HTMLElement): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";

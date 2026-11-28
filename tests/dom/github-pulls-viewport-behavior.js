@@ -440,7 +440,7 @@ async function paint() {
   });
   assert.equal(model.canRefresh, true, "a prepared-only direct visit still offers Fetch");
   assert.equal(model.refreshing, false);
-  assert.equal(model.freshness, "Description fetched 2 min ago via GitHub CLI");
+  assert.equal(model.freshness, null, "a cached description needs no routine header note");
   assert.equal(model.changesPending, false);
 
   const existingTimers = new Set(timers.keys());

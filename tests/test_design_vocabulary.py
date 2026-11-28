@@ -3277,8 +3277,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
     assert github[".github-pull-file"]["display"] == "inline-block"
     # Content already shown is never covered by progress ("Refreshing Content"): no spinner in
-    # the header, a section, or the description card. The age line is one persistent element,
-    # muted, that breathes while a refresh runs or is due, on a status line marked busy; a
+    # the header, a section, or the description card. The progress text is one persistent,
+    # muted element that breathes while a refresh runs or is due; a
     # section a description preview lacks shows the cold page's blocks after the quiet period.
     assert "github-pull-progress" not in page and "github-pull-progress" not in str(github)
     assert "github-pull-timeline-loading" not in page

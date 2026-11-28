@@ -35,7 +35,6 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     MAX_WINDOW,
     CatalogRefreshTiming,
     CatalogState,
-    RefreshTiming,
     catalog_position,
     catalog_row,
     catalog_window,
@@ -53,6 +52,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
 )
 from metabrowser.builtin_plugins.github.pull_list_probe import LIST_PROBE_S, ListProbe, list_probe
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, RecordAbsence
+from metabrowser.builtin_plugins.github.refresh_metrics import RefreshTiming
 from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.locks import run_lock_section

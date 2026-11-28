@@ -152,6 +152,14 @@ def _compare(path: Path, actual: str, *, hint: str) -> None:
 def check_golden(name: str, actual: str) -> None:
     """Compare *actual* to ``tests/golden/<name>``; ``make golden-update`` rewrites it."""
 
+    # PR envelopes carry actual elapsed time. Preserve their clock, answer counts,
+    # bytes and provider in transcripts, but do not pin the duration of a stub process.
+    actual = re.sub(
+        r'("status_unavailable": [^\n]+,\n *"refresh_timing": \{\n'
+        r' *"finished_at": [^\n]+,\n *"duration_ms": )\d+(?=,\n)',
+        r'\1"<ELAPSED_MS>"',
+        actual,
+    )
     _compare(GOLDEN_DIR / name, actual, hint="after an intended change run `make golden-update`")
 
 

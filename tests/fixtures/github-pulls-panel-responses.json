@@ -289,7 +289,10 @@
    ],
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -333,7 +336,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -378,7 +384,10 @@
    ],
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -521,7 +530,10 @@
    ],
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -566,7 +578,10 @@
    ],
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -610,7 +625,10 @@
     "rows": [],
     "refresh_timing": {
      "finished_at": "2026-09-17T12:00:00Z",
-     "duration_ms": 300
+     "duration_ms": 300,
+     "provider": "github_cli",
+     "request_count": 3,
+     "response_body_bytes": 45891
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
@@ -667,7 +685,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -711,7 +732,10 @@
     "rows": [],
     "refresh_timing": {
      "finished_at": "2026-09-17T12:00:00Z",
-     "duration_ms": 300
+     "duration_ms": 300,
+     "provider": "github_cli",
+     "request_count": 3,
+     "response_body_bytes": 45891
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
@@ -759,7 +783,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 3,
+    "response_body_bytes": 45891
    }
   }
  },
@@ -803,7 +830,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:01Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44493
    }
   }
  },
@@ -847,7 +877,10 @@
     "rows": [],
     "refresh_timing": {
      "finished_at": "2026-09-17T12:01:01Z",
-     "duration_ms": 300
+     "duration_ms": 300,
+     "provider": "github_cli",
+     "request_count": 2,
+     "response_body_bytes": 44493
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
@@ -895,7 +928,10 @@
     "rows": [],
     "refresh_timing": {
      "finished_at": "2026-09-17T12:01:01Z",
-     "duration_ms": 300
+     "duration_ms": 300,
+     "provider": "github_cli",
+     "request_count": 2,
+     "response_body_bytes": 44493
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
@@ -1042,7 +1078,10 @@
    ],
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1086,7 +1125,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1198,7 +1240,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1242,7 +1287,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1286,7 +1334,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1330,7 +1381,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1374,7 +1428,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1418,7 +1475,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1462,7 +1522,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1506,7 +1569,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1550,7 +1616,10 @@
    },
    "refresh_timing": {
     "finished_at": "2026-09-17T12:01:21Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 2,
+    "response_body_bytes": 44502
    }
   }
  },
@@ -1594,7 +1663,10 @@
     "rows": [],
     "refresh_timing": {
      "finished_at": "2026-09-17T12:01:21Z",
-     "duration_ms": 300
+     "duration_ms": 300,
+     "provider": "github_cli",
+     "request_count": 2,
+     "response_body_bytes": 44502
     }
    },
    "status_route": "/api/plugin/github/pulls?state=all&limit=0",
@@ -1838,7 +1910,10 @@
    "rows": [],
    "refresh_timing": {
     "finished_at": "2026-10-01T12:00:00Z",
-    "duration_ms": 300
+    "duration_ms": 300,
+    "provider": "github_cli",
+    "request_count": 4,
+    "response_body_bytes": 90335
    }
   }
  },
