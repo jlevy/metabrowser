@@ -1054,13 +1054,13 @@ def test_memory_exit_refuses_documents_and_projections(
     async def run() -> None:
         worker = ProjectionWorker(command=_standin("--rss-exit", str(worker_module._RSS_EXIT)))  # pyright: ignore[reportPrivateUsage]
         try:
+            await worker.render_inert(_request("prime"))
             request = _request("memory")
             with pytest.raises(InertRenderRefused) as first:
                 await worker.render_inert(request)
-            assert first.value.code == "renderer_exited"
-            with pytest.raises(InertRenderRefused) as second:
-                await worker.render_inert(request)
-            assert second.value.remembered
+            assert first.value.code == "renderer_unavailable"
+            assert not first.value.remembered
+            assert (await worker.render_inert(request))["html"] == "<p>memory</p>"
             await worker.render_inert(_request("echo"))
             result = await worker.prepare(old=OLD, new=NEW, patch=_patch(OLD, NEW), namespace="n")
             assert result.projection.get("reason") == "memory"

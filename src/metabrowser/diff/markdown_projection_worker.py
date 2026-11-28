@@ -296,7 +296,7 @@ type RefusalCode = Literal[
 _REFUSALS: Final[dict[RefusalCode, tuple[int, str]]] = {
     "render_deadline": (422, "Rendering took longer than {deadline}, so it was stopped"),
     "renderer_exited": (422, "The renderer stopped while rendering this document"),
-    "renderer_unavailable": (503, "The document renderer could not start"),
+    "renderer_unavailable": (503, "The document renderer is unavailable"),
     "renderer_busy": (503, "The document renderer is busy with other documents"),
 }
 
@@ -1434,9 +1434,11 @@ class ProjectionWorker:
                 self._kill(process)
                 said = await self._said(process)
                 if memory:
-                    return self._refuse(
-                        request, "renderer_exited", began, "; memory budget exceeded"
-                    )
+                    # Peak RSS includes allocations retained from earlier requests.
+                    # A later request can try a fresh child, with no retry in this flight.
+                    LOG.warning("Markdown child reached its memory budget on %r", _named(request))
+                    self._replace()
+                    return _Failed("refused", "renderer_unavailable")
                 if attempt == 1:
                     # Dead before the request reached it, or killed from outside, as easily
                     # as by this document: once more, on a fresh child.

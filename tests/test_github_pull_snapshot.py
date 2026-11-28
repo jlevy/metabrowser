@@ -697,12 +697,17 @@ def test_a_projection_the_child_could_not_finish_is_not_kept_as_the_files_answer
         application.state, "pull_rendered_diff_worker", Scripted(processes=False), raising=False
     )
 
+    # Process peak RSS includes earlier requests: even this same pair can succeed on retry.
+    refusing.append("memory")
+    assert client.get(address).json()["reason"] == "memory"
+
     # No child could run it: the thread's budget refuses, and the next request asks again.
     refusing.append(None)
     unavailable = client.get(address).json()
     assert (unavailable["status"], "reason" in unavailable) == ("too_large", False)
     assert client.get(address).json()["status"] == "ready"
-    assert asked == ["asked", "asked"]
+    assert asked == ["asked", "asked", "asked"]
+    asked.clear()
 
     # Stopped at the deadline: refused without asking the child again, for a while. The
     # answer kept above is dropped first, as a server that had none would stand.
@@ -718,10 +723,10 @@ def test_a_projection_the_child_could_not_finish_is_not_kept_as_the_files_answer
     assert client.get(address).json() == stopped
     now[0] += pull_rendered_diff._STOPPED_TTL_S - 1  # pyright: ignore[reportPrivateUsage]
     assert client.get(address).json() == stopped
-    assert asked == ["asked", "asked", "asked"], "the child is not asked again yet"
+    assert asked == ["asked"], "the child is not asked again yet"
     now[0] += 2
     assert client.get(address).json()["status"] == "ready"
-    assert asked == ["asked", "asked", "asked", "asked"]
+    assert asked == ["asked", "asked"]
 
 
 def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> None:

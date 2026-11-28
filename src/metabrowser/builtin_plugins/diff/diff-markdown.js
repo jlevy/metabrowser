@@ -121,6 +121,7 @@ export const WAITING_CLASS = "diff-file-awaiting-rendered";
 /** @type {Readonly<Record<string, string>>} */
 const REFUSALS = {
   no_changes: "This file's content did not change.",
+  memory: "Rendering stopped at the memory limit. Reload the page to try again.",
   nesting: "This file is nested too deeply to show rendered.",
   deadline: "Rendering this file took too long, so it was stopped. Reload the page to try again.",
   too_large: "This file is too large to show rendered.",
