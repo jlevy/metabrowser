@@ -62,7 +62,7 @@ def test_plugin_messages_use_product_language() -> None:
 
     assert "mb.renderSourceView(container, raw)" in structured
     assert "The source view is unavailable" not in structured
-    assert "Could not load structured data. Reload the page to try again." in structured
+    assert "Reload the page to try again." not in structured
     assert "Empty or unparseable file." not in structured
     assert "Could not render this document." in markdown
     assert "Raw content truncated. Showing at most" in agent_log
