@@ -1957,7 +1957,8 @@
   column-gap: 0.25em;
 }
 .github-pulls-stack-heading > .github-pulls-age {
-  margin-inline-start: calc(var(--tree-inline-age-gap) - 0.25em);
+  /* Files rows put their column gap and the age's inset between the text and age. */
+  margin-inline-start: calc(var(--tree-icon-gap) + var(--tree-inline-age-gap) - 0.25em);
 }
 .github-pulls-stack-heading > .github-pulls-age:empty {
   display: none;

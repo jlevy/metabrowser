@@ -478,7 +478,7 @@ async function main() {
               !after[stack].stack.labelCut &&
               after[stack].stack.age.right <= after[stack].stack.row.right + TOLERANCE_PX &&
               (after[stack].stack.age.top > after[stack].stack.count.top + TOLERANCE_PX ||
-                near(after[stack].stack.age.left - after[stack].stack.count.right, 6)),
+                near(after[stack].stack.age.left - after[stack].stack.count.right, 12)),
             JSON.stringify(after[stack].stack),
           );
         }

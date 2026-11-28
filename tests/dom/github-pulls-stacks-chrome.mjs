@@ -320,7 +320,22 @@ const LIST = `(() => {
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     stackAgeGap: box(stackRow?.querySelector(".github-pulls-age"))?.left - box(stackRow?.querySelector(".github-pulls-stack-count"))?.right,
-    ageGapToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-inline-age-gap")),
+    filesAgeGap: (() => {
+      const file = document.createElement("div");
+      file.className = "tree-item";
+      const name = document.createElement("span");
+      name.className = "tree-item-name";
+      name.textContent = "README.md";
+      const age = document.createElement("span");
+      age.className = "tree-item-age-inline";
+      age.textContent = "3m";
+      file.append(name, age);
+      document.body.append(file);
+      const gap = box(age).left - box(name).right;
+      file.remove();
+      return gap;
+    })(),
+    diffAgeGap: box(flat?.querySelector(".github-pulls-age"))?.left - box(flat?.querySelector(".github-pulls-toggle svg path"))?.right,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and the line's end.
     toolbar: (() => {
@@ -926,9 +941,9 @@ try {
       `${list.stackRowHeight} ${list.wholeRowHeight} ${list.rowHeightToken}`,
     );
     check(
-      "its age follows the stack count with the File nav gap",
-      near(list.stackAgeGap, list.ageGapToken),
-      String(list.stackAgeGap),
+      "the age gap matches the Files nav and the visible diff chevron",
+      near(list.stackAgeGap, list.filesAgeGap) && Math.abs(list.stackAgeGap - list.diffAgeGap) <= 1,
+      JSON.stringify({ stack: list.stackAgeGap, files: list.filesAgeGap, diff: list.diffAgeGap }),
     );
     // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
     // the default pane width its one line fits, with room to spare (mb-vmwh): the worded
