@@ -6622,7 +6622,6 @@ pre.metabrowser-source-lines.source-excerpt > code {
   min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-mono);
 }
 .structured-branch-count {
   flex-shrink: 0;
