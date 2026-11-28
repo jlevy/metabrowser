@@ -233,3 +233,33 @@ def test_yaml_serialization_collapses_blank_lines(tmp_path: Path) -> None:
     f.write_text(json.dumps({"a": {"sub": 1}, "b": {"sub2": 2}, "c": {"sub3": 3}}))
     payload = parse_structured_bytes(f.read_bytes(), ".json")
     assert "\n\n\n" not in payload.pretty_yaml
+
+
+@pytest.mark.parametrize("serialize", [False, True])
+def test_yaml_stream_shares_expansion_budget_before_count_or_serialization(
+    monkeypatch: pytest.MonkeyPatch, serialize: bool
+) -> None:
+    from metabrowser import frontmatter_yaml
+
+    # Each small document fits with both rows expanded. Together they exceed the
+    # configured budget even though their two sets of anchors are independent.
+    monkeypatch.setattr(frontmatter_yaml, "FRONTMATTER_MAX_EXPANDED_SIZE", 80)
+    document = b"- &person {name: Alexandria, role: editor}\n- *person\n"
+    data = document + b"---\n" + document
+    single = parse_structured_bytes(document, ".yml", serialize=serialize)
+    assert single.parse_error is None
+    assert single.parsed == [{"name": "Alexandria", "role": "editor"}] * 2
+    refused = parse_structured_bytes(data, ".yml", serialize=serialize)
+    assert refused.parse_error and "larger than 80" in refused.parse_error
+    assert refused.node_count == 0
+    assert refused.parsed is None and refused.pretty_yaml == ""
+
+
+def test_yaml_stream_shares_the_composition_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser.builtin_plugins.structured import parser
+
+    monkeypatch.setattr(parser, "STRUCTURED_NATIVE_YAML_MAX_NODES", 4)
+    data = b"[one, two]\n---\nthree\n"
+    assert parse_structured_bytes(data, ".yaml").parsed == [["one", "two"], "three"]
+    refused = parse_structured_bytes(data + b"---\nfour\n", ".yaml")
+    assert refused.parse_error and "more than 4 values" in refused.parse_error

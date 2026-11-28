@@ -458,7 +458,10 @@ def test_a_document_nested_past_the_parse_or_referring_to_itself_is_refused(
     for route in ("schema", "rows"):
         status, body = _get(client, route, name)
         assert (status, body["code"]) == (422, "source_unreadable"), body
-        assert "nested too deeply or refers to itself" in body["error"]
+        if name.endswith(".yaml"):
+            assert "alias refers to a value that contains it" in body["detail"]
+        else:
+            assert "nested too deeply or refers to itself" in body["error"]
 
 
 def test_a_lone_surrogate_is_shown_replaced(client: TestClient, tmp_path: Path) -> None:
