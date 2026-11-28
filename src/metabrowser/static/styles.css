@@ -6595,6 +6595,9 @@ pre.metabrowser-source-lines.source-excerpt > code {
   gap: var(--nav-toolbar-gap);
   padding: var(--panel-cell-padding);
 }
+.structured-values-notice {
+  margin-block-end: var(--content-padding-y);
+}
 .structured-node-grid {
   /* Preview buttons must shrink with the pane, not set its intrinsic width. */
   table-layout: fixed;

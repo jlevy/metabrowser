@@ -299,7 +299,8 @@ async def read_projection(ref: ContentRef, query: QueryParams) -> JSONResponse:
         record_table = not selection.path and await asyncio.to_thread(
             offers_table, window.data, ref.logical_ext
         )
-        return JSONResponse({**address, "status": "too_large", "record_table": record_table})
+        if record_table or format != "yaml":
+            return JSONResponse({**address, "status": "too_large", "record_table": record_table})
     projection = await asyncio.to_thread(
         project_structured,
         window.data,
@@ -311,10 +312,12 @@ async def read_projection(ref: ContentRef, query: QueryParams) -> JSONResponse:
         depth=selection.depth,
         copy_row=selection.copy_row,
         tree=selection.tree,
+        truncated_yaml=window.has_more,
     )
     error_byte = projection.get("error_byte")
     if (
-        projection["status"] == "invalid"
+        not window.has_more
+        and projection["status"] == "invalid"
         and isinstance(error_byte, int)
         and not selection.path
         and selection.document == selection.offset == 0

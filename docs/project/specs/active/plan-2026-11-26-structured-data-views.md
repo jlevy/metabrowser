@@ -185,6 +185,19 @@ revision, including a rename.
 Never recover a missing pinned value by reading the working tree.
 [Git architecture](../../architecture/arch-git.md).
 
+## Large YAML Previews
+
+Values can open the beginning of an oversized block YAML mapping within the existing
+`projection_byte_limit` in `structured_nodes.py`. YAML parser events must establish a
+sibling boundary before the window ends.
+Each page keeps the file revision and uses the same preview window.
+
+The open mapping or sequence gives a lower-bound count.
+A completed entry can still copy its authored source range.
+The preview notice offers Source for the full file.
+Full Values paging will need a bounded parser or position index that can address later
+entries without loading the complete document into memory.
+
 ## Tabs, Arrows, and Browser History
 
 The main app supplies the tab strip, current path, Back and Forward controls, empty and
