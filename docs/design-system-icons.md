@@ -362,7 +362,7 @@ The title carries the meaning; the symbol only marks the tab.
 | `waveform.path` | SF Symbol | An event log in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
 | `text.alignleft` | SF Symbol | A text file in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
 | `document.on.document` | SF Symbol | An archive in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
-| `document.text` | SF Symbol | A document in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
+| `doc.text` | SF Symbol | A document in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
 | `square.grid.2x2` | SF Symbol | A table in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
 | `display` | SF Symbol | A preview in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |
 | `document.badge.ellipsis` | SF Symbol | A source file in page history | `apps/macos/Sources/Metabrowser/BrowserWindowController.swift` | AppKit’s menu ink | The menu’s symbol size |

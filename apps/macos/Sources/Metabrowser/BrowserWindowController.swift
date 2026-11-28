@@ -403,7 +403,7 @@ extension BrowserWindowController {
         case "copy":
             NSImage(systemSymbolName: "document.on.document", accessibilityDescription: nil)
         case "doc", "fileText":
-            NSImage(systemSymbolName: "document.text", accessibilityDescription: nil)
+            NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
         case "grid":
             NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)
         case "monitor":

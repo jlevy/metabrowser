@@ -131,7 +131,7 @@ import WebKit
         let controller = session.makeWindow()
         let window = try #require(controller.window)
         defer { window.close(); try? FileManager.default.removeItem(at: harness.directory) }
-        window.makeKeyAndOrderFront(nil)
+        window.orderFront(nil)
         let page = controller.page
         let route = "/view/a%20b.md?tab=checks#L13"
         let originalAddress = try #require(URL(string: route, relativeTo: originalOrigin)?.absoluteURL)
@@ -153,9 +153,22 @@ import WebKit
         #expect(nearest.url == originalAddress)
         #expect(oldest.url == originalAddress)
         #expect(page.navigationState.back)
-        #expect(await eventually(within: .seconds(5)) { window.isKeyWindow })
-        let originalItem = oldView.backForwardList.currentItem
+        let originalItem = try #require(oldView.backForwardList.currentItem)
+        window.orderOut(nil)
+        #expect(!page.historyAvailable)
         page.traverseHistory(to: oldest, direction: .back, from: originalItem, in: oldView)
+        window.orderFront(nil)
+        let unchanged = try await oldView.evaluateJavaScript("history.state.visit")
+        #expect(unchanged as? Int == 3)
+        #expect(oldView.backForwardList.currentItem === originalItem)
+
+        // AppKit may never grant this test process a key window. Verify the same
+        // guarded selection the action uses, then exercise its exact WebKit jump.
+        #expect(page.historyTarget(oldest, direction: .back, from: nearest, in: oldView) == nil)
+        #expect(page.historyTarget(oldest, direction: .forward, from: originalItem, in: oldView) == nil)
+        let target = try #require(page.historyTarget(oldest, direction: .back, from: originalItem, in: oldView))
+        #expect(target === oldest)
+        oldView.go(to: target)
         #expect(await eventually(within: .seconds(5)) { oldView.backForwardList.currentItem === oldest })
         let restored = try await oldView.evaluateJavaScript("history.state.visit")
         #expect(restored as? Int == 1)

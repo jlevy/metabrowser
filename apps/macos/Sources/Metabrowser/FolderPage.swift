@@ -1025,10 +1025,18 @@ extension FolderPage {
         to target: WKBackForwardListItem, direction: HistoryDirection, from current: WKBackForwardListItem?,
         in view: WKWebView
     ) {
-        guard historyAvailable, host?.page === self, view === webView,
-              current === view.backForwardList.currentItem, historyItems(direction).contains(where: { $0 === target })
+        guard historyAvailable, let item = historyTarget(target, direction: direction, from: current, in: view)
         else { return }
-        webView.go(to: target)
+        view.go(to: item)
+    }
+
+    /// Revalidates a captured entry against the page and history that still own it.
+    func historyTarget(
+        _ target: WKBackForwardListItem, direction: HistoryDirection, from current: WKBackForwardListItem?,
+        in view: WKWebView
+    ) -> WKBackForwardListItem? {
+        guard host?.page === self, view === webView, current === view.backForwardList.currentItem else { return nil }
+        return historyItems(direction).first { $0 === target }
     }
 
     private func navigationChanged(in view: WKWebView, publish: Bool = false) {
