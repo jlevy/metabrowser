@@ -249,3 +249,93 @@ def test_copy_route_uses_the_selected_revision_and_keeps_source_independent(
     stale = asyncio.run(read_projection(ref, QueryParams({**params, "mtime_hash": "stale"})))
     assert stale.status_code == 409
     assert "copy_text" not in json.loads(bytes(stale.body))
+
+
+@pytest.mark.parametrize(
+    ("name", "data", "names"),
+    [
+        ("records.json", b"[{name:'Ada'}, {name:'Bo'}]", ["Ada", "Bo"]),
+        ("records.yaml", b"- &person {name: Ada}\n- *person\n", ["Ada", "Ada"]),
+    ],
+)
+def test_value_only_grid_opens_existing_records_without_claiming_exact_source(
+    tmp_path: Path, name: str, data: bytes, names: list[str]
+) -> None:
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from metabrowser import server
+    from metabrowser.plugin_loader.static_assets import build_plugin_routes
+
+    (tmp_path / name).write_bytes(data)
+    server._set_root_dir(tmp_path)
+    plugins = [p for p in server._LOADED_PLUGINS if p.name in ("structured", "table")]
+    with TestClient(Starlette(routes=build_plugin_routes(plugins))) as client:
+        url = "/api/plugin/structured/parsed"
+        params = {"path": name, "projection": "nodes"}
+        page = client.get(url, params=params).json()
+        assert page["record_table"] and page["status"] == "invalid"
+        assert "node" not in page and "source_range" not in page
+        rows = client.get("/api/plugin/table/rows", params={"path": name}).json()["rows"]
+        assert [row["cells"]["name"] for row in rows] == names
+        for selection in (
+            {"node": "[0]"},
+            {"document": "1"},
+            {"copy": "row"},
+            {"tree": "1"},
+            {"offset": "1"},
+        ):
+            other = client.get(url, params={**params, **selection}).json()
+            assert not other.get("record_table") and "copy_text" not in other
+        assert client.get(url, params={**params, "mtime_hash": "stale"}).status_code == 409
+        markdown = tmp_path / "excerpt.md"
+        markdown.write_bytes(b"~~~" + name.split(".")[1].encode() + b"\n" + data + b"\n~~~")
+        excerpt = client.get(
+            url, params={**params, "path": markdown.name, "fence_line": "1"}
+        ).json()
+        assert excerpt["status"] == "invalid" and not excerpt["record_table"]
+
+
+@pytest.mark.parametrize(
+    ("ext", "data"),
+    [
+        (".json", b"[{a:1,'a':2}]"),
+        (".json", b"[{a:Infinity}]"),
+        (".json", b"[{a:'\\ud800'}]"),
+        (".json", b"[{a:1}, 7]"),
+        (".json", b"[{a:1}"),
+        (".yaml", b"- &a {field: *a}"),
+        (".yaml", b"- &a {name: Ada}\n- {ref: *a, repeated: 1, repeated: 2}"),
+        (".yaml", b"- &a {name: Ada}\n- {ref: *a, 0: number}"),
+        (".yaml", b"- &a {name: Ada}\n- {ref: *a, field: !unknown x}"),
+    ],
+)
+def test_value_only_grid_refuses_ambiguous_or_unrepresentable_records(
+    ext: str, data: bytes
+) -> None:
+    from metabrowser.builtin_plugins.structured.nodes_route import _fallback_grid
+
+    fmt: Format = "json" if ext == ".json" else "yaml"
+    page = project_structured(data, fmt)
+    assert page["status"] == "invalid"
+    assert not _fallback_grid(data, ext, page["error_byte"])
+
+
+def test_value_only_grid_respects_legacy_prefix_and_json5_retry_budget() -> None:
+    from metabrowser.builtin_plugins.structured.nodes_route import _fallback_grid
+    from metabrowser.diff.structured_projection import JSONC_MAX_BYTES
+
+    data = b"[{name:'Ada'}]"
+    assert not _fallback_grid(data, ".csv", 2)
+    assert not _fallback_grid(data.ljust(JSONC_MAX_BYTES + 1), ".json", 2)
+
+
+def test_value_only_grid_caps_alias_expansion_independently_of_input_bytes() -> None:
+    from metabrowser.builtin_plugins.structured.nodes_route import _fallback_grid
+    from metabrowser.structured_nodes import projection_byte_limit
+
+    # The bounded reader admits the compact input but refuses its repeated value.
+    data = b"- &item {name: " + b"a" * (projection_byte_limit("yaml") // 2) + b"}\n"
+    data += b"- *item\n" * 10
+    assert len(data) < projection_byte_limit("yaml")
+    assert not _fallback_grid(data, ".yaml", data.index(b"*"))

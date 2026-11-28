@@ -20,10 +20,12 @@ from ruamel.yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from metabrowser.diff.structured_projection import (
     _MAX_NODES,
-    _MAX_YAML_NODES,
     JSONC_MAX_BYTES,
     SLOW_PARSE_MAX_BYTES,
     STRUCTURED_DIFF_MAX_BYTES,
+)
+from metabrowser.diff.structured_projection import (
+    _MAX_YAML_NODES as STRUCTURED_YAML_MAX_NODES,
 )
 from metabrowser.frontmatter_yaml import YAML_MAX_DEPTH, _Composer, _NodeBudgetError
 
@@ -179,7 +181,7 @@ def _yaml(text: str, *, keep_source: bool = False) -> list[_Value]:
     yaml = YAML(typ="safe", pure=True)
     yaml.Composer = _SourceComposer
     yaml.max_depth = YAML_MAX_DEPTH
-    yaml.composer.nodes_left = _MAX_YAML_NODES
+    yaml.composer.nodes_left = STRUCTURED_YAML_MAX_NODES
 
     def read(node: Node) -> _Value:
         value = build(node)

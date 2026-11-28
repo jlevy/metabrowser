@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from contextlib import suppress
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from starlette.responses import JSONResponse
 
 from metabrowser.builtin_plugins.structured.offer import offers_table
 from metabrowser.builtin_plugins.structured.parser import STRUCTURED_PARSE_MAX_BYTES
-from metabrowser.frontmatter_yaml import FRONTMATTER_MAX_BYTES
+from metabrowser.frontmatter_yaml import FRONTMATTER_MAX_BYTES, YAML_MAX_DEPTH
 from metabrowser.plugin_api import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -154,6 +155,65 @@ def _excerpt_projection(
     return response
 
 
+def _grid_value(value: object, depth: int = 0) -> bool:
+    """Accept ordinary JSON values, excluding type conversions from the typed YAML loader."""
+    if depth > YAML_MAX_DEPTH:
+        return False
+    if type(value) is dict:
+        return all(
+            type(key) is str and _grid_value(key, depth + 1) and _grid_value(child, depth + 1)
+            for key, child in value.items()
+        )
+    if type(value) is list:
+        return all(_grid_value(child, depth + 1) for child in value)
+    if type(value) is str:
+        value.encode("utf-8")  # The JSON5 reader can return unpaired Unicode surrogates.
+        return True
+    if type(value) is float:
+        return math.isfinite(value)
+    return value is None or type(value) in (int, bool)
+
+
+def _fallback_grid(data: bytes, ext: str, error_byte: int) -> bool:
+    """The existing record grid can display a value without claiming exact row source."""
+    from metabrowser.diff.structured_projection import JSONC_MAX_BYTES, SLOW_PARSE_MAX_BYTES
+    from metabrowser.frontmatter_yaml import load_bounded_yaml_documents
+    from metabrowser.structured_nodes import STRUCTURED_YAML_MAX_NODES
+
+    if not offers_table(data, ext):
+        return False
+    try:
+        if ext == ".json":
+            if len(data) > JSONC_MAX_BYTES:
+                return False
+            import json5
+
+            value: object = json5.loads(data.decode("utf-8"), allow_duplicate_keys=False)
+        else:
+            # The exact parser stops at the alias token: it cannot use the anchor's
+            # source span for this occurrence. Validate expansion and duplicates
+            # before offering the value-only grid.
+            if data[error_byte : error_byte + 1] != b"*":
+                return False
+            docs = load_bounded_yaml_documents(
+                data.decode("utf-8"),
+                max_expanded_size=4 * SLOW_PARSE_MAX_BYTES,
+                max_nodes=STRUCTURED_YAML_MAX_NODES,
+                typed=True,
+            )
+            if len(docs) != 1:
+                return False
+            value = docs[0]
+        return (
+            type(value) is list
+            and bool(value)
+            and all(type(row) is dict for row in value)
+            and _grid_value(value)
+        )
+    except (ValueError, OverflowError, RecursionError):
+        return False
+
+
 async def read_projection(ref: ContentRef, query: QueryParams) -> JSONResponse:
     from metabrowser.structured_nodes import project_structured, projection_byte_limit
 
@@ -252,4 +312,16 @@ async def read_projection(ref: ContentRef, query: QueryParams) -> JSONResponse:
         copy_row=selection.copy_row,
         tree=selection.tree,
     )
+    error_byte = projection.get("error_byte")
+    if (
+        projection["status"] == "invalid"
+        and isinstance(error_byte, int)
+        and not selection.path
+        and selection.document == selection.offset == 0
+        and not selection.copy_row
+        and not selection.tree
+        and query.get("source") != "1"
+        and await asyncio.to_thread(_fallback_grid, window.data, ref.logical_ext, error_byte)
+    ):
+        projection["record_table"] = True
     return JSONResponse({**address, **projection})

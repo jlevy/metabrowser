@@ -126,6 +126,8 @@ filtered. Row copy produces a standalone fragment, adding enclosing syntax or re
 indentation where needed.
 The Source tab remains available for an exact excerpt.
 The record grid can still browse some files outside the ordered projection’s budgets.
+It also reads standalone JSON5 record lists and YAML record lists with aliases when a
+bounded validation confirms the values fit the grid.
 It omits row copy when the projection cannot read the file.
 Copy controls appear on row hover or keyboard focus and stay visible on touch screens.
 
