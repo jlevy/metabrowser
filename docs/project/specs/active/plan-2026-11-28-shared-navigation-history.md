@@ -301,8 +301,11 @@ The persistent arrow tooltips and accessible shortcut descriptions list both bin
 Use the page heading’s title and icon as the starting point for a compact menu label.
 The heading and history entry get these parts from the same view data.
 Keep the canonical URL separate for traversal and copying.
-Browser history uses the page title through the browser’s own UI. Native history and
-other Metabrowser menus can also render the matching per-page icon.
+Set the text-only browser tab title from the committed view on first render,
+same-document navigation, and history restoration.
+The browser controls its own history presentation.
+Use the matching per-page icon in native history and other Metabrowser menus that open
+pages. The native project title and chooser keep their project identity.
 
 | Page | Primary title and icon | Context when needed |
 | --- | --- | --- |
@@ -324,12 +327,16 @@ clarify their relative position if needed.
 Reuse the title and icon data already used by the file, PR, stack, and commit heading
 renderers. Send plain text, an identifier from the existing icon mapping, and structured
 context across the local bridge.
-Use bundled icons in native menus.
+Share the resolved heading icon, including PR state and a file’s logical type.
+Native menus draw the corresponding bundled icon and fall back to a generic kind icon
+for an unknown identifier.
 Retain label data only for the WebKit entries it describes, keyed by entry identity
-rather than URL. This lets the menu label previously visited entries without new
-fetches.
-When metadata is missing, use the safe title or identifier already available for
-that route with its kind icon.
+rather than URL. Bind asynchronous updates to both the native entry and committed render
+generation.
+Drop late results and prune labels when a branch is discarded or a WebView is
+replaced. Menus display known labels without starting fetches.
+Use a safe fallback such as a file basename, PR number, stack number, or short commit ID
+when metadata is missing.
 History selection still uses the exact WebKit item.
 
 [View headers in the design system](../../../design-system.md#view-headers)
@@ -468,7 +475,9 @@ existing links. No history stack crosses the process boundary.
    Cover duplicate file basenames, two tabs of the same pull request, long or
    untranslated titles, and a page whose metadata was unavailable when visited.
    Verify the menu can tell those entries apart while Back and Forward restore their
-   exact addresses.
+   exact addresses. Verify browser titles on same-document navigation.
+   Delay a title update from one entry past a move to another entry at the same URL and
+   confirm the label stays with the correct visit.
 
 ## Rollout Plan
 
