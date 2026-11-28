@@ -16,7 +16,8 @@ import ShellCore
 /// so a folder's window has none to drag; Command-click or right-click on the title
 /// opens the folder's path menu.
 final class TitleAccessoryController: NSTitlebarAccessoryViewController {
-    private let titleView = TitleBarTitleView()
+    let navigation = NavigationTitleBar()
+    private var titleView: TitleBarTitleView { navigation.chooser }
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -26,13 +27,14 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
 
-    override func loadView() { view = titleView }
+    override func loadView() { view = navigation }
 
     /// `url` is the folder whose path menu the title opens, or nil when the window shows
     /// no local folder.
     func show(_ title: WindowTitle, representing url: URL?) {
         loadViewIfNeeded()
         titleView.show(title, representing: url)
+        navigation.refit()
     }
 
     /// The folder chooser the title opens, built when it opens.
@@ -58,6 +60,7 @@ final class TitleBarTitleView: NSView {
     /// Space kept between the end of the title and what stands at the title bar's trailing
     /// end: the window's edge, or the mark's accessory.
     private static let trailingMargin: CGFloat = 12
+    var sizesToTitle = true
     /// From the end of the title to the chevron, and from the chevron to the hover
     /// surface's end, which reaches as far past the chevron as it does before the title.
     private static let chevronGap: CGFloat = 4
@@ -250,7 +253,7 @@ final class TitleBarTitleView: NSView {
     /// As wide as the title and its chevron, but never into the trailing accessories or
     /// past the window's trailing margin, so a narrow window truncates the title.
     private func updateWidth() {
-        guard let window, let title else { return }
+        guard sizesToTitle, let window, let title else { return }
         let ideal = Self.textInset + ceil(measure(title.text).width) + chevronRoom
         let trailing = window.titlebarAccessoryViewControllers
             .filter { $0.layoutAttribute == .trailing }

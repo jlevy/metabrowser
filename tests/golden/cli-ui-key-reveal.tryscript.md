@@ -1943,6 +1943,29 @@ $ node tests/dom/key-reveal-session.js tabs
 ? 0
 ```
 
+## Native History Keys
+
+The macOS host advertises navigation history and supplies which directions are
+available. Bare brackets ask the host to traverse the available direction outside text
+fields and modal scopes.
+Holding Shift reports when badges appear and disappear.
+Each request is addressed to the current page, including after an in-page navigation or
+a keymap rebuild.
+
+```console
+$ node tests/dom/native-history-shortcuts.js
+OK native history keyboard bridge
+{"kind":"state","url":"http://127.0.0.1:8457/pull/927"}
+{"kind":"history","direction":"back","url":"http://127.0.0.1:8457/pull/927"}
+{"kind":"history","direction":"forward","url":"http://127.0.0.1:8457/view/README.md#readme"}
+{"kind":"reveal","visible":true,"url":"http://127.0.0.1:8457/view/README.md#readme"}
+{"kind":"reveal","visible":false,"url":"http://127.0.0.1:8457/view/README.md#readme"}
+{"kind":"reveal","visible":true,"url":"http://127.0.0.1:8457/view/README.md#readme"}
+{"kind":"reveal","visible":false,"url":"http://127.0.0.1:8457/view/README.md#readme"}
+{"kind":"state","url":"http://127.0.0.1:8457/view/README.md#readme"}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

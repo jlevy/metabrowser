@@ -69,6 +69,7 @@ SUFFIXES = (".js", ".py", ".html", ".css")
 # rule replaces.
 _ATTRIBUTE = re.compile(r"""(?<![\w-])title\s*=\s*["'{]""")
 _ASSIGNMENT = re.compile(r"""\.title\s*=\s*(?!=)""")
+_DOCUMENT_ASSIGNMENT = re.compile(r"(?<![\w$.])(?:window\.)?document\.title\s*=\s*(?!=)")
 _SET_ATTRIBUTE = re.compile(r"""setAttribute\(\s*["']title["']""")
 
 # Places the attribute is not the browser's tooltip and the rule does not
@@ -185,7 +186,12 @@ def _scan(path: Path) -> list[Finding]:
             continue
         if _SET_ATTRIBUTE.search(line) and _allowed_line(path, line):
             continue
-        if _ATTRIBUTE.search(line) or _ASSIGNMENT.search(line) or _SET_ATTRIBUTE.search(line):
+        tooltip_text = _DOCUMENT_ASSIGNMENT.sub("", line)
+        if (
+            _ATTRIBUTE.search(tooltip_text)
+            or _ASSIGNMENT.search(tooltip_text)
+            or _SET_ATTRIBUTE.search(line)
+        ):
             findings.append(Finding(path, number, line.strip()))
     return findings
 

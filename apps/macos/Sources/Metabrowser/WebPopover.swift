@@ -15,6 +15,7 @@ final class WebPopover: NSObject, NSPopoverDelegate, WebPaneHost {
     let pane: WebPane
     /// While the popover is open, and from then until it has closed.
     private var popover: NSPopover?
+    var onVisibilityChange: (() -> Void)?
 
     init(isInspectable: Bool) {
         pane = WebPane(isInspectable: isInspectable)
@@ -35,7 +36,10 @@ final class WebPopover: NSObject, NSPopoverDelegate, WebPaneHost {
         popover.contentSize = size
         popover.show(relativeTo: anchor, of: view, preferredEdge: view.isFlipped ? .maxY : .minY)
         pane.focus()
+        onVisibilityChange?()
     }
+
+    var isShown: Bool { popover?.isShown == true }
 
     func close() { popover?.close() }
 
@@ -74,6 +78,7 @@ final class WebPopover: NSObject, NSPopoverDelegate, WebPaneHost {
         guard let closed = notification.object as? NSPopover, closed === popover, !closed.isShown else { return }
         letPopoverGo()
         pane.hostDidHide()
+        onVisibilityChange?()
     }
 
     // MARK: - WebPaneHost

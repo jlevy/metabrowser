@@ -5,15 +5,20 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.required_tools import require_node
 
-SHORTCUT_TEST_JS = Path(__file__).resolve().parent / "dom" / "keyboard-shortcuts-behavior.js"
+DOM_TESTS = Path(__file__).resolve().parent / "dom"
 
 
-def test_keyboard_shortcut_js_assertions_pass() -> None:
+@pytest.mark.parametrize(
+    "script", ["keyboard-shortcuts-behavior.js", "native-history-shortcuts.js"]
+)
+def test_keyboard_shortcut_js_assertions_pass(script: str) -> None:
     require_node()
     result = subprocess.run(
-        ["node", str(SHORTCUT_TEST_JS)],
+        ["node", str(DOM_TESTS / script)],
         capture_output=True,
         text=True,
         timeout=20,

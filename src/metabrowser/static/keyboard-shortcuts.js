@@ -132,6 +132,8 @@
     "#": Object.freeze({ aria: "", spoken: "Hash", visible: "#" }),
     "\\": Object.freeze({ aria: "", spoken: "Backslash", visible: "\\" }),
     "?": Object.freeze({ aria: "", spoken: "Question mark", visible: "?" }),
+    "[": Object.freeze({ aria: "", spoken: "Left bracket", visible: "[" }),
+    "]": Object.freeze({ aria: "", spoken: "Right bracket", visible: "]" }),
     ArrowDown: Object.freeze({ aria: "ArrowDown", spoken: "Down arrow", visible: "↓" }),
     ArrowLeft: Object.freeze({ aria: "ArrowLeft", spoken: "Left arrow", visible: "←" }),
     ArrowRight: Object.freeze({ aria: "ArrowRight", spoken: "Right arrow", visible: "→" }),
@@ -143,6 +145,8 @@
     F2: Object.freeze({ aria: "F2", spoken: "F2", visible: "F2" }),
     Home: Object.freeze({ aria: "Home", spoken: "Home", visible: "Home" }),
   });
+
+  const PUNCTUATION_KEYS = new Set(["?", "/", "#", "\\", "[", "]"]);
 
   // Keys that Shift turns into text selection inside a field: a command never
   // takes Shift+Arrow, Shift+Home, or Shift+End from a text field, even one
@@ -266,7 +270,7 @@
     if (isDigitKey(key)) {
       return "digit";
     }
-    return key === "?" || key === "/" || key === "#" || key === "\\" ? "punctuation" : "named";
+    return PUNCTUATION_KEYS.has(key) ? "punctuation" : "named";
   }
 
   // The character Shift types on a punctuation binding's own key, which matches it too, so
@@ -397,6 +401,10 @@
         !isDigitKey(event.key) &&
         event.code === `Digit${normalized.key}`
       );
+    }
+    // The native history keys are literal, unmodified brackets on every layout.
+    if (event.shiftKey && (normalized.key === "[" || normalized.key === "]")) {
+      return false;
     }
     const eventKey = /^[a-z]$/i.test(event.key) ? event.key.toLowerCase() : event.key;
     if (eventKey !== normalized.key && eventKey !== SHIFTED_PUNCTUATION[normalized.key]) {

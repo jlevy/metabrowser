@@ -120,3 +120,12 @@ def test_a_second_link_card_fails_the_check(
 
 def test_the_shipped_tree_draws_one_link_card() -> None:
     assert [finding for path in check._candidates() for finding in check._link_cards(path)] == []
+
+
+def test_the_browser_tab_title_is_not_an_element_tooltip(tmp_path: Path) -> None:
+    assert check._scan(_source(tmp_path, "document.title = name;")) == []
+    assert check._scan(_source(tmp_path, "window.document.title = name;")) == []
+    assert check._scan(_source(tmp_path, 'document.title = "Readme";')) == []
+    line = "document.title = name; button.title = name;"
+    path = _source(tmp_path, line)
+    assert check._scan(path) == [check.Finding(path, 2, line)]

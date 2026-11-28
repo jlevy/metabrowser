@@ -80,6 +80,93 @@
   }
 
   /**
+   * The native shell traverses the embedded web view's history. Its availability and the
+   * web page's Shift reveal both cross the bridge here, with the keymap's lifetime.
+   * @param {MetabrowserPublicShortcutRegistry} shortcuts
+   */
+  function bindNativeHistory(shortcuts) {
+    const host = /** @type {Window & {
+     *   metabrowserHost?: {actions?: readonly string[]},
+     *   webkit?: {messageHandlers?: {metabrowserNavigation?: {postMessage(message: unknown): void}}},
+     *   MetabrowserNativeNavigation?: {setState(state: {back: boolean, forward: boolean}): void},
+     * }} */ (window);
+    const handler = host.webkit?.messageHandlers?.metabrowserNavigation;
+    if (!handler || !host.metabrowserHost?.actions?.includes("navigation-history")) {
+      return () => {};
+    }
+
+    const available = { back: false, forward: false };
+    const bridge = Object.freeze({
+      /** @param {{back: boolean, forward: boolean}} state */
+      setState(state) {
+        available.back = state?.back === true;
+        available.forward = state?.forward === true;
+      },
+    });
+    host.MetabrowserNativeNavigation = bridge;
+
+    /** @param {{kind: "state"} | {kind: "history", direction: "back" | "forward"} | {kind: "reveal", visible: boolean}} message */
+    const post = (message) => {
+      if (host.MetabrowserNativeNavigation !== bridge) {
+        return false;
+      }
+      try {
+        handler.postMessage({ ...message, url: window.location.href });
+        return true;
+      } catch {
+        // The host can tear down the message handler while the web view is unloading.
+        return false;
+      }
+    };
+
+    /** @param {"back" | "forward"} direction @param {string} key @param {number} order */
+    function register(direction, key, order) {
+      const action = direction === "back" ? "Go back" : "Go forward";
+      return shortcuts.register({
+        available: () => available[direction],
+        bindings: [{ key }],
+        copy: {
+          action,
+          description:
+            direction === "back"
+              ? "Return to the previous page."
+              : "Open the next page in history.",
+          hint: action,
+        },
+        group: "anywhere",
+        handler: ({ event }) => Boolean(event) && post({ kind: "history", direction }),
+        id: `shell.history-${direction}`,
+        order,
+        scope: "global",
+        surfaces: { help: "always" },
+      });
+    }
+    const releaseBack = register("back", "[", 41);
+    const releaseForward = register("forward", "]", 42);
+
+    let revealed = false;
+    const unsubscribe = shortcuts.subscribe(() => {
+      const visible = shortcuts.isRevealed();
+      if (visible !== revealed && post({ kind: "reveal", visible })) {
+        revealed = visible;
+      }
+    });
+    post({ kind: "state" });
+
+    return () => {
+      unsubscribe();
+      releaseBack();
+      releaseForward();
+      if (host.MetabrowserNativeNavigation === bridge) {
+        if (revealed) {
+          post({ kind: "reveal", visible: false });
+        }
+        delete host.MetabrowserNativeNavigation;
+      }
+    };
+  }
+
+  /**
    * @param {{shortcuts: MetabrowserPublicShortcutRegistry, shell: ShellKeymapShell}} options
    */
   function createShellKeymap(options) {
@@ -87,6 +174,7 @@
       throw new TypeError("The shell keymap requires a shortcut registry and the shell");
     }
     const { shortcuts, shell } = options;
+    const releaseNativeHistory = bindNativeHistory(shortcuts);
     /** @type {Map<string, {label: string, order: number, release: () => void, target: MetabrowserPublicShortcutTarget}>} */
     const viewTabs = new Map();
     /** Commands registered only while their control exists: `W`.
@@ -609,6 +697,7 @@
         return;
       }
       shortcuts.batch(() => {
+        releaseNativeHistory();
         for (const key of Array.from(viewTabs.keys())) {
           releaseViewTab(key);
         }

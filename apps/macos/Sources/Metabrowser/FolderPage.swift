@@ -28,6 +28,10 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         didSet { if host !== oldValue { webPopover?.close() } }
     }
     private var policy = NavigationPolicy()
+    private var navigationObservations: [NSKeyValueObservation] = []
+    private var hasCommittedDocument = false
+    private var navigationLabels: [ObjectIdentifier: NavigationHistoryRequests.Label] = [:]
+    private var lastNavigationState: FolderNavigationState?
     private let container: WebContainerView
     private let status = WindowStatus()
     private var linkProgress: NSView?
@@ -114,12 +118,24 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// marked to open in a web pane, and its links marked to open a file in its default app
     /// answered by the page that asked.
     private static func pageConfiguration() -> WKWebViewConfiguration {
-        WebConfiguration.make(pagePrints: pagePrints, webViews: webViews, openFiles: openFiles)
+        WebConfiguration.make(
+            pagePrints: pagePrints, webViews: webViews, openFiles: openFiles, navigationHistory: navigationRequests)
     }
 
     private func wire(_ webView: DropAwareWebView) {
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        navigationObservations = [
+            webView.observe(\.url) { [weak self] view, _ in
+                MainActor.assumeIsolated { self?.navigationChanged(in: view) }
+            },
+            webView.observe(\.canGoBack) { [weak self] view, _ in
+                MainActor.assumeIsolated { self?.navigationChanged(in: view) }
+            },
+            webView.observe(\.canGoForward) { [weak self] view, _ in
+                MainActor.assumeIsolated { self?.navigationChanged(in: view) }
+            },
+        ]
         webView.onFileDrop = { urls in
             guard let app = NSApp.delegate as? AppDelegate else { return false }
             urls.forEach { app.request($0, as: .opened) }
@@ -136,6 +152,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         endpoint = nil
         status.phase = .starting
         container.showsStatus = true
+        navigationChanged(in: webView)
     }
 
     func showFailure(_ failure: ServerFailure) {
@@ -145,6 +162,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         endpoint = nil
         status.phase = .failed(failure)
         container.showsStatus = true
+        navigationChanged(in: webView)
     }
 
     /// A restored folder in a protected location, whose server starts when this page is
@@ -153,6 +171,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         supersedeLoad()
         status.phase = .waitingForSelection
         container.showsStatus = true
+        navigationChanged(in: webView)
     }
 
     /// A folder whose start waits for a metab the app accepts: none was found, or the one
@@ -163,6 +182,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         endpoint = nil
         status.phase = .waitingForRuntime
         container.showsStatus = true
+        navigationChanged(in: webView)
     }
 
     /// Server state now covers the page. A load still on its way is remembered as the
@@ -177,9 +197,17 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// Loads the page this page is to show, on the new origin, or the server's entry
     /// page. A discarded page only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
+        if policy.origin != nil, !policy.isAppOrigin(endpoint.origin) {
+            rememberPage()
+            loads.cancelAll()
+            supersedeLoad()
+            container.showsStatus = true
+            replaceWebView()
+        }
         let ticket = loads.begin()  // which supersedes every load still waiting
         policy.origin = endpoint.origin
         self.endpoint = endpoint
+        navigationChanged(in: webView)
         if isDiscarded { status.phase = .reloading }
         Task {
             await install(authorization, for: endpoint)
@@ -192,6 +220,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     func adoptServer(_ endpoint: ServerEndpoint?) {
         policy.origin = endpoint?.origin
         self.endpoint = endpoint
+        navigationChanged(in: webView)
     }
 
     /// Shows `address` now if the server is ready and still answers, or once it is ready.
@@ -246,7 +275,18 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         rememberPage()
         isDiscarded = true
         reveal.supersede()  // the discarded view is stopped below
+        replaceWebView()
+        if endpoint != nil { status.phase = .reloading }
+        container.showsStatus = true
+        navigationChanged(in: webView)
+    }
+
+    private func replaceWebView() {
         let discarded = webView
+        navigationObservations = []
+        hasCommittedDocument = false
+        navigationLabels.removeAll()
+        lastNavigationState = nil
         discarded.stopLoading()
         discarded.navigationDelegate = nil
         discarded.uiDelegate = nil
@@ -255,8 +295,6 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         webView = Self.makeWebView(Self.pageConfiguration())
         wire(webView)
         container.replaceWebView(webView)
-        if endpoint != nil { status.phase = .reloading }
-        container.showsStatus = true
     }
 
     /// Loads the page again after `discardPage`: now if the server is ready and still
@@ -329,6 +367,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         webPopover?.discard()
         webPopover = nil
         container.isFindBarVisible = false
+        navigationObservations = []
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -337,8 +376,11 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
 
     // MARK: - Menu actions (nil-targeted: BrowserWindowController.supplementalTarget says how they arrive)
 
-    @objc func navigateBack(_ sender: Any?) { webView.goBack() }
-    @objc func navigateForward(_ sender: Any?) { webView.goForward() }
+    @objc func navigateBack(_ sender: Any?) { moveInHistory(.back) }
+    @objc func navigateForward(_ sender: Any?) { moveInHistory(.forward) }
+    @objc func showBackHistory(_ sender: Any?) { host?.showHistory(.back, fromKeyboard: true) }
+    @objc func showForwardHistory(_ sender: Any?) { host?.showHistory(.forward, fromKeyboard: true) }
+    @objc func copyCurrentURL(_ sender: Any?) { host?.copyCurrentURL() }
 
     /// Command-R, in every state the page can be in (`PageReload`).
     @objc func reloadPage(_ sender: Any?) {
@@ -465,6 +507,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         }
         let popover = webPopover ?? WebPopover(isInspectable: Self.isInspectable)
         webPopover = popover
+        popover.onVisibilityChange = { [weak self] in self?.host?.pageNavigationChanged() }
         let anchor = WebPopoverLayout.anchor(
             request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
         popover.show(request.page, at: anchor, of: webView)
@@ -682,14 +725,16 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     @objc func revealServerLog(_ sender: Any?) { session?.revealLog() }
 
     @objc func openInDefaultBrowser(_ sender: Any?) {
-        if let url = currentServerURL { NSWorkspace.shared.open(url) }
+        if let url = navigationState.url, historyAvailable { NSWorkspace.shared.open(url) }
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let state = pageState
         switch item.action {
-        case #selector(navigateBack(_:)): return PageMenu.isEnabled(.back, in: state)
-        case #selector(navigateForward(_:)): return PageMenu.isEnabled(.forward, in: state)
+        case #selector(navigateBack(_:)), #selector(showBackHistory(_:)):
+            return historyAvailable && navigationState.back
+        case #selector(navigateForward(_:)), #selector(showForwardHistory(_:)):
+            return historyAvailable && navigationState.forward
         case #selector(reloadPage(_:)): return PageMenu.isEnabled(.reload, in: state)
         case #selector(printPage(_:)): return PageMenu.isEnabled(.print, in: state)
         case #selector(actualSize(_:)): return PageMenu.isEnabled(.actualSize, in: state)
@@ -699,7 +744,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
             guard PageMenu.isEnabled(.find, in: state), let action = NSTextFinder.Action(rawValue: item.tag)
             else { return false }
             return action != .hideFindInterface || container.isFindBarVisible
-        case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
+        case #selector(openInDefaultBrowser(_:)), #selector(copyCurrentURL(_:)):
+            return historyAvailable && navigationState.url != nil
         default: return true
         }
     }
@@ -742,10 +788,18 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard self.webView === webView else { return }
+        hasCommittedDocument = true
         session?.pageChanged()
-        guard reveal.reveals(onCommit: navigation) else { return }
-        container.showsStatus = false
-        window?.makeFirstResponder(webView)
+        if reveal.reveals(onCommit: navigation) {
+            container.showsStatus = false
+            window?.makeFirstResponder(webView)
+        }
+        navigationChanged(in: webView, publish: true)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        navigationChanged(in: webView, publish: true)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
@@ -754,10 +808,13 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
         status.phase = .failed(ServerFailure(
             summary: "The page did not load: \(error.localizedDescription)", recentOutput: []))
         container.showsStatus = true
+        navigationChanged(in: webView)
     }
 
     /// WebContent crashed or was killed under memory pressure; never leave a blank page.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        hasCommittedDocument = false
+        navigationChanged(in: webView)
         guard contentRecoveries.allow() else {
             AppLog.app.error("web content process died repeatedly; showing the status view")
             supersedeLoad()
@@ -765,6 +822,7 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
                 summary: "The page stopped responding repeatedly. Retry restarts the folder's server.",
                 recentOutput: []))
             container.showsStatus = true
+            navigationChanged(in: webView)
             return
         }
         reveal.reloaded(webView.reload())
@@ -901,6 +959,127 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
         alert.beginSheetModal(for: window) { [weak self] response in
             self?.pageSheets.closed(sheet)
             completion(response)
+        }
+    }
+}
+
+struct FolderNavigationState: Equatable {
+    let url: URL?
+    let back: Bool
+    let forward: Bool
+}
+
+typealias HistoryDirection = NavigationHistoryRequests.Direction
+
+extension FolderPage {
+    static let navigationRequests = NavigationHistoryRequests { view, frame, request in
+        guard let page = (view.window?.windowController as? BrowserWindowController)?.page,
+              page.webView === view
+        else { return }
+        page.handleNavigationRequest(request, from: frame)
+    }
+
+    var webContentHasFocus: Bool {
+        guard let responder = window?.firstResponder as? NSView else { return false }
+        return responder === webView || responder.isDescendant(of: webView)
+    }
+
+    var historyAvailable: Bool {
+        window?.isKeyWindow == true && window?.attachedSheet == nil && host?.isShowingSheet != true
+            && webPopover?.isShown != true
+    }
+
+    private var committedURL: URL? {
+        guard endpoint != nil, !container.showsStatus, hasCommittedDocument,
+              let current = webView.backForwardList.currentItem,
+              let url = webView.url, current.url.absoluteString == url.absoluteString,
+              policy.isAppOrigin(url), url.user() == nil, url.password() == nil
+        else { return nil }
+        return url
+    }
+
+    var navigationState: FolderNavigationState {
+        let url = committedURL
+        return FolderNavigationState(
+            url: url, back: url != nil && !historyItems(.back).isEmpty,
+            forward: url != nil && !historyItems(.forward).isEmpty)
+    }
+
+    func historyItems(_ direction: HistoryDirection) -> [WKBackForwardListItem] {
+        guard committedURL != nil else { return [] }
+        let list = webView.backForwardList
+        let items = direction == .back ? Array(list.backList.reversed()) : list.forwardList
+        return Array(items.prefix { policy.isAppOrigin($0.url) })
+    }
+
+    func historyLabel(for item: WKBackForwardListItem) -> NavigationHistoryRequests.Label? {
+        navigationLabels[ObjectIdentifier(item)].flatMap { $0.url == item.url.absoluteString ? $0 : nil }
+    }
+
+    func moveInHistory(_ direction: HistoryDirection) {
+        guard let target = historyItems(direction).first else { return }
+        traverseHistory(to: target, direction: direction, from: webView.backForwardList.currentItem, in: webView)
+    }
+
+    func traverseHistory(
+        to target: WKBackForwardListItem, direction: HistoryDirection, from current: WKBackForwardListItem?,
+        in view: WKWebView
+    ) {
+        guard historyAvailable, let item = historyTarget(target, direction: direction, from: current, in: view)
+        else { return }
+        view.go(to: item)
+    }
+
+    /// Revalidates a captured entry against the page and history that still own it.
+    func historyTarget(
+        _ target: WKBackForwardListItem, direction: HistoryDirection, from current: WKBackForwardListItem?,
+        in view: WKWebView
+    ) -> WKBackForwardListItem? {
+        guard host?.page === self, view === webView, current === view.backForwardList.currentItem else { return nil }
+        return historyItems(direction).first { $0 === target }
+    }
+
+    private func navigationChanged(in view: WKWebView, publish: Bool = false) {
+        guard view === webView else { return }
+        let state = navigationState
+        if state != lastNavigationState || publish {
+            lastNavigationState = state
+            host?.pageNavigationChanged()
+            if let url = state.url,
+               let urlData = try? JSONEncoder().encode(url.absoluteString),
+               let address = String(data: urlData, encoding: .utf8) {
+                // The evaluation may arrive after another document takes over the web view.
+                view.evaluateJavaScript("""
+                    if (window.origin !== 'null' && location.href === \(address)) {
+                        window.MetabrowserNativeNavigation?.setState({back: \(state.back), forward: \(state.forward)});
+                    }
+                    """, completionHandler: nil)
+            }
+        }
+        let list = view.backForwardList
+        var items = list.backList + list.forwardList
+        if let current = list.currentItem { items.append(current) }
+        let retained = Set(items.map(ObjectIdentifier.init))
+        navigationLabels = navigationLabels.filter { retained.contains($0.key) }
+    }
+
+    private func handleNavigationRequest(_ request: NavigationHistoryRequests.Request, from frame: WKFrameInfo) {
+        guard NavigationHistoryRequests.allows(frame, under: policy),
+              let url = committedURL?.absoluteString
+        else { return }
+        switch request {
+        case .state(let address):
+            guard address == url else { return }
+            navigationChanged(in: webView, publish: true)
+        case .history(let direction, let address):
+            guard address == url, webContentHasFocus else { return }
+            moveInHistory(direction)
+        case .reveal(let visible, let address):
+            guard address == url, historyAvailable, webContentHasFocus else { return }
+            host?.showPageNavigationHints(visible)
+        case .label(let label):
+            guard label.url == url, let current = webView.backForwardList.currentItem else { return }
+            navigationLabels[ObjectIdentifier(current)] = label
         }
     }
 }

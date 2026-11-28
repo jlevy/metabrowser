@@ -419,6 +419,27 @@ try {
   phase("forward");
   await revealed("Forward", pullRow(7), "pulls");
 
+  // Leave a PR subtab in place and verify Back restores the exact address,
+  // including the tab, before Forward returns to the selected file.
+  const checksTab = `document.querySelector('.tab-btn[href="/pull/7/checks"]')`;
+  await waitFor(`${checksTab} !== null`, "the pull request Checks tab");
+  await evaluate(`${checksTab}.click()`);
+  await waitFor(`location.pathname === "/pull/7/checks"`, "Checks opens");
+  await quickSearch("f605", "f605");
+  await waitFor(`location.pathname === "/view/long/f605.txt"`, "a file opens from Checks");
+  await evaluate("history.back()");
+  await waitFor(`location.pathname === "/pull/7/checks"`, "Back restores the exact PR tab");
+  await revealed("Back to Checks", pullRow(7), "pulls");
+  const pullTitle = `document.querySelector('.github-pull-title-text')?.textContent.trim()`;
+  await waitFor(
+    `${pullTitle} && document.title === ${pullTitle}`,
+    "Back restores the PR title in the browser tab",
+  );
+  await evaluate("history.forward()");
+  await waitFor(`location.pathname === "/view/long/f605.txt"`, "Forward returns to the file");
+  await revealed("Forward from Checks", fileRow("long/f605.txt"), "files");
+  await waitFor(`document.title === "f605.txt"`, "Forward restores the file title");
+
   // 8. The address of a pull request: a page that loads at #7.
   await load(`${base}/pull/7`);
   phase("a pull request's address");

@@ -356,6 +356,13 @@ pinned_by = "tests/golden/cli-ui-pdf-preview.tryscript.md"
 holds = '"data-metabrowser-open-file": "filesystem"'
 
 [[behavior]]
+id = "navigation-history"
+source = "Sources/ShellCore/Web/NavigationHistoryRequests.swift"
+what = "The optional navigation-history host action lets a committed page exchange Back and Forward availability, shortcut requests, Shift hints, and page labels with the native shell. Messages name the exact current internal URL. Native history buttons and standard menu shortcuts remain available if the server does not implement the bridge."
+pinned_by = "tests/golden/cli-ui-key-reveal.tryscript.md"
+holds = '{"kind":"history","direction":"back","url":"http://127.0.0.1:8457/pull/927"}'
+
+[[behavior]]
 id = "raw-media-type"
 source = "Sources/ShellCore/Web/OpenFileDownloads.swift"
 what = "`/raw?path=<identity>` answers with a `Content-Type` that names the file's media type: the one its name's extension gives, or, for a name that gives none, the one its leading bytes give where they name one (`content_sniff.media_type_from_prefix`: a PDF's `%PDF-`), else `application/octet-stream`. The app names an Open link's downloaded copy by it (`OpenFileTypes.copyName`), so a pinned revision's PDF named `untitled` is kept as `untitled.pdf` and opens in the Mac's PDF app. A `metab` that answers `application/octet-stream` leaves the copy its name, which the app refuses, as before."
@@ -564,6 +571,8 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Web/OpenFileDownloads.swift" = ["open-file-link", "raw-media-type"]
 
 [files.script]
+"Sources/Metabrowser/FolderPage.swift" = ["navigation-history"]
+"Sources/ShellCore/Web/NavigationHistoryRequests.swift" = ["navigation-history"]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
 "Sources/ShellCore/Web/WebViewRequests.swift" = ["web-view-link"]
 "Sources/ShellCore/Web/OpenFileRequests.swift" = ["open-file-link"]

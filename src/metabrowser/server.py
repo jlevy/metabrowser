@@ -2345,6 +2345,7 @@ async def index(
             {"src": git_graph_url},
             {"src": git_history_window_url},
             {"src": git_panel_url},
+            {"src": _static_asset_url("page-labels.js")},
             # The navigation's Refresh: mounts as it evaluates, on the button the server drew.
             {"src": _static_asset_url("refresh-plan.js"), "provides": "MetabrowserRefreshPlan"},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.

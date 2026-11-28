@@ -344,6 +344,16 @@ const PAGE = `(() => {
   };
 })()`;
 
+/** Read a file page after the preview and the browser tab agree on the file shown. */
+async function filePage(name) {
+  const expected = JSON.stringify(name);
+  await chrome.waitFor(
+    `document.querySelector("#preview-pane > .view-header .view-header-title")?.textContent === ${expected} &&
+      document.title === ${expected}`,
+  );
+  return chrome.evaluate(PAGE);
+}
+
 /**
  * Where the offer to reload sits: at the pane's foot after the indexing row, under the
  * tree, and outside every tab's toolbar and the metadata band under it, which hide while
@@ -615,7 +625,7 @@ try {
   // 1. The working tree's page.
   result.workingTreeLoadMs = await load("/view/README.md");
   takeDataRequests();
-  result.workingTree = await chrome.evaluate(PAGE);
+  result.workingTree = await filePage("README.md");
   result.workingTreeLayout = await sampledLayout();
   // What the selector's bundle cost this page: the guard and the selector, on demand.
   result.bundle = await chrome.evaluate(`performance.getEntriesByType("resource")
@@ -674,7 +684,7 @@ try {
   const leaving = currentLoader;
   result.toBranch = await switchBy(rowNamed("feature"), true);
   const switched = switchAsked;
-  result.branch = await chrome.evaluate(PAGE);
+  result.branch = await filePage("README.md");
   result.branchLayout = await sampledLayout();
   await capture("revision");
 
@@ -715,12 +725,12 @@ try {
   await chrome.evaluate("window.__left = true; true");
   await chrome.evaluate(`document.querySelector(".source-ref-selector-reload").click(); true`);
   await chrome.waitFor(`!window.__left && ${MOUNTED} && ${ROWS}.length > 0`);
-  result.reloaded = await chrome.evaluate(PAGE);
+  result.reloaded = await filePage("README.md");
 
   // To a tag, then back by the Working tree row.
   await openPanel("Tags");
   result.toTag = await switchBy(rowNamed("v1"));
-  result.tag = await chrome.evaluate(PAGE);
+  result.tag = await filePage("README.md");
   result.tagMenu = await chrome.evaluate(`(async () => {
     const chip = document.querySelector(".source-ref-selector-label [data-ref-menu]");
     const before = chip.getBoundingClientRect().width;
@@ -791,7 +801,7 @@ try {
   result.toWorkingTree = await switchBy(
     `document.querySelector('.source-ref-selector-kinds button[data-chip-value="working_tree"]')`,
   );
-  result.back = await chrome.evaluate(PAGE);
+  result.back = await filePage("README.md");
   await capture("working-tree-again");
 
   // 6. Back, onto the tag's address, while the working tree is served.
@@ -801,7 +811,7 @@ try {
   // The landing may be a restored page that then reloads itself; wait for it to be the
   // working tree's, which is what the server serves.
   await chrome.waitFor(`window.METABROWSER_SOURCE_KIND === "filesystem" && ${MOUNTED}`, 30000);
-  result.afterBack = await chrome.evaluate(PAGE);
+  result.afterBack = await filePage("README.md");
   result.served = await chrome.evaluate(
     `fetch("/api/source/status").then((response) => response.json())`,
   );
@@ -811,7 +821,7 @@ try {
   // the Commits tab adds entries to the history that step 6 walks.
   await openPanel("Branches");
   await switchBy(rowNamed("topic"));
-  result.checkedOutBranch = await chrome.evaluate(PAGE);
+  result.checkedOutBranch = await filePage("README.md");
   // The keyboard's way back from the checked-out branch's revision (mb-cxpq): an arrow
   // key onto the Working tree tab, which shows its entry, then Enter on that entry.
   await openPanel();
@@ -822,7 +832,7 @@ try {
   result.toWorkingTreeByEntry = await switchBy(
     `document.querySelector(".source-ref-selector-working-tree")`,
   );
-  result.backByEntry = await chrome.evaluate(PAGE);
+  result.backByEntry = await filePage("README.md");
   await openPanel("Branches");
   await switchBy(rowNamed("feature"));
   takeDataRequests();

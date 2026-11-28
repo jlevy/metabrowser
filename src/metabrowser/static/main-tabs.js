@@ -327,6 +327,7 @@
     // Files and Pulls return to what they last showed. Commits keeps no destination: a
     // switch to it always lands on the newest commit (openMainTab).
     function rememberMainTabAddress() {
+      window.MetabrowserPageLabels?.addressChanged();
       const panel = mainTabAtAddress();
       if (panel && panel !== "git") {
         const { pathname, search, hash } = window.location;
